@@ -710,3 +710,60 @@ describe("Subscription send — task.value matches task.fn", () => {
     await expectParity(captured[0], "subscription/garbage-contact");
   });
 });
+
+/**
+ * Monitor Qty is BINARY on every send — "0" or "1", written every time.
+ *
+ * The Welcome Call board's four order-creation automations compare this column
+ * with `is equal to` (see lib/shared/monitorQty.ts), so a blank cell matches no
+ * branch that names the monitor. Both stages used to produce exactly that:
+ * Welcome Call SKIPPED the task when the field was empty, Final Confirm wrote a
+ * literal `""`. 379 of 449 board items were sitting blank on 2026-09-08.
+ *
+ * This suite is here rather than in a file of its own because the value that
+ * reaches Monday is the TASK's value, and this harness is what captures it.
+ */
+describe("Monitor Qty is binary on every send", () => {
+  const monitorTasks = (c: CapturedSend) => c.tasks.filter((t) => t.columnId === "numeric_mm1xyfhc");
+
+  it("Welcome Call: a BLANK writes 0 — it is never skipped", async () => {
+    const { sendPatientToMonday } = await import("../welcomeCall/mondayWrite");
+    await sendPatientToMonday(welcomeCallPatient({ monitorQty: "" }) as never);
+    const t = monitorTasks(captured[0]);
+    expect(t.length, "welcomeCall: a blank Monitor Qty must still be written").toBe(1);
+    expect(t[0].value).toBe("0");
+    await expectParity(captured[0], "welcomeCall/blank-monitor-qty");
+  });
+
+  it("Final Confirm: a BLANK writes 0 — never the empty string that clears the cell", async () => {
+    const { sendPatientToMonday } = await import("../finalConfirm/mondayWrite");
+    await sendPatientToMonday(finalConfirmPatient({ monitorQty: "" }) as never);
+    const t = monitorTasks(captured[0]);
+    expect(t.length).toBe(1);
+    expect(t[0].value).toBe("0");
+    await expectParity(captured[0], "finalConfirm/blank-monitor-qty");
+  });
+
+  it("a real 1 still writes 1 on both stages", async () => {
+    const wc = await import("../welcomeCall/mondayWrite");
+    await wc.sendPatientToMonday(welcomeCallPatient({ monitorQty: "1" }) as never);
+    expect(monitorTasks(captured[0])[0].value).toBe("1");
+
+    captured.length = 0;
+    const fc = await import("../finalConfirm/mondayWrite");
+    await fc.sendPatientToMonday(finalConfirmPatient({ monitorQty: "1" }) as never);
+    expect(monitorTasks(captured[0])[0].value).toBe("1");
+  });
+
+  it("a typed 2 becomes 1 — Final Confirm's control is a free number input, and 2 matches no gate either", async () => {
+    const { sendPatientToMonday } = await import("../finalConfirm/mondayWrite");
+    await sendPatientToMonday(finalConfirmPatient({ monitorQty: "2" }) as never);
+    expect(monitorTasks(captured[0])[0].value).toBe("1");
+  });
+
+  it("garbage fails to 0, never to 1 — 1 would ship a monitor nobody ordered", async () => {
+    const { sendPatientToMonday } = await import("../finalConfirm/mondayWrite");
+    await sendPatientToMonday(finalConfirmPatient({ monitorQty: "abc" }) as never);
+    expect(monitorTasks(captured[0])[0].value).toBe("0");
+  });
+});
