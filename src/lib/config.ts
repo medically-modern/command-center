@@ -36,12 +36,17 @@ export const ROLES: RoleConfig[] = [
   // is the only way in. Rule: lib/profile/intakeSubStage.ts.
   { id: "intakeCleanup",   label: "Intake — Profile Clean-Up", color: "bg-sky-700", icon: "UserRoundCog", route: "/profile-cleanup" },
   { id: "inSystemReferrals", label: "Already In System", color: "bg-red-600",   icon: "UserRoundCheck", route: "/in-system-referrals" },
-  // Scheduled Calls is the one role ordered by TIME OF DAY rather than a Next
-  // Action Date: its count is "how many appointments are still ahead of you
-  // today", falling by one as each start time passes. See
-  // lib/scheduledCalls/workflow.ts `remainingToday` — the counting contract
-  // (CLAUDE.md §5.8) points here rather than at a follow-up rule.
-  { id: "scheduledCalls",  label: "Patient Intake — Scheduled Calls", color: "bg-sky-600", icon: "CalendarClock", route: "/scheduled-calls" },
+  // Care Coordinator — "My Patients" (CLAUDE.md §5.30). Was "Patient Intake —
+  // Scheduled Calls" until 2026-09-08; the page grew from the day grid of booked
+  // intake calls into the three-column dashboard (intake · confirm/chase ·
+  // welcome call) with that grid underneath. ⚠️ The id stays `scheduledCalls`
+  // for the same reason `profile`, `unverifiedReferrals` and `assignedPatients`
+  // kept theirs through renames: access.json assignments, ScheduledCallHost's
+  // role gate, useRoleCounts and BOTH baseline generators key off the id. The
+  // COUNT is unchanged too — still "booked calls still ahead today"
+  // (lib/scheduledCalls/workflow.ts `remainingToday`, the §5.8 counting
+  // contract); the dashboard shows far more than the bar counts, deliberately.
+  { id: "scheduledCalls",  label: "Care Coordinator",  color: "bg-sky-600",     icon: "HeartHandshake", route: "/care-coordinator" },
   { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck", route: "/evaluate"         },
   { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: "/send-request"     },
   { id: "confirmReceipt",  label: "Confirm Receipt",    color: "bg-emerald-500", icon: "CheckCircle",    route: "/confirm-receipt"  },

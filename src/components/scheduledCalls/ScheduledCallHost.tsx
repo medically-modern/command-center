@@ -1,7 +1,7 @@
 /**
  * The ten-minute warning before a booked intake call.
  *
- * Mounted app-wide next to IncomingCallHost, not on the Scheduled Calls page,
+ * Mounted app-wide next to IncomingCallHost, not on the Care Coordinator page,
  * for the same reason: a rep is working somewhere else when the call comes due,
  * and a reminder that only fires on the page you're already looking at is a
  * reminder nobody needs.
@@ -24,6 +24,8 @@ import {
 } from "@/lib/scheduledCalls/workflow";
 import { etToday } from "@/lib/masheke/etDate";
 
+/** The Care Coordinator role. The id predates the rename (config.ts) and is
+ *  what access.json assigns, so it is the right thing to gate on. */
 const ROLE_ID = "scheduledCalls";
 
 /**
@@ -90,7 +92,7 @@ export default function ScheduledCallHost() {
   }, [holdsRole]);
 
   const open = useCallback((c: ScheduledCall) => {
-    navigate(`/unverified-referrals?patientId=${encodeURIComponent(c.id)}&from=scheduled-calls`);
+    navigate(`/unverified-referrals?patientId=${encodeURIComponent(c.id)}&from=care-coordinator`);
   }, [navigate]);
 
   useEffect(() => {

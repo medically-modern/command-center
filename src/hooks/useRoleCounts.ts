@@ -50,7 +50,7 @@ const WC_GROUP_ID = "group_mm1wvq8p";
 const FINAL_CONFIRM_GROUP_ID = "group_mm2x8jtj";
 const PROFILE_BOARD_ID = 18406352652;
 
-// Scheduled Calls — the Calendly mirror the dtc-mm-form backend writes.
+// Care Coordinator (id `scheduledCalls`) — the Calendly mirror the dtc-mm-form backend writes.
 const SCHED_CALL_TIME_COL = "date_mm63na19";
 const SCHED_BOOKING_STATUS_COL = "color_mm5zrbn3";
 

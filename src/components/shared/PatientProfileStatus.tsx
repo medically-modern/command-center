@@ -80,7 +80,7 @@ export function InsuranceProfileStatus({
 
 /**
  * Profile Send Off — Verified Referrals · Patient Intake · Already In System ·
- * Scheduled Calls.
+ * Care Coordinator (§5.30).
  *
  * ⚠️ `ignoreFollowUp` must be set on the **Patient Intake** queue, and only
  * there — that queue's Follow Up pair is a one-way door nothing reads (§5.10),

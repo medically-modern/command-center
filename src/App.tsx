@@ -25,7 +25,7 @@ const ProfilePage = lazyWithReload(() => import("./pages/ProfilePage"));
 // change the Verified Referrals send-off, and separate components is the
 // only way to guarantee that.
 const UnverifiedReferralsPage = lazyWithReload(() => import("./pages/UnverifiedReferralsPage"));
-const ScheduledCallsPage = lazyWithReload(() => import("./pages/ScheduledCallsPage"));
+const CareCoordinatorPage = lazyWithReload(() => import("./pages/CareCoordinatorPage"));
 const SubmitAuthPage = lazyWithReload(() => import("./pages/SubmitAuthPage"));
 const AuthOutstandingPage = lazyWithReload(() => import("./pages/AuthOutstandingPage"));
 const DvsPage = lazyWithReload(() => import("./pages/DvsPage"));
@@ -74,6 +74,13 @@ const basename = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 const ChaseBenefitsRedirect = () => {
   const location = useLocation();
   return <Navigate to={`/chase-fax${location.search}`} replace />;
+};
+
+/** Old Scheduled Calls route → the Care Coordinator dashboard it became
+ *  (2026-09-08), preserving query params for the same reason. */
+const ScheduledCallsRedirect = () => {
+  const location = useLocation();
+  return <Navigate to={`/care-coordinator${location.search}`} replace />;
 };
 
 const App = () => (
@@ -126,7 +133,11 @@ const App = () => (
               pane rendered and already open. */}
           <Route path="/profile-cleanup" element={<UnverifiedReferralsPage variant="cleanup" />} />
           <Route path="/in-system-referrals" element={<ProfilePage variant="inSystem" />} />
-          <Route path="/scheduled-calls" element={<ScheduledCallsPage />} />
+          {/* Care Coordinator — "My Patients" (§5.30). The old /scheduled-calls
+              URL is kept as a redirect: it is in the reminder toast's history and
+              in bookmarks. */}
+          <Route path="/care-coordinator" element={<CareCoordinatorPage />} />
+          <Route path="/scheduled-calls" element={<ScheduledCallsRedirect />} />
           <Route path="/submit-auth" element={<SubmitAuthPage />} />
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
           <Route path="/dvs" element={<DvsPage />} />

@@ -50,7 +50,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | Board | ID | Roles / purpose |
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
-| **Profile Send Off** | `18406352652` | `profile` ("Referral Intake", relabelled from "Verified Referrals" 2026-08-19) + `unverifiedReferrals` ("Non-Referral Intake — Info Collection", §5.20) + `intakeCleanup` ("Intake — Profile Clean-Up", group `group_mm6c3rhb`, §5.20) + `inSystemReferrals` ("Already In System") — FOUR roles on one board, split by Already In System then Referral Type/Source (§5.10), and the DTC form queue split again into two sub-stages (§5.20). Its own board (groups: *Patient Intake → 1. Intake → New Form Partial/Completed → Profile Clean-Up → Already In System → Tests → Stuck → Completed*). `profile` and `inSystemReferrals` work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. **Not** the Welcome Call board. |
+| **Profile Send Off** | `18406352652` | `profile` ("Referral Intake", relabelled from "Verified Referrals" 2026-08-19) + `unverifiedReferrals` ("Non-Referral Intake — Info Collection", §5.20) + `intakeCleanup` ("Intake — Profile Clean-Up", group `group_mm6c3rhb`, §5.20) + `inSystemReferrals` ("Already In System") — FOUR roles on one board, split by Already In System then Referral Type/Source (§5.10), and the DTC form queue split again into two sub-stages (§5.20). Its own board (groups: *Patient Intake → 1. Intake → New Form Partial/Completed → Profile Clean-Up → Already In System → Tests → Stuck → Completed*). `profile` and `inSystemReferrals` work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. The `scheduledCalls` role (**Care Coordinator**, §5.30) also reads the two DTC form groups + Profile Clean-Up here — read-only, beside ME's chase stages and Welcome Call. **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `text_mm6vevjf`** (the capped `long_text_mm27zjt2` until 2026-09-03) (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (**stage**-based — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, **DVS**, Auth Denied, Escalations, Complete, Stuck. ⚠️ The board grew a **DVS group** (`group_mm5gp2r2`, Aug 2026) but the role is still **stage**-defined: stage-DVS items linger in whichever group an automation last left them, so `useDvsPatients`/`useRoleCounts` read the STAGE board-wide and must not be "fixed" to filter on the group. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
@@ -1063,7 +1063,7 @@ A DTC patient can book a 10-minute intake call. **Calendly is the system of reco
 Send Off board carries a **mirror** — Scheduled Call Time **`date_mm63na19`**, Booking Status
 **`color_mm5zrbn3`** (*Scheduled · Unscheduled · Canceled*), Calendly Event URI
 **`text_mm63e086`** — written by the **dtc-mm-form** backend and corrected by its Calendly webhook.
-The `scheduledCalls` role (`/scheduled-calls`) reads that mirror with an ordinary board query, so
+The `scheduledCalls` role — **relabelled "Care Coordinator", route `/care-coordinator`, 2026-09-08; the day grid is now the bottom half of that dashboard (§5.30)** — reads that mirror with an ordinary board query, so
 the SPA needs no Calendly credentials and the role counts like any other (§5.8).
 
 **⚠️ The mirror joins on the invitee's EMAIL and nothing else.** `booking.js` `findPatientRow`
@@ -1387,8 +1387,9 @@ Follow Up** — so a Search row can read **Active** for a patient the role page 
 is a NARROWER read, never a contradictory one, and the test pins that. Widening it means adding
 those columns to `BOARDS`' per-board read set, not special-casing the adapter.
 
-**Not wired, deliberately:** *Scheduled Calls* has no patient view of its own (rows deep-link to
-`/unverified-referrals`, which has the badge); *Patient Questions*, *Patient Texting* and *Fax
+The *Care Coordinator* cards (§5.30) carry it too, one adapter per column — `intakeProfileStatus`
+with `ignoreFollowUp` (the Patient Intake rule), `mashekeProfileStatus`, `welcomeCallProfileStatus`.
+**Not wired, deliberately:** *Patient Questions*, *Patient Texting* and *Fax
 Inbox* are message/lookup surfaces, not pipeline stages — Patient Questions in particular spans
 Secondary Claims, which is not a stage in the Active list at all.
 
@@ -2475,6 +2476,64 @@ carries 15 numbers or 100**, so viewport-only loading — the obvious "only fetc
 optimisation — would have been ~6× MORE expensive and more round trips, not less. Re-measure with
 `complexity { before query after }` before changing the batching.
 
+### 5.30 Care Coordinator — "My Patients" (Sep 2026)
+The `scheduledCalls` role **became the Care Coordinator dashboard** (Josh, 2026-09-08, from Corey's
+Phase 3 mockup): label "Care Coordinator", route **`/care-coordinator`** (the old `/scheduled-calls`
+redirects, query preserved), page `pages/CareCoordinatorPage.tsx`. ⚠️ **The id stays `scheduledCalls`**
+— access.json assignments, `ScheduledCallHost`'s role gate, `useRoleCounts` and both baseline
+generators key off it (the `profile` / `assignedPatients` precedent, §5.10). The old day grid is the
+bottom half of the page, moved whole into `components/careCoordinator/ScheduleGrid.tsx`.
+
+**Built with ZERO Monday changes** (Josh: *"without changing ANY of the data and how we have it in
+monday"*). No column, group or automation was added or edited; every rule below is derived from
+columns the stage pages already read. **The page is READ-ONLY** — three slim paged reads in
+`lib/careCoordinator/mondayApi.ts` (Profile Send Off form groups + Clean-Up · ME's Medical Necessity
+group filtered to Confirm Receipt / Chase Clinicals · the Welcome Call group), plus one-item notes on
+demand. It never writes: Text is the shared `PatientContact` trio (Call · Text · Calls/recordings),
+"Booking link" is `BookingLinkDialog` (a Calendly link — the callback IS the booking, never a snooze,
+§5.10), and **Open** deep-links `?patientId=` into the stage page whose verified write path does the
+work. ⚠️ Deliberately NOT the stage hooks: `hooks/masheke/useMondayPatients` backfills a blank Next
+Action Date and self-heals escalations ON READ; a dashboard that only looks must not trigger that.
+
+**ONE coordinator, NO assignment** (Josh, same day: *"one woman right now … leave [scaling] out"*).
+The role bar is the assignment; nothing routes a patient to a person; every queue stays workable from
+its own page by anyone (§5.13). The mockup's "My Patients · on" toggle was not built. If a second
+coordinator arrives it is a FILTER over these same lists — never routing.
+
+**Rules — `lib/careCoordinator/workflow.ts` (+ tests), one bucket set per column:**
+| Column | In | Out (still counted in the footer) |
+|---|---|---|
+| **Patient Intake** | *Scheduled*: a live Calendly booking today-or-later (a booking WINS over every exclusion but an escalation). *Unscheduled*: touched the DTC form (Drop-off Step set), still in a form group, no booking, ≥ **48h** old (`READY_AFTER_HOURS` — Corey's "2 days later", after the two automated nudges §5.24), under **5** attempts (`MAX_INTAKE_ATTEMPTS`, the stop rule, read off the existing Attempt Counter). Longest-waiting first — the mockup's own header text. | **imported** (blank Drop-off Step — never touched the form) · **cleanUp** (unbooked, already advanced) · **callDone** (Intake Call Complete = Yes) · **sendNow** (completed form that chose "Send request now" — no call wanted) · **nurturing** (< 48h). *Exhausted* (≥ 5 attempts) and *With a manager* (either Intake Escalation rung) are collapsed sections, not exclusions. |
+| **Confirm Receipt + Chase Clinicals** | Mirrors `useRoleCounts`' ME rule exactly: escalation index 2 → counted only (Final Decisions); index 0 → *With a manager*; Appointment Date today-or-later → *Awaiting a provider visit* (§5.12); NAD > today → *Waiting*; else *Due*, most overdue first. ⚠️ **A blank NAD is DUE** (blank counts as active in `useRoleCounts`; the masheke hook backfills it to today). | — |
+| **Welcome Call** | `Escalation Required` → *With a manager*; `Follow Up = "Done"` → *Follow up later* (soonest date first, dateless last); else *Call now*, oldest arrival first. Flags: `isFirstTimePumpUser` / `isCrossSell` from `lib/welcomeCall/workflow` (§5.26). | — |
+Header chips: total = the three columns' workable counts; "N overdue · N at escalation" separately.
+
+**Why "imported" exists — the board facts found while building (2026-09-08):** `New Form — Partial
+Leads` held **1,718** rows; **21** had ever touched the form (a Drop-off Step); **~1,697 arrived in one
+bulk load on 8/25** from the *DME Patient Validation & Outreach* board (`18427791439`) — Referral
+Type `Doctor`, source `SNJ [2.0]`, no email, notes stamped `=== Imported from "DME Patient Validation
+& Outreach" board · 8/25/26 ===`. **498** carried a logged rep call, **4** more than one (no cadence
+brings a called patient back — §5.10's no-snooze rule at scale); **8** had ever received an automated
+drop-off text. So the form drop-off funnel is ~1–2 leads a day and the queue is dominated by a
+reactivation campaign. This dashboard shows the form leads and COUNTS the imports in the footer
+("Not shown: 1,697 imported/referral rows … worked from Info Collection") — nothing is invisible (§7),
+and nothing was moved to make that true.
+
+⚠️ **The role's COUNT is unchanged** — the bar still reads "booked calls still ahead today"
+(`remainingToday`, §5.8/§5.15) while the page shows far more. A deliberate mismatch, left for a
+separate decision: changing it is a counting-contract change (useRoleCounts + both baseline generators).
+⚠️ **Welcome Call has no Scheduled/Unscheduled split** on purpose — the Calendly columns live on
+Profile Send Off and do not hop (§5.26). ⚠️ **No notes column in any list read** — Profile Send Off
+Notes runs to 9,000+ chars on ~1,700 rows (§5.25); `fetchItemNotes` reads ONE item when a card's
+"See notes" opens. ⚠️ No week view, no autodialer, no per-patient snooze on intake: all three would be
+new data or a reversed decision.
+
+**Keep-in-agreement:** the intake groups mirror `lib/scheduledCalls/mondayApi.ts` `GROUPS`
+(`intakeSubStage.test.ts` pins Clean-Up); the chase due rule mirrors `useRoleCounts`; deep links carry
+`from=care-coordinator` (ScheduledCallHost + the page). Files: `lib/careCoordinator/{workflow,mondayApi}.ts`,
+`hooks/careCoordinator/useBoardPoll.ts`, `components/careCoordinator/{cards,PatientCard,PipelineColumn,ScheduleGrid}.tsx`,
+`pages/CareCoordinatorPage.tsx` (+ `CareCoordinatorPage.test.tsx`).
+
 
 ---
 
@@ -3415,7 +3474,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |
 | Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |
 | A booking didn't show up in Scheduled Calls | §5.15 — the mirror joins on the invitee's EMAIL. `lib/scheduledCalls/bookingLink.ts` (the prefill), then dtc-mm-form `server/src/booking.js` |
-| Booked-call queue / the 10-min reminder | `lib/scheduledCalls/workflow.ts` + `pages/ScheduledCallsPage.tsx` + `components/scheduledCalls/ScheduledCallHost.tsx` (§5.15) |
+| Booked-call queue / the 10-min reminder | `lib/scheduledCalls/workflow.ts` + `components/careCoordinator/ScheduleGrid.tsx` (the grid, on `pages/CareCoordinatorPage.tsx`) + `components/scheduledCalls/ScheduledCallHost.tsx` (§5.15, §5.30) |
+| The Care Coordinator dashboard shows a patient it shouldn't, or hides one it should | §5.30 — `lib/careCoordinator/workflow.ts` (`intakeBuckets` / `chaseBuckets` / `welcomeCallBuckets`, tested). Read the column's footer first: every excluded row is counted there with its reason. The page never writes, so nothing here can have moved a patient |
 | Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |
 | A text was sent but the patient never got it | §5.5 — `lib/shared/smsDelivery.ts` (status decides, code explains), rendered by `components/shared/SmsDeliveryNote.tsx`; the gateway half is `/messaging/conversation` in `services/monday-gateway/messaging.mjs` |
 | "Serving ≠ requested" fires on a normal cross-sell | `lib/finalConfirm/checkPack.ts` `droppedProducts` — C13 fires on a DROPPED product only; adding one is a cross-sell and is silent |

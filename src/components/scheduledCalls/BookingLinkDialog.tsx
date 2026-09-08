@@ -50,7 +50,7 @@ export default function BookingLinkDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  /** Optional prefill. Scheduled Calls opens this with no patient in hand and
+  /** Optional prefill. The Care Coordinator header opens this with no patient in hand and
    *  passes nothing, so it behaves exactly as before. Patient Intake opens it
    *  from a record already on screen — making the rep retype the name and
    *  number they are looking at is how a button goes unused. */
@@ -116,7 +116,7 @@ export default function BookingLinkDialog({
     [url, name, prefillEmail],
   );
 
-  /** Opened from a patient's record rather than cold from Scheduled Calls. */
+  /** Opened from a patient's record rather than cold from the Care Coordinator header. */
   const hasPatient = Boolean((patientName ?? "").trim() || (phone ?? "").trim() || (email ?? "").trim());
 
   // Keep the draft in step with the link and the name until the rep edits it —
@@ -247,7 +247,7 @@ export default function BookingLinkDialog({
               matched to a patient by the invitee's email against their row, so
               with no address on file there is nothing to match on and the
               appointment lands in Calendly alone — silently. Only shown when we
-              opened with a patient: sent cold from Scheduled Calls there is no
+              opened with a patient: sent cold from the Care Coordinator header there is no
               record to link to and the note would be noise. */}
           {hasPatient && !prefillEmail && (
             <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">

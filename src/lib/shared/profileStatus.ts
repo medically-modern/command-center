@@ -390,7 +390,7 @@ export function insuranceProfileStatus(
 
 /**
  * Profile Send Off board (`18406352652`) — Verified Referrals · Patient Intake
- * (DTC & CareCentrix) · Already In System · Scheduled Calls.
+ * (DTC & CareCentrix) · Already In System · Care Coordinator.
  *
  * ⚠️ Patient Intake passes `followUpRule: "none"` via `ignoreFollowUp`, for the
  * same reason its sidebar does (§5.10): that queue's Follow Up pair is a
