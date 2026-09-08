@@ -1193,8 +1193,30 @@ function ProfileBody(p: BodyProps) {
     return first.note;
   })();
   const [readyOpen, setReadyOpen] = useState(false);
-  // Member ID 1 is always entered fresh by the rep (never auto-filled).
-  const [mid1Input, setMid1Input] = useState("");
+  // Member ID 1 SHOWS what is already on file. It used to start blank like the
+  // Benefits Check inputs below ("always entered fresh by the rep") — but those
+  // two fields are not the same kind of thing. giInput/midInput are Stedi
+  // INPUTS, re-entered on purpose so a stale value can't be re-verified by
+  // accident; Member ID 1 is the verified OUTPUT that advances to Medical
+  // Necessity and is copied board-to-board from there. Rendering it blank
+  // beside a required star, while `buildDataTasks` writes the column whenever
+  // it is non-empty, meant a rep typing into what looked like an empty required
+  // box silently replaced a correct ID with no indication anything was lost.
+  // Three ways that went wrong, all confirmed in the gateway audit:
+  //   · Carolyn Bronger 2026-08-25 — the app itself wrote H04473868 into THIS
+  //     column at 4:03:45pm and showed an empty box; at 4:04:47pm the send
+  //     carried 5HN2F31QH25 (her Medicare/DMERC number) over the Humana ID.
+  //   · Tammy Turpin, same afternoon — Janelle entered the correct Humana ID at
+  //     3:15pm, a second rep replaced it at 3:51pm having never seen it.
+  //   · Adrianne Cross / Brenda Clay — real IDs replaced by "CONFIRM" and
+  //     "MUSTCONFIRM": a starred blank box demands an entry it won't show you.
+  // The as-received value was on screen in the left "Provided Insurance" card
+  // the whole time, but nothing tied that card to this field. Seeded from the
+  // same pair the sibling intake page uses (UnverifiedReferralsPage §5.20) so
+  // the two intake pages cannot disagree about what this field holds.
+  // ProfileBody is keyed by patient id, so this initialiser runs once per
+  // patient and never fights the rep's typing.
+  const [mid1Input, setMid1Input] = useState(pt.memberId1 || pt.workingMemberId || "");
   // Secondary Insurance and Serving are rep DECISIONS — intake/board values
   // must only ever surface as suggestions (Josh, 2026-07). Demote
   // board-sourced values on load: clear the working copies so both selects
@@ -1215,6 +1237,14 @@ function ProfileBody(p: BodyProps) {
     if (fixedAddress !== pt.patientAddress) patch.patientAddress = fixedAddress;
     const fixedEmail = normalizeEmailCase(pt.email);
     if (fixedEmail !== pt.email) patch.email = fixedEmail;
+    // Keep the write in step with what the Member ID 1 field now SHOWS. When
+    // that field seeds from the working Member ID (above), the overlay has to
+    // carry the same value or `buildDataTasks`' `if (p.memberId1)` skips the
+    // column: the rep would read a filled box and the patient would still
+    // advance with Member ID 1 blank. Only ever fills a genuinely empty column
+    // — an existing Member ID 1 is what the field shows, so there is nothing to
+    // patch — which is the same thing the sibling intake page's seed does.
+    if (!pt.memberId1 && pt.workingMemberId) patch.memberId1 = pt.workingMemberId;
     if (Object.keys(patch).length) p.onUpdate(patch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
