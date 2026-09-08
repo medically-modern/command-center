@@ -4,6 +4,7 @@ import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 import { expectedPos, POS_INDEX } from "../shared/pos";
 import { coercePumpQty } from "../shared/servingLines";
+import { coerceMonitorQty } from "../shared/monitorQty";
 import type { Patient } from "./workflow";
 import { CLINIC_NAME_OPTIONS, servingIncludesCgm, servingIncludesPump } from "./workflow";
 
@@ -320,11 +321,19 @@ export async function sendPatientToMonday(
     fn: () => writeNumber(p.id, COL.qtyCartridge, p.qtyCartridge === "" ? "" : Number(p.qtyCartridge)),
   });
 
+  // Monitor Qty is BINARY — always "0" or "1", never the empty string. Unlike
+  // the number cells above, a blank here is NOT a meaningful clear: this stage's
+  // advancer ("Completed") is what fires the four order-creation automations,
+  // and every one of them compares this column with `is equal to`, so a cleared
+  // cell drops out of each branch that names the monitor with nothing erroring.
+  // Writing `""` was the app's own biggest source of those blanks.
+  // See lib/shared/monitorQty.ts.
+  const monitorQtyToWrite = coerceMonitorQty(p.monitorQty);
   tasks.push({
     label: "Monitor Qty",
     columnId: COL.monitorQty,
-    value: p.monitorQty === "" ? "" : String(Number(p.monitorQty)),
-    fn: () => writeNumber(p.id, COL.monitorQty, p.monitorQty === "" ? "" : Number(p.monitorQty)),
+    value: monitorQtyToWrite,
+    fn: () => writeNumber(p.id, COL.monitorQty, Number(monitorQtyToWrite)),
   });
 
   // Pump Qty — coerced to 0 when Serving does not sell a pump DEVICE.

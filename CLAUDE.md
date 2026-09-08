@@ -1718,6 +1718,52 @@ strictly wider — two rules on one fact at two severities is how a check pack g
 ⚠️ Welcome Call's own send gate (`validatePatientForSend`) is deliberately **unchanged** — this can
 only ever tell a rep MORE than before, never stop a call they could previously finish (§5.17's rule).
 
+### 5.22b Monitor Qty is BINARY — 0 or 1, never blank (Sep 2026)
+The Welcome Call board's four order-creation automations all fire on Stage Advancer
+`color_mm1ws96t` → **Completed** (Final Confirm's advancer) and then branch into the **New Order
+Board** (`18405457690`) on **exact numeric equality**:
+
+| id | description | Pump Qty `numeric_mm1xa0z2` | Monitor Qty `numeric_mm1xyfhc` |
+|---|---|---|---|
+| 7918341001 | pump only | = 1 | — |
+| 7918341011 | monitor only | — | = 1 |
+| 7918340959 | pump and monitor | = 1 | = 1 |
+| 7921725444 | monitor = 0 | = 1 | = 0 |
+
+⚠️ **A BLANK CELL IS NEITHER 0 NOR 1, so it matches no branch that names the monitor** — and
+nothing errors: the order is simply classified as though the question had never been asked. The
+blanks came from this app. Welcome Call **skipped** the write on an empty field
+(`if (p.monitorQty !== "")`) while its own toggle rendered that blank as **"0 — No"** — the screen
+said 0 and the board stayed empty — and Final Confirm went further, writing a literal **`""`**,
+which clears the cell outright. A board scan on 2026-09-08 found **379 of 449 items (84%) blank**,
+**118 of them carrying Pump Qty 1**: exactly the population 7921725444 was built for and the one it
+could never match. (Only 52 read "1", 18 read "0".)
+
+Canonical rule: **`lib/shared/monitorQty.ts` `coerceMonitorQty`** (+ tests). Applied in the three
+write paths — `welcomeCall/mondayWrite` `buildDataTasks` and `sendWelcomeCallTextToMonday`, and
+`finalConfirm/mondayWrite` — all of which now write the column **unconditionally**.
+- ⚠️ **Anything above zero is `"1"`, not just a literal 1.** Final Confirm's control is a free
+  `type="number"` input, so a typed **2** is reachable — and 2 matches none of the four equality
+  gates either, reproducing the same silent misclassification. `> 0` is also how the rest of the
+  app already reads this column (`servingLines.ts` `num(monitorQty) > 0` = "a monitor is served").
+- ⚠️ **Anything unreadable is `"0"`, never `"1"`** — blank, whitespace, `NaN`, a negative. Guessing
+  1 would ship a monitor nobody ordered; 0 at worst under-reports a value that was never legible.
+- ⚠️ **The split-order supplies half now writes `0`, not a clear** (`getSplitOverrides`). Its old
+  comment said blank was needed because "automations gated on *is empty* only fire when the cell is
+  cleared" — **there is no such gate on Monitor Qty**; all four compare with `is equal to`. The
+  pump-side clears on the sensors half are a different case and stay blank (7918341001 / 7918340959
+  require Pump Qty = 1, so a blank correctly keeps them from firing).
+- Pinned by `writeTaskParity.test.ts`' *"Monitor Qty is binary on every send"* block, which asserts
+  a blank still produces a task and that its value is `"0"` on BOTH stages — a regression here is
+  silent on screen, so the test is the only thing that would catch it.
+
+⚠️ **KNOWN, ON THE MONDAY SIDE — not fixed here (Josh's call).** 7921725444 was **inactive** as of
+2026-09-08 17:33 ET. Once Monitor Qty really is 0 and it is switched on, a patient with **Pump Qty
+1 + Monitor Qty 0** satisfies **both** "pump only" (Pump = 1, no monitor condition) and
+"monitor = 0" (Pump = 1 AND Monitor = 0) — **two items on the New Order Board**. "pump only" has
+been doing double duty as "pump, no monitor" only because the monitor cell was blank. Either give
+7918341001 a `Monitor Qty = 1` condition or retire it in favour of 7921725444 before enabling.
+
 ### 5.23 The insurance step — one card answers it, and no card parks the patient (Aug 2026)
 Step 5 of the DTC intake form (`mm-track-widget/intake-form.html`, mirrored as the dtc-mm-form
 repo's `index.html`) offered three answers and mishandled two of them. Josh, 2026-08-21.
@@ -3284,6 +3330,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's text thread looks empty, or stops ~30 days back | §5.27 — RingCentral retains ~30 days and answers **200 with an empty list**, which looks identical to "never texted". `GET /messaging/archive-health`, then `services/monday-gateway/smsArchive.mjs` |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
+| A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank**; all four board automations compare it with `is equal to`. `lib/shared/monitorQty.ts` is the rule, applied in both stages' `mondayWrite`. Check the cell on the item before blaming the automation |
 | A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |
 | An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |

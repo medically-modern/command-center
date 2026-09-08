@@ -3,6 +3,7 @@ import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
 import { coercePumpQty } from "@/lib/shared/servingLines";
+import { coerceMonitorQty } from "@/lib/shared/monitorQty";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -75,7 +76,14 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (p.memberId2Edited !== null && p.memberId2Edited !== "")
     tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited!) });
 
-  if (p.monitorQty !== "") tasks.push({ label: "Monitor Qty", columnId: COL.monitorQty, fn: () => writeNumber(p.id, COL.monitorQty, Number(p.monitorQty)) });
+  // Monitor Qty is BINARY — always written, always "0" or "1", never blank.
+  // This used to be `if (p.monitorQty !== "")`, i.e. a blank wrote NOTHING while
+  // the form's own toggle rendered that blank as "0 — No". The board's four
+  // order-creation automations compare this column with `is equal to`, so the
+  // empty cell that left behind matched no branch at all — see
+  // lib/shared/monitorQty.ts for the four automations and the 84%-blank scan.
+  const monitorQtyToWrite = coerceMonitorQty(p.monitorQty);
+  tasks.push({ label: "Monitor Qty", columnId: COL.monitorQty, fn: () => writeNumber(p.id, COL.monitorQty, Number(monitorQtyToWrite)) });
   // Pump Qty is coerced to 0 when Serving does not sell a pump DEVICE. The form
   // disables the control, but a value already on the board — or one set before
   // Serving was corrected — still reaches here otherwise, which is exactly how
@@ -234,7 +242,10 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
     tasks.push(writeStatusIndex(p.id, COL.pumpType, p.pumpTypeIndex));
 
   // Numbers
-  if (p.monitorQty !== "") tasks.push(writeNumber(p.id, COL.monitorQty, Number(p.monitorQty)));
+  // Binary, always written — same rule and same reason as the send above. This
+  // writer fires the welcome-call autotext automation, so it must not leave the
+  // column in the unclassifiable blank state either.
+  tasks.push(writeNumber(p.id, COL.monitorQty, Number(coerceMonitorQty(p.monitorQty))));
   // Same Serving coercion as buildDataTasks above — this writer fires the
   // welcome-call autotext automation, so it must not stamp a pump quantity the
   // Serving label does not support either.

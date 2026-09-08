@@ -678,9 +678,14 @@ export function getSplitOverrides(
       cgmAuthResult: "Not Serving",
       sensorsAuthResultIndex: NOT_SERVING_INDEX.authResult,
       sensorsAuthResult: "Not Serving",
-      // Clear (not zero) — Monday automations gated on "is empty" only fire
-      // when the cell is cleared, not when it holds 0.
-      monitorQty: "",
+      // ZERO, not cleared. The supplies half of a split sells no monitor, and
+      // "no monitor" on this column is the number 0 — the board's four
+      // order-creation automations compare Monitor Qty with `is equal to`, so a
+      // blank is not a smaller quantity, it is a value that matches no branch
+      // at all (lib/shared/monitorQty.ts). The send coerces this anyway; the
+      // overlay says "0" so the screen and the board can't disagree.
+      // (The pump-side clears below are a different case and stay blank.)
+      monitorQty: "0",
       // Monitor Purchase Date is a CGM-side fact — it follows the monitor onto
       // the sensors half, not this one (mirror of medicarePriorPumpDate below).
       monitorPurchaseDate: "",
