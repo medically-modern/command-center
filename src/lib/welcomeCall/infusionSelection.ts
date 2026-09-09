@@ -125,11 +125,12 @@ const qty = (v: string) => {
 /**
  * Validate the two quantity slots against the order total.
  *
- * ⚠️ **Over the total is an ERROR; under it is a WARNING.** Brandon said "warn
- * if over", but over-ordering is the half that gets denied and costs money,
- * while under-ordering is a legitimate thing a rep may do deliberately (a
- * partial first shipment). Treating both the same would either block a real
- * order or wave through one the payer refuses.
+ * ⚠️ **Missing the order total WARNS, in both directions — it never blocks.**
+ * Brandon's wording is "Qty 1 + Qty 2 must equal the order total (warn if
+ * over)", and the parenthetical sets the enforcement level. The quantities
+ * themselves are still required once a second set is in play ("both become
+ * required"), so an empty slot is an error; a total that does not add up is
+ * the rep's call to make on the phone.
  */
 export function infusionQtyPlan(i: QtyPlanInput): QtyPlan {
   const has1 = chosen(i.set1);
@@ -171,18 +172,11 @@ export function infusionQtyPlan(i: QtyPlanInput): QtyPlan {
   }
 
   const total = q1 + q2;
-  if (total > i.orderTotal) {
-    return {
-      split,
-      error: `${q1} + ${q2} = ${total} exceeds the ${i.orderTotal}-box order — lower one of them.`,
-      warning: null,
-    };
-  }
-  if (total < i.orderTotal) {
+  if (total !== i.orderTotal) {
     return {
       split,
       error: null,
-      warning: `${q1} + ${q2} = ${total} of the ${i.orderTotal}-box order — intentional?`,
+      warning: `${q1} + ${q2} = ${total}, not the ${i.orderTotal}-box order.`,
     };
   }
   return { split, error: null, warning: null };

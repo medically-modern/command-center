@@ -139,15 +139,14 @@ describe("quantities across the two slots", () => {
     expect(r.warning).toBeNull();
   });
 
-  it("⚠️ ERRORS when the split exceeds the order — that is the half that gets denied", () => {
-    const r = plan({ set2: 'TruSteel 6 mm 32"', qty1: "3", qty2: "2" });
-    expect(r.error).toMatch(/exceeds the 3-box order/);
-  });
-
-  it("⚠️ only WARNS when the split is under — a partial shipment is legitimate", () => {
-    const r = plan({ set2: 'TruSteel 6 mm 32"', qty1: "1", qty2: "1" });
-    expect(r.error).toBeNull();
-    expect(r.warning).toMatch(/of the 3-box order/);
+  it("WARNS and never blocks when the split misses the order total", () => {
+    // Brandon: "Qty 1 + Qty 2 must equal the order total (warn if over)."
+    // The parenthetical sets the enforcement level, in both directions.
+    for (const [q1, q2] of [["3", "2"], ["1", "1"]]) {
+      const r = plan({ set2: 'TruSteel 6 mm 32"', qty1: q1, qty2: q2 });
+      expect(r.error, `${q1}+${q2}`).toBeNull();
+      expect(r.warning, `${q1}+${q2}`).toMatch(/not the 3-box order/);
+    }
   });
 
   it("refuses the same set in both slots", () => {
