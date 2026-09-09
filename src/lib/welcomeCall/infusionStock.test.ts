@@ -150,3 +150,39 @@ describe("staleness", () => {
     expect(stockVerdict("X", bad, TODAY).tone).toBe("grey");
   });
 });
+
+describe("a status without a count", () => {
+  const row = (qtyAvail: number | null) => [
+    { name: 'Inset 6 mm 23"', qtyAvail, status: "Available", lastChanged: "2026-09-09 09:05 ET" },
+  ];
+
+  /* ⚠️ Regression: this branch read `row.qtyAvail ?? 0`, so an Available row
+     with no readable count reported red "Out of stock" — an invented shortage
+     on a set Cardinal can ship. `stockApi` maps a blank to null precisely so
+     the two can be told apart. */
+  it("is unknown, not out of stock", () => {
+    const v = stockVerdict('Inset 6 mm 23"', indexStock(row(null)), "2026-09-09");
+    expect(v.tone).toBe("grey");
+    expect(v.blocked).toBe(false);
+    expect(v.label).toBe("Stock unknown");
+  });
+
+  it("still reports a real zero as out of stock", () => {
+    const v = stockVerdict('Inset 6 mm 23"', indexStock(row(0)), "2026-09-09");
+    expect(v.tone).toBe("red");
+    expect(v.blocked).toBe(true);
+    expect(v.label).toBe("Out of stock");
+  });
+
+  /* Status still wins over the missing count — a backordered row is red
+     whatever the quantity says, including when it says nothing. */
+  it("does not let a missing count outrank Backordered", () => {
+    const v = stockVerdict(
+      'Inset 6 mm 23"',
+      indexStock([{ name: 'Inset 6 mm 23"', qtyAvail: null, status: "Backordered", lastChanged: "2026-09-09 09:05 ET" }]),
+      "2026-09-09",
+    );
+    expect(v.tone).toBe("red");
+    expect(v.blocked).toBe(true);
+  });
+});

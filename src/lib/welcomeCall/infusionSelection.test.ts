@@ -5,6 +5,7 @@ import {
   infusionQtyPlan,
   NOT_SERVING,
   type SetOption,
+  withCurrentSelection,
 } from "./infusionSelection";
 import { DEFAULT_INFUSION_QTY } from "./payerRules";
 
@@ -162,5 +163,42 @@ describe("quantities across the two slots", () => {
   it("says nothing at all when no set is chosen", () => {
     const r = plan({ set1: NOT_SERVING, set2: NOT_SERVING, qty1: "" });
     expect(r).toEqual({ split: false, error: null, warning: null });
+  });
+});
+
+describe("withCurrentSelection", () => {
+  const A = { index: 0, label: 'AutoSoft XC 6 mm 23"' };
+  const B = { index: 1, label: 'TruSteel 6 mm 23"' };
+  const all = [A, B];
+
+  it("leaves a list that already contains the selection alone", () => {
+    expect(withCurrentSelection([A, B], all, 0)).toEqual([A, B]);
+  });
+
+  it("passes through when nothing is selected", () => {
+    expect(withCurrentSelection([A], all, null)).toEqual([A]);
+  });
+
+  /* The point of the guard: `InfusionSetCombobox` renders from the options
+     list, so a selection the filter removed would show the PLACEHOLDER while
+     the board holds a real value — a column reading empty with nothing
+     erroring (§5.11). Both live routes to it are covered below. */
+  it("re-admits a selection the compatibility filter removed", () => {
+    // A t:slim patient whose board row holds a Mobi-only set: the filtered
+    // list drops it, but the rep must still see what is on the item.
+    expect(withCurrentSelection([B], all, 0)).toEqual([A, B]);
+  });
+
+  it("re-admits a Set 2 selection that duplicates Set 1", () => {
+    // `compatibleSetOptions(..., { exclude: set1 })` removes it; the duplicate
+    // is already reported by `infusionQtyPlan`, so showing it is strictly more
+    // honest than blanking the control.
+    expect(withCurrentSelection([B], all, 0)[0]).toEqual(A);
+  });
+
+  it("does not invent an option when the index is on no list at all", () => {
+    // A label deleted from the board: nothing can be re-admitted, and guessing
+    // one would put a name on screen the board no longer has.
+    expect(withCurrentSelection([A], all, 99)).toEqual([A]);
   });
 });

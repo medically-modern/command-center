@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import {
   CGM_TYPE_OPTIONS,
@@ -29,9 +29,18 @@ import { IntakeMessages } from "@/components/profile/IntakeMessages";
 // is why it needs the wrapper below rather than being a plain drop-in.
 import "@/pages/profile/redesign.css";
 import "@/pages/profile/intake.css";
-import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions } from "@/lib/welcomeCall/payerRules";
+import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions, DEFAULT_INFUSION_QTY } from "@/lib/welcomeCall/payerRules";
+import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
+import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
+import { etTodayYmd } from "@/lib/shared/monitorSale";
+import {
+  compatibleSetOptions,
+  withCurrentSelection,
+  setsInvalidatedByPump,
+  infusionQtyPlan,
+} from "@/lib/welcomeCall/infusionSelection";
 import { monitorSaleVerdict } from "@/lib/shared/monitorSale";
-import { pumpConfirmLabel, pumpConfirmationStale } from "@/lib/welcomeCall/sendGates";
+import { pumpConfirmLabel, pumpConfirmationStale, needsPumpConfirmation } from "@/lib/welcomeCall/sendGates";
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import {
   ConfirmCheck,
@@ -41,6 +50,7 @@ import {
   InsuranceSection,
   AuthCostSection,
 } from "./CallIntakeFields";
+import { toast } from "sonner";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -225,6 +235,34 @@ function CompatNote({ pumpType, setLabel }: { pumpType: string; setLabel: string
  * billing expectation, and a rep with a reason to exceed it should be able to,
  * with the number visible rather than discovered at denial.
  */
+/**
+ * Cardinal's availability for one set. Display only — nothing here blocks a
+ * send (see the `useInfusionStock` call site).
+ *
+ * Silent when the verdict has no label: an unselected slot and `Not Serving`
+ * both produce one, and a pill reading nothing is worse than no pill.
+ * ⚠️ Grey covers TWO different unknowns — "no tracker row" and "the stamp is
+ * too old to trust" — and both must read as unknown rather than as green. The
+ * detail line says which.
+ */
+function StockNote({ verdict }: { verdict: StockVerdict }) {
+  if (!verdict.label) return null;
+  return (
+    <p
+      className={cn(
+        "mt-1.5 text-[11px] font-medium",
+        verdict.tone === "green" && "text-emerald-700 dark:text-emerald-400",
+        verdict.tone === "amber" && "text-amber-700 dark:text-amber-400",
+        verdict.tone === "red" && "text-red-600 dark:text-red-400",
+        verdict.tone === "grey" && "text-muted-foreground",
+      )}
+      title={verdict.detail}
+    >
+      {verdict.label}
+    </p>
+  );
+}
+
 function CapNote({ qty, cap, payerLabel }: { qty: number; cap: number; payerLabel: string | null }) {
   const over = qty > cap;
   return (
@@ -287,13 +325,85 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [derivedSupplyDays, intake.supplyLength, intake.supplyLengthManual, effectivePrimary]);
   const [sendingWelcomeText, setSendingWelcomeText] = useState(false);
+
+  /* "If Pump Type changes, clear any set that's no longer compatible"
+     (Brandon, 2026-09-09).
+     ⚠️ Keyed on an actual CHANGE, not on the current value being incompatible.
+     Clearing whenever the pair happens to be incompatible would wipe board data
+     on mount — a write-shaped side effect from merely opening a patient, and
+     the rep would never see what was there. The ref carries the patient id with
+     it because switching patients also changes `pumpType`, and that is not a
+     correction anybody made.
+     ⚠️ The set AND its quantity are cleared together: a quantity left attached
+     to no set is the §5.12 shape where a counter and its columns disagree. */
+  const lastPump = useRef<{ patientId: string; pumpType: string } | null>(null);
+  useEffect(() => {
+    const prev = lastPump.current;
+    lastPump.current = { patientId: patient.id, pumpType: patient.pumpType };
+    if (!prev || prev.patientId !== patient.id) return;
+    if (prev.pumpType === patient.pumpType) return;
+    const { clearSet1, clearSet2 } = setsInvalidatedByPump(
+      patient.pumpType,
+      patient.infusionSet1,
+      patient.infusionSet2,
+    );
+    if (clearSet1) {
+      handleSelectChange("infusionSet1", "", null);
+      onFieldChange("qtyInf1", "");
+    }
+    if (clearSet2) {
+      handleSelectChange("infusionSet2", "", null);
+      onFieldChange("qtyInf2", "");
+    }
+    if (clearSet1 || clearSet2) {
+      toast.info("Infusion set cleared", {
+        description: `That set isn't compatible with ${patient.pumpType || "the new pump"} — pick one from the filtered list.`,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, patient.pumpType]);
   // Infusion-set options are read from the LIVE board, never a hardcoded table —
   // the index is the only thing that reaches Monday, so a deleted index writes a
   // blank without erroring. See `lib/shared/statusOptions.ts`.
   const { options: liveOptions, loading: optionsLoading, error: optionsError, ready: optionsReady } =
     useStatusOptions(BOARD_ID, [COL.infusionSet1, COL.infusionSet2]);
-  const infusionSet1Options = liveOptions[COL.infusionSet1] ?? [];
-  const infusionSet2Options = liveOptions[COL.infusionSet2] ?? [];
+  /* Cardinal's own availability, one shared read for the whole form
+     (`hooks/welcomeCall/useInfusionStock`). Display only — it does NOT gate the
+     send. Brandon asked to SHOW stock; refusing an order on it is a different
+     decision, and `StockVerdict.blocked` is there for the day somebody makes
+     it. */
+  const stock = useInfusionStock();
+  const stockToday = etTodayYmd();
+  const rawSet1Options = liveOptions[COL.infusionSet1] ?? [];
+  const rawSet2Options = liveOptions[COL.infusionSet2] ?? [];
+  /* Brandon, 2026-09-09: "filter the infusion set list by pump compatibility,
+     and Set 2 can't repeat Set 1". `compatibleSetOptions` drops only the
+     positively-wrong pairings (`incompatible` / `five-inch-not-mobi`) and keeps
+     `unverified` — an unverified pairing is a prompt, not a refusal, and
+     `CompatNote` below already says so. `withCurrentSelection` then re-admits
+     whatever the board actually holds, so a filter can never blank a control
+     that has a value (see its comment). */
+  const infusionSet1Options = withCurrentSelection(
+    compatibleSetOptions(patient.pumpType, rawSet1Options, { exclude: patient.infusionSet2 }),
+    rawSet1Options,
+    patient.infusionSet1Index,
+  );
+  const infusionSet2Options = withCurrentSelection(
+    compatibleSetOptions(patient.pumpType, rawSet2Options, { exclude: patient.infusionSet1 }),
+    rawSet2Options,
+    patient.infusionSet2Index,
+  );
+  /* Qty 1 + Qty 2 against the order total. ⚠️ Over- OR under-shooting only
+     WARNS — Brandon's wording is "must equal the order total (warn if over)",
+     and the parenthetical sets the enforcement level. A missing quantity on a
+     split IS an error, because a set with no quantity ships nothing. */
+  const qtyPlan = infusionQtyPlan({
+    set1: patient.infusionSet1,
+    set2: patient.infusionSet2,
+    qty1: patient.qtyInf1,
+    qty2: patient.qtyInf2,
+    orderTotal: DEFAULT_INFUSION_QTY,
+  });
   const infusionDisabled = !optionsReady;
   const infusionHint = optionsError
     ? `Couldn't load infusion sets from Monday: ${optionsError}`
@@ -664,15 +774,27 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   ))}
                 </SelectContent>
               </Select>
-              {/* No board column — rides out in the notes block on send. */}
-              <ConfirmCheck
-                intake={intake}
-                onChange={setIntake}
-                field="pump"
-                className="mt-2"
-                label={pumpConfirmLabel(patient.pumpType)}
-                recordPumpModel={patient.pumpType}
-              />
+              {/* No board column — rides out in the notes block on send.
+                  ⚠️ Hidden when the serving sells no pump DEVICE (Brandon:
+                  "hide it and don't require it when Insulin Pump isn't in
+                  Serving"). The section around it renders for supplies-only
+                  patients too — `servingIncludesPump` is true for "Supplies",
+                  correctly, since infusion sets ARE pump supplies — so this
+                  gate must use `needsPumpConfirmation`/`servingSellsPumpDevice`
+                  instead. Asking a patient to confirm a pump they already own
+                  and are not being sold is the §5.22 conflation in checkbox
+                  form. `unmetSendRequirements` scopes itself the same way, so
+                  the checkbox and the send gate cannot disagree. */}
+              {needsPumpConfirmation(effectiveServing) && (
+                <ConfirmCheck
+                  intake={intake}
+                  onChange={setIntake}
+                  field="pump"
+                  className="mt-2"
+                  label={pumpConfirmLabel(patient.pumpType)}
+                  recordPumpModel={patient.pumpType}
+                />
+              )}
             </div>
 
             <div>
@@ -770,6 +892,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 {isInfusionSelling(patient.infusionSet1Index) && (
                   <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet1} />
                 )}
+                {isInfusionSelling(patient.infusionSet1Index) && stock.index && (
+                  <StockNote
+                    verdict={stockVerdict(patient.infusionSet1, stock.index, stockToday)}
+                  />
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
@@ -811,6 +938,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 {isInfusionSelling(patient.infusionSet2Index) && (
                   <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet2} />
                 )}
+                {isInfusionSelling(patient.infusionSet2Index) && stock.index && (
+                  <StockNote
+                    verdict={stockVerdict(patient.infusionSet2, stock.index, stockToday)}
+                  />
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
@@ -830,6 +962,21 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               </div>
             </div>
           </div>
+
+          {/* The two slots read against the order total. One line for the pair,
+              because the fact is about the ORDER, not either slot — a per-slot
+              note would say the same thing twice and neither copy would be
+              right on its own. */}
+          {(qtyPlan.error || qtyPlan.warning) && (
+            <p
+              className={cn(
+                "mt-3 text-xs font-medium",
+                qtyPlan.error ? "text-red-600" : "text-amber-600",
+              )}
+            >
+              {qtyPlan.error ?? qtyPlan.warning}
+            </p>
+          )}
 
           {/* Cartridges */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-5">

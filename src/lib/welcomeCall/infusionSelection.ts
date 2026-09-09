@@ -74,6 +74,31 @@ export function compatibleSetOptions(
 }
 
 /**
+ * Re-admit the slot's CURRENT selection if the compatible list dropped it.
+ *
+ * ⚠️ Without this, a filter can blank a control that the BOARD says holds a
+ * value: `InfusionSetCombobox` renders from the options list, so a selected
+ * index that isn't in it shows the placeholder — the §5.11 failure where a real
+ * column reads as empty with nothing erroring. Two live states reach it: a set
+ * that is incompatible with the pump (until the pump-change effect clears it),
+ * and Set 2 already holding the same product as Set 1.
+ *
+ * Showing an existing bad selection is the safe direction — `CompatNote` and
+ * `infusionQtyPlan` both say what is wrong with it, and the rep can then change
+ * it. Hiding it would leave a board value nobody can see or correct.
+ */
+export function withCurrentSelection(
+  filtered: SetOption[],
+  all: SetOption[],
+  currentIndex: number | null,
+): SetOption[] {
+  if (currentIndex === null) return filtered;
+  if (filtered.some((o) => o.index === currentIndex)) return filtered;
+  const current = all.find((o) => o.index === currentIndex);
+  return current ? [current, ...filtered] : filtered;
+}
+
+/**
  * Which of the two chosen sets a pump change has just invalidated.
  *
  * Returns the SLOTS to clear rather than doing it, so the caller owns the

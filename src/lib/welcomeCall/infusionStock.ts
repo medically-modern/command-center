@@ -111,9 +111,10 @@ function num(n: number): string {
  *   2. Inactive              → red. Cardinal has discontinued it.
  *   3. Backordered           → red, WHATEVER the count says.
  *   4. Stale stamp           → grey. We had an answer, but not a current one.
- *   5. Available, qty <= 0   → red. Available with nothing on the shelf.
- *   6. Available, qty < 20   → amber, with the count.
- *   7. Available             → green, with the count.
+ *   5. No readable quantity  → grey. A status without a count is not a count.
+ *   6. Available, qty <= 0   → red. Available with nothing on the shelf.
+ *   7. Available, qty < 20   → amber, with the count.
+ *   8. Available             → green, with the count.
  */
 export function stockVerdict(
   setLabel: string,
@@ -167,7 +168,23 @@ export function stockVerdict(
     };
   }
 
-  const qty = row.qtyAvail ?? 0;
+  /* ⚠️ A missing quantity is UNKNOWN, not zero. This read `row.qtyAvail ?? 0`
+     and so reported red "Out of stock" for any Available row whose count did
+     not parse — an invented shortage on a set Cardinal can ship, which is the
+     one direction that costs a sale on the call. The tracker's own header row
+     carries a blank here, and `stockApi` deliberately maps blanks to null
+     rather than 0 so this branch can tell the two apart; coercing them back
+     together threw that away. Caught by `stockApi.test.ts`. */
+  if (row.qtyAvail == null) {
+    return {
+      tone: "grey",
+      label: "Stock unknown",
+      detail: `Cardinal lists ${label} as ${row.status.trim() || "available"} but the tracker has no quantity for it.`,
+      blocked: false,
+    };
+  }
+
+  const qty = row.qtyAvail;
   if (qty <= 0) {
     return {
       tone: "red",

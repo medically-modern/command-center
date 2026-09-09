@@ -43,6 +43,7 @@ import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
+import { unmetSendRequirements } from "@/lib/welcomeCall/sendGates";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
@@ -91,6 +92,27 @@ const WelcomeCallPage = () => {
    *  the page back. */
   const reviewMode = !!useCompletedStageReview(selected?.id);
 
+  /* The two verbal confirmations Brandon added (2026-09-09). ONE source feeds
+     both the disabled button and the sentences under it, so a greyed-out
+     control can never sit there with no stated reason — the shape reps report
+     as "the app is broken".
+     ⚠️ ADVANCE ONLY. A rep who could not reach the patient and is holding
+     cannot have confirmed anything with them, so gating Don't Advance on a
+     confirmation they were never able to get would strand the patient with no
+     way to record what happened. `unmetSendRequirements` reads the decision
+     first and returns [] for everything but Advance. */
+  const sendGaps = useMemo(
+    () =>
+      selected
+        ? unmetSendRequirements({
+            advanceDecisionIndex: selected.advanceDecisionIndex,
+            serving: selected.servingEdited ?? selected.serving,
+            pumpType: selected.pumpType,
+            intake: selected.callIntake ?? emptyIntake(),
+          })
+        : [],
+    [selected],
+  );
   const validation = useMemo(
     () => selected ? validatePatientForSend(selected) : { valid: false, errors: [] },
     [selected],
@@ -343,7 +365,15 @@ const WelcomeCallPage = () => {
                   />
                   <ReviewPanel patient={selected} />
                   <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} onOpenForm={() => setEscalationModalOpen(true)} />
-                  <SendToMondayButton onSend={handleSend} disabled={!selected || !validation.valid || reviewMode} validationErrors={reviewMode ? ["Completed stage — this is what the rep filled out, so there is nothing left to send."] : validation.errors} />
+                  <SendToMondayButton
+                    onSend={handleSend}
+                    disabled={!selected || !validation.valid || sendGaps.length > 0 || reviewMode}
+                    validationErrors={
+                      reviewMode
+                        ? ["Completed stage — this is what the rep filled out, so there is nothing left to send."]
+                        : [...validation.errors, ...sendGaps.map((g) => g.label)]
+                    }
+                  />
                 </>
               )}
             </section>
