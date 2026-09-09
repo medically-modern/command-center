@@ -2552,6 +2552,89 @@ window proving itself); 6 sat in live stages, 13 in Completed. Five already had 
 **Not wired to Final Confirm** — its Monitor Qty input is unchanged; deliberate scope, additive
 if wanted.
 
+### 5.31b The Welcome Call screen — MN banner, mockup order, wired order rules (Sep 2026)
+The UI half of Brandon's 2026-09-09 notes. **No board change; app only.**
+
+**The banner is `SendRequestHeaderCard`'s language**, not the Lovable mockup's own CSS
+(Brandon: make it look like the medical-necessity top bar). Same shell (`rounded-2xl`,
+4px top border on `--mm-teal`), same type ramp (`Eyebrow` at `text-sm uppercase
+tracking-wide`, name at `text-3xl font-black`, values at `text-lg font-semibold`) and the
+same three info-group cards. **The mockup supplied the CONTENT and its order; where the
+two disagreed on looks, the MN bar won.** Referral Source, Request Type and Serving moved
+up out of the first row card — Serving stays EDITABLE there, because correcting it is the
+fix for §5.22's pump/serving class of error and that is where the rep is looking — leaving
+that card as the doctor block. The Cross Sell pill travelled with Serving and is now a
+header chip beside the name, joined by `isFirstTimePumpUser`, a call-shaping prompt that
+already existed in `workflow.ts` with nowhere to render.
+
+**Sections renumbered to the mockup**: 1 Phone Numbers · 2 Caretaker · 3 CGM · 4 Pump &
+Infusion Sets · 5 Insurance · 6 Authorizations & Cost · 7 Subscription & Logistics ·
+8 Confirm Address · 9 End of Call. The contacts pair OPENS the call rather than sitting
+below the product sections, which is the order the call runs in; Confirm Address split out
+of Subscription & Logistics, where it was buried under the supply-length controls.
+`ContactsSection`/`InsuranceCostSection` became four exports — same fields, same notes-block
+round-trip (§ `callIntake.ts`), so nothing downstream of `intake` can tell. **No new
+columns**: sections 1 and 2 are the existing no-column facts under new framing.
+
+⚠️ **The mockup's "Call scheduled" chip was BUILT AND REVERTED — do not rebuild it from
+Profile Send Off** (Josh, 2026-09-09: *"the booked calls should be welcome calls, not intake
+calls"*). The only booking mirror is Scheduled Call Time `date_mm63na19`, which is the
+**INTAKE** call (§5.15); rendering it here under "Call scheduled" reads as the welcome call.
+The Welcome Call board carries **no booking column at all**, and the intake mirror cannot
+tell the two Calendly event types apart either — `text_mm63e086` stores only
+`scheduled_events/<uuid>`, resolvable only by calling Calendly. A board scan the same day
+found **exactly ONE booking across all of Profile Send Off** (in *New Form — Completed*), so
+a cross-board read would also have fired for essentially nobody. This needs a welcome-call
+event type mirrored onto this board: board and backend work, not a UI change (§5.26).
+⚠️ The mockup's **"View Calendly booking" link is unbuildable** from that column — it holds
+an API URI that answers 401 JSON in a browser. Do not invent a `calendly.com/...` transform.
+
+**The order rules are now WIRED** — `infusionSelection`, `infusionStock` and `sendGates`
+shipped tested but uncalled, so every rule passed in CI while the form used raw board
+options. ⚠️ **A module nobody calls does not fail; it is absent, and its green tests say
+otherwise.** `components/welcomeCall/pumpInfusionWiring.test.ts` scans the call sites (the
+`listColumns.test.ts` convention) and is verified to fail when one is removed.
+- **Set lists** are compatibility-filtered per slot, each excluding the other's set so Set 2
+  cannot repeat Set 1. Only positively-wrong pairings drop; `unverified` stays (a prompt, and
+  `CompatNote` says so). ⚠️ **`withCurrentSelection` re-admits whatever the BOARD holds** if
+  the filter dropped it — `InfusionSetCombobox` renders from the options list, so otherwise a
+  real column value shows the placeholder, the §5.11 blank-with-no-error. Two live routes:
+  a set incompatible with the pump, and Set 2 already holding Set 1's product.
+- **A pump CHANGE clears the sets it invalidated, quantity included** — a quantity attached
+  to no set is §5.12's counter-vs-columns disagreement. ⚠️ Keyed on an actual change, held in
+  a ref **alongside the patient id**: clearing whenever the pair merely *is* incompatible
+  would wipe board data on mount, and switching patients also changes Pump Type.
+- **`infusionQtyPlan`** renders one line for the PAIR (the fact is about the order), warning
+  in both directions and erroring only on a missing quantity — Brandon's "(warn if over)".
+
+**Stock is real, from the Cardinal SKU Tracker `18420366344`** —
+`lib/welcomeCall/stockApi.ts` + `hooks/welcomeCall/useInfusionStock.ts`, one shared
+module-scope copy with a 30-minute TTL (the tracker is scraped once daily), structurally the
+`useFaxOutcomes` shape because a lookup per set is INCIDENT_2026-08-20. Columns: Qty Avail
+`numeric_mm4w1yk8` · PROD Status `color_mm4wr14r` · Last Changed `text_mm4wkpy5`.
+⚠️ **The name join is verified, not assumed** (2026-09-09): 24 of the Infusion Set column's
+25 labels have a tracker row; the one mismatch is `Mio Advance Clear 9mm 23"` vs the board's
+`9 mm`, which is exactly why `stockKey` normalises spacing; `Luer 6 mm 32"` has no row and
+correctly reads "No stock data" rather than green. **Re-run that comparison before trusting
+a new label.** ⚠️ **Display only** — Brandon asked to SHOW stock; refusing an order on it is
+a separate decision nobody has made, and `StockVerdict.blocked` waits for whoever makes it.
+⚠️ A failing read KEEPS the previous index and never caches an empty one: an empty index
+reads as "No stock data" on every set, which looks like a working feature reporting bad news.
+⚠️ **A missing quantity is UNKNOWN, not zero** (fixed 2026-09-09). `stockVerdict` read
+`row.qtyAvail ?? 0`, so an *Available* row whose count did not parse reported red **"Out of
+stock"** — an invented shortage on a set Cardinal can ship, the one direction that costs a
+sale on the call. The tracker's own header row carries a blank there. `stockApi` maps blanks
+to **null** precisely so the branch can tell them apart, and a real 0 is still red;
+Backordered still outranks both.
+
+**The send gate** feeds the disabled Send button AND the sentences under it from ONE array
+(`unmetSendRequirements`), so a greyed-out control can never sit there with no stated reason.
+⚠️ **Advance only** — a rep holding a patient they could not reach cannot have confirmed
+anything with them. ⚠️ The pump confirmation is **hidden** when the serving sells no pump
+DEVICE (`servingSellsPumpDevice`, never `servingIncludesPump`, which is TRUE for "Supplies"),
+so the checkbox and the gate scope identically — asking a patient to confirm a pump they
+already own is §5.22's conflation in checkbox form.
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 The `scheduledCalls` role **became the Care Coordinator dashboard** (Josh, 2026-09-08, from Corey's
 Phase 3 mockup): label "Care Coordinator", route **`/care-coordinator`** (the old `/scheduled-calls`
@@ -3545,6 +3628,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |
+| An infusion set is missing from the dropdown, or its stock pill is wrong | §5.31b — `lib/welcomeCall/infusionSelection.ts` filters by pump compatibility and excludes the other slot's set; `withCurrentSelection` means a value the BOARD holds is always shown, so a genuinely absent option was filtered. Stock is `stockApi` → `infusionStock`: "No stock data" means no tracker row for that label (re-run the name-join audit), "Stock unknown" means either a stale stamp or a row with no readable quantity — neither is a shortage |
+| Send is greyed out on Welcome Call with no obvious reason | §5.31b — the button and its reasons come from ONE array (`sendGates.unmetSendRequirements`), so the sentences under it are the answer. They apply to **Advance only**; the pump confirmation is hidden entirely when the serving sells no pump device |
 | A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |
 | An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |
