@@ -53,7 +53,24 @@ export function ConfirmCheck({
   onChange,
   field,
   className = "",
-}: IntakeProps & { field: ConfirmKey; className?: string }) {
+  label,
+  recordPumpModel,
+}: IntakeProps & {
+  field: ConfirmKey;
+  className?: string;
+  /** Overrides `CONFIRM_LABELS[field]` — the pump check names the model. */
+  label?: string;
+  /**
+   * The Pump Type on screen, passed by the `pump` check only.
+   *
+   * ⚠️ Ticking has to RECORD the model, not just the boolean. The confirmation
+   * is about one device — the rep said "t:slim" out loud — and
+   * `sendGates.pumpConfirmationStale` compares this against the current Pump
+   * Type to notice a later correction. A tick saved without it reads as stale
+   * forever, which is the safe direction but costs the rep a needless re-ask.
+   */
+  recordPumpModel?: string;
+}) {
   const id = `wc-confirm-${field}`;
   return (
     <label
@@ -63,12 +80,19 @@ export function ConfirmCheck({
       <Checkbox
         id={id}
         checked={intake.confirmed[field]}
-        onCheckedChange={(v) =>
-          onChange({ ...intake, confirmed: { ...intake.confirmed, [field]: v === true } })
-        }
+        onCheckedChange={(v) => {
+          const on = v === true;
+          const next = { ...intake, confirmed: { ...intake.confirmed, [field]: on } };
+          if (recordPumpModel !== undefined) {
+            // Cleared on untick as well: a stored model with no tick behind it
+            // would be read back as a confirmation nobody made.
+            next.pumpConfirmedModel = on ? recordPumpModel.trim() : "";
+          }
+          onChange(next);
+        }}
       />
       <span className={intake.confirmed[field] ? "text-foreground" : "text-muted-foreground"}>
-        {CONFIRM_LABELS[field]}
+        {label ?? CONFIRM_LABELS[field]}
       </span>
     </label>
   );

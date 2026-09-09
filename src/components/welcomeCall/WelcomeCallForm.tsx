@@ -31,6 +31,7 @@ import "@/pages/profile/redesign.css";
 import "@/pages/profile/intake.css";
 import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions } from "@/lib/welcomeCall/payerRules";
 import { monitorSaleVerdict } from "@/lib/shared/monitorSale";
+import { pumpConfirmLabel, pumpConfirmationStale } from "@/lib/welcomeCall/sendGates";
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import {
   ConfirmCheck,
@@ -388,6 +389,26 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, derivedMonitorPurchaseDate, patient.monitorPurchaseDate]);
 
+  /* ⚠️ A pump correction invalidates an existing confirmation (Brandon,
+   * 2026-09-09: "If Pump Type changes after it's checked, uncheck it
+   * automatically"). The rep confirmed ONE model out loud; left ticked, the
+   * audit line in the notes would claim a conversation that never happened
+   * about the pump now on order. `pumpConfirmationStale` compares the recorded
+   * model against the current one. */
+  useEffect(() => {
+    if (!pumpConfirmationStale({
+      confirmed: intake.confirmed.pump,
+      confirmedModel: intake.pumpConfirmedModel ?? "",
+      pumpType: patient.pumpType,
+    })) return;
+    setIntake({
+      ...intake,
+      confirmed: { ...intake.confirmed, pump: false },
+      pumpConfirmedModel: "",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, patient.pumpType, intake.confirmed.pump, intake.pumpConfirmedModel]);
+
   const showMonitorPurchaseDate = needsMonitorPurchaseDate(
     effectivePrimaryInsurance,
     patient.monitorQty,
@@ -626,7 +647,14 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 </SelectContent>
               </Select>
               {/* No board column — rides out in the notes block on send. */}
-              <ConfirmCheck intake={intake} onChange={setIntake} field="pump" className="mt-2" />
+              <ConfirmCheck
+                intake={intake}
+                onChange={setIntake}
+                field="pump"
+                className="mt-2"
+                label={pumpConfirmLabel(patient.pumpType)}
+                recordPumpModel={patient.pumpType}
+              />
             </div>
 
             <div>
