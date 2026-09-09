@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import {
   CGM_TYPE_OPTIONS,
@@ -10,6 +10,7 @@ import {
   isFirstTimePumpUser,
   isInfusionSelling,
   needsPriorPumpDate,
+  isOriginalMedicare,
   needsMonitorPurchaseDate,
   deriveMonitorPurchaseDate,
   expectedSubscriptionType,
@@ -28,14 +29,28 @@ import { IntakeMessages } from "@/components/profile/IntakeMessages";
 // is why it needs the wrapper below rather than being a plain drop-in.
 import "@/pages/profile/redesign.css";
 import "@/pages/profile/intake.css";
-import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays } from "@/lib/welcomeCall/payerRules";
+import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions, DEFAULT_INFUSION_QTY } from "@/lib/welcomeCall/payerRules";
+import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
+import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
+import { etTodayYmd } from "@/lib/shared/monitorSale";
+import {
+  compatibleSetOptions,
+  withCurrentSelection,
+  setsInvalidatedByPump,
+  infusionQtyPlan,
+} from "@/lib/welcomeCall/infusionSelection";
+import { monitorSaleVerdict } from "@/lib/shared/monitorSale";
+import { pumpConfirmLabel, pumpConfirmationStale, needsPumpConfirmation } from "@/lib/welcomeCall/sendGates";
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import {
   ConfirmCheck,
   SupplyLengthField,
-  ContactsSection,
-  InsuranceCostSection,
+  PhoneNumbersSection,
+  CaretakerSection,
+  InsuranceSection,
+  AuthCostSection,
 } from "./CallIntakeFields";
+import { toast } from "sonner";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -220,6 +235,34 @@ function CompatNote({ pumpType, setLabel }: { pumpType: string; setLabel: string
  * billing expectation, and a rep with a reason to exceed it should be able to,
  * with the number visible rather than discovered at denial.
  */
+/**
+ * Cardinal's availability for one set. Display only — nothing here blocks a
+ * send (see the `useInfusionStock` call site).
+ *
+ * Silent when the verdict has no label: an unselected slot and `Not Serving`
+ * both produce one, and a pill reading nothing is worse than no pill.
+ * ⚠️ Grey covers TWO different unknowns — "no tracker row" and "the stamp is
+ * too old to trust" — and both must read as unknown rather than as green. The
+ * detail line says which.
+ */
+function StockNote({ verdict }: { verdict: StockVerdict }) {
+  if (!verdict.label) return null;
+  return (
+    <p
+      className={cn(
+        "mt-1.5 text-[11px] font-medium",
+        verdict.tone === "green" && "text-emerald-700 dark:text-emerald-400",
+        verdict.tone === "amber" && "text-amber-700 dark:text-amber-400",
+        verdict.tone === "red" && "text-red-600 dark:text-red-400",
+        verdict.tone === "grey" && "text-muted-foreground",
+      )}
+      title={verdict.detail}
+    >
+      {verdict.label}
+    </p>
+  );
+}
+
 function CapNote({ qty, cap, payerLabel }: { qty: number; cap: number; payerLabel: string | null }) {
   const over = qty > cap;
   return (
@@ -258,19 +301,109 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
   // is where any component-local guess would fail.
   useEffect(() => {
     if (!onIntakeChange) return;
+    /* ⚠️ A rep's override survives a payer correction ONLY while the payer
+     * still offers it. Pick 75 for Aetna, then fix Primary Insurance to a
+     * non-Aetna plan, and the option vanishes from the menu while
+     * `supplyLengthManual` holds the now-ineligible 75 in place — nothing
+     * downstream re-checks it, so the send writes a cadence that payer will not
+     * pay for. Same shape as Brandon's rule for infusion sets ("if Pump Type
+     * changes, clear any set that's no longer compatible"). Caught by Greptile
+     * on PR #55. Resetting also clears `supplyLengthManual`, because the
+     * choice it was recording no longer exists. */
+    const offered = supplyLengthOptions(effectivePrimary);
+    if (intake.supplyLength && !offered.includes(intake.supplyLength)) {
+      onIntakeChange({
+        ...intake,
+        supplyLength: derivedSupplyDays,
+        supplyLengthManual: false,
+      });
+      return;
+    }
     if (intake.supplyLengthManual) return;
     if (intake.supplyLength === derivedSupplyDays) return;
     onIntakeChange({ ...intake, supplyLength: derivedSupplyDays });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [derivedSupplyDays, intake.supplyLength, intake.supplyLengthManual]);
+  }, [derivedSupplyDays, intake.supplyLength, intake.supplyLengthManual, effectivePrimary]);
   const [sendingWelcomeText, setSendingWelcomeText] = useState(false);
+
+  /* "If Pump Type changes, clear any set that's no longer compatible"
+     (Brandon, 2026-09-09).
+     ⚠️ Keyed on an actual CHANGE, not on the current value being incompatible.
+     Clearing whenever the pair happens to be incompatible would wipe board data
+     on mount — a write-shaped side effect from merely opening a patient, and
+     the rep would never see what was there. The ref carries the patient id with
+     it because switching patients also changes `pumpType`, and that is not a
+     correction anybody made.
+     ⚠️ The set AND its quantity are cleared together: a quantity left attached
+     to no set is the §5.12 shape where a counter and its columns disagree. */
+  const lastPump = useRef<{ patientId: string; pumpType: string } | null>(null);
+  useEffect(() => {
+    const prev = lastPump.current;
+    lastPump.current = { patientId: patient.id, pumpType: patient.pumpType };
+    if (!prev || prev.patientId !== patient.id) return;
+    if (prev.pumpType === patient.pumpType) return;
+    const { clearSet1, clearSet2 } = setsInvalidatedByPump(
+      patient.pumpType,
+      patient.infusionSet1,
+      patient.infusionSet2,
+    );
+    if (clearSet1) {
+      handleSelectChange("infusionSet1", "", null);
+      onFieldChange("qtyInf1", "");
+    }
+    if (clearSet2) {
+      handleSelectChange("infusionSet2", "", null);
+      onFieldChange("qtyInf2", "");
+    }
+    if (clearSet1 || clearSet2) {
+      toast.info("Infusion set cleared", {
+        description: `That set isn't compatible with ${patient.pumpType || "the new pump"} — pick one from the filtered list.`,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, patient.pumpType]);
   // Infusion-set options are read from the LIVE board, never a hardcoded table —
   // the index is the only thing that reaches Monday, so a deleted index writes a
   // blank without erroring. See `lib/shared/statusOptions.ts`.
   const { options: liveOptions, loading: optionsLoading, error: optionsError, ready: optionsReady } =
     useStatusOptions(BOARD_ID, [COL.infusionSet1, COL.infusionSet2]);
-  const infusionSet1Options = liveOptions[COL.infusionSet1] ?? [];
-  const infusionSet2Options = liveOptions[COL.infusionSet2] ?? [];
+  /* Cardinal's own availability, one shared read for the whole form
+     (`hooks/welcomeCall/useInfusionStock`). Display only — it does NOT gate the
+     send. Brandon asked to SHOW stock; refusing an order on it is a different
+     decision, and `StockVerdict.blocked` is there for the day somebody makes
+     it. */
+  const stock = useInfusionStock();
+  const stockToday = etTodayYmd();
+  const rawSet1Options = liveOptions[COL.infusionSet1] ?? [];
+  const rawSet2Options = liveOptions[COL.infusionSet2] ?? [];
+  /* Brandon, 2026-09-09: "filter the infusion set list by pump compatibility,
+     and Set 2 can't repeat Set 1". `compatibleSetOptions` drops only the
+     positively-wrong pairings (`incompatible` / `five-inch-not-mobi`) and keeps
+     `unverified` — an unverified pairing is a prompt, not a refusal, and
+     `CompatNote` below already says so. `withCurrentSelection` then re-admits
+     whatever the board actually holds, so a filter can never blank a control
+     that has a value (see its comment). */
+  const infusionSet1Options = withCurrentSelection(
+    compatibleSetOptions(patient.pumpType, rawSet1Options, { exclude: patient.infusionSet2 }),
+    rawSet1Options,
+    patient.infusionSet1Index,
+  );
+  const infusionSet2Options = withCurrentSelection(
+    compatibleSetOptions(patient.pumpType, rawSet2Options, { exclude: patient.infusionSet1 }),
+    rawSet2Options,
+    patient.infusionSet2Index,
+  );
+  /* Qty 1 + Qty 2 against the order total. ⚠️ Over- OR under-shooting only
+     WARNS — Brandon's wording is "must equal the order total (warn if over)",
+     and the parenthetical sets the enforcement level. A missing quantity on a
+     split IS an error, because a set with no quantity ships nothing. */
+  const qtyPlan = infusionQtyPlan({
+    set1: patient.infusionSet1,
+    set2: patient.infusionSet2,
+    qty1: patient.qtyInf1,
+    qty2: patient.qtyInf2,
+    orderTotal: DEFAULT_INFUSION_QTY,
+  });
   const infusionDisabled = !optionsReady;
   const infusionHint = optionsError
     ? `Couldn't load infusion sets from Monday: ${optionsError}`
@@ -368,11 +501,61 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, derivedMonitorPurchaseDate, patient.monitorPurchaseDate]);
 
+  /* ⚠️ A pump correction invalidates an existing confirmation (Brandon,
+   * 2026-09-09: "If Pump Type changes after it's checked, uncheck it
+   * automatically"). The rep confirmed ONE model out loud; left ticked, the
+   * audit line in the notes would claim a conversation that never happened
+   * about the pump now on order. `pumpConfirmationStale` compares the recorded
+   * model against the current one. */
+  useEffect(() => {
+    if (!pumpConfirmationStale({
+      confirmed: intake.confirmed.pump,
+      confirmedModel: intake.pumpConfirmedModel ?? "",
+      pumpType: patient.pumpType,
+    })) return;
+    setIntake({
+      ...intake,
+      confirmed: { ...intake.confirmed, pump: false },
+      pumpConfirmedModel: "",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, patient.pumpType, intake.confirmed.pump, intake.pumpConfirmedModel]);
+
   const showMonitorPurchaseDate = needsMonitorPurchaseDate(
     effectivePrimaryInsurance,
     patient.monitorQty,
     effectiveServing,
   );
+
+  /* ── Can we sell this patient a monitor? (Brandon + Josh, 2026-09-09) ──
+   * The Same-or-Similar answer decides it: a bill inside Medicare's 5-year
+   * lifetime means they own one, an older bill or no billing history at all
+   * means one is sellable. See lib/shared/monitorSale.ts.
+   *
+   * ⚠️ The verdict is shown for every eligible patient, INCLUDING the ones we
+   * are selling to — Josh asked specifically to "show the old billing date
+   * though and that its green cause older than 5 years". Gating it on
+   * `showMonitorPurchaseDate` would hide it in exactly the sellable case,
+   * because that flag goes false the moment Monitor Qty is 1. */
+  const showMonitorSale =
+    isOriginalMedicare(effectivePrimaryInsurance) && servingIncludesCgm(effectiveServing);
+  const monitorSale = monitorSaleVerdict({
+    sosLastBillMonitor: patient.sosLastBillMonitor,
+    sosNeverBilledMonitor: patient.sosNeverBilledMonitor,
+  });
+
+  /* Pre-fill Monitor Qty from that verdict — FILL-WHEN-BLANK, so it can never
+   * overwrite a rep's answer, and only when SoS actually told us something
+   * (`defaultQty` is "" for unknown). A blank Monitor Qty means an item nobody
+   * has touched; §5.22b coerces it to "0" on send, so without this the sellable
+   * patients silently ship as no-sale. */
+  useEffect(() => {
+    if (!showMonitorSale) return;
+    if (patient.monitorQty !== "") return;
+    if (monitorSale.defaultQty === "") return;
+    onFieldChange("monitorQty", monitorSale.defaultQty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, showMonitorSale, patient.monitorQty, monitorSale.defaultQty]);
 
   return (
     <div className="space-y-5">
@@ -386,11 +569,27 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </p>
       </div>
 
-      {/* ─── Section 1: CGM ─── */}
+      {/* ─── Sections 1 & 2: who we are talking to ───
+          Neither has a Monday column; both are captured here and appended to
+          the Notes column as a parseable block on Send (§ callIntake.ts). They
+          were one section ("Contacts & Caretaker") sitting BELOW the product
+          sections until Brandon's 2026-09-09 mockup opened the call with them,
+          which is the order the call actually runs in. */}
+      <Card className="p-6">
+        <SectionHeading number={1} title="Phone Numbers" />
+        <PhoneNumbersSection intake={intake} onChange={setIntake} />
+      </Card>
+
+      <Card className="p-6">
+        <SectionHeading number={2} title="Caretaker (optional)" />
+        <CaretakerSection intake={intake} onChange={setIntake} />
+      </Card>
+
+      {/* ─── Section 3: CGM ─── */}
       {showCgm ? (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <SectionHeading number={1} title="CGM" />
+            <SectionHeading number={3} title="CGM" />
             {!defaultShowCgm && (
               <Button
                 variant="ghost"
@@ -449,10 +648,43 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   {patient.monitorQty === "1" ? "1 — Yes" : "0 — No"}
                 </span>
               </div>
-              {patient.neverBilledCgm && (
-                <div className="mt-2 flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-2.5 py-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                  <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Monitor has never been billed</span>
+              {/* The Same-or-Similar verdict — green when a monitor is billable,
+                  amber when the patient already owns one inside its 5-year
+                  lifetime, grey when Benefits hasn't answered yet. This is what
+                  pre-set the toggle above, so it has to say so on screen: a
+                  default a rep can't see the reason for is one they can't
+                  correct (CLAUDE.md §5.10's attempt-count precedent). */}
+              {showMonitorSale && (
+                <div
+                  className={cn(
+                    "mt-2 flex items-start gap-1.5 rounded-md border px-2.5 py-1.5",
+                    monitorSale.tone === "green" &&
+                      "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30",
+                    monitorSale.tone === "amber" &&
+                      "border-amber-300 bg-amber-50 dark:bg-amber-950/30",
+                    monitorSale.tone === "grey" && "border-border bg-muted/40",
+                  )}
+                >
+                  {monitorSale.tone === "green" ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertTriangle
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 mt-0.5",
+                        monitorSale.tone === "amber" ? "text-amber-600" : "text-muted-foreground",
+                      )}
+                    />
+                  )}
+                  <span
+                    className={cn(
+                      "text-xs font-medium",
+                      monitorSale.tone === "green" && "text-emerald-700 dark:text-emerald-300",
+                      monitorSale.tone === "amber" && "text-amber-700 dark:text-amber-300",
+                      monitorSale.tone === "grey" && "text-muted-foreground",
+                    )}
+                  >
+                    {monitorSale.note}
+                  </span>
                 </div>
               )}
             </div>
@@ -501,11 +733,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </Card>
       )}
 
-      {/* ─── Section 2: Pump & Infusion Sets ─── */}
+      {/* ─── Section 4: Pump & Infusion Sets ─── */}
       {showPump ? (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <SectionHeading number={2} title="Pump & Infusion Sets" />
+            <SectionHeading number={4} title="Pump & Infusion Sets" />
             {!defaultShowPump && (
               <Button
                 variant="ghost"
@@ -542,8 +774,27 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   ))}
                 </SelectContent>
               </Select>
-              {/* No board column — rides out in the notes block on send. */}
-              <ConfirmCheck intake={intake} onChange={setIntake} field="pump" className="mt-2" />
+              {/* No board column — rides out in the notes block on send.
+                  ⚠️ Hidden when the serving sells no pump DEVICE (Brandon:
+                  "hide it and don't require it when Insulin Pump isn't in
+                  Serving"). The section around it renders for supplies-only
+                  patients too — `servingIncludesPump` is true for "Supplies",
+                  correctly, since infusion sets ARE pump supplies — so this
+                  gate must use `needsPumpConfirmation`/`servingSellsPumpDevice`
+                  instead. Asking a patient to confirm a pump they already own
+                  and are not being sold is the §5.22 conflation in checkbox
+                  form. `unmetSendRequirements` scopes itself the same way, so
+                  the checkbox and the send gate cannot disagree. */}
+              {needsPumpConfirmation(effectiveServing) && (
+                <ConfirmCheck
+                  intake={intake}
+                  onChange={setIntake}
+                  field="pump"
+                  className="mt-2"
+                  label={pumpConfirmLabel(patient.pumpType)}
+                  recordPumpModel={patient.pumpType}
+                />
+              )}
             </div>
 
             <div>
@@ -641,6 +892,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 {isInfusionSelling(patient.infusionSet1Index) && (
                   <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet1} />
                 )}
+                {isInfusionSelling(patient.infusionSet1Index) && stock.index && (
+                  <StockNote
+                    verdict={stockVerdict(patient.infusionSet1, stock.index, stockToday)}
+                  />
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
@@ -682,6 +938,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 {isInfusionSelling(patient.infusionSet2Index) && (
                   <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet2} />
                 )}
+                {isInfusionSelling(patient.infusionSet2Index) && stock.index && (
+                  <StockNote
+                    verdict={stockVerdict(patient.infusionSet2, stock.index, stockToday)}
+                  />
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
@@ -702,6 +963,21 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             </div>
           </div>
 
+          {/* The two slots read against the order total. One line for the pair,
+              because the fact is about the ORDER, not either slot — a per-slot
+              note would say the same thing twice and neither copy would be
+              right on its own. */}
+          {(qtyPlan.error || qtyPlan.warning) && (
+            <p
+              className={cn(
+                "mt-3 text-xs font-medium",
+                qtyPlan.error ? "text-red-600" : "text-amber-600",
+              )}
+            >
+              {qtyPlan.error ?? qtyPlan.warning}
+            </p>
+          )}
+
           {/* Cartridges */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-5">
             <div className="rounded-lg border border-input bg-muted/20 p-4 space-y-4">
@@ -713,6 +989,15 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 <QtySelect
                   value={patient.qtyCartridge}
                   onChange={(val) => onFieldChange("qtyCartridge", val)}
+                />
+                {/* Brandon, 2026-09-09: the payer cap covers "the infusion sets
+                    and cartridges". It has always been rendered on the two set
+                    quantities and never here, so a rep could put 9 cartridges on
+                    a payer that pays for 3 with nothing on screen saying so. */}
+                <CapNote
+                  qty={Number(patient.qtyCartridge) || 0}
+                  cap={infusionCap.cap}
+                  payerLabel={infusionCap.payerLabel}
                 />
               </div>
             </div>
@@ -736,9 +1021,28 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </Card>
       )}
 
-      {/* ─── Section 3: Subscription & Logistics ─── */}
+      {/* ─── Section 5: Insurance ───
+          No Monday column: the answers ride out in the notes block on Send
+          (§ callIntake.ts). Split from the cost/auth half by the mockup —
+          what the payer covers is a different question from what the patient
+          owes. */}
       <Card className="p-6">
-        <SectionHeading number={3} title="Subscription & Logistics" />
+        <SectionHeading number={5} title="Insurance" />
+        <InsuranceSection intake={intake} onChange={setIntake} />
+      </Card>
+
+      {/* ─── Section 6: Authorizations & Cost ───
+          Same story: no columns. The AUTH RESULTS themselves are read-only and
+          render in the patient header above — they are the Insurance stage's
+          output, not something the rep sets on the call (§5.26). */}
+      <Card className="p-6">
+        <SectionHeading number={6} title="Authorizations & Cost" />
+        <AuthCostSection intake={intake} onChange={setIntake} />
+      </Card>
+
+      {/* ─── Section 7: Subscription & Logistics ─── */}
+      <Card className="p-6">
+        <SectionHeading number={7} title="Subscription & Logistics" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {/* Subscription Type */}
           <div>
@@ -781,9 +1085,22 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
           {/* Supply length — no board column; sits with Subscription Type
               because it describes the same order. */}
-          <SupplyLengthField intake={intake} onChange={setIntake} derivedNote={supplyNote} />
+          <SupplyLengthField
+            intake={intake}
+            onChange={setIntake}
+            derivedNote={supplyNote}
+            options={supplyLengthOptions(effectivePrimaryInsurance)}
+          />
 
         </div>
+      </Card>
+
+      {/* ─── Section 8: Confirm Address ───
+          Split out of Subscription & Logistics by Brandon's mockup. It is its
+          own step on the call — you read the address back, then send the text —
+          and it was previously buried under the supply-length controls. */}
+      <Card className="p-6">
+        <SectionHeading number={8} title="Confirm Address" />
 
         {/* Address — full width */}
         <div className="mt-6 space-y-3">
@@ -926,24 +1243,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </div>
       </Card>
 
-      {/* ─── Section 4: Contacts & Caretaker ───
-          None of this has a Monday column. It is captured here and appended to
-          the Notes column as a parseable block on Send (§ callIntake.ts). */}
-      <Card className="p-6">
-        <SectionHeading number={4} title="Contacts & Caretaker" />
-        <ContactsSection intake={intake} onChange={setIntake} />
-      </Card>
-
-      {/* ─── Section 5: Insurance, Cost & Auth ───
-          Same story: no columns, so the answers ride out in the notes block. */}
-      <Card className="p-6">
-        <SectionHeading number={5} title="Insurance, Cost & Auth" />
-        <InsuranceCostSection intake={intake} onChange={setIntake} />
-      </Card>
-
       {/* ─── End-of-call decision: Advance? ─── */}
       <Card className="p-6">
-        <SectionHeading number={6} title="End of Call" />
+        <SectionHeading number={9} title="End of Call" />
         <p className="text-sm text-muted-foreground mb-4">
           After wrapping up the welcome call, decide whether this patient should
           advance to Order or hold here. Either choice routes the patient back

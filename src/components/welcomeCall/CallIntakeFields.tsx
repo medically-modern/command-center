@@ -26,7 +26,6 @@ import {
   CONFIRM_LABELS,
   MAX_EXTRA_PHONES,
   PHONE_KINDS,
-  SUPPLY_LENGTHS,
 } from "@/lib/welcomeCall/callIntake";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -54,7 +53,24 @@ export function ConfirmCheck({
   onChange,
   field,
   className = "",
-}: IntakeProps & { field: ConfirmKey; className?: string }) {
+  label,
+  recordPumpModel,
+}: IntakeProps & {
+  field: ConfirmKey;
+  className?: string;
+  /** Overrides `CONFIRM_LABELS[field]` — the pump check names the model. */
+  label?: string;
+  /**
+   * The Pump Type on screen, passed by the `pump` check only.
+   *
+   * ⚠️ Ticking has to RECORD the model, not just the boolean. The confirmation
+   * is about one device — the rep said "t:slim" out loud — and
+   * `sendGates.pumpConfirmationStale` compares this against the current Pump
+   * Type to notice a later correction. A tick saved without it reads as stale
+   * forever, which is the safe direction but costs the rep a needless re-ask.
+   */
+  recordPumpModel?: string;
+}) {
   const id = `wc-confirm-${field}`;
   return (
     <label
@@ -64,12 +80,19 @@ export function ConfirmCheck({
       <Checkbox
         id={id}
         checked={intake.confirmed[field]}
-        onCheckedChange={(v) =>
-          onChange({ ...intake, confirmed: { ...intake.confirmed, [field]: v === true } })
-        }
+        onCheckedChange={(v) => {
+          const on = v === true;
+          const next = { ...intake, confirmed: { ...intake.confirmed, [field]: on } };
+          if (recordPumpModel !== undefined) {
+            // Cleared on untick as well: a stored model with no tick behind it
+            // would be read back as a confirmation nobody made.
+            next.pumpConfirmedModel = on ? recordPumpModel.trim() : "";
+          }
+          onChange(next);
+        }}
       />
       <span className={intake.confirmed[field] ? "text-foreground" : "text-muted-foreground"}>
-        {CONFIRM_LABELS[field]}
+        {label ?? CONFIRM_LABELS[field]}
       </span>
     </label>
   );
@@ -81,7 +104,15 @@ export function SupplyLengthField({
   intake,
   onChange,
   derivedNote,
-}: IntakeProps & { derivedNote?: string }) {
+  options,
+}: IntakeProps & { derivedNote?: string; options: string[] }) {
+  /* ⚠️ `options` is REQUIRED, not defaulted to SUPPLY_LENGTHS. 75 days is
+   * offered to AETNA ONLY (Brandon, 2026-09-09), and SUPPLY_LENGTHS now
+   * contains it so the notes block can round-trip it — so falling back to that
+   * list would offer 75 to every payer. The two lists answer different
+   * questions; making this a required prop is what stops them being confused
+   * for one another again. */
+  const lengths = options;
   return (
     <div>
       <label className={LABEL_CLS}>Supply Length</label>
@@ -98,7 +129,7 @@ export function SupplyLengthField({
           <SelectValue placeholder="Not set" />
         </SelectTrigger>
         <SelectContent>
-          {SUPPLY_LENGTHS.map((d) => (
+          {lengths.map((d) => (
             <SelectItem key={d} value={d}>
               {d} days
             </SelectItem>
@@ -172,97 +203,106 @@ function PhoneRow({
   );
 }
 
-export function ContactsSection({ intake, onChange }: IntakeProps) {
-  const phones = intake.phones;
+/* The contacts block used to be ONE section ("Contacts & Caretaker") sitting
+   below the product sections. Brandon's 2026-09-09 mockup opens the call with
+   it and splits it in two, which is how the call actually runs: you confirm who
+   you are talking to and how to reach them before you talk about product.
+   Same fields, same notes-block round-trip (§ callIntake.ts) — only the framing
+   changed, so nothing downstream of `intake` can tell the difference. */
 
+export function PhoneNumbersSection({ intake, onChange }: IntakeProps) {
+  const phones = intake.phones;
   const setPhones = (next: IntakePhone[]) => onChange({ ...intake, phones: next });
+
+  return (
+    <div>
+      {/* Extra phone numbers. The board's one Pt. Phone column stays the system
+          of record — these are additional, with a flag saying which to ring. */}
+      <p className="text-xs text-muted-foreground mb-2">
+        The patient&apos;s main number stays on the profile above. Add any others here and mark
+        which one they actually want us to use.
+      </p>
+      <div className="space-y-2">
+        {phones.map((p, i) => (
+          <PhoneRow
+            key={i}
+            phone={p}
+            onPhoneChange={(next) => setPhones(phones.map((x, j) => (j === i ? next : x)))}
+            onRemove={() => setPhones(phones.filter((_, j) => j !== i))}
+            // Preferred is single-select: setting one clears the others, so the
+            // block can never record two "ring this one" numbers.
+            onMakePreferred={() =>
+              setPhones(phones.map((x, j) => ({ ...x, preferred: j === i && !x.preferred })))
+            }
+          />
+        ))}
+      </div>
+      {phones.length < MAX_EXTRA_PHONES && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="mt-2"
+          onClick={() => setPhones([...phones, { number: "", kind: "cell", preferred: false }])}
+        >
+          + Add number
+        </Button>
+      )}
+    </div>
+  );
+}
+
+export function CaretakerSection({ intake, onChange }: IntakeProps) {
   const setCaretaker = (patch: Partial<CallIntake["caretaker"]>) =>
     onChange({ ...intake, caretaker: { ...intake.caretaker, ...patch } });
 
   return (
-    <div className="space-y-5">
-      {/* Extra phone numbers. The board's one Pt. Phone column stays the system
-          of record — these are additional, with a flag saying which to ring. */}
-      <div>
-        <label className={LABEL_CLS}>Additional Phone Numbers</label>
-        <p className="text-xs text-muted-foreground mb-2">
-          The patient&apos;s main number stays on the profile above. Add any others here and mark
-          which one they actually want us to use.
-        </p>
-        <div className="space-y-2">
-          {phones.map((p, i) => (
-            <PhoneRow
-              key={i}
-              phone={p}
-              onPhoneChange={(next) => setPhones(phones.map((x, j) => (j === i ? next : x)))}
-              onRemove={() => setPhones(phones.filter((_, j) => j !== i))}
-              // Preferred is single-select: setting one clears the others, so the
-              // block can never record two "ring this one" numbers.
-              onMakePreferred={() =>
-                setPhones(phones.map((x, j) => ({ ...x, preferred: j === i && !x.preferred })))
-              }
-            />
-          ))}
-        </div>
-        {phones.length < MAX_EXTRA_PHONES && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="mt-2"
-            onClick={() => setPhones([...phones, { number: "", kind: "cell", preferred: false }])}
-          >
-            + Add number
-          </Button>
-        )}
-      </div>
-
-      {/* Caretaker */}
-      <div>
-        <label className={LABEL_CLS}>Caretaker / Alternate Contact</label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <Input
-            placeholder="Name"
-            value={intake.caretaker.name}
-            onChange={(e) => setCaretaker({ name: e.target.value })}
-          />
-          <Input
-            placeholder="Relationship (daughter, spouse…)"
-            value={intake.caretaker.relationship}
-            onChange={(e) => setCaretaker({ relationship: e.target.value })}
-          />
-          <Input
-            placeholder="Phone"
-            value={intake.caretaker.phone}
-            onChange={(e) => setCaretaker({ phone: e.target.value })}
-          />
-          <Input
-            placeholder="Email"
-            value={intake.caretaker.email}
-            onChange={(e) => setCaretaker({ email: e.target.value })}
-          />
-        </div>
-        <label
-          htmlFor="wc-caretaker-auth"
-          className="flex items-center gap-2 cursor-pointer select-none text-sm mt-2"
-        >
-          <Checkbox
-            id="wc-caretaker-auth"
-            checked={intake.caretaker.authorized}
-            onCheckedChange={(v) => setCaretaker({ authorized: v === true })}
-          />
-          <span className={intake.caretaker.authorized ? "text-foreground" : "text-muted-foreground"}>
-            Authorized to discuss the patient&apos;s care
-          </span>
-        </label>
-        <Textarea
-          className="mt-2"
-          rows={2}
-          placeholder="Caretaker notes (best times to call, who to ask for…)"
-          value={intake.caretaker.notes}
-          onChange={(e) => setCaretaker({ notes: e.target.value })}
+    <div>
+      <p className="text-xs text-muted-foreground mb-2">
+        Fill this in if someone else manages the patient&apos;s supplies or takes their calls.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <Input
+          placeholder="Name"
+          value={intake.caretaker.name}
+          onChange={(e) => setCaretaker({ name: e.target.value })}
+        />
+        <Input
+          placeholder="Relationship (daughter, spouse…)"
+          value={intake.caretaker.relationship}
+          onChange={(e) => setCaretaker({ relationship: e.target.value })}
+        />
+        <Input
+          placeholder="Phone"
+          value={intake.caretaker.phone}
+          onChange={(e) => setCaretaker({ phone: e.target.value })}
+        />
+        <Input
+          placeholder="Email"
+          value={intake.caretaker.email}
+          onChange={(e) => setCaretaker({ email: e.target.value })}
         />
       </div>
+      <label
+        htmlFor="wc-caretaker-auth"
+        className="flex items-center gap-2 cursor-pointer select-none text-sm mt-2"
+      >
+        <Checkbox
+          id="wc-caretaker-auth"
+          checked={intake.caretaker.authorized}
+          onCheckedChange={(v) => setCaretaker({ authorized: v === true })}
+        />
+        <span className={intake.caretaker.authorized ? "text-foreground" : "text-muted-foreground"}>
+          Authorized to discuss the patient&apos;s care
+        </span>
+      </label>
+      <Textarea
+        className="mt-2"
+        rows={2}
+        placeholder="Caretaker notes (best times to call, who to ask for…)"
+        value={intake.caretaker.notes}
+        onChange={(e) => setCaretaker({ notes: e.target.value })}
+      />
     </div>
   );
 }
@@ -275,47 +315,57 @@ const SECONDARY_OPTIONS: { value: SecondaryCoverage; label: string }[] = [
   { value: "unknown", label: "Unknown / patient unsure" },
 ];
 
-export function InsuranceCostSection({ intake, onChange }: IntakeProps) {
+/* Also split by the mockup: what the payer covers (Insurance) is a different
+   conversation from what the patient owes and what the auth says
+   (Authorizations & Cost). Same three ConfirmChecks, same fields — the OOP pair
+   simply travels with the cost half. */
+
+export function InsuranceSection({ intake, onChange }: IntakeProps) {
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          {/* The board's Secondary Insurance column can say None but has no way
-              to say "we asked and the patient didn't know" — that gap is why
-              this lives here rather than being written to the column. */}
-          <label className={LABEL_CLS}>Secondary Coverage</label>
-          <Select
-            value={intake.secondaryCoverage || undefined}
-            onValueChange={(v) => onChange({ ...intake, secondaryCoverage: v as SecondaryCoverage })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Not asked" />
-            </SelectTrigger>
-            <SelectContent>
-              {SECONDARY_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value as string}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <label className={LABEL_CLS}>Out-of-Pocket Quoted</label>
-          <Input
-            placeholder="e.g. $42.50, or $0 with Medicaid"
-            value={intake.oopAmount}
-            onChange={(e) => onChange({ ...intake, oopAmount: e.target.value })}
-          />
-        </div>
+      <div>
+        {/* The board's Secondary Insurance column can say None but has no way
+            to say "we asked and the patient didn't know" — that gap is why
+            this lives here rather than being written to the column. */}
+        <label className={LABEL_CLS}>Secondary Coverage</label>
+        <Select
+          value={intake.secondaryCoverage || undefined}
+          onValueChange={(v) => onChange({ ...intake, secondaryCoverage: v as SecondaryCoverage })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Not asked" />
+          </SelectTrigger>
+          <SelectContent>
+            {SECONDARY_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value as string}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">
         <ConfirmCheck intake={intake} onChange={onChange} field="primary" />
         <ConfirmCheck intake={intake} onChange={onChange} field="secondary" />
-        <ConfirmCheck intake={intake} onChange={onChange} field="oop" />
       </div>
+    </div>
+  );
+}
+
+export function AuthCostSection({ intake, onChange }: IntakeProps) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <label className={LABEL_CLS}>Out-of-Pocket Quoted</label>
+        <Input
+          placeholder="e.g. $42.50, or $0 with Medicaid"
+          value={intake.oopAmount}
+          onChange={(e) => onChange({ ...intake, oopAmount: e.target.value })}
+        />
+      </div>
+
+      <ConfirmCheck intake={intake} onChange={onChange} field="oop" />
 
       <div>
         <label className={LABEL_CLS}>Auth Notes</label>

@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   emptyIntake,
+  SUPPLY_LENGTHS,
   intakeHasContent,
   formatIntakeBlock,
   stampedIntakeEntry,
@@ -27,6 +28,7 @@ function filled(): CallIntake {
     confirmed: { pump: true, address: true, primary: true, secondary: false, oop: true },
     secondaryCoverage: "unknown",
     supplyLength: "90",
+    pumpConfirmedModel: "t:slim",
     // Set so the full-fidelity round trip covers the override marker too.
     supplyLengthManual: true,
     oopAmount: "$42.50",
@@ -324,5 +326,74 @@ describe("forward compatibility", () => {
   it("survives a block missing its end sentinel", () => {
     const log = [INTAKE_BLOCK_START, "Confirmed: oop", "Unconfirmed: none"].join("\n");
     expect(parseIntakeBlock(log)?.confirmed.oop).toBe(true);
+  });
+});
+
+describe("⚠️ 75-day supply round-trips through the block (Greptile, PR #55)", () => {
+  it("parses a saved 75 back out instead of dropping it", () => {
+    // It was added as an Aetna option while SUPPLY_LENGTHS still read
+    // ["30","60","90"], so the parser dropped the value while still restoring
+    // supplyLengthManual: true — which disables the payer default. The field
+    // came back blank AND frozen blank, and the next send wrote no length.
+    const i = emptyIntake();
+    i.supplyLength = "75";
+    i.supplyLengthManual = true;
+    const log = appendIntakeToNotes("", i, { initials: "JH", now: AT });
+    const parsed = parseIntakeBlock(log);
+    expect(parsed?.supplyLength).toBe("75");
+    expect(parsed?.supplyLengthManual).toBe(true);
+  });
+
+  it("round-trips every length the block can store", () => {
+    for (const len of SUPPLY_LENGTHS) {
+      const i = emptyIntake();
+      i.supplyLength = len;
+      expect(parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }))?.supplyLength).toBe(len);
+    }
+  });
+
+  it("⚠️ never leaves a manual override with no value to override with", () => {
+    // The failure mode is the PAIR, not either half: a dropped value alongside
+    // a restored `manual: true` is what freezes the field.
+    for (const len of SUPPLY_LENGTHS) {
+      const i = emptyIntake();
+      i.supplyLength = len;
+      i.supplyLengthManual = true;
+      const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
+      if (parsed?.supplyLengthManual) expect(parsed.supplyLength).not.toBe("");
+    }
+  });
+});
+
+describe("⚠️ the confirmed pump model round-trips (Josh, 2026-09-09)", () => {
+  it("records which model the rep confirmed", () => {
+    const i = emptyIntake();
+    i.confirmed.pump = true;
+    i.pumpConfirmedModel = "t:slim";
+    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
+    expect(parsed?.confirmed.pump).toBe(true);
+    expect(parsed?.pumpConfirmedModel).toBe("t:slim");
+  });
+
+  it("writes nothing when the box isn't ticked", () => {
+    const i = emptyIntake();
+    i.pumpConfirmedModel = "t:slim";
+    const log = appendIntakeToNotes("", i, { initials: "JH", now: AT });
+    expect(log).not.toContain("Pump confirmed:");
+  });
+
+  it("⚠️ survives a block written before the field existed", () => {
+    // The notes column carries history. An older block has no "Pump confirmed"
+    // line at all; parsing must yield "" rather than undefined, because
+    // pumpConfirmationStale reads it and a crash here breaks the send.
+    const legacy = [
+      "--- WC INTAKE v1 ---",
+      "Confirmed: pump, address",
+      "Unconfirmed: primary, secondary, oop",
+      "--- END WC INTAKE ---",
+    ].join("\n");
+    const parsed = parseIntakeBlock(legacy);
+    expect(parsed?.confirmed.pump).toBe(true);
+    expect(parsed?.pumpConfirmedModel).toBe("");
   });
 });

@@ -13,12 +13,13 @@ import { render, screen } from "@testing-library/react";
 import { SupplyLengthField } from "./CallIntakeFields";
 import { emptyIntake } from "@/lib/welcomeCall/callIntake";
 
-const renderField = (over: Record<string, unknown>, note: string) =>
+const renderField = (over: Record<string, unknown>, note: string, options = ["30", "60", "90"]) =>
   render(
     <SupplyLengthField
       intake={{ ...emptyIntake(), ...over }}
       onChange={() => {}}
       derivedNote={note}
+      options={options}
     />,
   );
 
@@ -44,3 +45,11 @@ describe("Supply Length caption", () => {
     expect(container.querySelector("p")).toBeNull();
   });
 });
+
+/* ⚠️ Which lengths each payer may pick is NOT tested through this component:
+ * the items live inside a Radix Select and only exist while it is open, so an
+ * assertion here tests the library, not the rule. The rule is covered by
+ * `payerRules.test.ts` ("puts 75 in the option list for Aetna only"), and the
+ * thing Greptile actually flagged — this field falling back to
+ * callIntake.SUPPLY_LENGTHS, which contains 75 for round-tripping — is gone
+ * because `options` is a required prop that tsc enforces at every call site. */
