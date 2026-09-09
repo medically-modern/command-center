@@ -315,67 +315,10 @@ const SECONDARY_OPTIONS: { value: SecondaryCoverage; label: string }[] = [
   { value: "unknown", label: "Unknown / patient unsure" },
 ];
 
-/* Also split by the mockup: what the payer covers (Insurance) is a different
-   conversation from what the patient owes and what the auth says
-   (Authorizations & Cost). Same three ConfirmChecks, same fields — the OOP pair
-   simply travels with the cost half. */
-
-export function InsuranceSection({ intake, onChange }: IntakeProps) {
-  return (
-    <div className="space-y-5">
-      <div>
-        {/* The board's Secondary Insurance column can say None but has no way
-            to say "we asked and the patient didn't know" — that gap is why
-            this lives here rather than being written to the column. */}
-        <label className={LABEL_CLS}>Secondary Coverage</label>
-        <Select
-          value={intake.secondaryCoverage || undefined}
-          onValueChange={(v) => onChange({ ...intake, secondaryCoverage: v as SecondaryCoverage })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Not asked" />
-          </SelectTrigger>
-          <SelectContent>
-            {SECONDARY_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value as string}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
-        <ConfirmCheck intake={intake} onChange={onChange} field="primary" />
-        <ConfirmCheck intake={intake} onChange={onChange} field="secondary" />
-      </div>
-    </div>
-  );
-}
-
-export function AuthCostSection({ intake, onChange }: IntakeProps) {
-  return (
-    <div className="space-y-5">
-      <div>
-        <label className={LABEL_CLS}>Out-of-Pocket Quoted</label>
-        <Input
-          placeholder="e.g. $42.50, or $0 with Medicaid"
-          value={intake.oopAmount}
-          onChange={(e) => onChange({ ...intake, oopAmount: e.target.value })}
-        />
-      </div>
-
-      <ConfirmCheck intake={intake} onChange={onChange} field="oop" />
-
-      <div>
-        <label className={LABEL_CLS}>Auth Notes</label>
-        <Textarea
-          rows={3}
-          placeholder="Anything the auth results above don't say — resubmissions, retry queue, what the payer told us."
-          value={intake.authNotes}
-          onChange={(e) => onChange({ ...intake, authNotes: e.target.value })}
-        />
-      </div>
-    </div>
-  );
-}
+/* ⚠️ `InsuranceSection` and `AuthCostSection` were DELETED on 2026-09-09.
+   Brandon's Insurance & Authorization section replaced them: secondary coverage
+   is now one board-writing question (`InsuranceAuthSection.InsuranceBlock`),
+   the auth results are read-only chips (`AuthBlock`), and the out-of-pocket
+   pair moved to `OopBlock`. They are gone rather than left unimported — a dead
+   component that still looks live is how a later edit lands somewhere nothing
+   renders (§5.11). */

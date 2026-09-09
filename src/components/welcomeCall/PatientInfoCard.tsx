@@ -707,105 +707,16 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
           </div>
         </Card>
 
+        {/* ⚠️ The Secondary Insurance select and Member ID 2 input LEFT this
+            card on 2026-09-09. Brandon's Insurance block (form section 5) is
+            now the single place secondary coverage is answered — one question
+            with type rules — and two controls writing the same two columns is
+            how they end up disagreeing. The Medicare / QMB prompts moved with
+            them, to sit beside the question they are prompting. */}
         <Card className="p-4">
           <div className="grid grid-cols-2 gap-3">
-            {/* Primary Insurance — read-only */}
             <Field label="Primary Insurance" value={patient.primaryInsurance} />
-
-            {/* Member ID 1 — read-only */}
             <Field label="Member ID 1" value={patient.memberId1} />
-
-            {/* Secondary Insurance — always editable dropdown */}
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                Secondary Insurance
-              </p>
-              <Select
-                value={
-                  patient.secondaryInsuranceEdited !== null
-                    ? String(
-                        SECONDARY_INSURANCE_OPTIONS.find(
-                          (o) => o.label === patient.secondaryInsuranceEdited
-                        )?.index ?? ""
-                      )
-                    : hasSecondaryInsurance
-                      ? String(
-                          SECONDARY_INSURANCE_OPTIONS.find(
-                            (o) => o.label === patient.secondaryInsurance
-                          )?.index ?? ""
-                        )
-                      : ""
-                }
-                onValueChange={(value) => {
-                  const option = SECONDARY_INSURANCE_OPTIONS.find(
-                    (o) => String(o.index) === value
-                  );
-                  if (option) {
-                    onFieldChange?.("secondaryInsuranceEdited", option.label);
-                    onFieldChange?.("secondaryInsuranceIndex", option.index);
-                  }
-                }}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue placeholder="Select insurance" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SECONDARY_INSURANCE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.index} value={String(opt.index)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {/* How much detail this secondary actually needs. A Medigap
-                  secondary needs none — tagging it is the whole job — while a
-                  commercial one behind a non-Medicare primary needs the full
-                  record. Silent when nothing is on file: the two warnings below
-                  already prompt for that. */}
-              {(() => {
-                const ask = secondaryAsk(
-                  patient.primaryInsuranceEdited ?? patient.primaryInsurance,
-                  patient.secondaryInsuranceEdited ?? patient.secondaryInsurance,
-                );
-                const note = secondaryAskNote(ask);
-                if (!note) return null;
-                return (
-                  <p className={cn(
-                    "text-xs mt-1.5",
-                    ask === "medicare-supplement"
-                      ? "text-emerald-700 dark:text-emerald-400 font-medium"
-                      : "text-muted-foreground",
-                  )}>
-                    {note}
-                  </p>
-                );
-              })()}
-              {showMedicareSecondaryWarning && (
-                <p className="text-xs text-red-600 font-semibold mt-1.5">
-                  Patient likely has a secondary insurance, ask on welcome call.
-                </p>
-              )}
-              {showQmbWarning && (
-                <p className="text-xs text-red-600 font-semibold mt-1">
-                  Stedi QMB returned YES — patient very likely has a secondary supplement plan.
-                </p>
-              )}
-            </div>
-
-            {/* Member ID 2 — always editable text input */}
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                Member ID 2
-              </p>
-              <Input
-                className="h-8 text-sm"
-                value={patient.memberId2Edited ?? patient.memberId2}
-                onChange={(e) => {
-                  onFieldChange?.("memberId2Edited", e.target.value);
-                }}
-                placeholder="Enter member ID"
-              />
-            </div>
           </div>
         </Card>
       </div>
@@ -825,25 +736,10 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
           )}
         </Card>
 
-        {(patient.cgmAuthResult || patient.sensorsAuthResult || patient.ipAuthResult || patient.infusionSetAuthResult || patient.cartridgeAuthResult || patient.cgmAuthEnd || patient.sensorsAuthEnd || patient.ipAuthEnd || patient.infusionSetAuthEnd || patient.cartridgeAuthEnd) && (
-          <Card className="p-4">
-            {/* Says WHY this card is read-only: these results are the Insurance
-                stage's output, not something the rep sets on the call. */}
-            <div className="flex flex-wrap items-baseline gap-x-2 mb-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Auth Results</p>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">From benefits stage</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {/* "CGM" is the board's MONITOR line — its dates are the Monitor
-                  Auth Start/End pair, not a separate CGM one. */}
-              <AuthField label="CGM" status={patient.cgmAuthResult} start={patient.cgmAuthStart} end={patient.cgmAuthEnd} />
-              <AuthField label="Sensors" status={patient.sensorsAuthResult} start={patient.sensorsAuthStart} end={patient.sensorsAuthEnd} />
-              <AuthField label="Insulin Pump" status={patient.ipAuthResult} start={patient.ipAuthStart} end={patient.ipAuthEnd} />
-              <AuthField label="Infusion Set" status={patient.infusionSetAuthResult} start={patient.infusionSetAuthStart} end={patient.infusionSetAuthEnd} />
-              <AuthField label="Cartridge" status={patient.cartridgeAuthResult} start={patient.cartridgeAuthStart} end={patient.cartridgeAuthEnd} />
-            </div>
-          </Card>
-        )}
+        {/* ⚠️ The Auth Results card left here too. Brandon's Authorization
+            block (form section 6) replaces it with one chip per SERVED product
+            — "a supplies-only patient sees two chips, not five" — and collapses
+            to a single sentence when nothing needs attention. */}
       </div>
     </div>
   );

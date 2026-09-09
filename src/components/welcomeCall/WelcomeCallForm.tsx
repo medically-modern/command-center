@@ -30,6 +30,7 @@ import { IntakeMessages } from "@/components/profile/IntakeMessages";
 import "@/pages/profile/redesign.css";
 import "@/pages/profile/intake.css";
 import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions, DEFAULT_INFUSION_QTY } from "@/lib/welcomeCall/payerRules";
+import { InsuranceBlock, AuthBlock, OopBlock } from "@/components/welcomeCall/InsuranceAuthSection";
 import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
 import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
 import { etTodayYmd } from "@/lib/shared/monitorSale";
@@ -48,8 +49,6 @@ import {
   SupplyLengthField,
   PhoneNumbersSection,
   CaretakerSection,
-  InsuranceSection,
-  AuthCostSection,
 } from "./CallIntakeFields";
 import { toast } from "sonner";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
@@ -1059,7 +1058,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           owes. */}
       <Card className="p-6">
         <SectionHeading number={5} title="Insurance" />
-        <InsuranceSection intake={intake} onChange={setIntake} />
+        <InsuranceBlock patient={patient} onFieldChange={onFieldChange} />
       </Card>
 
       {/* ─── Section 6: Authorizations & Cost ───
@@ -1067,8 +1066,14 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           render in the patient header above — they are the Insurance stage's
           output, not something the rep sets on the call (§5.26). */}
       <Card className="p-6">
-        <SectionHeading number={6} title="Authorizations & Cost" />
-        <AuthCostSection intake={intake} onChange={setIntake} />
+        <SectionHeading number={6} title="Authorizations" />
+        <AuthBlock patient={patient} />
+        <div className="mt-6 border-t pt-6">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+            Out of Pocket
+          </p>
+          <OopBlock intake={intake} onChange={setIntake} />
+        </div>
       </Card>
 
       {/* ─── Section 7: Subscription & Logistics ─── */}

@@ -34,6 +34,8 @@ export interface Patient {
   memberId1: string;
   memberId1Edited: string | null;
   secondaryInsurance: string;
+  /** Plan Name, read-only. */
+  planName: string;
   memberId2: string;
   // Read-only product/referral
   serving: string;
@@ -61,6 +63,10 @@ export interface Patient {
   secondaryInsuranceIndex: number | null;
   secondaryInsuranceEdited: string | null;
   memberId2Edited: string | null;
+  /** Insurance Notes as the rep has it. Null = untouched.
+   *  Brandon's Block A: an "Other" secondary must record the payer name
+   *  and group here, so this column is writable from Welcome Call now. */
+  insuranceNotesEdited: string | null;
   // Editable welcome call fields
   monitorQty: string;
   pumpQty: string;

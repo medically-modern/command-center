@@ -99,8 +99,22 @@ export async function sendPatientToMonday(
     tasks.push({ label: "Secondary Insurance", columnId: COL.secondaryInsurance, value: { index: p.secondaryInsuranceIndex! }, fn: () => writeStatusIndex(p.id, COL.secondaryInsurance, p.secondaryInsuranceIndex!) });
 
   // Member ID 2 (only if edited)
-  if (p.memberId2Edited !== null && p.memberId2Edited !== "")
-    tasks.push({ label: "Member ID 2", columnId: COL.memberId2, value: p.memberId2Edited!, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited!) });
+  /* ⚠️ `!== null` alone — an EMPTY edit is a real answer here.
+     The guard used to be `!== "" `, which silently dropped a rep clearing the
+     field: the input went blank, the send reported success and the board kept
+     the old ID. Brandon's Block A makes that clear load-bearing — answering
+     "No secondary" CLEARS Member ID 2, because a leftover ID under "None" is a
+     contradiction the next reader has to resolve. Null still means untouched. */
+  /* ⚠️ `typeof === "string"`, not `!== null`. Undefined is UNTOUCHED, the same
+     as null — a Patient mapped before this field existed has no key at all, and
+     `undefined !== null` is true, so the loose guard pushed a task whose `value`
+     was undefined. One such task disables the gateway's durable fast path for
+     the WHOLE send (§5.2). An empty STRING is still a real edit, which is what
+     lets "No secondary" clear Member ID 2. */
+  if (typeof p.memberId2Edited === "string")
+    tasks.push({ label: "Member ID 2", columnId: COL.memberId2, value: p.memberId2Edited, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited as string) });
+  if (typeof p.insuranceNotesEdited === "string")
+    tasks.push({ label: "Insurance Notes", columnId: COL.insuranceNotes, value: p.insuranceNotesEdited, fn: () => writeText(p.id, COL.insuranceNotes, p.insuranceNotesEdited as string) });
 
   // ⚠️ This module's writeNumber takes a NUMBER and always sends String(num) as
   // a PLAIN STRING — no skip, no cleaning (unlike profile's, which cleans and
@@ -328,8 +342,11 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
   // Secondary insurance & Member ID 2 (only if locally edited)
   if (p.secondaryInsuranceEdited !== null && p.secondaryInsuranceIndex !== null)
     tasks.push(writeStatusIndex(p.id, COL.secondaryInsurance, p.secondaryInsuranceIndex));
-  if (p.memberId2Edited !== null && p.memberId2Edited !== "")
+  // Same clear-is-an-answer rule, and the same undefined-is-untouched guard.
+  if (typeof p.memberId2Edited === "string")
     tasks.push(writeText(p.id, COL.memberId2, p.memberId2Edited));
+  if (typeof p.insuranceNotesEdited === "string")
+    tasks.push(writeText(p.id, COL.insuranceNotes, p.insuranceNotesEdited));
 
   // Address
   if (p.addressEdited !== null) {

@@ -18,6 +18,7 @@ import {
   INTAKE_BLOCK_START,
   INTAKE_BLOCK_END,
   CONFIRM_KEYS,
+  REPORTED_CONFIRM_KEYS,
   type CallIntake,
 } from "./callIntake";
 
@@ -25,7 +26,10 @@ const AT = new Date("2026-08-28T14:33:00");
 
 function filled(): CallIntake {
   return {
-    confirmed: { pump: true, address: true, primary: true, secondary: false, oop: true },
+    // ⚠️ `primary`/`secondary` are parse-only from 2026-09-09 (see
+    // REPORTED_CONFIRM_KEYS) — nothing can tick them, so they cannot
+    // round-trip. A legacy block still restores them; pinned below.
+    confirmed: { pump: true, address: true, primary: false, secondary: false, oop: true },
     secondaryCoverage: "unknown",
     supplyLength: "90",
     pumpConfirmedModel: "t:slim",
@@ -138,7 +142,7 @@ describe("both confirm lines are always emitted", () => {
     i.authNotes = "x";
     const block = formatIntakeBlock(i);
     expect(block).toContain("Confirmed: none");
-    expect(block).toContain(`Unconfirmed: ${CONFIRM_KEYS.join(", ")}`);
+    expect(block).toContain(`Unconfirmed: ${REPORTED_CONFIRM_KEYS.join(", ")}`);
   });
 });
 
@@ -239,7 +243,7 @@ describe("caretaker fields never shift position (Greptile #1)", () => {
     const log = [
       INTAKE_BLOCK_START,
       "Confirmed: none",
-      "Unconfirmed: pump, address, primary, secondary, oop",
+      "Unconfirmed: pump, address, oop",
       "Caretaker: Jane Doe · Daughter · 3475550102 · jane@example.com · authorized",
       INTAKE_BLOCK_END,
     ].join("\n");
@@ -276,7 +280,7 @@ describe("free text never changes field (Greptile round 2)", () => {
     const log = [
       INTAKE_BLOCK_START,
       "Confirmed: none",
-      "Unconfirmed: pump, address, primary, secondary, oop",
+      "Unconfirmed: pump, address, oop",
       "Caretaker: Jane Doe · (Daughter) · 3475550102 · authorized",
       INTAKE_BLOCK_END,
     ].join("\n");
@@ -315,7 +319,7 @@ describe("forward compatibility", () => {
     const log = [
       INTAKE_BLOCK_START,
       "Confirmed: pump",
-      "Unconfirmed: address, primary, secondary, oop",
+      "Unconfirmed: address, oop",
       "Some Future Field: whatever",
       INTAKE_BLOCK_END,
     ].join("\n");
@@ -389,11 +393,43 @@ describe("⚠️ the confirmed pump model round-trips (Josh, 2026-09-09)", () =>
     const legacy = [
       "--- WC INTAKE v1 ---",
       "Confirmed: pump, address",
-      "Unconfirmed: primary, secondary, oop",
+      "Unconfirmed: oop",
       "--- END WC INTAKE ---",
     ].join("\n");
     const parsed = parseIntakeBlock(legacy);
     expect(parsed?.confirmed.pump).toBe(true);
     expect(parsed?.pumpConfirmedModel).toBe("");
+  });
+});
+
+describe("the insurance confirmations are parse-only", () => {
+  /* Brandon removed both checkboxes on 2026-09-09: primary is read-only at this
+     stage, and the secondary-coverage QUESTION is now the record. Nothing can
+     tick either, so emitting them would print them under "Unconfirmed:" on
+     every patient forever — a permanent false negative in the audit line. */
+  it("never emits primary or secondary", () => {
+    const i = emptyIntake();
+    i.confirmed.pump = true;
+    i.confirmed.primary = true;
+    i.confirmed.secondary = true;
+    const block = formatIntakeBlock(i);
+    expect(block).toContain("Confirmed: pump");
+    expect(block).not.toMatch(/Confirmed:.*primary/);
+    expect(block).not.toMatch(/Unconfirmed:.*secondary/);
+  });
+
+  /* Parsing them still costs nothing and preserves what old notes already say —
+     the "two lists, two questions" split (§5.31). */
+  it("still restores them from a block written before the change", () => {
+    const legacy = [
+      "--- WC INTAKE v1 ---",
+      "Confirmed: pump, primary, secondary",
+      "Unconfirmed: address, oop",
+      "--- END WC INTAKE ---",
+    ].join("\n");
+    const parsed = parseIntakeBlock(legacy);
+    expect(parsed?.confirmed.primary).toBe(true);
+    expect(parsed?.confirmed.secondary).toBe(true);
+    expect(parsed?.confirmed.pump).toBe(true);
   });
 });

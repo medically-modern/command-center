@@ -37,6 +37,9 @@ export const COL = {
   primaryInsurance: "color_mm1x157j",
   memberId1: "text_mm1x2qk2",
   secondaryInsurance: "color_mm241kqp",
+  /** Plan Name (dropdown). Read-only here — Brandon's Block A shows it
+   *  beside Primary Insurance and Member ID 1. */
+  planName: "dropdown_mm2wrzrk",
   memberId2: "text_mm1xaccx",
 
   /** "POS" (Office = 0 | Home = 1). Write-only here: the rep has no control
@@ -155,7 +158,7 @@ export const COL = {
 
 export const READ_COLUMN_IDS = [
   COL.dob, COL.phone, COL.email, COL.address, COL.gender,
-  COL.primaryInsurance, COL.memberId1, COL.secondaryInsurance, COL.memberId2,
+  COL.primaryInsurance, COL.memberId1, COL.secondaryInsurance, COL.memberId2, COL.planName,
   COL.serving, COL.pumpType, COL.cgmType, COL.requestType, COL.doctorName, COL.doctorNpi,
   COL.referralSource, COL.referralReceivedDate,
   COL.diagnosis, COL.notes, COL.profileSendOffNotes, COL.mnWorkflowNotes, COL.insuranceNotes,
