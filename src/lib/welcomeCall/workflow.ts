@@ -36,6 +36,11 @@ export interface Patient {
   secondaryInsurance: string;
   /** Plan Name, read-only. */
   planName: string;
+  /** Order Frequency as the board has it ("30-Days" … "90-Days"), or "". */
+  orderFrequency: string;
+  /** The rep's override. Null = they haven't touched it this session. */
+  orderFrequencyEdited: string | null;
+  orderFrequencyIndex: number | null;
   memberId2: string;
   // Read-only product/referral
   serving: string;

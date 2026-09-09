@@ -7,6 +7,7 @@ import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
 import { coercePumpQty } from "@/lib/shared/servingLines";
 import { coerceMonitorQty } from "@/lib/shared/monitorQty";
+import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "./orderFrequency";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -111,6 +112,25 @@ export async function sendPatientToMonday(
      was undefined. One such task disables the gateway's durable fast path for
      the WHOLE send (§5.2). An empty STRING is still a real edit, which is what
      lets "No secondary" clear Member ID 2. */
+  /* Order Frequency. ⚠️ The EFFECTIVE value is written, including a payer
+     default the rep never touched — otherwise a defaulted cadence stays blank
+     on the board and the Subscription hop has nothing to copy. That is the
+     whole point of moving this off the notes block. */
+  {
+    const f = frequencyState({
+      boardLabel: p.orderFrequency,
+      edited: p.orderFrequencyEdited,
+      primaryInsurance: p.primaryInsuranceEdited ?? p.primaryInsurance,
+      secondaryInsurance: p.secondaryInsuranceEdited ?? p.secondaryInsurance,
+    });
+    const label = daysToLabel(f.days);
+    const index = ORDER_FREQUENCY_INDEX[label];
+    // ⚠️ Never write an index the column doesn't have — Monday drops it without
+    // erroring (§5.20). An unmapped label means the rules and the board have
+    // drifted, and writing nothing is the visible failure.
+    if (index !== undefined)
+      tasks.push({ label: "Order Frequency", columnId: COL.orderFrequency, value: { index }, fn: () => writeStatusIndex(p.id, COL.orderFrequency, index) });
+  }
   if (typeof p.memberId2Edited === "string")
     tasks.push({ label: "Member ID 2", columnId: COL.memberId2, value: p.memberId2Edited, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited as string) });
   if (typeof p.insuranceNotesEdited === "string")

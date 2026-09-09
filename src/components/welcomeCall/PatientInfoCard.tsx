@@ -3,6 +3,7 @@ import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
 import { authWindow, secondaryAsk, secondaryAskNote, isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { expectedPos } from "@/lib/shared/pos";
+import { servedOrderLines } from "@/lib/shared/servingLines";
 import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -745,7 +746,17 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
   );
 }
 
-/** Standalone Next Order Dates card — rendered separately in the page layout. */
+/**
+ * Next Order Dates — Brandon, 2026-09-09: the dates belong "under the cards, in
+ * this section", so this now renders inside Subscription & Logistics rather
+ * than as a standalone card on the page.
+ *
+ * ⚠️ **Rows for lines not in Serving don't render** (his words). It used to draw
+ * all three unconditionally, which asked a rep to date a pump reorder for a
+ * patient who owns their pump. `servedOrderLines` is the same rule the send and
+ * the Final Confirm checks use, so the rows and what actually ships agree.
+ * Each row carries its read-only Last Bill Date beside the picker.
+ */
 export function NextOrderDatesCard({
   patient,
   onFieldChange,
@@ -753,37 +764,100 @@ export function NextOrderDatesCard({
   patient: Patient;
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
 }) {
-  return (
-    <Card className="p-4">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3 flex items-center gap-2">
-        <CalendarDays className="h-3.5 w-3.5" /> Next Order Dates
+  const served = servedOrderLines({
+    serving: patient.servingEdited ?? patient.serving,
+    subscriptionType: patient.subscriptionType,
+    cgmType: patient.cgmType,
+    infusionSet1: patient.infusionSet1,
+    infusionSet2: patient.infusionSet2,
+    pumpQty: patient.pumpQty,
+    monitorQty: patient.monitorQty,
+    qtyInf1: patient.qtyInf1,
+    qtyInf2: patient.qtyInf2,
+  });
+
+  const rows = [
+    served.sensors && {
+      key: "sensors",
+      label: "Sensors",
+      lastBill: patient.sensorsLastBillDate || patient.cgmLastBillDate,
+      lastBillDates: [patient.sensorsLastBillDate, patient.cgmLastBillDate],
+      mondayDate: patient.sensorsNextOrderDate,
+      editedDate: patient.sensorsNextOrderDateEdited,
+      editedField: "sensorsNextOrderDateEdited" as keyof Patient,
+    },
+    served.insulinPump && {
+      key: "pump",
+      label: "Insulin Pump",
+      lastBill: patient.ipLastBillDate,
+      lastBillDates: [patient.ipLastBillDate],
+      mondayDate: patient.ipNextOrderDate,
+      editedDate: patient.ipNextOrderDateEdited,
+      editedField: "ipNextOrderDateEdited" as keyof Patient,
+    },
+    served.supplies && {
+      key: "supplies",
+      label: "Supplies",
+      // Brandon: the Supplies row shows the LATER of infusion set / cartridge —
+      // the reorder is driven by whichever ran out most recently.
+      lastBill:
+        [patient.infusionSetLastBillDate, patient.cartridgeLastBillDate]
+          .filter(Boolean)
+          .sort()
+          .pop() ?? "",
+      lastBillDates: [patient.infusionSetLastBillDate, patient.cartridgeLastBillDate],
+      mondayDate: patient.suppliesNextOrderDate,
+      editedDate: patient.suppliesNextOrderDateEdited,
+      editedField: "suppliesNextOrderDateEdited" as keyof Patient,
+    },
+  ].filter(Boolean) as {
+    key: string;
+    label: string;
+    lastBill: string;
+    lastBillDates: string[];
+    mondayDate: string;
+    editedDate: string | null;
+    editedField: keyof Patient;
+  }[];
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Nothing in Serving yet, so there are no order dates to set.
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <SmartNextOrderField
-          label="Sensors Next Order Date"
-          lastBillDates={[patient.sensorsLastBillDate, patient.cgmLastBillDate]}
-          mondayDate={patient.sensorsNextOrderDate}
-          editedDate={patient.sensorsNextOrderDateEdited}
-          editedField="sensorsNextOrderDateEdited"
-          onFieldChange={onFieldChange}
-        />
-        <SmartNextOrderField
-          label="IP Next Order Date"
-          lastBillDates={[patient.ipLastBillDate]}
-          mondayDate={patient.ipNextOrderDate}
-          editedDate={patient.ipNextOrderDateEdited}
-          editedField="ipNextOrderDateEdited"
-          onFieldChange={onFieldChange}
-        />
-        <SmartNextOrderField
-          label="Supplies Next Order Date"
-          lastBillDates={[patient.infusionSetLastBillDate, patient.cartridgeLastBillDate]}
-          mondayDate={patient.suppliesNextOrderDate}
-          editedDate={patient.suppliesNextOrderDateEdited}
-          editedField="suppliesNextOrderDateEdited"
-          onFieldChange={onFieldChange}
-        />
-      </div>
-    </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {rows.map((r) => (
+        <div key={r.key} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+          <p className="text-sm font-semibold pt-1">{r.label}</p>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+              Last Bill Date
+            </p>
+            <p
+              className="text-sm font-medium"
+              title={
+                r.key === "supplies"
+                  ? `Infusion set ${patient.infusionSetLastBillDate || "—"} · Cartridge ${patient.cartridgeLastBillDate || "—"}`
+                  : undefined
+              }
+            >
+              {r.lastBill || "—"}
+            </p>
+          </div>
+          <SmartNextOrderField
+            label="Next Order Date"
+            lastBillDates={r.lastBillDates}
+            mondayDate={r.mondayDate}
+            editedDate={r.editedDate}
+            editedField={r.editedField}
+            onFieldChange={onFieldChange}
+          />
+        </div>
+      ))}
+    </div>
   );
 }

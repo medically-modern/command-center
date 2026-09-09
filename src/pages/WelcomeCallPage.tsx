@@ -352,7 +352,9 @@ const WelcomeCallPage = () => {
                   />
                   <OopEstimateCard patient={selected} />
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
-                  <NextOrderDatesCard patient={selected} onFieldChange={handleFieldChange} />
+                  {/* Order dates moved INTO Subscription & Logistics (form
+                      section 7) on 2026-09-09 — Brandon: "under the cards, in
+                      this section", not at the end of the call. */}
                   <NotesPanel key={selected.id}
                     columnRef={{ boardId: BOARD_ID, columnId: COL.notes }}
                     notes={selected.notes}

@@ -35,6 +35,8 @@ import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
 import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
 import { etTodayYmd } from "@/lib/shared/monitorSale";
 import { shouldDefaultPumpQty, setTwoTransition, isSetChosen } from "@/lib/welcomeCall/orderDefaults";
+import { frequencyState, frequencyInvalidated, daysToLabel, ORDER_FREQUENCY_INDEX } from "@/lib/welcomeCall/orderFrequency";
+import { NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
 import {
   compatibleSetOptions,
   withCurrentSelection,
@@ -46,7 +48,6 @@ import { pumpConfirmLabel, pumpConfirmationStale, needsPumpConfirmation } from "
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import {
   ConfirmCheck,
-  SupplyLengthField,
   PhoneNumbersSection,
   CaretakerSection,
 } from "./CallIntakeFields";
@@ -284,6 +285,12 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
   const effectiveSecondary = patient.secondaryInsuranceEdited ?? patient.secondaryInsurance;
   const infusionCap = payerInfusionCap(effectivePrimary);
   const supplyNote = supplyLengthNote(effectivePrimary, effectiveSecondary);
+  const frequency = frequencyState({
+    boardLabel: patient.orderFrequency,
+    edited: patient.orderFrequencyEdited,
+    primaryInsurance: effectivePrimary,
+    secondaryInsurance: effectiveSecondary,
+  });
   const derivedSupplyDays = String(supplyLengthDays(effectivePrimary, effectiveSecondary)) as SupplyLength;
   const setIntake = (next: CallIntake) => onIntakeChange?.(next);
 
@@ -342,6 +349,19 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
      same reason: running this on load would wipe the quantities of every
      already-split patient the moment a rep opened them, and switching patients
      changes Set 2 without anybody having chosen anything. */
+  /* A payer correction can strand a frequency the new payer doesn't offer —
+     pick 75 for Aetna, then fix the plan. Nothing downstream re-checks it, so
+     the send would write a cadence that payer will not pay for. Same rule
+     §5.31 needed when this value lived in the notes block; it has to survive
+     the move to a column. */
+  useEffect(() => {
+    if (patient.orderFrequencyEdited === null) return;
+    if (!frequencyInvalidated(patient.orderFrequencyEdited, effectivePrimary)) return;
+    onFieldChange("orderFrequencyEdited" as keyof Patient, null);
+    onFieldChange("orderFrequencyIndex" as keyof Patient, null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, patient.orderFrequencyEdited, effectivePrimary]);
+
   const lastSet2 = useRef<{ patientId: string; has: boolean } | null>(null);
   useEffect(() => {
     const has = isSetChosen(patient.infusionSet2);
@@ -1119,15 +1139,52 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             })()}
           </div>
 
-          {/* Supply length — no board column; sits with Subscription Type
-              because it describes the same order. */}
-          <SupplyLengthField
-            intake={intake}
-            onChange={setIntake}
-            derivedNote={supplyNote}
-            options={supplyLengthOptions(effectivePrimaryInsurance)}
-          />
+          {/* Order Frequency — Brandon: "call it that, not 'Supply length', so
+              it matches the boards". It is a real Monday column now
+              (`color_mm71xdhj`) rather than a line in the notes block, which is
+              what lets the Subscription hop copy it. */}
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
+              Order Frequency
+            </label>
+            <Select
+              value={frequency.days}
+              onValueChange={(v) => {
+                onFieldChange("orderFrequencyEdited" as keyof Patient, v);
+                onFieldChange(
+                  "orderFrequencyIndex" as keyof Patient,
+                  ORDER_FREQUENCY_INDEX[daysToLabel(v)] ?? null,
+                );
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select frequency" />
+              </SelectTrigger>
+              <SelectContent>
+                {frequency.options.map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {d} days
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* One muted hint, and only while it means something: our guess, or
+                the rep's edit. A value already on the board gets neither. */}
+            {frequency.hint && (
+              <p className="mt-1.5 text-xs text-muted-foreground">{frequency.hint}</p>
+            )}
+          </div>
 
+        </div>
+
+        {/* Brandon: the dates live "under the cards, in this section" rather
+            than at the end of the call. Rows for lines not in Serving don't
+            render. */}
+        <div className="mt-6 border-t pt-6">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+            Order Dates
+          </p>
+          <NextOrderDatesCard patient={patient} onFieldChange={onFieldChange} />
         </div>
       </Card>
 

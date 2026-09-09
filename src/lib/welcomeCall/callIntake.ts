@@ -289,9 +289,14 @@ export function formatIntakeBlock(intake: CallIntake): string {
   // include blocks parsed from notes written before this field existed.
   const pumpModel = (intake.pumpConfirmedModel ?? "").trim();
   if (intake.confirmed.pump && pumpModel) lines.push(`Pump confirmed: ${oneLine(pumpModel)}`);
-  if (intake.secondaryCoverage) lines.push(`Secondary coverage: ${titleCase(intake.secondaryCoverage)}`);
-  if (intake.supplyLength)
-    lines.push(`Supply length: ${intake.supplyLength} days${intake.supplyLengthManual ? " (override)" : ""}`);
+  /* ⚠️ `Secondary coverage` and `Supply length` are no longer EMITTED
+     (Brandon, 2026-09-09: "stop writing supply length to the notes block").
+     Both moved to real Monday columns — secondary to `color_mm241kqp` via the
+     Insurance block, and supply length to Order Frequency `color_mm71xdhj` —
+     and a note line beside a column is a second answer that drifts from the
+     first. Both are still PARSED, so blocks already on patients keep their
+     meaning; the same two-lists split `CONFIRM_KEYS` /
+     `REPORTED_CONFIRM_KEYS` needs just above. */
   if (intake.oopAmount.trim()) lines.push(`OOP amount: ${oneLine(intake.oopAmount)}`);
 
   const phones = intake.phones.filter((p) => p.number.trim());
