@@ -101,6 +101,36 @@ describe("⚠️ no SoS answer is UNKNOWN, never a no", () => {
       expect(v({ sosLastBillMonitor: bad }).state).toBe("unknown");
     }
   });
+
+  it("⚠️ is unknown for a YYYY-MM-DD-SHAPED value that is not a real date", () => {
+    // The dangerous half: "2020-99-99" passes a shape-only check AND compares
+    // lexically before the cutoff, so it took the sellable branch and
+    // pre-filled Monitor Qty to 1 — authorising a Medicare monitor order off
+    // unreadable data. Every malformed case above happens to fail the shape
+    // check too, which is why a shape check looked sufficient (Greptile, PR #55).
+    for (const bad of ["2020-99-99", "2021-02-30", "2021-00-10", "2021-13-01", "2021-04-31"]) {
+      const r = v({ sosLastBillMonitor: bad });
+      expect(r.state, bad).toBe("unknown");
+      expect(r.defaultQty, bad).toBe("");
+    }
+  });
+
+  it("⚠️ an unreadable date does NOT suppress a real never-billed flag", () => {
+    // Falling through to the never-billed branch is the point of doing the
+    // date check first: garbage must not authorise on its own, but it must
+    // also not block a positive SoS answer sitting beside it.
+    const r = v({ sosLastBillMonitor: "2020-99-99", sosNeverBilledMonitor: true });
+    expect(r.state).toBe("can-send");
+    expect(r.defaultQty).toBe("1");
+  });
+
+  it("still accepts real leap-day dates on both sides of the cutoff", () => {
+    // The validation must not overshoot into rejecting valid dates. One leap
+    // day older than the 2021-09-10 cutoff, one inside it — both real, both
+    // classified on their date rather than rejected as unreadable.
+    expect(v({ sosLastBillMonitor: "2020-02-29" }).state).toBe("can-send");
+    expect(v({ sosLastBillMonitor: "2024-02-29" }).state).toBe("cannot-send");
+  });
 });
 
 describe("⚠️ it composes with monitorPurchaseDate rather than fighting it", () => {

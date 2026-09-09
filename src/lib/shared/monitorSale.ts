@@ -122,6 +122,31 @@ export function daysBeforeYmd(todayYmd: string, days: number): string {
   return new Date(t).toISOString().slice(0, 10);
 }
 
+/**
+ * ⚠️ Is this a REAL calendar date, not merely YYYY-MM-DD shaped?
+ *
+ * The shape alone is not enough, and the gap is expensive: `2020-99-99` matches
+ * `/^\d{4}-\d{2}-\d{2}$/` and compares lexically BEFORE the cutoff, so a
+ * garbage value took the sellable branch and pre-filled Monitor Qty to 1 —
+ * authorising a Medicare monitor order off data nobody can read. Greptile
+ * caught it on PR #55; every malformed case the tests covered ("not a date",
+ * "2026-13") happened to fail the shape check too, so the shape check looked
+ * sufficient.
+ *
+ * Round-tripping through `Date.UTC` is what catches it: JS silently rolls
+ * overflow forward (month 99 becomes a date years later, Feb 30 becomes Mar 2),
+ * so a value that does not come back identical was never a real date.
+ */
+function isRealYmd(ymd: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  return (
+    t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d
+  );
+}
+
 /** "2024-05-17" → "05/2024". "" for anything unparseable. */
 function monthYear(ymd: string): string {
   const m = /^(\d{4})-(\d{2})/.exec((ymd ?? "").trim());
@@ -147,7 +172,10 @@ export function monitorSaleVerdict(i: MonitorSaleInput): MonitorSaleVerdict {
   const neverBilled = !!i.sosNeverBilledMonitor;
   const today = i.todayYmd ?? etTodayYmd();
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(lastBill)) {
+  // ⚠️ A real calendar date, not just the right shape — see isRealYmd. An
+  // unreadable value must fall through to the never-billed / unknown branches
+  // below rather than authorising a sale.
+  if (isRealYmd(lastBill)) {
     const cutoff = daysBeforeYmd(today, MONITOR_LIFETIME_DAYS);
     // ISO dates compare lexically. STRICTLY before the cutoff clears it —
     // matching `sosCutoffYmd`'s own "a last bill strictly before this derives
