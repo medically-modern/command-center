@@ -38,6 +38,19 @@ export const DONT_ADVANCE_INDEX = 2;
 
 export interface SendGateInput {
   advanceDecisionIndex: number | null;
+  /**
+   * What Brandon's secondary-coverage question still needs — the output of
+   * `secondaryCoverage.secondaryMissing`.
+   *
+   * ⚠️ He said "required" of the Member ID 2 / CIN / Insurance Notes rules and
+   * carved out **only Unknown** from gating ("patients often don't know"). Shown
+   * as amber text alone, a rep could pick NY Medicaid, type nothing, and advance
+   * — handing the payer and DVS work downstream an incomplete policy (Greptile,
+   * PR #56). `secondaryMissing` already returns [] for No and Unknown, so the
+   * carve-out is preserved by construction rather than by a second condition
+   * here that could drift from it.
+   */
+  secondaryMissing?: string[];
   /** Serving as the rep has it (edited value wins). */
   serving: string;
   /** Pump Type label, for naming the model in the requirement. */
@@ -46,7 +59,7 @@ export interface SendGateInput {
 }
 
 export interface SendRequirement {
-  key: "pump-confirmed" | "address-confirmed";
+  key: "pump-confirmed" | "address-confirmed" | "secondary-incomplete";
   /** The sentence shown beside the disabled button. */
   label: string;
 }
@@ -98,6 +111,9 @@ export function unmetSendRequirements(i: SendGateInput): SendRequirement[] {
       key: "address-confirmed",
       label: "Confirm the shipping address with the patient in the Confirm Address section.",
     });
+  }
+  for (const m of i.secondaryMissing ?? []) {
+    out.push({ key: "secondary-incomplete", label: m });
   }
   return out;
 }

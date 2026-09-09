@@ -2635,6 +2635,138 @@ DEVICE (`servingSellsPumpDevice`, never `servingIncludesPump`, which is TRUE for
 so the checkbox and the gate scope identically — asking a patient to confirm a pump they
 already own is §5.22's conflation in checkbox form.
 
+### 5.31c The rest of Brandon's Welcome Call notes (Sep 2026)
+Everything §5.31b missed or deferred. **One new Monday column; no automation changed.**
+
+**The phone controls LEFT the banner** — Brandon: *"get rid of the phone text and calls in
+the top banner though, will have that lower down"*. §5.31b kept them, which was a straight
+contradiction of the note AND the cause of the narrow-screen overflow review flagged. They
+now live in **`components/welcomeCall/PatientActivityCard`**, directly under the banner
+(*"put text and call history on top"*), with Call and Text in its header — *"this is where
+the user will press to call them"*. `PatientContact` gained `hideCallHistory` so its Calls
+pop-up doesn't sit beside a Calls tab showing the same history. Editing the number moved to
+its own card.
+⚠️ **This is a per-patient RingCentral read on a stage page — INCIDENT_2026-08-20's shape.**
+`hooks/welcomeCall/usePatientActivity` fetches **on open, never on render**, caches one
+request per (phone, tab) at module scope with **no polling and no TTL**, coalesces concurrent
+mounts, memoizes its return, and does **not** cache a failure so re-opening retries.
+⚠️ **Texts read the GATEWAY route** (`messagingApi.fetchConversation`), not RingCentral
+direct: only that one passes `messageStatus`/`deliveryError` through, which is the sole
+surface RingCentral's late `SendingFailed` verdict ever reaches (§5.5) — a raw read carries
+neither, so a failed text would render as an ordinary sent bubble. It also serves the
+Postgres archive, reaching past the vendor's ~30 days (§5.27). ⚠️ Voicemail **transcripts are
+not fetched** — one request per voicemail to fill a list nobody asked to read.
+
+**Two order defaults** — `lib/welcomeCall/orderDefaults.ts` (+ tests).
+- `shouldDefaultPumpQty`: *"Pump Qty should be default to 1 for any serving that includes
+  insulin pump"*, fill-when-blank. ⚠️ Keys on **`servingSellsPumpDevice`** — never
+  `servingIncludesPump` (TRUE for "Supplies", i.e. §5.22's $3,787 t:slim) and never
+  `pumpQtyApplies` (which trusts a BLANK serving: right for enabling a control, wrong for a
+  default, since absent data must not ship a device nobody chose). Scoping it to pump-serving
+  patients also keeps it clear of automation **7918341011**, which gates "monitor only" on
+  Pump Qty being **empty**.
+- `setTwoTransition`: picking a second set clears **both** quantities (Qty 1's default of 3
+  was the whole order — leaving it silently proposes 6); removing it restores Qty 1 and
+  blanks Set 2 **and** its quantity. ⚠️ Fires on an actual transition, guarded by a ref
+  carrying the patient id — on load it would wipe every already-split patient's quantities.
+
+**Insurance & Authorization** — `components/welcomeCall/InsuranceAuthSection.tsx`.
+- **Block A** (`lib/welcomeCall/secondaryCoverage.ts` + tests): primary read-only, no
+  checkbox (*"Corey: primary isn't confirmed at this stage"*); secondary as ONE question,
+  No / Yes / Unknown, pre-filled from the board, with type rules — CIN format validated for
+  NY Medicaid, **tag-only** for a Medicare supplement, ID + Insurance Notes for Other.
+  ⚠️ **A BLANK column is Unknown, never No.** Blank means nobody asked; `None` means somebody
+  asked and the patient said no — and because No WRITES `None`, collapsing them would make a
+  fabricated answer permanent on the next save. ⚠️ Unknown writes nothing and never gates
+  Advance (*"patients often don't know"*). ⚠️ An **unrecognised** label reads as Yes/untyped,
+  so the rep re-states it rather than having a real policy silently cleared.
+  ⚠️⚠️ **Unknown is the one answer with NO board representation, so it rides the page overlay
+  as `secondaryUnknown` and BOTH ends read it through `secondaryStateFor` — never off the
+  column.** A blank column reads Unknown on its own, but "the patient didn't know" on top of an
+  existing `NY Medicaid` cannot clear that column, because clearing would destroy a real policy
+  record. So the answer has to live somewhere, and where it lives is the whole bug: held as a
+  `useState` inside `InsuranceBlock` it was invisible to the page, whose send gate went on
+  reading `secondaryInsuranceEdited ?? secondaryInsurance`. A patient already carrying NY
+  Medicaid or Other then showed **Unknown** on screen with Advance held shut on a CIN the rep
+  had just recorded as unknown — **a gate with no passing move**, the dead end §5.10 and §5.20
+  each record reversing (Greptile, PR #56). The overlay also keys it per patient by
+  construction, which retires the hand-rolled `unknownFor === patient.id` guard against a
+  sidebar click. ⚠️ Neither file was wrong alone and `tsc` was happy with both — only the PAIR
+  was — so `components/welcomeCall/secondaryAnswerSource.test.ts` scans both ends and fails if
+  either reaches for the column again or the flag moves back into component state. ⚠️ The field
+  is session-only with no column, and `mondayWrite` names every column it sends, so it cannot
+  leak into a write.
+  ⚠️ **The details ARE required once the answer is Yes** — Brandon's word — so `secondaryMissing`
+  feeds `unmetSendRequirements` as `secondary-incomplete`. **Advance only**, never the call
+  itself: Welcome Call's own send gate is unchanged, per §5.17's rule that this stage can only
+  ever tell a rep MORE than before, never stop a call they could previously finish.
+  **The board work he asked for was already done** — `Other` exists on `color_mm241kqp` and
+  the stray `Done` is already deactivated (checked 2026-09-09).
+  ⚠️ **"Date of last Stedi check" has NO source** — no such column on Welcome Call or Profile
+  Send Off ("Stedi Plan Begin Date" is the plan's start; "Run Stedi Eligibility" is a
+  trigger). A verified-on date backed by nothing is worse than its absence (§5.26).
+- **Block B** (`lib/welcomeCall/authChips.ts` + tests): read-only chips, one per **served**
+  product (*"a supplies-only patient sees two chips, not five"*), exceptions sorted first,
+  collapsing to one sentence when everything is green or grey. ⚠️ An **unrecognised** Auth
+  Result is amber "not started", never green — a wrong green reads as "cleared to ship".
+  ⚠️ Brandon **dropped** two things the mockup shows and both would have been wrong: a single
+  *Auth expires* field (each product has its own Auth End, so one date is wrong the moment two
+  differ, and wrong quietly) and *Auth notes* (no column — a box whose contents vanish on save).
+- **Block C**: shown, calculator button **inert** (his call). The amount and the reviewed tick
+  ride in the notes block because the Monday columns he wants for them don't exist yet.
+- The old Secondary Insurance select, Member ID 2 input and Auth Results card **left
+  `PatientInfoCard`** — two controls writing the same columns is how they disagree. The
+  Medicare/QMB prompts moved with them. `InsuranceSection`/`AuthCostSection` were **deleted**,
+  not left unimported (§5.11).
+- ⚠️ Two send-path changes this needed: Member ID 2's guard was `!== ""`, which **silently
+  dropped a rep clearing the field**; and Insurance Notes was never written from this stage.
+  Both guards are now **`typeof === "string"`** — `undefined` is untouched, and a task whose
+  `value` is `undefined` disables the gateway's durable fast path for the WHOLE send (§5.2).
+  `writeTaskParity.test.ts` caught that.
+
+**Order Frequency is a real column** — **`color_mm71xdhj`** on Welcome Call, labels mirroring
+the Subscription board's `color_mm48kv1c`. Rules: `lib/welcomeCall/orderFrequency.ts` (+ tests).
+⚠️ **Monday assigned the label indices from the label COLOUR, not the `index` the create call
+asked for**: `30-Days=154 · 60-Days=16 · 75-Days=3 · 90-Days=107`. The §5.12/§5.20 trap —
+read `settings_str` back, never infer, because a write to a non-existent index is dropped
+without an error. Pinned in a test.
+⚠️⚠️ **THE FIVE WC→SUBSCRIPTION WORKFLOWS ARE NOT RE-POINTED** (7918317925, 7918340632,
+7918343137, 7918601476, 7919753399). They still set 90-Days/60-Days outright, so nothing
+downstream changed. Pointed at a blank column they would write a **blank** Order Frequency
+onto Subscription with nothing erroring — the same coordinated cutover §5.22b needs for
+Monitor Qty. The app writes the column from now so the population fills in; the workflow edit
+is an **off-hours** job once it has.
+The send writes the **effective** value including an untouched payer default, or a defaulted
+cadence stays blank and the hop has nothing to copy. One muted hint, only when it means
+something: "default for Medicaid" while it's our guess, "edited" once the rep changes it,
+nothing for a value the board already holds.
+⚠️ **A payer correction invalidates a stranded 75, and the check lives INSIDE `frequencyState`
+— not in an effect beside it.** 75 days is Aetna-only (§5.31), and the first shape validated
+only the rep's `orderFrequencyEdited` in a `useEffect`, returning early for an untouched
+board-backed value: a patient already carrying 75-Days survived a correction from Aetna to
+another payer and the send wrote that index again (Greptile, PR #56). `frequencyState` now
+drops an ineligible value from **both** sources, so the card and the send read one answer; the
+effect was **deleted** rather than left as a second opinion on the same question.
+⚠️ `SupplyLengthField` is **deleted** (no call sites left), and its payer-eligibility guard
+**migrated** rather than lapsing — `orderFrequencyOptionsSource.test.ts` pins that the select
+renders `frequency.options` and never a literal, because `string[]` cannot say which list it
+is and an ineligible cadence looks exactly like an eligible one.
+⚠️ **Supply length and secondary coverage are PARSE-ONLY in the notes block** from here, as
+`primary`/`secondary` are in `CONFIRM_KEYS` vs `REPORTED_CONFIRM_KEYS`. Still read so blocks
+already on patients keep their meaning; never written, because a note line beside a column is
+a second answer that drifts from the first.
+
+**Order dates moved under the Subscription cards**, out of the page. ⚠️ **Rows for lines not
+in Serving no longer render** — it drew all three unconditionally, asking a rep to date a pump
+reorder for a patient who owns their pump. `servedOrderLines` is the same rule the send uses.
+Supplies shows the **later** of infusion set / cartridge, both on hover.
+
+**Still not built, and why:** the *"call scheduled — date/day/time"* chip. Brandon asked for
+the DATE (the mockup's "View Calendly booking" link was never his ask, and is unbuildable
+anyway from a column holding an API URI). Blocked exactly as §5.31b records — the only mirror
+is the INTAKE call on Profile Send Off, this board has no booking column, and the two Calendly
+event types can't be told apart without calling Calendly.
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 The `scheduledCalls` role **became the Care Coordinator dashboard** (Josh, 2026-09-08, from Corey's
 Phase 3 mockup): label "Care Coordinator", route **`/care-coordinator`** (the old `/scheduled-calls`

@@ -3,6 +3,7 @@ import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
 import { authWindow, secondaryAsk, secondaryAskNote, isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { expectedPos } from "@/lib/shared/pos";
+import { servedOrderLines } from "@/lib/shared/servingLines";
 import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ import {
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import { WelcomeCallProfileStatus } from "@/components/shared/PatientProfileStatus";
+import { PatientActivityCard } from "@/components/welcomeCall/PatientActivityCard";
 
 interface Props {
   patient: Patient;
@@ -557,13 +559,15 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
         style={{ borderColor: "var(--mm-card-border)", borderTopColor: "var(--mm-teal)" }}
       >
         <HeaderEyebrow>Patient</HeaderEyebrow>
-        {/* ⚠️ `flex-wrap` is not cosmetic here. The MN bar this copies puts a
-            small `DaysInStagePill` on the right of this row; Welcome Call puts
-            `PhoneField`, whose edit mode is a fixed `w-44` input plus two
-            buttons. A long name with its status chips cannot share one
-            non-wrapping row with that on a narrow screen — the controls
-            overflow the card and become hard to hit (Greptile, PR #55). The
-            phone block drops to its own line instead. */}
+        {/* ⚠️ NO phone / text / call controls in this banner — Brandon,
+            2026-09-09: "get rid of the phone text and calls in the top banner
+            though, will have that lower down". They live in
+            `PatientActivityCard` below, whose header is where a rep presses to
+            call. Editing the number moved with them.
+            Keeping them here also caused a narrow-screen overflow (Greptile,
+            PR #55): the MN bar this copies puts a small pill on the right of
+            this row, not a fixed-width input and two buttons. `flex-wrap`
+            stays anyway — a long name plus status chips can still need it. */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap min-w-0">
             <h1 className="text-3xl font-black tracking-tight break-words">{patient.name}</h1>
@@ -583,12 +587,6 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
               requestType: patient.requestType,
             }) && <HeaderChip tone="amber">Cross-sell</HeaderChip>}
           </div>
-          <PhoneField
-            phone={patient.phone}
-            phoneEdited={patient.phoneEdited}
-            onFieldChange={onFieldChange}
-            onSavePhone={onSavePhone}
-          />
         </div>
 
         <div className="mt-2 flex items-center gap-4 flex-wrap">
@@ -662,6 +660,23 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
         </div>
       </section>
 
+      {/* Brandon: "put text and call history on top like corey/katie had it".
+          Directly under the banner and above everything else, with the Call and
+          Text buttons in its header — the "lower down" the banner note points
+          at. Collapsed by default and fetches nothing until opened. */}
+      <PatientActivityCard phone={patient.phoneEdited ?? patient.phone} />
+
+      {/* The number itself is still editable — it just is not in the banner any
+          more. It sits with the identity facts it belongs to. */}
+      <Card className="p-4">
+        <PhoneField
+          phone={patient.phone}
+          phoneEdited={patient.phoneEdited}
+          onFieldChange={onFieldChange}
+          onSavePhone={onSavePhone}
+        />
+      </Card>
+
       {/* Row 1: Referral/Product + SOS + Insurance */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Referral Source, Request Type and Serving moved UP into the banner
@@ -693,105 +708,16 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
           </div>
         </Card>
 
+        {/* ⚠️ The Secondary Insurance select and Member ID 2 input LEFT this
+            card on 2026-09-09. Brandon's Insurance block (form section 5) is
+            now the single place secondary coverage is answered — one question
+            with type rules — and two controls writing the same two columns is
+            how they end up disagreeing. The Medicare / QMB prompts moved with
+            them, to sit beside the question they are prompting. */}
         <Card className="p-4">
           <div className="grid grid-cols-2 gap-3">
-            {/* Primary Insurance — read-only */}
             <Field label="Primary Insurance" value={patient.primaryInsurance} />
-
-            {/* Member ID 1 — read-only */}
             <Field label="Member ID 1" value={patient.memberId1} />
-
-            {/* Secondary Insurance — always editable dropdown */}
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                Secondary Insurance
-              </p>
-              <Select
-                value={
-                  patient.secondaryInsuranceEdited !== null
-                    ? String(
-                        SECONDARY_INSURANCE_OPTIONS.find(
-                          (o) => o.label === patient.secondaryInsuranceEdited
-                        )?.index ?? ""
-                      )
-                    : hasSecondaryInsurance
-                      ? String(
-                          SECONDARY_INSURANCE_OPTIONS.find(
-                            (o) => o.label === patient.secondaryInsurance
-                          )?.index ?? ""
-                        )
-                      : ""
-                }
-                onValueChange={(value) => {
-                  const option = SECONDARY_INSURANCE_OPTIONS.find(
-                    (o) => String(o.index) === value
-                  );
-                  if (option) {
-                    onFieldChange?.("secondaryInsuranceEdited", option.label);
-                    onFieldChange?.("secondaryInsuranceIndex", option.index);
-                  }
-                }}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue placeholder="Select insurance" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SECONDARY_INSURANCE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.index} value={String(opt.index)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {/* How much detail this secondary actually needs. A Medigap
-                  secondary needs none — tagging it is the whole job — while a
-                  commercial one behind a non-Medicare primary needs the full
-                  record. Silent when nothing is on file: the two warnings below
-                  already prompt for that. */}
-              {(() => {
-                const ask = secondaryAsk(
-                  patient.primaryInsuranceEdited ?? patient.primaryInsurance,
-                  patient.secondaryInsuranceEdited ?? patient.secondaryInsurance,
-                );
-                const note = secondaryAskNote(ask);
-                if (!note) return null;
-                return (
-                  <p className={cn(
-                    "text-xs mt-1.5",
-                    ask === "medicare-supplement"
-                      ? "text-emerald-700 dark:text-emerald-400 font-medium"
-                      : "text-muted-foreground",
-                  )}>
-                    {note}
-                  </p>
-                );
-              })()}
-              {showMedicareSecondaryWarning && (
-                <p className="text-xs text-red-600 font-semibold mt-1.5">
-                  Patient likely has a secondary insurance, ask on welcome call.
-                </p>
-              )}
-              {showQmbWarning && (
-                <p className="text-xs text-red-600 font-semibold mt-1">
-                  Stedi QMB returned YES — patient very likely has a secondary supplement plan.
-                </p>
-              )}
-            </div>
-
-            {/* Member ID 2 — always editable text input */}
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                Member ID 2
-              </p>
-              <Input
-                className="h-8 text-sm"
-                value={patient.memberId2Edited ?? patient.memberId2}
-                onChange={(e) => {
-                  onFieldChange?.("memberId2Edited", e.target.value);
-                }}
-                placeholder="Enter member ID"
-              />
-            </div>
           </div>
         </Card>
       </div>
@@ -811,31 +737,26 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
           )}
         </Card>
 
-        {(patient.cgmAuthResult || patient.sensorsAuthResult || patient.ipAuthResult || patient.infusionSetAuthResult || patient.cartridgeAuthResult || patient.cgmAuthEnd || patient.sensorsAuthEnd || patient.ipAuthEnd || patient.infusionSetAuthEnd || patient.cartridgeAuthEnd) && (
-          <Card className="p-4">
-            {/* Says WHY this card is read-only: these results are the Insurance
-                stage's output, not something the rep sets on the call. */}
-            <div className="flex flex-wrap items-baseline gap-x-2 mb-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Auth Results</p>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">From benefits stage</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {/* "CGM" is the board's MONITOR line — its dates are the Monitor
-                  Auth Start/End pair, not a separate CGM one. */}
-              <AuthField label="CGM" status={patient.cgmAuthResult} start={patient.cgmAuthStart} end={patient.cgmAuthEnd} />
-              <AuthField label="Sensors" status={patient.sensorsAuthResult} start={patient.sensorsAuthStart} end={patient.sensorsAuthEnd} />
-              <AuthField label="Insulin Pump" status={patient.ipAuthResult} start={patient.ipAuthStart} end={patient.ipAuthEnd} />
-              <AuthField label="Infusion Set" status={patient.infusionSetAuthResult} start={patient.infusionSetAuthStart} end={patient.infusionSetAuthEnd} />
-              <AuthField label="Cartridge" status={patient.cartridgeAuthResult} start={patient.cartridgeAuthStart} end={patient.cartridgeAuthEnd} />
-            </div>
-          </Card>
-        )}
+        {/* ⚠️ The Auth Results card left here too. Brandon's Authorization
+            block (form section 6) replaces it with one chip per SERVED product
+            — "a supplies-only patient sees two chips, not five" — and collapses
+            to a single sentence when nothing needs attention. */}
       </div>
     </div>
   );
 }
 
-/** Standalone Next Order Dates card — rendered separately in the page layout. */
+/**
+ * Next Order Dates — Brandon, 2026-09-09: the dates belong "under the cards, in
+ * this section", so this now renders inside Subscription & Logistics rather
+ * than as a standalone card on the page.
+ *
+ * ⚠️ **Rows for lines not in Serving don't render** (his words). It used to draw
+ * all three unconditionally, which asked a rep to date a pump reorder for a
+ * patient who owns their pump. `servedOrderLines` is the same rule the send and
+ * the Final Confirm checks use, so the rows and what actually ships agree.
+ * Each row carries its read-only Last Bill Date beside the picker.
+ */
 export function NextOrderDatesCard({
   patient,
   onFieldChange,
@@ -843,37 +764,100 @@ export function NextOrderDatesCard({
   patient: Patient;
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
 }) {
-  return (
-    <Card className="p-4">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3 flex items-center gap-2">
-        <CalendarDays className="h-3.5 w-3.5" /> Next Order Dates
+  const served = servedOrderLines({
+    serving: patient.servingEdited ?? patient.serving,
+    subscriptionType: patient.subscriptionType,
+    cgmType: patient.cgmType,
+    infusionSet1: patient.infusionSet1,
+    infusionSet2: patient.infusionSet2,
+    pumpQty: patient.pumpQty,
+    monitorQty: patient.monitorQty,
+    qtyInf1: patient.qtyInf1,
+    qtyInf2: patient.qtyInf2,
+  });
+
+  const rows = [
+    served.sensors && {
+      key: "sensors",
+      label: "Sensors",
+      lastBill: patient.sensorsLastBillDate || patient.cgmLastBillDate,
+      lastBillDates: [patient.sensorsLastBillDate, patient.cgmLastBillDate],
+      mondayDate: patient.sensorsNextOrderDate,
+      editedDate: patient.sensorsNextOrderDateEdited,
+      editedField: "sensorsNextOrderDateEdited" as keyof Patient,
+    },
+    served.insulinPump && {
+      key: "pump",
+      label: "Insulin Pump",
+      lastBill: patient.ipLastBillDate,
+      lastBillDates: [patient.ipLastBillDate],
+      mondayDate: patient.ipNextOrderDate,
+      editedDate: patient.ipNextOrderDateEdited,
+      editedField: "ipNextOrderDateEdited" as keyof Patient,
+    },
+    served.supplies && {
+      key: "supplies",
+      label: "Supplies",
+      // Brandon: the Supplies row shows the LATER of infusion set / cartridge —
+      // the reorder is driven by whichever ran out most recently.
+      lastBill:
+        [patient.infusionSetLastBillDate, patient.cartridgeLastBillDate]
+          .filter(Boolean)
+          .sort()
+          .pop() ?? "",
+      lastBillDates: [patient.infusionSetLastBillDate, patient.cartridgeLastBillDate],
+      mondayDate: patient.suppliesNextOrderDate,
+      editedDate: patient.suppliesNextOrderDateEdited,
+      editedField: "suppliesNextOrderDateEdited" as keyof Patient,
+    },
+  ].filter(Boolean) as {
+    key: string;
+    label: string;
+    lastBill: string;
+    lastBillDates: string[];
+    mondayDate: string;
+    editedDate: string | null;
+    editedField: keyof Patient;
+  }[];
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Nothing in Serving yet, so there are no order dates to set.
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <SmartNextOrderField
-          label="Sensors Next Order Date"
-          lastBillDates={[patient.sensorsLastBillDate, patient.cgmLastBillDate]}
-          mondayDate={patient.sensorsNextOrderDate}
-          editedDate={patient.sensorsNextOrderDateEdited}
-          editedField="sensorsNextOrderDateEdited"
-          onFieldChange={onFieldChange}
-        />
-        <SmartNextOrderField
-          label="IP Next Order Date"
-          lastBillDates={[patient.ipLastBillDate]}
-          mondayDate={patient.ipNextOrderDate}
-          editedDate={patient.ipNextOrderDateEdited}
-          editedField="ipNextOrderDateEdited"
-          onFieldChange={onFieldChange}
-        />
-        <SmartNextOrderField
-          label="Supplies Next Order Date"
-          lastBillDates={[patient.infusionSetLastBillDate, patient.cartridgeLastBillDate]}
-          mondayDate={patient.suppliesNextOrderDate}
-          editedDate={patient.suppliesNextOrderDateEdited}
-          editedField="suppliesNextOrderDateEdited"
-          onFieldChange={onFieldChange}
-        />
-      </div>
-    </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {rows.map((r) => (
+        <div key={r.key} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+          <p className="text-sm font-semibold pt-1">{r.label}</p>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+              Last Bill Date
+            </p>
+            <p
+              className="text-sm font-medium"
+              title={
+                r.key === "supplies"
+                  ? `Infusion set ${patient.infusionSetLastBillDate || "—"} · Cartridge ${patient.cartridgeLastBillDate || "—"}`
+                  : undefined
+              }
+            >
+              {r.lastBill || "—"}
+            </p>
+          </div>
+          <SmartNextOrderField
+            label="Next Order Date"
+            lastBillDates={r.lastBillDates}
+            mondayDate={r.mondayDate}
+            editedDate={r.editedDate}
+            editedField={r.editedField}
+            onFieldChange={onFieldChange}
+          />
+        </div>
+      ))}
+    </div>
   );
 }

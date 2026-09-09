@@ -34,6 +34,13 @@ export interface Patient {
   memberId1: string;
   memberId1Edited: string | null;
   secondaryInsurance: string;
+  /** Plan Name, read-only. */
+  planName: string;
+  /** Order Frequency as the board has it ("30-Days" … "90-Days"), or "". */
+  orderFrequency: string;
+  /** The rep's override. Null = they haven't touched it this session. */
+  orderFrequencyEdited: string | null;
+  orderFrequencyIndex: number | null;
   memberId2: string;
   // Read-only product/referral
   serving: string;
@@ -61,6 +68,10 @@ export interface Patient {
   secondaryInsuranceIndex: number | null;
   secondaryInsuranceEdited: string | null;
   memberId2Edited: string | null;
+  /** Insurance Notes as the rep has it. Null = untouched.
+   *  Brandon's Block A: an "Other" secondary must record the payer name
+   *  and group here, so this column is writable from Welcome Call now. */
+  insuranceNotesEdited: string | null;
   // Editable welcome call fields
   monitorQty: string;
   pumpQty: string;
@@ -161,6 +172,18 @@ export interface Patient {
    *  (lib/welcomeCall/callIntake.ts). Optional because hand-built test fixtures
    *  and the sidebar's slim patient objects predate it. */
   callIntake?: CallIntake;
+  /** The rep answered "Unknown" to Brandon's secondary-coverage question.
+   *
+   *  ⚠️ Session-only and NO COLUMN, deliberately — Unknown writes nothing
+   *  (`secondaryWrites`), because clearing Secondary Insurance would destroy a
+   *  real policy record rather than record a shrug. It rides the page overlay
+   *  so the control and the send gate read ONE answer through
+   *  `secondaryStateFor`; a flag local to the card is what let the screen say
+   *  Unknown while Advance stayed shut on the board's old value. Keyed per
+   *  patient by the overlay itself, so it cannot follow a sidebar click onto
+   *  somebody else. Never written by `mondayWrite`, which names every column
+   *  it sends. */
+  secondaryUnknown?: boolean;
 }
 
 // Infusion Set 1 / 2 options are NOT hardcoded here any more.

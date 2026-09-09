@@ -30,9 +30,13 @@ import { IntakeMessages } from "@/components/profile/IntakeMessages";
 import "@/pages/profile/redesign.css";
 import "@/pages/profile/intake.css";
 import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions, DEFAULT_INFUSION_QTY } from "@/lib/welcomeCall/payerRules";
+import { InsuranceBlock, AuthBlock, OopBlock } from "@/components/welcomeCall/InsuranceAuthSection";
 import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
 import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
 import { etTodayYmd } from "@/lib/shared/monitorSale";
+import { shouldDefaultPumpQty, setTwoTransition, isSetChosen } from "@/lib/welcomeCall/orderDefaults";
+import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "@/lib/welcomeCall/orderFrequency";
+import { NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
 import {
   compatibleSetOptions,
   withCurrentSelection,
@@ -44,11 +48,8 @@ import { pumpConfirmLabel, pumpConfirmationStale, needsPumpConfirmation } from "
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import {
   ConfirmCheck,
-  SupplyLengthField,
   PhoneNumbersSection,
   CaretakerSection,
-  InsuranceSection,
-  AuthCostSection,
 } from "./CallIntakeFields";
 import { toast } from "sonner";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
@@ -85,7 +86,7 @@ import { pumpQtyApplies } from "@/lib/shared/servingLines";
 
 interface Props {
   patient: Patient;
-  onFieldChange: (field: keyof Patient, value: string | number | null) => void;
+  onFieldChange: (field: keyof Patient, value: string | number | boolean | null) => void;
   /** Updates the no-column intake payload (lib/welcomeCall/callIntake.ts).
    *  Separate from `onFieldChange` because that one is typed for scalar column
    *  values; this carries a whole object. */
@@ -95,11 +96,14 @@ interface Props {
 
 function SectionHeading({ number, title }: { number: number; title: string }) {
   return (
-    <div className="flex items-center gap-3 mb-4">
-      <span className="flex items-center justify-center h-7 w-7 rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
+    <div className="flex items-center gap-3 mb-5">
+      <span className="flex items-center justify-center h-8 w-8 rounded-full bg-[color:var(--mm-teal)] text-white text-sm font-bold shrink-0">
         {number}
       </span>
-      <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      {/* The MN bar's eyebrow, one step up: these are the call's steps, so they
+          have to be findable while a rep is talking. Brandon: "much bigger
+          font… look at medical necessity bucket top bar and copy that". */}
+      <p className="text-base font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </p>
     </div>
@@ -284,6 +288,12 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
   const effectiveSecondary = patient.secondaryInsuranceEdited ?? patient.secondaryInsurance;
   const infusionCap = payerInfusionCap(effectivePrimary);
   const supplyNote = supplyLengthNote(effectivePrimary, effectiveSecondary);
+  const frequency = frequencyState({
+    boardLabel: patient.orderFrequency,
+    edited: patient.orderFrequencyEdited,
+    primaryInsurance: effectivePrimary,
+    secondaryInsurance: effectiveSecondary,
+  });
   const derivedSupplyDays = String(supplyLengthDays(effectivePrimary, effectiveSecondary)) as SupplyLength;
   const setIntake = (next: CallIntake) => onIntakeChange?.(next);
 
@@ -336,6 +346,34 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
      correction anybody made.
      ⚠️ The set AND its quantity are cleared together: a quantity left attached
      to no set is the §5.12 shape where a counter and its columns disagree. */
+  /* Set 2 arriving or leaving rewrites the quantities (Brandon, both
+     directions — see `setTwoTransition`).
+     ⚠️ Same ref-with-patient-id guard as the pump effect below, and for the
+     same reason: running this on load would wipe the quantities of every
+     already-split patient the moment a rep opened them, and switching patients
+     changes Set 2 without anybody having chosen anything. */
+  /* ⚠️ There is deliberately NO effect re-checking Order Frequency here any
+     more. `frequencyState` now ignores an ineligible value wherever it came
+     from — the board as well as the rep's edit — so the card and the send read
+     the same answer and cannot drift. The effect only ever re-checked the
+     edit, which left a board-held 75-Days effective after a payer correction
+     (Greptile, PR #56). */
+
+  const lastSet2 = useRef<{ patientId: string; has: boolean } | null>(null);
+  useEffect(() => {
+    const has = isSetChosen(patient.infusionSet2);
+    const prev = lastSet2.current;
+    lastSet2.current = { patientId: patient.id, has };
+    if (!prev || prev.patientId !== patient.id || prev.has === has) return;
+    const { writes, clearSet2 } = setTwoTransition(prev.has, has);
+    for (const [field, value] of Object.entries(writes)) {
+      onFieldChange(field as keyof Patient, value);
+    }
+    // The set column goes with its quantity, never one without the other.
+    if (clearSet2) handleSelectChange("infusionSet2", "", null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, patient.infusionSet2]);
+
   const lastPump = useRef<{ patientId: string; pumpType: string } | null>(null);
   useEffect(() => {
     const prev = lastPump.current;
@@ -452,11 +490,20 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
   // prior-pump-date effect below. The send writes local state, so a control
   // going disabled has to take its value with it or the 1 still reaches Monday.
   useEffect(() => {
+    /* Brandon: "Pump Qty should be default to 1 for any serving that includes
+       insulin pump". Fill-when-blank and positive-evidence only — see
+       `shouldDefaultPumpQty` for why this must not key on `canSellPump`, which
+       trusts a blank Serving, nor on `servingIncludesPump`, which is true for
+       "Supplies" and is §5.22's $3,787 pump. */
+    if (shouldDefaultPumpQty(effectiveServing, patient.pumpQty)) {
+      onFieldChange("pumpQty", "1");
+      return;
+    }
     if (!canSellPump && (Number(patient.pumpQty) || 0) > 0) {
       onFieldChange("pumpQty", "0");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patient.id, canSellPump, patient.pumpQty]);
+  }, [patient.id, canSellPump, patient.pumpQty, effectiveServing]);
 
   // Clear a stale prior-pump date if the patient stops being eligible (insurance
   // changed away from Medicare A&B, Pump Qty set to 1, or serving changed to
@@ -561,7 +608,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
     <div className="space-y-5">
       {/* Header */}
       <div className="px-1">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           To Fill In
         </p>
         <p className="text-sm text-muted-foreground mt-1">
@@ -604,7 +651,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           <div className={`grid grid-cols-1 ${showMonitorPurchaseDate ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-6`}>
             {/* CGM Type — editable dropdown */}
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
+              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
                 CGM Type
               </label>
               <Select
@@ -634,7 +681,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
             {/* Monitor Qty — toggle (0 or 1) */}
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
+              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
                 Monitor Qty
               </label>
               <div className="flex items-center gap-3 h-10">
@@ -692,7 +739,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             {/* Monitor Purchase Date — Original Medicare + Monitor Qty 0 + CGM serving only */}
             {showMonitorPurchaseDate && (
               <div>
-                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+                <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
                   Monitor Purchase Date
                 </label>
                 <Input
@@ -753,7 +800,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           {/* Pump Type + Pump Qty (+ Prior Pump Purchase Date for Original Medicare) */}
           <div className={`grid grid-cols-1 ${showPriorPumpDate ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-6 mb-5`}>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
                 Pump Type
               </label>
               <Select
@@ -798,7 +845,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
                 Pump Qty
               </label>
               <div className="flex items-center gap-3 h-10">
@@ -849,7 +896,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             {/* Prior Pump Purchase Date — Original Medicare + Pump Qty 0 + pump-supplies serving only */}
             {showPriorPumpDate && (
               <div>
-                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+                <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
                   Prior Pump Purchase Date
                 </label>
                 <Input
@@ -1028,7 +1075,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           owes. */}
       <Card className="p-6">
         <SectionHeading number={5} title="Insurance" />
-        <InsuranceSection intake={intake} onChange={setIntake} />
+        <InsuranceBlock patient={patient} onFieldChange={onFieldChange} />
       </Card>
 
       {/* ─── Section 6: Authorizations & Cost ───
@@ -1036,8 +1083,14 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           render in the patient header above — they are the Insurance stage's
           output, not something the rep sets on the call (§5.26). */}
       <Card className="p-6">
-        <SectionHeading number={6} title="Authorizations & Cost" />
-        <AuthCostSection intake={intake} onChange={setIntake} />
+        <SectionHeading number={6} title="Authorizations" />
+        <AuthBlock patient={patient} />
+        <div className="mt-6 border-t pt-6">
+          <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground mb-3">
+            Out of Pocket
+          </p>
+          <OopBlock intake={intake} onChange={setIntake} />
+        </div>
       </Card>
 
       {/* ─── Section 7: Subscription & Logistics ─── */}
@@ -1046,7 +1099,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {/* Subscription Type */}
           <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
+            <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
               Subscription Type
             </label>
             <Select
@@ -1083,15 +1136,52 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             })()}
           </div>
 
-          {/* Supply length — no board column; sits with Subscription Type
-              because it describes the same order. */}
-          <SupplyLengthField
-            intake={intake}
-            onChange={setIntake}
-            derivedNote={supplyNote}
-            options={supplyLengthOptions(effectivePrimaryInsurance)}
-          />
+          {/* Order Frequency — Brandon: "call it that, not 'Supply length', so
+              it matches the boards". It is a real Monday column now
+              (`color_mm71xdhj`) rather than a line in the notes block, which is
+              what lets the Subscription hop copy it. */}
+          <div>
+            <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
+              Order Frequency
+            </label>
+            <Select
+              value={frequency.days}
+              onValueChange={(v) => {
+                onFieldChange("orderFrequencyEdited" as keyof Patient, v);
+                onFieldChange(
+                  "orderFrequencyIndex" as keyof Patient,
+                  ORDER_FREQUENCY_INDEX[daysToLabel(v)] ?? null,
+                );
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select frequency" />
+              </SelectTrigger>
+              <SelectContent>
+                {frequency.options.map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {d} days
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* One muted hint, and only while it means something: our guess, or
+                the rep's edit. A value already on the board gets neither. */}
+            {frequency.hint && (
+              <p className="mt-1.5 text-xs text-muted-foreground">{frequency.hint}</p>
+            )}
+          </div>
 
+        </div>
+
+        {/* Brandon: the dates live "under the cards, in this section" rather
+            than at the end of the call. Rows for lines not in Serving don't
+            render. */}
+        <div className="mt-6 border-t pt-6">
+          <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground mb-3">
+            Order Dates
+          </p>
+          <NextOrderDatesCard patient={patient} onFieldChange={onFieldChange} />
         </div>
       </Card>
 
@@ -1106,10 +1196,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         <div className="mt-6 space-y-3">
           {/* Current Monday address (read-only) */}
           <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+            <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
               Address on File
             </label>
-            <p className="text-sm font-medium px-3 py-2 rounded-md bg-muted/50 border border-input min-h-[40px] flex items-center">
+            <p className="text-lg font-semibold px-3 py-2.5 rounded-lg bg-muted/40 border border-input min-h-[48px] flex items-center break-words">
               {patient.address || <span className="text-muted-foreground italic">No address on file</span>}
             </p>
             {/* Was a zip-only "Zip code needs to be added!" — now the FULL
@@ -1124,7 +1214,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
           {/* Google Places autocomplete for editing */}
           <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+            <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
               Update Address
             </label>
             <AddressAutocomplete
@@ -1162,7 +1252,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             return (
               <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                  <span className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
                     Place of Service
                   </span>
                   <span className="text-sm font-semibold">{computed}</span>
@@ -1246,10 +1336,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
       {/* ─── End-of-call decision: Advance? ─── */}
       <Card className="p-6">
         <SectionHeading number={9} title="End of Call" />
-        <p className="text-sm text-muted-foreground mb-4">
-          After wrapping up the welcome call, decide whether this patient should
-          advance to Order or hold here. Either choice routes the patient back
-          for Profile Review on the Monday board.
+        <p className="text-base text-muted-foreground mb-5">
+          Decide whether this patient advances to Order or holds here. Either
+          choice routes them back for Profile Review on the board.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Button
@@ -1273,10 +1362,8 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             }}
           >
             <div>
-              <p className="font-semibold text-sm">Advance</p>
-              <p className="text-xs opacity-90 font-normal">
-                Move forward to Order.
-              </p>
+              <p className="font-bold text-lg">Advance</p>
+              <p className="text-sm opacity-90 font-normal">Move forward to Order.</p>
             </div>
           </Button>
           <Button
@@ -1300,8 +1387,8 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             }}
           >
             <div>
-              <p className="font-semibold text-sm">Don&apos;t Advance</p>
-              <p className="text-xs opacity-90 font-normal">
+              <p className="font-bold text-lg">Don&apos;t Advance</p>
+              <p className="text-sm opacity-90 font-normal">
                 Hold this patient — do not progress to Order.
               </p>
             </div>

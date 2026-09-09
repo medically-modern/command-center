@@ -562,9 +562,16 @@ export function DaysInStagePill({ value }: { value?: string }) {
 /** Patient phone shown as a Call button (with the number) + a Text button.
  *  Uses tel:/sms: so the rep's device handles it. */
 export function PatientContact({
-  phone, textPrefill, textOpen, onTextOpenChange, onTextSent,
+  phone, textPrefill, textOpen, onTextOpenChange, onTextSent, hideCallHistory,
 }: {
   phone?: string;
+  /** Drop the "Calls" pop-up button.
+   *
+   *  Only Welcome Call passes this: its RingCentral activity box has a Calls
+   *  TAB showing the same history, so the button beside it would be a second
+   *  door to the same room on a screen Brandon asked to simplify. Everywhere
+   *  else the pop-up is the only way in and the default keeps it. */
+  hideCallHistory?: boolean;
   /** Seeds the composer the first time it opens — e.g. an insurance follow-up
    *  template. Never overwrites something the rep has already typed. */
   textPrefill?: string;
@@ -597,7 +604,7 @@ export function PatientContact({
         onOpenChange={onTextOpenChange}
         onSent={onTextSent}
       />
-      <CallHistoryButton phone={tel} display={display} />
+      {!hideCallHistory && <CallHistoryButton phone={tel} display={display} />}
     </span>
   );
 }

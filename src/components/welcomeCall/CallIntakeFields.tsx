@@ -98,63 +98,14 @@ export function ConfirmCheck({
   );
 }
 
-/* ── Supply length — sits with Subscription Type, it describes the order ── */
-
-export function SupplyLengthField({
-  intake,
-  onChange,
-  derivedNote,
-  options,
-}: IntakeProps & { derivedNote?: string; options: string[] }) {
-  /* ⚠️ `options` is REQUIRED, not defaulted to SUPPLY_LENGTHS. 75 days is
-   * offered to AETNA ONLY (Brandon, 2026-09-09), and SUPPLY_LENGTHS now
-   * contains it so the notes block can round-trip it — so falling back to that
-   * list would offer 75 to every payer. The two lists answer different
-   * questions; making this a required prop is what stops them being confused
-   * for one another again. */
-  const lengths = options;
-  return (
-    <div>
-      <label className={LABEL_CLS}>Supply Length</label>
-      <Select
-        value={intake.supplyLength || undefined}
-        // Picking from this control is what makes the value the rep's — see
-        // `supplyLengthManual` in callIntake.ts for why that is recorded rather
-        // than inferred from the value.
-        onValueChange={(v) =>
-          onChange({ ...intake, supplyLength: v as SupplyLength, supplyLengthManual: true })
-        }
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Not set" />
-        </SelectTrigger>
-        <SelectContent>
-          {lengths.map((d) => (
-            <SelectItem key={d} value={d}>
-              {d} days
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {/* The payer rule decides this; the select is an override the rep can
-          make on the call, and whichever value ends up here is what lands in
-          the notes block.
-          ⚠️ Once the rep HAS overridden, the caption is no longer describing the
-          field above it — it is describing what the payer rule would have said.
-          Unprefixed, the two lines read as contradicting each other ("30 days"
-          over "Medicaid — 60 day supply"), and the caption is the more
-          sentence-like of the pair, so it reads as the live answer. Say whose
-          number is whose (reported 2026-08-31). */}
-      {derivedNote && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          {intake.supplyLengthManual ? `Overrides ${derivedNote}` : derivedNote}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/* ── Section: extra phone numbers + caretaker ── */
+/* ⚠️ `SupplyLengthField` was DELETED on 2026-09-09. Brandon: "call it Order
+   Frequency, not Supply length, so it matches the boards" — and "stop writing
+   supply length to the notes block". The control is now an inline select in
+   Subscription & Logistics writing the real Monday column
+   (`color_mm71xdhj`), so this one had no call sites left. Deleted rather than
+   left unimported: a dead component that still looks live is how a later edit
+   lands somewhere nothing renders (§5.11). The payer-eligibility guarantee it
+   carried moved with it — see `orderFrequencyOptionsSource.test.ts`. */
 
 function PhoneRow({
   phone,
@@ -315,67 +266,10 @@ const SECONDARY_OPTIONS: { value: SecondaryCoverage; label: string }[] = [
   { value: "unknown", label: "Unknown / patient unsure" },
 ];
 
-/* Also split by the mockup: what the payer covers (Insurance) is a different
-   conversation from what the patient owes and what the auth says
-   (Authorizations & Cost). Same three ConfirmChecks, same fields — the OOP pair
-   simply travels with the cost half. */
-
-export function InsuranceSection({ intake, onChange }: IntakeProps) {
-  return (
-    <div className="space-y-5">
-      <div>
-        {/* The board's Secondary Insurance column can say None but has no way
-            to say "we asked and the patient didn't know" — that gap is why
-            this lives here rather than being written to the column. */}
-        <label className={LABEL_CLS}>Secondary Coverage</label>
-        <Select
-          value={intake.secondaryCoverage || undefined}
-          onValueChange={(v) => onChange({ ...intake, secondaryCoverage: v as SecondaryCoverage })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Not asked" />
-          </SelectTrigger>
-          <SelectContent>
-            {SECONDARY_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value as string}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
-        <ConfirmCheck intake={intake} onChange={onChange} field="primary" />
-        <ConfirmCheck intake={intake} onChange={onChange} field="secondary" />
-      </div>
-    </div>
-  );
-}
-
-export function AuthCostSection({ intake, onChange }: IntakeProps) {
-  return (
-    <div className="space-y-5">
-      <div>
-        <label className={LABEL_CLS}>Out-of-Pocket Quoted</label>
-        <Input
-          placeholder="e.g. $42.50, or $0 with Medicaid"
-          value={intake.oopAmount}
-          onChange={(e) => onChange({ ...intake, oopAmount: e.target.value })}
-        />
-      </div>
-
-      <ConfirmCheck intake={intake} onChange={onChange} field="oop" />
-
-      <div>
-        <label className={LABEL_CLS}>Auth Notes</label>
-        <Textarea
-          rows={3}
-          placeholder="Anything the auth results above don't say — resubmissions, retry queue, what the payer told us."
-          value={intake.authNotes}
-          onChange={(e) => onChange({ ...intake, authNotes: e.target.value })}
-        />
-      </div>
-    </div>
-  );
-}
+/* ⚠️ `InsuranceSection` and `AuthCostSection` were DELETED on 2026-09-09.
+   Brandon's Insurance & Authorization section replaced them: secondary coverage
+   is now one board-writing question (`InsuranceAuthSection.InsuranceBlock`),
+   the auth results are read-only chips (`AuthBlock`), and the out-of-pocket
+   pair moved to `OopBlock`. They are gone rather than left unimported — a dead
+   component that still looks live is how a later edit lands somewhere nothing
+   renders (§5.11). */

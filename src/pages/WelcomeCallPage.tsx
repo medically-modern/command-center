@@ -44,6 +44,7 @@ import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { unmetSendRequirements } from "@/lib/welcomeCall/sendGates";
+import { secondaryMissing, secondaryStateFor } from "@/lib/welcomeCall/secondaryCoverage";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
@@ -109,6 +110,17 @@ const WelcomeCallPage = () => {
             serving: selected.servingEdited ?? selected.serving,
             pumpType: selected.pumpType,
             intake: selected.callIntake ?? emptyIntake(),
+            /* Brandon called the secondary details "required"; only Unknown is
+               carved out, and `secondaryMissing` returns [] for it already.
+               ⚠️ Through `secondaryStateFor`, NOT the column: the rep's Unknown
+               has no board representation, so re-reading the column here made
+               this gate disagree with the control the rep had just used and
+               held Advance shut on a CIN they had said nobody knew. */
+            secondaryMissing: secondaryMissing({
+              ...secondaryStateFor(selected),
+              memberId2: selected.memberId2Edited ?? selected.memberId2,
+              insuranceNotes: selected.insuranceNotesEdited ?? selected.insuranceNotes ?? "",
+            }),
           })
         : [],
     [selected],
@@ -118,7 +130,7 @@ const WelcomeCallPage = () => {
     [selected],
   );
 
-  const handleFieldChange = (field: keyof Patient, value: string | number | null) => {
+  const handleFieldChange = (field: keyof Patient, value: string | number | boolean | null) => {
     if (!selected) return;
     update(selected.id, { [field]: value } as Partial<Patient>);
   };
@@ -352,7 +364,9 @@ const WelcomeCallPage = () => {
                   />
                   <OopEstimateCard patient={selected} />
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
-                  <NextOrderDatesCard patient={selected} onFieldChange={handleFieldChange} />
+                  {/* Order dates moved INTO Subscription & Logistics (form
+                      section 7) on 2026-09-09 — Brandon: "under the cards, in
+                      this section", not at the end of the call. */}
                   <NotesPanel key={selected.id}
                     columnRef={{ boardId: BOARD_ID, columnId: COL.notes }}
                     notes={selected.notes}

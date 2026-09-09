@@ -18,6 +18,7 @@ import {
   INTAKE_BLOCK_START,
   INTAKE_BLOCK_END,
   CONFIRM_KEYS,
+  REPORTED_CONFIRM_KEYS,
   type CallIntake,
 } from "./callIntake";
 
@@ -25,12 +26,18 @@ const AT = new Date("2026-08-28T14:33:00");
 
 function filled(): CallIntake {
   return {
-    confirmed: { pump: true, address: true, primary: true, secondary: false, oop: true },
-    secondaryCoverage: "unknown",
-    supplyLength: "90",
+    // ⚠️ `primary`/`secondary` are parse-only from 2026-09-09 (see
+    // REPORTED_CONFIRM_KEYS) — nothing can tick them, so they cannot
+    // round-trip. A legacy block still restores them; pinned below.
+    confirmed: { pump: true, address: true, primary: false, secondary: false, oop: true },
+    // ⚠️ Parse-only too — the secondary question moved to the real
+    // Secondary Insurance column, so nothing sets this any more.
+    secondaryCoverage: "",
+    // ⚠️ Parse-only from 2026-09-09 — see the parse-only block at the end.
+    supplyLength: "",
     pumpConfirmedModel: "t:slim",
     // Set so the full-fidelity round trip covers the override marker too.
-    supplyLengthManual: true,
+    supplyLengthManual: false,
     oopAmount: "$42.50",
     phones: [
       { number: "3475550101", kind: "cell", preferred: true },
@@ -114,14 +121,14 @@ describe("round trip", () => {
 describe("the LAST block wins", () => {
   it("reads the newest of several blocks", () => {
     const first = emptyIntake();
-    first.supplyLength = "30";
+    first.oopAmount = "$30";
     const second = emptyIntake();
-    second.supplyLength = "90";
+    second.oopAmount = "$90";
 
     let log = appendIntakeToNotes("", first, { initials: "JH", now: AT });
     log = appendIntakeToNotes(log, second, { initials: "JH", now: AT });
 
-    expect(parseIntakeBlock(log)?.supplyLength).toBe("90");
+    expect(parseIntakeBlock(log)?.oopAmount).toBe("$90");
   });
 
   it("keeps the earlier block in the log as history", () => {
@@ -138,7 +145,7 @@ describe("both confirm lines are always emitted", () => {
     i.authNotes = "x";
     const block = formatIntakeBlock(i);
     expect(block).toContain("Confirmed: none");
-    expect(block).toContain(`Unconfirmed: ${CONFIRM_KEYS.join(", ")}`);
+    expect(block).toContain(`Unconfirmed: ${REPORTED_CONFIRM_KEYS.join(", ")}`);
   });
 });
 
@@ -239,7 +246,7 @@ describe("caretaker fields never shift position (Greptile #1)", () => {
     const log = [
       INTAKE_BLOCK_START,
       "Confirmed: none",
-      "Unconfirmed: pump, address, primary, secondary, oop",
+      "Unconfirmed: pump, address, oop",
       "Caretaker: Jane Doe · Daughter · 3475550102 · jane@example.com · authorized",
       INTAKE_BLOCK_END,
     ].join("\n");
@@ -276,7 +283,7 @@ describe("free text never changes field (Greptile round 2)", () => {
     const log = [
       INTAKE_BLOCK_START,
       "Confirmed: none",
-      "Unconfirmed: pump, address, primary, secondary, oop",
+      "Unconfirmed: pump, address, oop",
       "Caretaker: Jane Doe · (Daughter) · 3475550102 · authorized",
       INTAKE_BLOCK_END,
     ].join("\n");
@@ -286,84 +293,6 @@ describe("free text never changes field (Greptile round 2)", () => {
   });
 });
 
-describe("supply length records WHO chose it", () => {
-  it("round-trips a rep override as an override", () => {
-    const i = emptyIntake();
-    i.supplyLength = "90";
-    i.supplyLengthManual = true;
-    const log = appendIntakeToNotes("", i, { initials: "JH", now: AT });
-    expect(log).toContain("Supply length: 90 days (override)");
-    const parsed = parseIntakeBlock(log);
-    expect(parsed?.supplyLength).toBe("90");
-    expect(parsed?.supplyLengthManual).toBe(true);
-  });
-
-  it("round-trips a derived value as derived, even when it equals a common override", () => {
-    // The whole point: 90 chosen by the rep and 90 derived by the payer rule
-    // are the same VALUE and must not be the same record.
-    const i = emptyIntake();
-    i.supplyLength = "90";
-    const log = appendIntakeToNotes("", i, { initials: "JH", now: AT });
-    expect(log).toContain("Supply length: 90 days");
-    expect(log).not.toContain("(override)");
-    expect(parseIntakeBlock(log)?.supplyLengthManual).toBe(false);
-  });
-});
-
-describe("forward compatibility", () => {
-  it("ignores a label it doesn't know instead of throwing", () => {
-    const log = [
-      INTAKE_BLOCK_START,
-      "Confirmed: pump",
-      "Unconfirmed: address, primary, secondary, oop",
-      "Some Future Field: whatever",
-      INTAKE_BLOCK_END,
-    ].join("\n");
-    const parsed = parseIntakeBlock(log);
-    expect(parsed?.confirmed.pump).toBe(true);
-  });
-
-  it("survives a block missing its end sentinel", () => {
-    const log = [INTAKE_BLOCK_START, "Confirmed: oop", "Unconfirmed: none"].join("\n");
-    expect(parseIntakeBlock(log)?.confirmed.oop).toBe(true);
-  });
-});
-
-describe("⚠️ 75-day supply round-trips through the block (Greptile, PR #55)", () => {
-  it("parses a saved 75 back out instead of dropping it", () => {
-    // It was added as an Aetna option while SUPPLY_LENGTHS still read
-    // ["30","60","90"], so the parser dropped the value while still restoring
-    // supplyLengthManual: true — which disables the payer default. The field
-    // came back blank AND frozen blank, and the next send wrote no length.
-    const i = emptyIntake();
-    i.supplyLength = "75";
-    i.supplyLengthManual = true;
-    const log = appendIntakeToNotes("", i, { initials: "JH", now: AT });
-    const parsed = parseIntakeBlock(log);
-    expect(parsed?.supplyLength).toBe("75");
-    expect(parsed?.supplyLengthManual).toBe(true);
-  });
-
-  it("round-trips every length the block can store", () => {
-    for (const len of SUPPLY_LENGTHS) {
-      const i = emptyIntake();
-      i.supplyLength = len;
-      expect(parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }))?.supplyLength).toBe(len);
-    }
-  });
-
-  it("⚠️ never leaves a manual override with no value to override with", () => {
-    // The failure mode is the PAIR, not either half: a dropped value alongside
-    // a restored `manual: true` is what freezes the field.
-    for (const len of SUPPLY_LENGTHS) {
-      const i = emptyIntake();
-      i.supplyLength = len;
-      i.supplyLengthManual = true;
-      const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-      if (parsed?.supplyLengthManual) expect(parsed.supplyLength).not.toBe("");
-    }
-  });
-});
 
 describe("⚠️ the confirmed pump model round-trips (Josh, 2026-09-09)", () => {
   it("records which model the rep confirmed", () => {
@@ -389,11 +318,86 @@ describe("⚠️ the confirmed pump model round-trips (Josh, 2026-09-09)", () =>
     const legacy = [
       "--- WC INTAKE v1 ---",
       "Confirmed: pump, address",
-      "Unconfirmed: primary, secondary, oop",
+      "Unconfirmed: oop",
       "--- END WC INTAKE ---",
     ].join("\n");
     const parsed = parseIntakeBlock(legacy);
     expect(parsed?.confirmed.pump).toBe(true);
     expect(parsed?.pumpConfirmedModel).toBe("");
+  });
+});
+
+describe("the insurance confirmations are parse-only", () => {
+  /* Brandon removed both checkboxes on 2026-09-09: primary is read-only at this
+     stage, and the secondary-coverage QUESTION is now the record. Nothing can
+     tick either, so emitting them would print them under "Unconfirmed:" on
+     every patient forever — a permanent false negative in the audit line. */
+  it("never emits primary or secondary", () => {
+    const i = emptyIntake();
+    i.confirmed.pump = true;
+    i.confirmed.primary = true;
+    i.confirmed.secondary = true;
+    const block = formatIntakeBlock(i);
+    expect(block).toContain("Confirmed: pump");
+    expect(block).not.toMatch(/Confirmed:.*primary/);
+    expect(block).not.toMatch(/Unconfirmed:.*secondary/);
+  });
+
+  /* Parsing them still costs nothing and preserves what old notes already say —
+     the "two lists, two questions" split (§5.31). */
+  it("still restores them from a block written before the change", () => {
+    const legacy = [
+      "--- WC INTAKE v1 ---",
+      "Confirmed: pump, primary, secondary",
+      "Unconfirmed: address, oop",
+      "--- END WC INTAKE ---",
+    ].join("\n");
+    const parsed = parseIntakeBlock(legacy);
+    expect(parsed?.confirmed.primary).toBe(true);
+    expect(parsed?.confirmed.secondary).toBe(true);
+    expect(parsed?.confirmed.pump).toBe(true);
+  });
+});
+
+describe("secondary coverage is parse-only", () => {
+  it("is never emitted any more", () => {
+    const i = emptyIntake();
+    i.secondaryCoverage = "unknown";
+    expect(formatIntakeBlock(i)).not.toContain("Secondary coverage");
+  });
+
+  it("still reads a block written before the change", () => {
+    const legacy = [
+      "--- WC INTAKE v1 ---",
+      "Secondary coverage: Unknown",
+      "--- END WC INTAKE ---",
+    ].join("\n");
+    expect(parseIntakeBlock(legacy)?.secondaryCoverage).toBe("unknown");
+  });
+});
+
+describe("supply length is parse-only", () => {
+  /* Brandon, 2026-09-09: "stop writing supply length to the notes block". The
+     value moved to the real Order Frequency column (`color_mm71xdhj`), which is
+     what lets the WC→Subscription hop copy it. A note line beside a column is a
+     second answer that drifts from the first. */
+  it("is never emitted any more", () => {
+    const i = emptyIntake();
+    i.supplyLength = "90";
+    i.supplyLengthManual = true;
+    expect(formatIntakeBlock(i)).not.toContain("Supply length");
+  });
+
+  /* Parsing still costs nothing and preserves what blocks already on patients
+     say — the same two-lists split CONFIRM_KEYS needs. */
+  it("still reads a block written before the change", () => {
+    const legacy = [
+      "--- WC INTAKE v1 ---",
+      "Supply length: 75 days (override)",
+      "--- END WC INTAKE ---",
+    ].join("\n");
+    const parsed = parseIntakeBlock(legacy);
+    expect(parsed?.supplyLength).toBe("75");
+    expect(parsed?.supplyLengthManual).toBe(true);
   });
 });

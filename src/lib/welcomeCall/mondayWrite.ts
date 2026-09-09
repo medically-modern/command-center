@@ -7,6 +7,7 @@ import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
 import { coercePumpQty } from "@/lib/shared/servingLines";
 import { coerceMonitorQty } from "@/lib/shared/monitorQty";
+import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "./orderFrequency";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -99,8 +100,41 @@ export async function sendPatientToMonday(
     tasks.push({ label: "Secondary Insurance", columnId: COL.secondaryInsurance, value: { index: p.secondaryInsuranceIndex! }, fn: () => writeStatusIndex(p.id, COL.secondaryInsurance, p.secondaryInsuranceIndex!) });
 
   // Member ID 2 (only if edited)
-  if (p.memberId2Edited !== null && p.memberId2Edited !== "")
-    tasks.push({ label: "Member ID 2", columnId: COL.memberId2, value: p.memberId2Edited!, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited!) });
+  /* ⚠️ `!== null` alone — an EMPTY edit is a real answer here.
+     The guard used to be `!== "" `, which silently dropped a rep clearing the
+     field: the input went blank, the send reported success and the board kept
+     the old ID. Brandon's Block A makes that clear load-bearing — answering
+     "No secondary" CLEARS Member ID 2, because a leftover ID under "None" is a
+     contradiction the next reader has to resolve. Null still means untouched. */
+  /* ⚠️ `typeof === "string"`, not `!== null`. Undefined is UNTOUCHED, the same
+     as null — a Patient mapped before this field existed has no key at all, and
+     `undefined !== null` is true, so the loose guard pushed a task whose `value`
+     was undefined. One such task disables the gateway's durable fast path for
+     the WHOLE send (§5.2). An empty STRING is still a real edit, which is what
+     lets "No secondary" clear Member ID 2. */
+  /* Order Frequency. ⚠️ The EFFECTIVE value is written, including a payer
+     default the rep never touched — otherwise a defaulted cadence stays blank
+     on the board and the Subscription hop has nothing to copy. That is the
+     whole point of moving this off the notes block. */
+  {
+    const f = frequencyState({
+      boardLabel: p.orderFrequency,
+      edited: p.orderFrequencyEdited,
+      primaryInsurance: p.primaryInsuranceEdited ?? p.primaryInsurance,
+      secondaryInsurance: p.secondaryInsuranceEdited ?? p.secondaryInsurance,
+    });
+    const label = daysToLabel(f.days);
+    const index = ORDER_FREQUENCY_INDEX[label];
+    // ⚠️ Never write an index the column doesn't have — Monday drops it without
+    // erroring (§5.20). An unmapped label means the rules and the board have
+    // drifted, and writing nothing is the visible failure.
+    if (index !== undefined)
+      tasks.push({ label: "Order Frequency", columnId: COL.orderFrequency, value: { index }, fn: () => writeStatusIndex(p.id, COL.orderFrequency, index) });
+  }
+  if (typeof p.memberId2Edited === "string")
+    tasks.push({ label: "Member ID 2", columnId: COL.memberId2, value: p.memberId2Edited, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited as string) });
+  if (typeof p.insuranceNotesEdited === "string")
+    tasks.push({ label: "Insurance Notes", columnId: COL.insuranceNotes, value: p.insuranceNotesEdited, fn: () => writeText(p.id, COL.insuranceNotes, p.insuranceNotesEdited as string) });
 
   // ⚠️ This module's writeNumber takes a NUMBER and always sends String(num) as
   // a PLAIN STRING — no skip, no cleaning (unlike profile's, which cleans and
@@ -328,8 +362,11 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
   // Secondary insurance & Member ID 2 (only if locally edited)
   if (p.secondaryInsuranceEdited !== null && p.secondaryInsuranceIndex !== null)
     tasks.push(writeStatusIndex(p.id, COL.secondaryInsurance, p.secondaryInsuranceIndex));
-  if (p.memberId2Edited !== null && p.memberId2Edited !== "")
+  // Same clear-is-an-answer rule, and the same undefined-is-untouched guard.
+  if (typeof p.memberId2Edited === "string")
     tasks.push(writeText(p.id, COL.memberId2, p.memberId2Edited));
+  if (typeof p.insuranceNotesEdited === "string")
+    tasks.push(writeText(p.id, COL.insuranceNotes, p.insuranceNotesEdited));
 
   // Address
   if (p.addressEdited !== null) {

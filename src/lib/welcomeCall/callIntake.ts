@@ -75,7 +75,26 @@ const STAGE_LABEL = "Welcome Call";
 /** The five things a rep reads back to the patient and ticks off. */
 export type ConfirmKey = "pump" | "address" | "primary" | "secondary" | "oop";
 
+/**
+ * Every confirmation key the block can PARSE. Unchanged — old notes carrying
+ * `primary` / `secondary` still round-trip.
+ */
 export const CONFIRM_KEYS: ConfirmKey[] = ["pump", "address", "primary", "secondary", "oop"];
+
+/**
+ * What the block REPORTS, which from 2026-09-09 is a shorter list.
+ *
+ * ⚠️ Two lists, two questions — the same split `SUPPLY_LENGTHS` vs
+ * `supplyLengthOptions` needs (§5.31), and for the same reason. Brandon's
+ * Insurance block removed both insurance checkboxes: primary is read-only at
+ * this stage ("Corey: primary isn't confirmed at this stage") and the
+ * secondary-coverage QUESTION is now the record, so a checkbox beside it would
+ * be a second, contradicting one. Nothing can tick either any more — emitting
+ * them would print them under "Unconfirmed:" on every patient forever, a
+ * permanent false negative in the audit line. Parsing them still costs nothing
+ * and preserves what old notes already say.
+ */
+export const REPORTED_CONFIRM_KEYS: ConfirmKey[] = ["pump", "address", "oop"];
 
 /** UI-facing wording. The BLOCK stores the key, never these strings. */
 export const CONFIRM_LABELS: Record<ConfirmKey, string> = {
@@ -261,8 +280,8 @@ function formatCaretaker(c: Caretaker): string {
 export function formatIntakeBlock(intake: CallIntake): string {
   const lines: string[] = [];
 
-  const yes = CONFIRM_KEYS.filter((k) => intake.confirmed[k]);
-  const no = CONFIRM_KEYS.filter((k) => !intake.confirmed[k]);
+  const yes = REPORTED_CONFIRM_KEYS.filter((k) => intake.confirmed[k]);
+  const no = REPORTED_CONFIRM_KEYS.filter((k) => !intake.confirmed[k]);
   lines.push(`Confirmed: ${yes.length ? yes.join(", ") : "none"}`);
   lines.push(`Unconfirmed: ${no.length ? no.join(", ") : "none"}`);
 
@@ -270,9 +289,14 @@ export function formatIntakeBlock(intake: CallIntake): string {
   // include blocks parsed from notes written before this field existed.
   const pumpModel = (intake.pumpConfirmedModel ?? "").trim();
   if (intake.confirmed.pump && pumpModel) lines.push(`Pump confirmed: ${oneLine(pumpModel)}`);
-  if (intake.secondaryCoverage) lines.push(`Secondary coverage: ${titleCase(intake.secondaryCoverage)}`);
-  if (intake.supplyLength)
-    lines.push(`Supply length: ${intake.supplyLength} days${intake.supplyLengthManual ? " (override)" : ""}`);
+  /* ⚠️ `Secondary coverage` and `Supply length` are no longer EMITTED
+     (Brandon, 2026-09-09: "stop writing supply length to the notes block").
+     Both moved to real Monday columns — secondary to `color_mm241kqp` via the
+     Insurance block, and supply length to Order Frequency `color_mm71xdhj` —
+     and a note line beside a column is a second answer that drifts from the
+     first. Both are still PARSED, so blocks already on patients keep their
+     meaning; the same two-lists split `CONFIRM_KEYS` /
+     `REPORTED_CONFIRM_KEYS` needs just above. */
   if (intake.oopAmount.trim()) lines.push(`OOP amount: ${oneLine(intake.oopAmount)}`);
 
   const phones = intake.phones.filter((p) => p.number.trim());

@@ -37,6 +37,23 @@ export const COL = {
   primaryInsurance: "color_mm1x157j",
   memberId1: "text_mm1x2qk2",
   secondaryInsurance: "color_mm241kqp",
+  /** Plan Name (dropdown). Read-only here — Brandon's Block A shows it
+   *  beside Primary Insurance and Member ID 1. */
+  planName: "dropdown_mm2wrzrk",
+  /**
+   * Order Frequency — created 2026-09-09 for Brandon's Subscription card.
+   * Labels mirror the Subscription board's own `color_mm48kv1c`, so the five
+   * WC→Subscription create-item workflows can COPY it instead of setting a
+   * fixed value.
+   *
+   * ⚠️ **Those workflows are NOT re-pointed yet, and must not be until every
+   * live WC item carries a value** — they currently set 90-Days/60-Days
+   * outright, and a workflow reading a blank column would write a blank Order
+   * Frequency onto the Subscription board with nothing erroring. Same
+   * coordinated cutover as §5.22b's Monitor Qty. The app writes the column from
+   * today so the population fills in on its own.
+   */
+  orderFrequency: "color_mm71xdhj",
   memberId2: "text_mm1xaccx",
 
   /** "POS" (Office = 0 | Home = 1). Write-only here: the rep has no control
@@ -155,7 +172,7 @@ export const COL = {
 
 export const READ_COLUMN_IDS = [
   COL.dob, COL.phone, COL.email, COL.address, COL.gender,
-  COL.primaryInsurance, COL.memberId1, COL.secondaryInsurance, COL.memberId2,
+  COL.primaryInsurance, COL.memberId1, COL.secondaryInsurance, COL.memberId2, COL.planName, COL.orderFrequency,
   COL.serving, COL.pumpType, COL.cgmType, COL.requestType, COL.doctorName, COL.doctorNpi,
   COL.referralSource, COL.referralReceivedDate,
   COL.diagnosis, COL.notes, COL.profileSendOffNotes, COL.mnWorkflowNotes, COL.insuranceNotes,

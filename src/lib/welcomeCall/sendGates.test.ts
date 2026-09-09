@@ -131,3 +131,35 @@ describe("⚠️ a pump change invalidates an existing confirmation", () => {
     expect(stale("", "t:slim")).toBe(true);
   });
 });
+
+describe("an incomplete secondary blocks Advance", () => {
+  const base = {
+    advanceDecisionIndex: 1,
+    serving: "CGM",
+    pumpType: "",
+    intake: { ...emptyIntake(), confirmed: { ...emptyIntake().confirmed, address: true } },
+  };
+
+  /* Brandon called the Member ID 2 / CIN / Insurance Notes rules "required",
+     and carved out ONLY Unknown from gating. Shown as amber text alone, a rep
+     could pick NY Medicaid, type nothing and advance — handing the payer and
+     DVS work downstream an incomplete policy (Greptile, PR #56). */
+  it("surfaces what the secondary question still needs", () => {
+    const out = unmetSendRequirements({ ...base, secondaryMissing: ["Needs a CIN."] });
+    expect(out.map((r) => r.label)).toContain("Needs a CIN.");
+    expect(out.every((r) => r.key !== "address-confirmed")).toBe(true);
+  });
+
+  it("asks nothing when the answer is complete", () => {
+    expect(unmetSendRequirements({ ...base, secondaryMissing: [] })).toEqual([]);
+    expect(unmetSendRequirements(base)).toEqual([]);
+  });
+
+  /* ⚠️ Still Advance-only. A rep who couldn't reach the patient and is holding
+     cannot have collected a CIN either. */
+  it("never blocks Don't Advance", () => {
+    expect(
+      unmetSendRequirements({ ...base, advanceDecisionIndex: 2, secondaryMissing: ["Needs a CIN."] }),
+    ).toEqual([]);
+  });
+});
