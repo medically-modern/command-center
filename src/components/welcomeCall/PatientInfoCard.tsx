@@ -19,6 +19,7 @@ import {
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import { WelcomeCallProfileStatus } from "@/components/shared/PatientProfileStatus";
+import { PatientActivityCard } from "@/components/welcomeCall/PatientActivityCard";
 
 interface Props {
   patient: Patient;
@@ -557,13 +558,15 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
         style={{ borderColor: "var(--mm-card-border)", borderTopColor: "var(--mm-teal)" }}
       >
         <HeaderEyebrow>Patient</HeaderEyebrow>
-        {/* ⚠️ `flex-wrap` is not cosmetic here. The MN bar this copies puts a
-            small `DaysInStagePill` on the right of this row; Welcome Call puts
-            `PhoneField`, whose edit mode is a fixed `w-44` input plus two
-            buttons. A long name with its status chips cannot share one
-            non-wrapping row with that on a narrow screen — the controls
-            overflow the card and become hard to hit (Greptile, PR #55). The
-            phone block drops to its own line instead. */}
+        {/* ⚠️ NO phone / text / call controls in this banner — Brandon,
+            2026-09-09: "get rid of the phone text and calls in the top banner
+            though, will have that lower down". They live in
+            `PatientActivityCard` below, whose header is where a rep presses to
+            call. Editing the number moved with them.
+            Keeping them here also caused a narrow-screen overflow (Greptile,
+            PR #55): the MN bar this copies puts a small pill on the right of
+            this row, not a fixed-width input and two buttons. `flex-wrap`
+            stays anyway — a long name plus status chips can still need it. */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap min-w-0">
             <h1 className="text-3xl font-black tracking-tight break-words">{patient.name}</h1>
@@ -583,12 +586,6 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
               requestType: patient.requestType,
             }) && <HeaderChip tone="amber">Cross-sell</HeaderChip>}
           </div>
-          <PhoneField
-            phone={patient.phone}
-            phoneEdited={patient.phoneEdited}
-            onFieldChange={onFieldChange}
-            onSavePhone={onSavePhone}
-          />
         </div>
 
         <div className="mt-2 flex items-center gap-4 flex-wrap">
@@ -661,6 +658,23 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
           </div>
         </div>
       </section>
+
+      {/* Brandon: "put text and call history on top like corey/katie had it".
+          Directly under the banner and above everything else, with the Call and
+          Text buttons in its header — the "lower down" the banner note points
+          at. Collapsed by default and fetches nothing until opened. */}
+      <PatientActivityCard phone={patient.phoneEdited ?? patient.phone} />
+
+      {/* The number itself is still editable — it just is not in the banner any
+          more. It sits with the identity facts it belongs to. */}
+      <Card className="p-4">
+        <PhoneField
+          phone={patient.phone}
+          phoneEdited={patient.phoneEdited}
+          onFieldChange={onFieldChange}
+          onSavePhone={onSavePhone}
+        />
+      </Card>
 
       {/* Row 1: Referral/Product + SOS + Insurance */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

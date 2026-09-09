@@ -33,6 +33,7 @@ import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays, sup
 import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
 import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
 import { etTodayYmd } from "@/lib/shared/monitorSale";
+import { shouldDefaultPumpQty, setTwoTransition, isSetChosen } from "@/lib/welcomeCall/orderDefaults";
 import {
   compatibleSetOptions,
   withCurrentSelection,
@@ -336,6 +337,27 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
      correction anybody made.
      ⚠️ The set AND its quantity are cleared together: a quantity left attached
      to no set is the §5.12 shape where a counter and its columns disagree. */
+  /* Set 2 arriving or leaving rewrites the quantities (Brandon, both
+     directions — see `setTwoTransition`).
+     ⚠️ Same ref-with-patient-id guard as the pump effect below, and for the
+     same reason: running this on load would wipe the quantities of every
+     already-split patient the moment a rep opened them, and switching patients
+     changes Set 2 without anybody having chosen anything. */
+  const lastSet2 = useRef<{ patientId: string; has: boolean } | null>(null);
+  useEffect(() => {
+    const has = isSetChosen(patient.infusionSet2);
+    const prev = lastSet2.current;
+    lastSet2.current = { patientId: patient.id, has };
+    if (!prev || prev.patientId !== patient.id || prev.has === has) return;
+    const { writes, clearSet2 } = setTwoTransition(prev.has, has);
+    for (const [field, value] of Object.entries(writes)) {
+      onFieldChange(field as keyof Patient, value);
+    }
+    // The set column goes with its quantity, never one without the other.
+    if (clearSet2) handleSelectChange("infusionSet2", "", null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, patient.infusionSet2]);
+
   const lastPump = useRef<{ patientId: string; pumpType: string } | null>(null);
   useEffect(() => {
     const prev = lastPump.current;
@@ -452,11 +474,20 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
   // prior-pump-date effect below. The send writes local state, so a control
   // going disabled has to take its value with it or the 1 still reaches Monday.
   useEffect(() => {
+    /* Brandon: "Pump Qty should be default to 1 for any serving that includes
+       insulin pump". Fill-when-blank and positive-evidence only — see
+       `shouldDefaultPumpQty` for why this must not key on `canSellPump`, which
+       trusts a blank Serving, nor on `servingIncludesPump`, which is true for
+       "Supplies" and is §5.22's $3,787 pump. */
+    if (shouldDefaultPumpQty(effectiveServing, patient.pumpQty)) {
+      onFieldChange("pumpQty", "1");
+      return;
+    }
     if (!canSellPump && (Number(patient.pumpQty) || 0) > 0) {
       onFieldChange("pumpQty", "0");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patient.id, canSellPump, patient.pumpQty]);
+  }, [patient.id, canSellPump, patient.pumpQty, effectiveServing]);
 
   // Clear a stale prior-pump date if the patient stops being eligible (insurance
   // changed away from Medicare A&B, Pump Qty set to 1, or serving changed to
