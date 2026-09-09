@@ -2680,6 +2680,26 @@ not fetched** — one request per voicemail to fill a list nobody asked to read.
   fabricated answer permanent on the next save. ⚠️ Unknown writes nothing and never gates
   Advance (*"patients often don't know"*). ⚠️ An **unrecognised** label reads as Yes/untyped,
   so the rep re-states it rather than having a real policy silently cleared.
+  ⚠️⚠️ **Unknown is the one answer with NO board representation, so it rides the page overlay
+  as `secondaryUnknown` and BOTH ends read it through `secondaryStateFor` — never off the
+  column.** A blank column reads Unknown on its own, but "the patient didn't know" on top of an
+  existing `NY Medicaid` cannot clear that column, because clearing would destroy a real policy
+  record. So the answer has to live somewhere, and where it lives is the whole bug: held as a
+  `useState` inside `InsuranceBlock` it was invisible to the page, whose send gate went on
+  reading `secondaryInsuranceEdited ?? secondaryInsurance`. A patient already carrying NY
+  Medicaid or Other then showed **Unknown** on screen with Advance held shut on a CIN the rep
+  had just recorded as unknown — **a gate with no passing move**, the dead end §5.10 and §5.20
+  each record reversing (Greptile, PR #56). The overlay also keys it per patient by
+  construction, which retires the hand-rolled `unknownFor === patient.id` guard against a
+  sidebar click. ⚠️ Neither file was wrong alone and `tsc` was happy with both — only the PAIR
+  was — so `components/welcomeCall/secondaryAnswerSource.test.ts` scans both ends and fails if
+  either reaches for the column again or the flag moves back into component state. ⚠️ The field
+  is session-only with no column, and `mondayWrite` names every column it sends, so it cannot
+  leak into a write.
+  ⚠️ **The details ARE required once the answer is Yes** — Brandon's word — so `secondaryMissing`
+  feeds `unmetSendRequirements` as `secondary-incomplete`. **Advance only**, never the call
+  itself: Welcome Call's own send gate is unchanged, per §5.17's rule that this stage can only
+  ever tell a rep MORE than before, never stop a call they could previously finish.
   **The board work he asked for was already done** — `Other` exists on `color_mm241kqp` and
   the stray `Done` is already deactivated (checked 2026-09-09).
   ⚠️ **"Date of last Stedi check" has NO source** — no such column on Welcome Call or Profile
@@ -2719,8 +2739,14 @@ is an **off-hours** job once it has.
 The send writes the **effective** value including an untouched payer default, or a defaulted
 cadence stays blank and the hop has nothing to copy. One muted hint, only when it means
 something: "default for Medicaid" while it's our guess, "edited" once the rep changes it,
-nothing for a value the board already holds. A payer correction still invalidates a stranded
-75 (§5.31's rule, carried across the move to a column).
+nothing for a value the board already holds.
+⚠️ **A payer correction invalidates a stranded 75, and the check lives INSIDE `frequencyState`
+— not in an effect beside it.** 75 days is Aetna-only (§5.31), and the first shape validated
+only the rep's `orderFrequencyEdited` in a `useEffect`, returning early for an untouched
+board-backed value: a patient already carrying 75-Days survived a correction from Aetna to
+another payer and the send wrote that index again (Greptile, PR #56). `frequencyState` now
+drops an ineligible value from **both** sources, so the card and the send read one answer; the
+effect was **deleted** rather than left as a second opinion on the same question.
 ⚠️ `SupplyLengthField` is **deleted** (no call sites left), and its payer-eligibility guard
 **migrated** rather than lapsing — `orderFrequencyOptionsSource.test.ts` pins that the select
 renders `frequency.options` and never a literal, because `string[]` cannot say which list it
