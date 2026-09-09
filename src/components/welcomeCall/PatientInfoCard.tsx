@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
-import { authWindow, secondaryAsk, secondaryAskNote } from "@/lib/welcomeCall/workflow";
+import { authWindow, secondaryAsk, secondaryAskNote, isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { expectedPos } from "@/lib/shared/pos";
 import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { Card } from "@/components/ui/card";
@@ -25,6 +25,35 @@ interface Props {
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
   onSavePhone?: (phone: string) => Promise<void>;
   onSaveSecondaryInsurance?: (label: string, index: number) => Promise<void>;
+}
+
+const dash = (v?: string) => (v && v.trim() ? v : "—");
+
+/** The MN bar's label type, verbatim — `SendRequestHeaderCard`'s `Eyebrow`.
+ *  Kept as its own component rather than a shared import because the two files
+ *  are the only users and a shared one would invite drift into a third look. */
+function HeaderEyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+/** A call-shaping flag beside the patient's name. */
+function HeaderChip({ tone, children }: { tone: "sky" | "amber"; children: React.ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider border",
+        tone === "sky"
+          ? "bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800"
+          : "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800",
+      )}
+    >
+      {children}
+    </span>
+  );
 }
 
 /** Prefix a raw value with $ for display (e.g. "1500" → "$1,500"). No-op if empty. */
@@ -515,88 +544,127 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
 
   return (
     <div className="space-y-4">
-      {/* Patient name + DOB + phone + intake date */}
-      <Card className="p-4 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-            Patient Name
-          </p>
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-lg font-semibold">{patient.name}</p>
-            <WelcomeCallProfileStatus patient={patient} size="sm" />
+      {/* ─── Patient banner ───
+          Brandon, 2026-09-09: make this read like the medical-necessity top
+          bar. The reference is `components/masheke/SendRequestHeaderCard` —
+          same card shell (rounded-2xl, 4px teal top border), same type ramp
+          (`Eyebrow` at text-sm uppercase, name at text-3xl font-black, values
+          at text-lg font-semibold) and the same three info-group cards. The
+          Lovable mockup supplied the CONTENT and its order; where the two
+          disagreed on looks, the MN bar won. */}
+      <section
+        className="rounded-2xl bg-card border p-6 shadow-sm border-t-4"
+        style={{ borderColor: "var(--mm-card-border)", borderTopColor: "var(--mm-teal)" }}
+      >
+        <HeaderEyebrow>Patient</HeaderEyebrow>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 flex-wrap min-w-0">
+            <h1 className="text-3xl font-black tracking-tight">{patient.name}</h1>
+            <WelcomeCallProfileStatus patient={patient} />
+            {/* Two call-shaping prompts that already existed in workflow.ts and
+                had nowhere to render. Neither is a gate — `isFirstTimePumpUser`
+                is explicitly "a prompt, never a gate", and cross-sell is what
+                the rep has to raise on the call. */}
+            {isFirstTimePumpUser({
+              serving: patient.servingEdited ?? patient.serving,
+              pumpQty: patient.pumpQty,
+              ipLastBillDate: patient.ipLastBillDate,
+              medicarePriorPumpDate: patient.medicarePriorPumpDate,
+            }) && <HeaderChip tone="sky">First-time pump user</HeaderChip>}
+            {isCrossSell({
+              serving: patient.servingEdited ?? patient.serving,
+              requestType: patient.requestType,
+            }) && <HeaderChip tone="amber">Cross-sell</HeaderChip>}
           </div>
+          <PhoneField
+            phone={patient.phone}
+            phoneEdited={patient.phoneEdited}
+            onFieldChange={onFieldChange}
+            onSavePhone={onSavePhone}
+          />
         </div>
 
-        {patient.dob && (
-          <div className="text-center">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-              DOB
-            </p>
-            <p className="text-lg font-semibold">{patient.dob}</p>
-          </div>
-        )}
+        <div className="mt-2 flex items-center gap-4 flex-wrap">
+          <span className="text-lg text-muted-foreground">DOB {dash(patient.dob)}</span>
+          {patient.referralReceivedDate && (
+            <span className="text-lg text-muted-foreground">
+              Intake {formatDateMDY(patient.referralReceivedDate)}
+            </span>
+          )}
+        </div>
 
-        {patient.referralReceivedDate && (
-          <div className="text-center">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-              Intake Date
-            </p>
-            <p className="text-lg font-semibold">{formatDateMDY(patient.referralReceivedDate)}</p>
+        {/* Three info groups, mirroring the MN bar's shape. These four facts are
+            what the mockup puts under the name; Serving stays EDITABLE here
+            because correcting it is the fix for the §5.22 pump/serving class of
+            error, and this is where the rep is looking. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5">
+          <div className="border rounded-xl bg-muted/30 p-4" style={{ borderColor: "var(--mm-card-border)" }}>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <HeaderEyebrow>Request</HeaderEyebrow>
+                <div className="mt-1 text-lg font-semibold">{dash(patient.requestType)}</div>
+              </div>
+              <div>
+                <HeaderEyebrow>Serving</HeaderEyebrow>
+                <Select
+                  value={
+                    patient.servingIndexEdited !== null
+                      ? String(patient.servingIndexEdited)
+                      : patient.servingIndex !== null
+                        ? String(patient.servingIndex)
+                        : ""
+                  }
+                  onValueChange={(value) => {
+                    const option = SERVING_OPTIONS.find((o) => String(o.index) === value);
+                    if (onFieldChange && option) {
+                      onFieldChange("servingEdited", option.label);
+                      onFieldChange("servingIndexEdited" as keyof Patient, option.index);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9 mt-1 text-base font-semibold">
+                    <SelectValue placeholder="Select serving" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SERVING_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.index} value={String(opt.index)}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
-        )}
-
-        <PhoneField
-          phone={patient.phone}
-          phoneEdited={patient.phoneEdited}
-          onFieldChange={onFieldChange}
-          onSavePhone={onSavePhone}
-        />
-      </Card>
+          <div className="border rounded-xl bg-muted/30 p-4" style={{ borderColor: "var(--mm-card-border)" }}>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <HeaderEyebrow>Referral Source</HeaderEyebrow>
+                <div className="mt-1 text-lg font-semibold break-words">{dash(patient.referralSource)}</div>
+              </div>
+              <div>
+                <HeaderEyebrow>Doctor</HeaderEyebrow>
+                <div className="mt-1 text-lg font-semibold break-words">{dash(patient.doctorName)}</div>
+              </div>
+            </div>
+          </div>
+          <div className="border rounded-xl bg-muted/30 p-4" style={{ borderColor: "var(--mm-card-border)" }}>
+            <HeaderEyebrow>Primary Insurance</HeaderEyebrow>
+            <div className="mt-1 text-lg font-semibold break-words">{dash(patient.primaryInsurance)}</div>
+          </div>
+        </div>
+      </section>
 
       {/* Row 1: Referral/Product + SOS + Insurance */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Referral Source, Request Type and Serving moved UP into the banner
+            (they are four of the facts the mockup puts under the name), so this
+            card is now the doctor block it always half was. The Cross Sell pill
+            moved with Serving and is a header chip. */}
         <Card className="p-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Referral Source" value={patient.referralSource} />
             <Field label="Doctor Name" value={patient.doctorName} />
-            <Field label="Request Type" value={patient.requestType} />
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                Serving
-              </p>
-              <Select
-                value={
-                  patient.servingIndexEdited !== null
-                    ? String(patient.servingIndexEdited)
-                    : patient.servingIndex !== null
-                      ? String(patient.servingIndex)
-                      : ""
-                }
-                onValueChange={(value) => {
-                  const option = SERVING_OPTIONS.find((o) => String(o.index) === value);
-                  if (onFieldChange && option) {
-                    onFieldChange("servingEdited", option.label);
-                    onFieldChange("servingIndexEdited" as keyof Patient, option.index);
-                  }
-                }}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue placeholder="Select serving" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SERVING_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.index} value={String(opt.index)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {isCrossSell({ serving: patient.servingEdited ?? patient.serving, requestType: patient.requestType }) && (
-                <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border border-amber-300 mt-1">
-                  Cross Sell
-                </span>
-              )}
-            </div>
+            <Field label="Doctor NPI" value={patient.doctorNpi} />
           </div>
 
           {/* Doctor-level notes from the Doctor Database */}

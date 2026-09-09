@@ -36,8 +36,10 @@ import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import {
   ConfirmCheck,
   SupplyLengthField,
-  ContactsSection,
-  InsuranceCostSection,
+  PhoneNumbersSection,
+  CaretakerSection,
+  InsuranceSection,
+  AuthCostSection,
 } from "./CallIntakeFields";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { Card } from "@/components/ui/card";
@@ -457,11 +459,27 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </p>
       </div>
 
-      {/* ─── Section 1: CGM ─── */}
+      {/* ─── Sections 1 & 2: who we are talking to ───
+          Neither has a Monday column; both are captured here and appended to
+          the Notes column as a parseable block on Send (§ callIntake.ts). They
+          were one section ("Contacts & Caretaker") sitting BELOW the product
+          sections until Brandon's 2026-09-09 mockup opened the call with them,
+          which is the order the call actually runs in. */}
+      <Card className="p-6">
+        <SectionHeading number={1} title="Phone Numbers" />
+        <PhoneNumbersSection intake={intake} onChange={setIntake} />
+      </Card>
+
+      <Card className="p-6">
+        <SectionHeading number={2} title="Caretaker (optional)" />
+        <CaretakerSection intake={intake} onChange={setIntake} />
+      </Card>
+
+      {/* ─── Section 3: CGM ─── */}
       {showCgm ? (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <SectionHeading number={1} title="CGM" />
+            <SectionHeading number={3} title="CGM" />
             {!defaultShowCgm && (
               <Button
                 variant="ghost"
@@ -605,11 +623,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </Card>
       )}
 
-      {/* ─── Section 2: Pump & Infusion Sets ─── */}
+      {/* ─── Section 4: Pump & Infusion Sets ─── */}
       {showPump ? (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <SectionHeading number={2} title="Pump & Infusion Sets" />
+            <SectionHeading number={4} title="Pump & Infusion Sets" />
             {!defaultShowPump && (
               <Button
                 variant="ghost"
@@ -856,9 +874,28 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </Card>
       )}
 
-      {/* ─── Section 3: Subscription & Logistics ─── */}
+      {/* ─── Section 5: Insurance ───
+          No Monday column: the answers ride out in the notes block on Send
+          (§ callIntake.ts). Split from the cost/auth half by the mockup —
+          what the payer covers is a different question from what the patient
+          owes. */}
       <Card className="p-6">
-        <SectionHeading number={3} title="Subscription & Logistics" />
+        <SectionHeading number={5} title="Insurance" />
+        <InsuranceSection intake={intake} onChange={setIntake} />
+      </Card>
+
+      {/* ─── Section 6: Authorizations & Cost ───
+          Same story: no columns. The AUTH RESULTS themselves are read-only and
+          render in the patient header above — they are the Insurance stage's
+          output, not something the rep sets on the call (§5.26). */}
+      <Card className="p-6">
+        <SectionHeading number={6} title="Authorizations & Cost" />
+        <AuthCostSection intake={intake} onChange={setIntake} />
+      </Card>
+
+      {/* ─── Section 7: Subscription & Logistics ─── */}
+      <Card className="p-6">
+        <SectionHeading number={7} title="Subscription & Logistics" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {/* Subscription Type */}
           <div>
@@ -909,6 +946,14 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           />
 
         </div>
+      </Card>
+
+      {/* ─── Section 8: Confirm Address ───
+          Split out of Subscription & Logistics by Brandon's mockup. It is its
+          own step on the call — you read the address back, then send the text —
+          and it was previously buried under the supply-length controls. */}
+      <Card className="p-6">
+        <SectionHeading number={8} title="Confirm Address" />
 
         {/* Address — full width */}
         <div className="mt-6 space-y-3">
@@ -1051,24 +1096,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </div>
       </Card>
 
-      {/* ─── Section 4: Contacts & Caretaker ───
-          None of this has a Monday column. It is captured here and appended to
-          the Notes column as a parseable block on Send (§ callIntake.ts). */}
-      <Card className="p-6">
-        <SectionHeading number={4} title="Contacts & Caretaker" />
-        <ContactsSection intake={intake} onChange={setIntake} />
-      </Card>
-
-      {/* ─── Section 5: Insurance, Cost & Auth ───
-          Same story: no columns, so the answers ride out in the notes block. */}
-      <Card className="p-6">
-        <SectionHeading number={5} title="Insurance, Cost & Auth" />
-        <InsuranceCostSection intake={intake} onChange={setIntake} />
-      </Card>
-
       {/* ─── End-of-call decision: Advance? ─── */}
       <Card className="p-6">
-        <SectionHeading number={6} title="End of Call" />
+        <SectionHeading number={9} title="End of Call" />
         <p className="text-sm text-muted-foreground mb-4">
           After wrapping up the welcome call, decide whether this patient should
           advance to Order or hold here. Either choice routes the patient back
