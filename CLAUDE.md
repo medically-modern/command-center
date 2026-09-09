@@ -2476,6 +2476,67 @@ carries 15 numbers or 100**, so viewport-only loading — the obvious "only fetc
 optimisation — would have been ~6× MORE expensive and more round trips, not less. Re-measure with
 `complexity { before query after }` before changing the batching.
 
+### 5.31 Welcome Call order rules — caps, 75 days, and "can we send a monitor?" (Sep 2026)
+Four decisions from Brandon's 2026-09-09 notes, landed together because they all key off
+Primary Insurance or the Same-or-Similar columns. **No board change; app only.**
+
+**Payer caps — `lib/welcomeCall/payerRules.ts` (+ tests).** *"Only anthem commercial, horizon,
+cigna can go up to 9 for the infusion sets and cartridges. Aetna can go up to 4. All else can
+only go up to 3."* That replaced a table ported from the Lovable prototype and moves **six live
+board labels**: `BCBS TN/FL/WY` and `Anthem BCBS Medicare / Medicaid (JLJ) / Low-Cost (JLJ)` all
+drop **9 → 3**, and `Cigna` rises **3 → 9**.
+⚠️ **`/anthem/i` is now WRONG** — it matched all four Anthem plans and only Commercial is a 9;
+the pattern carries `commercial` for exactly that reason. There is deliberately **no generic BCBS
+rule** any more. `Horizon BCBS` still matches on `/horizon/i`.
+⚠️ **The cap is a CEILING ON MANUAL OVERRIDE, not the default.** Measured on the live board
+2026-09-09 over the 181 WC patients with a set chosen: **164 ordered 3**, twelve 2, two 4 (Anthem
+BCBS Commercial + Aetna Commercial, both cap-raised), one 5 (Horizon BCBS), two 1 — **nobody has
+ever ordered 9**. So the cap and `DEFAULT_INFUSION_QTY` are orthogonal numbers. A cap set too HIGH
+is the dangerous direction: it lets a rep order sets the payer pays three of, denied weeks later.
+⚠️ The cap now renders on **Qty Cartridge** too. It had always been drawn on the two set
+quantities and never there, so 9 cartridges on a 3-cap payer passed silently.
+
+**Qty 1 defaults to a flat 3 — it does NOT follow the supply length.** Brandon offered both
+branches; Josh picked flat on 2026-09-09 after the board scan showed why. Medicaid patients run a
+**60-day** cadence yet order **3** boxes today (Fidelis Medicaid 73 at qty 3 vs 7 at qty 2, plain
+Medicaid 17 at 3, Anthem BCBS Medicaid 7 at 3), so deriving qty from cadence would have moved
+**~99 live Medicaid patients from 3 boxes to 2** — a change to what physically ships, not a UI
+default. *"Medicaid should stick to 3 boxes."*
+
+**75-day supply is an AETNA-ONLY OPTION and never a default** (`supplyLengthOptions` /
+`payerAllows75Days`). `supplyLengthDays` still returns 60 (Medicaid) or 90 (everyone else) for
+every board label — a patient only lands on 75 because a rep chose it. ⚠️ `SUPPLY_LENGTHS`
+deliberately does **not** contain 75, so a `SupplyLengthField` that forgets to pass `options`
+under-offers rather than offering a length the payer won't pay for.
+
+**"Can we send a monitor?" — `lib/shared/monitorSale.ts` (+ tests).** Medicare pays for a monitor
+(E2103) once per **5-year** lifetime, so the SoS answer decides both the sale and the date:
+| SoS says | Verdict | Monitor Qty pre-fill |
+|---|---|---|
+| last bill **inside** 5 years | amber — they own one | `0` |
+| last bill **older** than 5 years | **green** — sellable, and the date is shown | `1` |
+| **never billed** | green — sellable | `1` |
+| nothing yet | grey — rep asks | `""` (nothing) |
+⚠️ **The verdict reads the SoS COLUMNS, never the purchase-date field.** The original spec said
+"default Qty to 1 when the date is empty", which is circular: `needsMonitorPurchaseDate` goes
+false at Qty 1, so `deriveMonitorPurchaseDate` clears the date, latching the default on with no
+obvious way back. Keying off SoS breaks the loop — the two rules read different inputs.
+⚠️ **An empty verdict is UNKNOWN, never a no.** No SoS answer means Benefits hasn't reached the
+patient; defaulting a sale on absent data is §5.22's $3,787 pump one product over.
+⚠️ **§5.14's rolling ~24-month placeholder STAYS** (Josh, 2026-09-09: *"the fabricated purchase
+date is fine and part of sop"*). The two modules compose rather than compete: the default is to
+SELL, and a rep who flips Qty back to 0 re-reveals the date field where the placeholder fills in
+as it always has. `monitorSale.test.ts` pins that composition, and pins
+`MONITOR_LIFETIME_YEARS` against `samantha/benefitsDerive.ts` `sosLookbackDays("cgm-monitor", …,
+isMedicare)` — duplicated because `lib/shared/*` must not import a role slice.
+⚠️ The verdict renders for **every** eligible patient, including the ones being sold to — gating
+it on `showMonitorPurchaseDate` would hide it in exactly the sellable case.
+**Blast radius when this shipped:** 19 Medicare A&B patients on WC carry the never-billed flag,
+11 of them already stamped with a placeholder date (ten `09/2024`, one `08/2024` — the rolling
+window proving itself); 6 sat in live stages, 13 in Completed. Five already had Qty 1 by hand.
+**Not wired to Final Confirm** — its Monitor Qty input is unchanged; deliberate scope, additive
+if wanted.
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 The `scheduledCalls` role **became the Care Coordinator dashboard** (Josh, 2026-09-08, from Corey's
 Phase 3 mockup): label "Care Coordinator", route **`/care-coordinator`** (the old `/scheduled-calls`

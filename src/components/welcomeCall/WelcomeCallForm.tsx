@@ -10,6 +10,7 @@ import {
   isFirstTimePumpUser,
   isInfusionSelling,
   needsPriorPumpDate,
+  isOriginalMedicare,
   needsMonitorPurchaseDate,
   deriveMonitorPurchaseDate,
   expectedSubscriptionType,
@@ -28,7 +29,8 @@ import { IntakeMessages } from "@/components/profile/IntakeMessages";
 // is why it needs the wrapper below rather than being a plain drop-in.
 import "@/pages/profile/redesign.css";
 import "@/pages/profile/intake.css";
-import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays } from "@/lib/welcomeCall/payerRules";
+import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions } from "@/lib/welcomeCall/payerRules";
+import { monitorSaleVerdict } from "@/lib/shared/monitorSale";
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import {
   ConfirmCheck,
@@ -374,6 +376,36 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
     effectiveServing,
   );
 
+  /* ── Can we sell this patient a monitor? (Brandon + Josh, 2026-09-09) ──
+   * The Same-or-Similar answer decides it: a bill inside Medicare's 5-year
+   * lifetime means they own one, an older bill or no billing history at all
+   * means one is sellable. See lib/shared/monitorSale.ts.
+   *
+   * ⚠️ The verdict is shown for every eligible patient, INCLUDING the ones we
+   * are selling to — Josh asked specifically to "show the old billing date
+   * though and that its green cause older than 5 years". Gating it on
+   * `showMonitorPurchaseDate` would hide it in exactly the sellable case,
+   * because that flag goes false the moment Monitor Qty is 1. */
+  const showMonitorSale =
+    isOriginalMedicare(effectivePrimaryInsurance) && servingIncludesCgm(effectiveServing);
+  const monitorSale = monitorSaleVerdict({
+    sosLastBillMonitor: patient.sosLastBillMonitor,
+    sosNeverBilledMonitor: patient.sosNeverBilledMonitor,
+  });
+
+  /* Pre-fill Monitor Qty from that verdict — FILL-WHEN-BLANK, so it can never
+   * overwrite a rep's answer, and only when SoS actually told us something
+   * (`defaultQty` is "" for unknown). A blank Monitor Qty means an item nobody
+   * has touched; §5.22b coerces it to "0" on send, so without this the sellable
+   * patients silently ship as no-sale. */
+  useEffect(() => {
+    if (!showMonitorSale) return;
+    if (patient.monitorQty !== "") return;
+    if (monitorSale.defaultQty === "") return;
+    onFieldChange("monitorQty", monitorSale.defaultQty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, showMonitorSale, patient.monitorQty, monitorSale.defaultQty]);
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -449,10 +481,43 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   {patient.monitorQty === "1" ? "1 — Yes" : "0 — No"}
                 </span>
               </div>
-              {patient.neverBilledCgm && (
-                <div className="mt-2 flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-2.5 py-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                  <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Monitor has never been billed</span>
+              {/* The Same-or-Similar verdict — green when a monitor is billable,
+                  amber when the patient already owns one inside its 5-year
+                  lifetime, grey when Benefits hasn't answered yet. This is what
+                  pre-set the toggle above, so it has to say so on screen: a
+                  default a rep can't see the reason for is one they can't
+                  correct (CLAUDE.md §5.10's attempt-count precedent). */}
+              {showMonitorSale && (
+                <div
+                  className={cn(
+                    "mt-2 flex items-start gap-1.5 rounded-md border px-2.5 py-1.5",
+                    monitorSale.tone === "green" &&
+                      "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30",
+                    monitorSale.tone === "amber" &&
+                      "border-amber-300 bg-amber-50 dark:bg-amber-950/30",
+                    monitorSale.tone === "grey" && "border-border bg-muted/40",
+                  )}
+                >
+                  {monitorSale.tone === "green" ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertTriangle
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 mt-0.5",
+                        monitorSale.tone === "amber" ? "text-amber-600" : "text-muted-foreground",
+                      )}
+                    />
+                  )}
+                  <span
+                    className={cn(
+                      "text-xs font-medium",
+                      monitorSale.tone === "green" && "text-emerald-700 dark:text-emerald-300",
+                      monitorSale.tone === "amber" && "text-amber-700 dark:text-amber-300",
+                      monitorSale.tone === "grey" && "text-muted-foreground",
+                    )}
+                  >
+                    {monitorSale.note}
+                  </span>
                 </div>
               )}
             </div>
@@ -714,6 +779,15 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   value={patient.qtyCartridge}
                   onChange={(val) => onFieldChange("qtyCartridge", val)}
                 />
+                {/* Brandon, 2026-09-09: the payer cap covers "the infusion sets
+                    and cartridges". It has always been rendered on the two set
+                    quantities and never here, so a rep could put 9 cartridges on
+                    a payer that pays for 3 with nothing on screen saying so. */}
+                <CapNote
+                  qty={Number(patient.qtyCartridge) || 0}
+                  cap={infusionCap.cap}
+                  payerLabel={infusionCap.payerLabel}
+                />
               </div>
             </div>
           </div>
@@ -781,7 +855,12 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
           {/* Supply length — no board column; sits with Subscription Type
               because it describes the same order. */}
-          <SupplyLengthField intake={intake} onChange={setIntake} derivedNote={supplyNote} />
+          <SupplyLengthField
+            intake={intake}
+            onChange={setIntake}
+            derivedNote={supplyNote}
+            options={supplyLengthOptions(effectivePrimaryInsurance)}
+          />
 
         </div>
 

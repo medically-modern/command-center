@@ -81,7 +81,15 @@ export function SupplyLengthField({
   intake,
   onChange,
   derivedNote,
-}: IntakeProps & { derivedNote?: string }) {
+  options,
+}: IntakeProps & { derivedNote?: string; options?: string[] }) {
+  /* ⚠️ 75 days is offered to AETNA ONLY (Brandon, 2026-09-09) and is never a
+   * default, so the list is payer-driven rather than the flat SUPPLY_LENGTHS.
+   * Falling back to SUPPLY_LENGTHS keeps every other caller working — and
+   * SUPPLY_LENGTHS deliberately does NOT contain 75, so a caller that forgets
+   * to pass the list under-offers rather than offering a length the payer
+   * will not pay for. */
+  const lengths = options ?? SUPPLY_LENGTHS;
   return (
     <div>
       <label className={LABEL_CLS}>Supply Length</label>
@@ -98,7 +106,7 @@ export function SupplyLengthField({
           <SelectValue placeholder="Not set" />
         </SelectTrigger>
         <SelectContent>
-          {SUPPLY_LENGTHS.map((d) => (
+          {lengths.map((d) => (
             <SelectItem key={d} value={d}>
               {d} days
             </SelectItem>
