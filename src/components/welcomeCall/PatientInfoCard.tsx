@@ -557,9 +557,16 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
         style={{ borderColor: "var(--mm-card-border)", borderTopColor: "var(--mm-teal)" }}
       >
         <HeaderEyebrow>Patient</HeaderEyebrow>
-        <div className="flex items-start justify-between gap-3">
+        {/* ⚠️ `flex-wrap` is not cosmetic here. The MN bar this copies puts a
+            small `DaysInStagePill` on the right of this row; Welcome Call puts
+            `PhoneField`, whose edit mode is a fixed `w-44` input plus two
+            buttons. A long name with its status chips cannot share one
+            non-wrapping row with that on a narrow screen — the controls
+            overflow the card and become hard to hit (Greptile, PR #55). The
+            phone block drops to its own line instead. */}
+        <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap min-w-0">
-            <h1 className="text-3xl font-black tracking-tight">{patient.name}</h1>
+            <h1 className="text-3xl font-black tracking-tight break-words">{patient.name}</h1>
             <WelcomeCallProfileStatus patient={patient} />
             {/* Two call-shaping prompts that already existed in workflow.ts and
                 had nowhere to render. Neither is a gate — `isFirstTimePumpUser`

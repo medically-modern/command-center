@@ -7,10 +7,12 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const h = vi.hoisted(() => ({ authOk: true }));
+
 vi.mock("@/lib/shared/mondayEndpoint", () => ({
   MONDAY_API_URL: "https://example.invalid/gql",
   mondayIdentityHeaders: () => ({}),
-  hasMondayAuth: () => true,
+  hasMondayAuth: () => h.authOk,
 }));
 
 import { fetchInfusionStock, STOCK_COL } from "./stockApi";
@@ -41,6 +43,7 @@ function reply(items: { name: string; qty: string; status: string; changed: stri
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  h.authOk = true;
 });
 
 describe("fetchInfusionStock", () => {
@@ -104,5 +107,30 @@ describe("fetchInfusionStock", () => {
       }),
     );
     await expect(fetchInfusionStock()).rejects.toThrow(/Complexity budget/);
+  });
+});
+
+describe("no Monday auth", () => {
+  /* ⚠️ This must REJECT, not resolve to []. An empty array indexes to a
+     non-null empty Map, and `stockVerdict` answers "No stock data" off one of
+     those — so a build with no auth would render a confident negative on every
+     infusion set instead of hiding the feature, which is precisely what
+     `useInfusionStock`'s header says must not happen. The first cut returned []
+     and walked into it (Greptile, PR #55). Rejecting leaves the hook's index
+     null, which is what keeps the pills silent. */
+  it("rejects rather than reporting an empty board", async () => {
+    h.authOk = false;
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    await expect(fetchInfusionStock()).rejects.toThrow(/auth/i);
+    // And it never reaches the network to find that out.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("an empty board is still a legitimate empty answer", async () => {
+    // The distinction only holds if a real, authenticated read of an empty
+    // board can still resolve — otherwise this is just "throw on empty".
+    vi.stubGlobal("fetch", reply([]));
+    await expect(fetchInfusionStock()).resolves.toEqual([]);
   });
 });

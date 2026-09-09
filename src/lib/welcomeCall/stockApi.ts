@@ -46,7 +46,18 @@ export async function fetchInfusionStock(): Promise<StockRow[]> {
   // ⚠️ `hasMondayAuth()`, never a bundled-token check: in production the SPA
   // runs through the gateway with VITE_MONDAY_API_TOKEN absent (§5.1), so a
   // `!!getToken()` gate is false in exactly the deployment that matters.
-  if (!hasMondayAuth()) return [];
+  //
+  // ⚠️ THROWS rather than returning [] — "we cannot ask" is not "we asked and
+  // the board is empty". An empty array indexes to a non-null EMPTY map, and
+  // `stockVerdict` answers "No stock data" for every set off one of those: a
+  // build with no Monday auth would render a confident negative on every
+  // infusion set instead of hiding the feature. That is the exact failure
+  // `useInfusionStock`'s own header warns about, and this early return walked
+  // straight into it (Greptile, PR #55). Throwing leaves the hook's index null,
+  // which is what makes the pills silent.
+  if (!hasMondayAuth()) {
+    throw new Error("Monday auth unavailable — cannot read the Cardinal SKU Tracker");
+  }
 
   const query = `
     query ($boardId: ID!, $cols: [String!]) {
