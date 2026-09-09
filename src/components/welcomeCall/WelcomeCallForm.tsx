@@ -96,11 +96,14 @@ interface Props {
 
 function SectionHeading({ number, title }: { number: number; title: string }) {
   return (
-    <div className="flex items-center gap-3 mb-4">
-      <span className="flex items-center justify-center h-7 w-7 rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
+    <div className="flex items-center gap-3 mb-5">
+      <span className="flex items-center justify-center h-8 w-8 rounded-full bg-[color:var(--mm-teal)] text-white text-sm font-bold shrink-0">
         {number}
       </span>
-      <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      {/* The MN bar's eyebrow, one step up: these are the call's steps, so they
+          have to be findable while a rep is talking. Brandon: "much bigger
+          font… look at medical necessity bucket top bar and copy that". */}
+      <p className="text-base font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </p>
     </div>
@@ -611,7 +614,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
     <div className="space-y-5">
       {/* Header */}
       <div className="px-1">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           To Fill In
         </p>
         <p className="text-sm text-muted-foreground mt-1">
@@ -654,7 +657,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           <div className={`grid grid-cols-1 ${showMonitorPurchaseDate ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-6`}>
             {/* CGM Type — editable dropdown */}
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
+              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
                 CGM Type
               </label>
               <Select
@@ -684,7 +687,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
             {/* Monitor Qty — toggle (0 or 1) */}
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
+              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
                 Monitor Qty
               </label>
               <div className="flex items-center gap-3 h-10">
@@ -742,7 +745,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             {/* Monitor Purchase Date — Original Medicare + Monitor Qty 0 + CGM serving only */}
             {showMonitorPurchaseDate && (
               <div>
-                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+                <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
                   Monitor Purchase Date
                 </label>
                 <Input
@@ -803,7 +806,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           {/* Pump Type + Pump Qty (+ Prior Pump Purchase Date for Original Medicare) */}
           <div className={`grid grid-cols-1 ${showPriorPumpDate ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-6 mb-5`}>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
                 Pump Type
               </label>
               <Select
@@ -848,7 +851,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
                 Pump Qty
               </label>
               <div className="flex items-center gap-3 h-10">
@@ -899,7 +902,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             {/* Prior Pump Purchase Date — Original Medicare + Pump Qty 0 + pump-supplies serving only */}
             {showPriorPumpDate && (
               <div>
-                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+                <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
                   Prior Pump Purchase Date
                 </label>
                 <Input
@@ -1089,7 +1092,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         <SectionHeading number={6} title="Authorizations" />
         <AuthBlock patient={patient} />
         <div className="mt-6 border-t pt-6">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+          <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground mb-3">
             Out of Pocket
           </p>
           <OopBlock intake={intake} onChange={setIntake} />
@@ -1102,7 +1105,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {/* Subscription Type */}
           <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
+            <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
               Subscription Type
             </label>
             <Select
@@ -1144,7 +1147,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               (`color_mm71xdhj`) rather than a line in the notes block, which is
               what lets the Subscription hop copy it. */}
           <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
+            <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
               Order Frequency
             </label>
             <Select
@@ -1181,7 +1184,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             than at the end of the call. Rows for lines not in Serving don't
             render. */}
         <div className="mt-6 border-t pt-6">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+          <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground mb-3">
             Order Dates
           </p>
           <NextOrderDatesCard patient={patient} onFieldChange={onFieldChange} />
@@ -1199,10 +1202,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         <div className="mt-6 space-y-3">
           {/* Current Monday address (read-only) */}
           <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+            <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
               Address on File
             </label>
-            <p className="text-sm font-medium px-3 py-2 rounded-md bg-muted/50 border border-input min-h-[40px] flex items-center">
+            <p className="text-lg font-semibold px-3 py-2.5 rounded-lg bg-muted/40 border border-input min-h-[48px] flex items-center break-words">
               {patient.address || <span className="text-muted-foreground italic">No address on file</span>}
             </p>
             {/* Was a zip-only "Zip code needs to be added!" — now the FULL
@@ -1217,7 +1220,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
           {/* Google Places autocomplete for editing */}
           <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+            <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
               Update Address
             </label>
             <AddressAutocomplete
@@ -1255,7 +1258,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             return (
               <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                  <span className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
                     Place of Service
                   </span>
                   <span className="text-sm font-semibold">{computed}</span>
@@ -1339,10 +1342,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
       {/* ─── End-of-call decision: Advance? ─── */}
       <Card className="p-6">
         <SectionHeading number={9} title="End of Call" />
-        <p className="text-sm text-muted-foreground mb-4">
-          After wrapping up the welcome call, decide whether this patient should
-          advance to Order or hold here. Either choice routes the patient back
-          for Profile Review on the Monday board.
+        <p className="text-base text-muted-foreground mb-5">
+          Decide whether this patient advances to Order or holds here. Either
+          choice routes them back for Profile Review on the board.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Button
@@ -1366,10 +1368,8 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             }}
           >
             <div>
-              <p className="font-semibold text-sm">Advance</p>
-              <p className="text-xs opacity-90 font-normal">
-                Move forward to Order.
-              </p>
+              <p className="font-bold text-lg">Advance</p>
+              <p className="text-sm opacity-90 font-normal">Move forward to Order.</p>
             </div>
           </Button>
           <Button
@@ -1393,8 +1393,8 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             }}
           >
             <div>
-              <p className="font-semibold text-sm">Don&apos;t Advance</p>
-              <p className="text-xs opacity-90 font-normal">
+              <p className="font-bold text-lg">Don&apos;t Advance</p>
+              <p className="text-sm opacity-90 font-normal">
                 Hold this patient — do not progress to Order.
               </p>
             </div>
