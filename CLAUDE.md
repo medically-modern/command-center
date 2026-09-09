@@ -2505,9 +2505,24 @@ default. *"Medicaid should stick to 3 boxes."*
 
 **75-day supply is an AETNA-ONLY OPTION and never a default** (`supplyLengthOptions` /
 `payerAllows75Days`). `supplyLengthDays` still returns 60 (Medicaid) or 90 (everyone else) for
-every board label — a patient only lands on 75 because a rep chose it. ⚠️ `SUPPLY_LENGTHS`
-deliberately does **not** contain 75, so a `SupplyLengthField` that forgets to pass `options`
-under-offers rather than offering a length the payer won't pay for.
+every board label — a patient only lands on 75 because a rep chose it.
+⚠️ **Two lists, two questions — do not merge them.** `callIntake.SUPPLY_LENGTHS` is every value
+the notes block can **store** and DOES contain 75; `payerRules.supplyLengthOptions` is what a
+given payer may **pick**. They were briefly one list, and the cost was silent: 75 was added as an
+Aetna option while the stored set still read `["30","60","90"]`, so `parseIntakeBlock` dropped a
+saved `Supply length: 75 days (override)` on the floor while still restoring
+`supplyLengthManual: true` — which disables the payer default. The field came back blank AND
+frozen blank, and the next send wrote no supply length at all (Greptile, PR #55).
+⚠️ `SupplyLengthField` therefore takes `options` as a **required** prop rather than defaulting to
+either list — tsc enforces it at every call site, so there is no fallback that could offer 75 to
+a non-Aetna payer. An earlier draft of this section claimed the safety came from `SUPPLY_LENGTHS`
+omitting 75; that stopped being true when the round-trip was fixed, and the guarantee moved into
+the type system where it cannot rot.
+⚠️ A payer correction **invalidates** a no-longer-offered choice: `WelcomeCallForm`'s derive
+effect resets to the payer default and clears `supplyLengthManual` when the current selection is
+not in `supplyLengthOptions`. Without it, picking 75 for Aetna and then fixing Primary Insurance
+to a non-Aetna plan left the ineligible 75 in place with nothing downstream re-checking it — the
+same rule Brandon specified for infusion sets when Pump Type changes.
 
 **"Can we send a monitor?" — `lib/shared/monitorSale.ts` (+ tests).** Medicare pays for a monitor
 (E2103) once per **5-year** lifetime, so the SoS answer decides both the sale and the date:
