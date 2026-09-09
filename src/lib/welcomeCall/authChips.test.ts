@@ -6,11 +6,20 @@ const p = (over: Partial<AuthProduct>): AuthProduct => ({
 });
 
 describe("servedAuthKeys", () => {
+  /* ⚠️ Brandon's own example, and this assertion used to pin THREE while its
+     own name said two. The pump DEVICE is gated on `servingSellsPumpDevice`;
+     `servingIncludesPump` is true for "Supplies" and decides the SUPPLIES
+     lines only. A patient who owns their pump has no device auth to get, and
+     a blank or Denied device result was claiming the order couldn't ship. */
   it("shows two chips for a supplies-only patient, not five", () => {
-    // Brandon's own example. `servingIncludesPump` is true for "Supplies"
-    // because infusion sets ARE pump supplies — which is what makes this right.
-    expect(servedAuthKeys("Supplies")).toEqual(["pump", "infusionSet", "cartridge"]);
+    expect(servedAuthKeys("Supplies")).toEqual(["infusionSet", "cartridge"]);
+    expect(servedAuthKeys("Supplies + CGM")).toEqual(["cgm", "sensors", "infusionSet", "cartridge"]);
     expect(servedAuthKeys("CGM")).toEqual(["cgm", "sensors"]);
+  });
+
+  it("includes the pump device only when one is being sold", () => {
+    expect(servedAuthKeys("Insulin Pump")).toContain("pump");
+    expect(servedAuthKeys("Supplies")).not.toContain("pump");
   });
   it("shows everything for a full serving", () => {
     expect(servedAuthKeys("Insulin Pump + CGM")).toHaveLength(5);

@@ -5,6 +5,7 @@
  * B — Authorization: read-only chips, one per served product.
  * C — Out of Pocket: shown, calculator button inert (his call).
  */
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,8 +45,21 @@ export function InsuranceBlock({
   patient: Patient;
   onFieldChange: (field: keyof Patient, value: string | number | null) => void;
 }) {
+  /* ⚠️ Unknown needs somewhere to live. It writes NOTHING to Monday (Brandon:
+     "patients often don't know"), so with no local state the click set both
+     edited fields to null, `secondaryStateFromBoard` re-read the board, and the
+     control snapped straight back to No or Yes — a three-answer question with
+     two working answers (Greptile, PR #56).
+     ⚠️ Held per PATIENT id, not as a bare boolean: this component survives a
+     sidebar click, so an un-keyed flag would carry one patient's "they didn't
+     know" onto the next patient's record. It is deliberately session-only —
+     there is no column for it, which is the point. */
+  const [unknownFor, setUnknownFor] = useState<string | null>(null);
   const boardSecondary = patient.secondaryInsuranceEdited ?? patient.secondaryInsurance;
-  const state = secondaryStateFromBoard(boardSecondary);
+  const state =
+    unknownFor === patient.id
+      ? { answer: "unknown" as const, type: null }
+      : secondaryStateFromBoard(boardSecondary);
   const memberId2 = patient.memberId2Edited ?? patient.memberId2;
   const notes = patient.insuranceNotesEdited ?? patient.insuranceNotes ?? "";
   const missing = secondaryMissing({ ...state, memberId2, insuranceNotes: notes });
@@ -55,6 +69,7 @@ export function InsuranceBlock({
   /** Apply an answer to the board-bound fields. Absent keys leave a column
    *  alone — see `secondaryWrites` for why Unknown writes nothing. */
   const answer = (next: { answer: SecondaryAnswer; type: SecondaryType | null }) => {
+    setUnknownFor(next.answer === "unknown" ? patient.id : null);
     const w = secondaryWrites(next);
     if (w.secondaryInsurance !== undefined) {
       onFieldChange("secondaryInsuranceEdited", w.secondaryInsurance);

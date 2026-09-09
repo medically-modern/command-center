@@ -35,7 +35,7 @@ import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
 import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
 import { etTodayYmd } from "@/lib/shared/monitorSale";
 import { shouldDefaultPumpQty, setTwoTransition, isSetChosen } from "@/lib/welcomeCall/orderDefaults";
-import { frequencyState, frequencyInvalidated, daysToLabel, ORDER_FREQUENCY_INDEX } from "@/lib/welcomeCall/orderFrequency";
+import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "@/lib/welcomeCall/orderFrequency";
 import { NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
 import {
   compatibleSetOptions,
@@ -352,18 +352,12 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
      same reason: running this on load would wipe the quantities of every
      already-split patient the moment a rep opened them, and switching patients
      changes Set 2 without anybody having chosen anything. */
-  /* A payer correction can strand a frequency the new payer doesn't offer —
-     pick 75 for Aetna, then fix the plan. Nothing downstream re-checks it, so
-     the send would write a cadence that payer will not pay for. Same rule
-     §5.31 needed when this value lived in the notes block; it has to survive
-     the move to a column. */
-  useEffect(() => {
-    if (patient.orderFrequencyEdited === null) return;
-    if (!frequencyInvalidated(patient.orderFrequencyEdited, effectivePrimary)) return;
-    onFieldChange("orderFrequencyEdited" as keyof Patient, null);
-    onFieldChange("orderFrequencyIndex" as keyof Patient, null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patient.id, patient.orderFrequencyEdited, effectivePrimary]);
+  /* ⚠️ There is deliberately NO effect re-checking Order Frequency here any
+     more. `frequencyState` now ignores an ineligible value wherever it came
+     from — the board as well as the rep's edit — so the card and the send read
+     the same answer and cannot drift. The effect only ever re-checked the
+     edit, which left a board-held 75-Days effective after a payer correction
+     (Greptile, PR #56). */
 
   const lastSet2 = useRef<{ patientId: string; has: boolean } | null>(null);
   useEffect(() => {

@@ -64,10 +64,18 @@ export function frequencyState(args: {
   const derived = String(supplyLengthDays(args.primaryInsurance, args.secondaryInsurance));
   const fromBoard = labelToDays(args.boardLabel);
 
-  if (args.edited !== null) {
+  /* ⚠️ An ineligible value is ignored WHEREVER IT CAME FROM, and that is the
+     whole rule: 75 days is Aetna-only, so a patient already carrying 75-Days on
+     the board whose payer is corrected away from Aetna must not keep it. The
+     first cut only re-checked the rep's own edit and returned the board value
+     untouched — so the correction changed the payer, the card went on showing
+     75, and the send wrote its index again. Checking here rather than in an
+     effect means the card and the send read the same answer and neither can
+     drift (Greptile, PR #56). */
+  if (args.edited !== null && options.includes(args.edited)) {
     return { days: args.edited, options, auto: false, edited: true, hint: "edited" };
   }
-  if (fromBoard) {
+  if (fromBoard && options.includes(fromBoard)) {
     return { days: fromBoard, options, auto: false, edited: false, hint: "" };
   }
   const medicaid = derived === "60";

@@ -44,6 +44,7 @@ import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { unmetSendRequirements } from "@/lib/welcomeCall/sendGates";
+import { secondaryMissing, secondaryStateFromBoard } from "@/lib/welcomeCall/secondaryCoverage";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
@@ -109,6 +110,15 @@ const WelcomeCallPage = () => {
             serving: selected.servingEdited ?? selected.serving,
             pumpType: selected.pumpType,
             intake: selected.callIntake ?? emptyIntake(),
+            // Brandon called the secondary details "required"; only Unknown is
+            // carved out, and `secondaryMissing` returns [] for it already.
+            secondaryMissing: secondaryMissing({
+              ...secondaryStateFromBoard(
+                selected.secondaryInsuranceEdited ?? selected.secondaryInsurance,
+              ),
+              memberId2: selected.memberId2Edited ?? selected.memberId2,
+              insuranceNotes: selected.insuranceNotesEdited ?? selected.insuranceNotes ?? "",
+            }),
           })
         : [],
     [selected],

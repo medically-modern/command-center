@@ -91,3 +91,42 @@ describe("frequencyInvalidated", () => {
     expect(frequencyInvalidated("", "Cigna")).toBe(false);
   });
 });
+
+describe("an ineligible cadence is ignored wherever it came from", () => {
+  /* 75 is Aetna-only. The first cut re-checked only the rep's edit, so a
+     patient already carrying 75-Days on the board kept it after their payer was
+     corrected away from Aetna — the card showed 75 and the send wrote its index
+     again (Greptile, PR #56). Checking inside `frequencyState` means the card
+     and the send read one answer. */
+  it("drops a board value the new payer doesn't offer", () => {
+    const f = frequencyState({
+      boardLabel: "75-Days",
+      edited: null,
+      primaryInsurance: "Cigna",
+      secondaryInsurance: "",
+    });
+    expect(f.days).toBe("90");
+    expect(f.auto).toBe(true);
+  });
+
+  it("keeps a board value the payer does offer", () => {
+    const f = frequencyState({
+      boardLabel: "75-Days",
+      edited: null,
+      primaryInsurance: "Aetna",
+      secondaryInsurance: "",
+    });
+    expect(f.days).toBe("75");
+  });
+
+  it("drops an ineligible edit too", () => {
+    const f = frequencyState({
+      boardLabel: "",
+      edited: "75",
+      primaryInsurance: "Cigna",
+      secondaryInsurance: "",
+    });
+    expect(f.days).toBe("90");
+    expect(f.edited).toBe(false);
+  });
+});

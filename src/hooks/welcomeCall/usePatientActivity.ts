@@ -34,7 +34,7 @@ import {
 } from "@/lib/fax/ringcentralApi";
 import { fetchConversation, type ConversationMessage } from "@/lib/assignedPatients/messagingApi";
 import { toPatientCalls, type PatientCall } from "@/lib/callHistory/callHistory";
-import { last10 } from "@/lib/welcomeCall/activityMatch";
+import { phoneIdentity } from "@/lib/welcomeCall/activityMatch";
 
 export type ActivityTab = "texts" | "calls" | "voicemails";
 
@@ -54,7 +54,9 @@ export interface ActivityState {
 }
 
 type Key = string;
-const keyOf = (phone: string, tab: ActivityTab): Key => `${last10(phone)}::${tab}`;
+// ⚠️ Keyed on the full E.164 number — see `phoneIdentity`. A suffix key can
+// hand one patient another patient's cached thread.
+const keyOf = (phone: string, tab: ActivityTab): Key => `${phoneIdentity(phone)}::${tab}`;
 
 let cache = new Map<Key, unknown>();
 const errors = new Map<Key, string>();
@@ -86,16 +88,18 @@ async function loadTab(phone: string, tab: ActivityTab): Promise<unknown> {
   if (tab === "texts") return (await fetchConversation(phone)).messages;
   if (tab === "calls") return await fetchPatientCallHistory(phone);
   // ⚠️ Voicemail has NO per-number filter on this endpoint, so the read is
-  // account-wide and narrowed here. Matching on the last ten digits is the only
-  // comparison that survives the board's mixed renderings (§5.13).
+  // account-wide and narrowed here. Both sides go through `toE164`, so the
+  // comparison is exact rather than a shared suffix: RingCentral returns E.164
+  // and the board's value is normalised to it.
   const all = await fetchVoicemails({ sinceDays: 180 });
-  const want = last10(phone);
-  return all.filter((v) => last10(v.fromNumber) === want);
+  const want = phoneIdentity(phone);
+  return all.filter((v) => phoneIdentity(v.fromNumber) === want);
 }
 
 function load(phone: string, tab: ActivityTab, force: boolean): Promise<void> {
   const k = keyOf(phone, tab);
-  if (!RC_VIA_GATEWAY || !last10(phone)) return Promise.resolve();
+  // An unnormalisable number identifies nobody — do not fetch on a guess.
+  if (!RC_VIA_GATEWAY || !phoneIdentity(phone)) return Promise.resolve();
   if (!force && cache.has(k)) return Promise.resolve();
   const running = inflight.get(k);
   if (running) return running;

@@ -18,6 +18,7 @@
  * Nothing here writes. These five columns are the Insurance stage's output.
  */
 import { servingIncludesCgm, servingIncludesPump } from "./workflow";
+import { servingSellsPumpDevice } from "@/lib/shared/servingLines";
 
 export type AuthTone = "green" | "grey" | "amber" | "red";
 
@@ -43,18 +44,22 @@ export interface AuthChip extends AuthProduct {
 /**
  * Which products this patient is actually being set up for.
  *
- * ⚠️ `servingIncludesPump` is TRUE for "Supplies" — correctly, since infusion
- * sets and cartridges ARE pump supplies — so it decides the SUPPLIES lines. The
- * pump DEVICE line is a different question and is not asked here: an auth chip
- * is about what the payer will cover, and a patient using their own pump still
- * needs its supplies authorised. This is the §5.22 distinction pointed the
- * other way round, and getting it backwards hides a real auth rather than
- * shipping a device, so the failure is quiet either way — hence the note.
+ * ⚠️ **The pump DEVICE is gated on `servingSellsPumpDevice`, the supplies on
+ * `servingIncludesPump`.** They are different questions and this got it wrong
+ * first time round: `servingIncludesPump` is TRUE for "Supplies" — correctly,
+ * since infusion sets and cartridges ARE pump supplies — so keying the device
+ * on it gave a supplies-only patient THREE chips. Brandon's own example is the
+ * spec: *"a supplies-only patient sees two chips, not five"*. Worse than a
+ * wrong count, a blank or Denied pump-device result then claimed the order
+ * could not ship, when the downstream gate only ever needed the infusion-set
+ * and cartridge auths — a patient who owns their pump has no device auth to
+ * get. Same §5.22 distinction as Pump Qty, one product over.
  */
 export function servedAuthKeys(serving: string): AuthProduct["key"][] {
   const out: AuthProduct["key"][] = [];
   if (servingIncludesCgm(serving)) out.push("cgm", "sensors");
-  if (servingIncludesPump(serving)) out.push("pump", "infusionSet", "cartridge");
+  if (servingSellsPumpDevice(serving)) out.push("pump");
+  if (servingIncludesPump(serving)) out.push("infusionSet", "cartridge");
   return out;
 }
 
