@@ -172,6 +172,18 @@ export interface Patient {
    *  (lib/welcomeCall/callIntake.ts). Optional because hand-built test fixtures
    *  and the sidebar's slim patient objects predate it. */
   callIntake?: CallIntake;
+  /** The rep answered "Unknown" to Brandon's secondary-coverage question.
+   *
+   *  ⚠️ Session-only and NO COLUMN, deliberately — Unknown writes nothing
+   *  (`secondaryWrites`), because clearing Secondary Insurance would destroy a
+   *  real policy record rather than record a shrug. It rides the page overlay
+   *  so the control and the send gate read ONE answer through
+   *  `secondaryStateFor`; a flag local to the card is what let the screen say
+   *  Unknown while Advance stayed shut on the board's old value. Keyed per
+   *  patient by the overlay itself, so it cannot follow a sidebar click onto
+   *  somebody else. Never written by `mondayWrite`, which names every column
+   *  it sends. */
+  secondaryUnknown?: boolean;
 }
 
 // Infusion Set 1 / 2 options are NOT hardcoded here any more.

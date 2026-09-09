@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   secondaryStateFromBoard,
+  secondaryStateFor,
   secondaryMissing,
   secondaryWrites,
   isValidCin,
@@ -118,5 +119,66 @@ describe("secondaryWrites", () => {
 
   it("writes nothing for Yes with no type yet", () => {
     expect(secondaryWrites({ answer: "yes", type: null })).toEqual({});
+  });
+});
+
+describe("secondaryStateFor", () => {
+  const board = {
+    secondaryUnknown: undefined as boolean | undefined,
+    secondaryInsuranceEdited: null as string | null,
+    secondaryInsurance: "",
+  };
+
+  it("reads the column when the rep has not answered Unknown", () => {
+    expect(secondaryStateFor({ ...board, secondaryInsurance: "NY Medicaid" })).toEqual({
+      answer: "yes",
+      type: "NY Medicaid",
+    });
+    expect(secondaryStateFor({ ...board, secondaryInsurance: "None" })).toEqual({
+      answer: "no",
+      type: null,
+    });
+  });
+
+  it("prefers a live edit over the column, as every other field does", () => {
+    expect(
+      secondaryStateFor({
+        ...board,
+        secondaryInsurance: "NY Medicaid",
+        secondaryInsuranceEdited: "None",
+      }),
+    ).toEqual({ answer: "no", type: null });
+  });
+
+  /* ⚠️ THE WHOLE POINT. Unknown writes nothing, so the column still says
+     NY Medicaid — and the send gate used to re-read it, demanding a CIN the
+     rep had just recorded as unknown. Advance had no passing move
+     (Greptile, PR #56). */
+  it("lets the rep's Unknown beat a column that still holds a policy", () => {
+    const p = { ...board, secondaryInsurance: "NY Medicaid", secondaryUnknown: true };
+    expect(secondaryStateFor(p)).toEqual({ answer: "unknown", type: null });
+    expect(
+      secondaryMissing({ ...secondaryStateFor(p), memberId2: "", insuranceNotes: "" }),
+    ).toEqual([]);
+  });
+
+  it("does the same for an 'Other' secondary, whose gate wants an ID and notes", () => {
+    const p = { ...board, secondaryInsurance: "Other", secondaryUnknown: true };
+    expect(
+      secondaryMissing({ ...secondaryStateFor(p), memberId2: "", insuranceNotes: "" }),
+    ).toEqual([]);
+    // and without the flag that same patient IS gated, so the carve-out is
+    // the flag rather than the module going quiet.
+    expect(
+      secondaryMissing({
+        ...secondaryStateFor({ ...p, secondaryUnknown: false }),
+        memberId2: "",
+        insuranceNotes: "",
+      }),
+    ).toHaveLength(2);
+  });
+
+  it("still writes nothing for Unknown, so the policy on the board survives", () => {
+    expect(secondaryWrites(secondaryStateFor({ ...board, secondaryInsurance: "NY Medicaid", secondaryUnknown: true }))).toEqual({});
   });
 });

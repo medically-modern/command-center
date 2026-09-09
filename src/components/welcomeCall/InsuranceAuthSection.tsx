@@ -5,7 +5,6 @@
  * B — Authorization: read-only chips, one per served product.
  * C — Out of Pocket: shown, calculator button inert (his call).
  */
-import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,7 +16,7 @@ import type { Patient } from "@/lib/welcomeCall/workflow";
 import type { CallIntake } from "@/lib/welcomeCall/callIntake";
 import {
   SECONDARY_TYPES,
-  secondaryStateFromBoard,
+  secondaryStateFor,
   secondaryMissing,
   secondaryWrites,
   type SecondaryAnswer,
@@ -43,23 +42,20 @@ export function InsuranceBlock({
   onFieldChange,
 }: {
   patient: Patient;
-  onFieldChange: (field: keyof Patient, value: string | number | null) => void;
+  onFieldChange: (field: keyof Patient, value: string | number | boolean | null) => void;
 }) {
   /* ⚠️ Unknown needs somewhere to live. It writes NOTHING to Monday (Brandon:
-     "patients often don't know"), so with no local state the click set both
-     edited fields to null, `secondaryStateFromBoard` re-read the board, and the
-     control snapped straight back to No or Yes — a three-answer question with
-     two working answers (Greptile, PR #56).
-     ⚠️ Held per PATIENT id, not as a bare boolean: this component survives a
-     sidebar click, so an un-keyed flag would carry one patient's "they didn't
-     know" onto the next patient's record. It is deliberately session-only —
-     there is no column for it, which is the point. */
-  const [unknownFor, setUnknownFor] = useState<string | null>(null);
-  const boardSecondary = patient.secondaryInsuranceEdited ?? patient.secondaryInsurance;
-  const state =
-    unknownFor === patient.id
-      ? { answer: "unknown" as const, type: null }
-      : secondaryStateFromBoard(boardSecondary);
+     "patients often don't know"), so with no state at all the click set both
+     edited fields to null, the board was re-read, and the control snapped
+     straight back to No or Yes — a three-answer question with two working
+     answers (Greptile, PR #56).
+     ⚠️ It lives on the page OVERLAY, not in this component. A flag held here
+     was invisible to `unmetSendRequirements`, which went on reading the column:
+     a patient already carrying NY Medicaid showed **Unknown** on screen while
+     Advance stayed shut on a CIN the rep had just said nobody knew. Same
+     reader for both now (`secondaryStateFor`), and the overlay keys it per
+     patient by construction, so it cannot follow a sidebar click. */
+  const state = secondaryStateFor(patient);
   const memberId2 = patient.memberId2Edited ?? patient.memberId2;
   const notes = patient.insuranceNotesEdited ?? patient.insuranceNotes ?? "";
   const missing = secondaryMissing({ ...state, memberId2, insuranceNotes: notes });
@@ -69,7 +65,7 @@ export function InsuranceBlock({
   /** Apply an answer to the board-bound fields. Absent keys leave a column
    *  alone — see `secondaryWrites` for why Unknown writes nothing. */
   const answer = (next: { answer: SecondaryAnswer; type: SecondaryType | null }) => {
-    setUnknownFor(next.answer === "unknown" ? patient.id : null);
+    onFieldChange("secondaryUnknown", next.answer === "unknown");
     const w = secondaryWrites(next);
     if (w.secondaryInsurance !== undefined) {
       onFieldChange("secondaryInsuranceEdited", w.secondaryInsurance);

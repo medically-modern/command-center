@@ -118,3 +118,30 @@ export function secondaryWrites(i: SecondaryState): SecondaryWrites {
   // answer is not evidence it is wrong.
   return { secondaryInsurance: i.type };
 }
+
+/**
+ * The answer as the REP has it, which is not always what the column holds.
+ *
+ * ⚠️ **Unknown is the one answer with no board representation.** A blank column
+ * reads Unknown on its own, but "the patient didn't know" on top of an existing
+ * `NY Medicaid` cannot clear that column — clearing would destroy a real policy
+ * record (`secondaryWrites` returns `{}` for exactly this reason). So the rep's
+ * Unknown rides the page overlay as `secondaryUnknown`, and BOTH the control
+ * and the send gate read it through here rather than off the column.
+ *
+ * They used to disagree. The control was rendered from a flag local to
+ * `InsuranceBlock` while `unmetSendRequirements` re-read the board, so a rep who
+ * answered Unknown for a patient already carrying NY Medicaid saw **Unknown** on
+ * screen and an Advance button held shut by a CIN they had just said nobody
+ * knew: a gate with no passing move, which is the dead end §5.10 and §5.20 each
+ * record reversing (Greptile, PR #56). One reader, so the card and the send can
+ * no longer hold two opinions of one question.
+ */
+export function secondaryStateFor(p: {
+  secondaryUnknown?: boolean;
+  secondaryInsuranceEdited: string | null;
+  secondaryInsurance: string;
+}): SecondaryState {
+  if (p.secondaryUnknown) return { answer: "unknown", type: null };
+  return secondaryStateFromBoard(p.secondaryInsuranceEdited ?? p.secondaryInsurance);
+}

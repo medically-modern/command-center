@@ -86,7 +86,7 @@ import { pumpQtyApplies } from "@/lib/shared/servingLines";
 
 interface Props {
   patient: Patient;
-  onFieldChange: (field: keyof Patient, value: string | number | null) => void;
+  onFieldChange: (field: keyof Patient, value: string | number | boolean | null) => void;
   /** Updates the no-column intake payload (lib/welcomeCall/callIntake.ts).
    *  Separate from `onFieldChange` because that one is typed for scalar column
    *  values; this carries a whole object. */
