@@ -91,9 +91,22 @@ export const CONFIRM_LABELS: Record<ConfirmKey, string> = {
 export type SecondaryCoverage = "" | "yes" | "no" | "unknown";
 
 /** Days of supply the payer allows for this order. No board column holds it. */
-export type SupplyLength = "" | "30" | "60" | "90";
+export type SupplyLength = "" | "30" | "60" | "75" | "90";
 
-export const SUPPLY_LENGTHS: SupplyLength[] = ["30", "60", "90"];
+/**
+ * Every length the block can round-trip — NOT the list a given payer may pick
+ * from. That is `payerRules.supplyLengthOptions`, which offers 75 to Aetna only.
+ *
+ * ⚠️ **75 must be here even though almost nobody may choose it.** It was added
+ * as an Aetna option while this list still read `["30","60","90"]`, so
+ * `parseIntakeBlock` dropped a saved `Supply length: 75 days (override)` on the
+ * floor while still restoring `supplyLengthManual: true` — which disables the
+ * payer default. After a reload the field was blank AND frozen blank, and the
+ * next send wrote no supply length at all. Caught by Greptile on PR #55.
+ * The two lists answer different questions: this one is "what can be stored",
+ * `supplyLengthOptions` is "what may be picked".
+ */
+export const SUPPLY_LENGTHS: SupplyLength[] = ["30", "60", "75", "90"];
 
 export type PhoneKind = "cell" | "home" | "work" | "other";
 

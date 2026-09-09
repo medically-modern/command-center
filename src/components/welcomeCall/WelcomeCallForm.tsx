@@ -260,11 +260,29 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
   // is where any component-local guess would fail.
   useEffect(() => {
     if (!onIntakeChange) return;
+    /* ⚠️ A rep's override survives a payer correction ONLY while the payer
+     * still offers it. Pick 75 for Aetna, then fix Primary Insurance to a
+     * non-Aetna plan, and the option vanishes from the menu while
+     * `supplyLengthManual` holds the now-ineligible 75 in place — nothing
+     * downstream re-checks it, so the send writes a cadence that payer will not
+     * pay for. Same shape as Brandon's rule for infusion sets ("if Pump Type
+     * changes, clear any set that's no longer compatible"). Caught by Greptile
+     * on PR #55. Resetting also clears `supplyLengthManual`, because the
+     * choice it was recording no longer exists. */
+    const offered = supplyLengthOptions(effectivePrimary);
+    if (intake.supplyLength && !offered.includes(intake.supplyLength)) {
+      onIntakeChange({
+        ...intake,
+        supplyLength: derivedSupplyDays,
+        supplyLengthManual: false,
+      });
+      return;
+    }
     if (intake.supplyLengthManual) return;
     if (intake.supplyLength === derivedSupplyDays) return;
     onIntakeChange({ ...intake, supplyLength: derivedSupplyDays });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [derivedSupplyDays, intake.supplyLength, intake.supplyLengthManual]);
+  }, [derivedSupplyDays, intake.supplyLength, intake.supplyLengthManual, effectivePrimary]);
   const [sendingWelcomeText, setSendingWelcomeText] = useState(false);
   // Infusion-set options are read from the LIVE board, never a hardcoded table —
   // the index is the only thing that reaches Monday, so a deleted index writes a

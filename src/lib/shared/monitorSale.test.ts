@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   monitorSaleVerdict,
-  yearsBeforeYmd,
+  daysBeforeYmd,
+  MONITOR_LIFETIME_DAYS,
   MONITOR_LIFETIME_YEARS,
 } from "./monitorSale";
-import { sosLookbackDays } from "@/lib/samantha/benefitsDerive";
+import { sosLookbackDays, sosCutoffYmd } from "@/lib/samantha/benefitsDerive";
 import { deriveMonitorPurchaseDate } from "./monitorPurchaseDate";
 
 const TODAY = "2026-09-09";
@@ -18,10 +19,24 @@ const v = (over: Partial<Parameters<typeof monitorSaleVerdict>[0]> = {}) =>
   });
 
 describe("the 5-year lifetime agrees with the Insurance stage", () => {
-  it("⚠️ mirrors sosLookbackDays('cgm-monitor', …, isMedicare) exactly", () => {
-    // Duplicated rather than imported (lib/shared must not depend on a role
-    // slice). This is the pin that makes a change to either one loud.
-    expect(sosLookbackDays("cgm-monitor", false, true)).toBe(365 * MONITOR_LIFETIME_YEARS);
+  it("mirrors sosLookbackDays('cgm-monitor', …, isMedicare) exactly", () => {
+    expect(sosLookbackDays("cgm-monitor", false, true)).toBe(MONITOR_LIFETIME_DAYS);
+    expect(MONITOR_LIFETIME_DAYS).toBe(365 * MONITOR_LIFETIME_YEARS);
+  });
+
+  it("⚠️ produces the SAME CUTOFF DATE as sosCutoffYmd, every day for 8 years", () => {
+    // The constant matched all along while the arithmetic around it did not:
+    // subtracting five CALENDAR years is a day off from 1,825 days whenever the
+    // span contains a leap day, so a patient last billed 2021-09-09 read Clear
+    // on the Insurance board and cannot-send here. Comparing the constants
+    // could never have caught that — only comparing the cutoffs does.
+    // (Greptile, PR #55.)
+    const start = Date.UTC(2026, 0, 1);
+    for (let d = 0; d < 365 * 8; d++) {
+      const today = new Date(start + d * 86_400_000).toISOString().slice(0, 10);
+      expect(daysBeforeYmd(today, MONITOR_LIFETIME_DAYS))
+        .toBe(sosCutoffYmd("cgm-monitor", false, today, true));
+    }
   });
 });
 
@@ -46,10 +61,11 @@ describe("a real SoS last bill decides it", () => {
   });
 
   it("treats the cutoff itself as still inside the lifetime", () => {
-    // sosCutoffYmd's rule: STRICTLY before the cutoff clears it. A bill exactly
-    // 5 years old has not expired yet.
-    expect(v({ sosLastBillMonitor: "2021-09-09" }).state).toBe("cannot-send");
-    expect(v({ sosLastBillMonitor: "2021-09-08" }).state).toBe("can-send");
+    // sosCutoffYmd's rule: STRICTLY before the cutoff clears it. From
+    // 2026-09-09 the cutoff is 2021-09-10 — 1,825 days back, the span carrying
+    // leap day 2024 — so 09-10 is still inside and 09-09 has expired.
+    expect(v({ sosLastBillMonitor: "2021-09-10" }).state).toBe("cannot-send");
+    expect(v({ sosLastBillMonitor: "2021-09-09" }).state).toBe("can-send");
   });
 
   it("⚠️ a last-bill date BEATS the never-billed flag when both are set", () => {
@@ -136,20 +152,14 @@ describe("⚠️ it composes with monitorPurchaseDate rather than fighting it", 
   });
 });
 
-describe("yearsBeforeYmd", () => {
-  it("subtracts whole years", () => {
-    expect(yearsBeforeYmd("2026-09-09", 5)).toBe("2021-09-09");
-    expect(yearsBeforeYmd("2026-01-31", 5)).toBe("2021-01-31");
-  });
-
-  it("clamps Feb 29 back to Feb 28 rather than rolling into March", () => {
-    // The conservative direction: an EARLIER cutoff, so nobody is declared
-    // sellable a day too soon.
-    expect(yearsBeforeYmd("2028-02-29", 5)).toBe("2023-02-28");
-    expect(yearsBeforeYmd("2028-02-29", 4)).toBe("2024-02-29");
+describe("daysBeforeYmd", () => {
+  it("subtracts whole days, leap day included", () => {
+    expect(daysBeforeYmd("2026-09-09", MONITOR_LIFETIME_DAYS)).toBe("2021-09-10");
+    expect(daysBeforeYmd("2026-01-01", 1)).toBe("2025-12-31");
+    expect(daysBeforeYmd("2024-03-01", 1)).toBe("2024-02-29");
   });
 
   it("returns '' for a malformed date rather than a wrong one", () => {
-    expect(yearsBeforeYmd("nope", 5)).toBe("");
+    expect(daysBeforeYmd("nope", 5)).toBe("");
   });
 });

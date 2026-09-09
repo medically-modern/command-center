@@ -143,6 +143,14 @@ export function payerAllows75Days(primaryInsurance: string): boolean {
  * returns 60 or 90 for everyone — a patient only lands on 75 because a rep
  * chose it. Offering it to a non-Aetna payer would let a rep build an order the
  * payer will not pay for, which is the same class of harm as a cap set too high.
+ *
+ * ⚠️ **This is NOT `callIntake.SUPPLY_LENGTHS`, and the two must not be
+ * confused.** That list is every value the notes block can round-trip and DOES
+ * contain 75; this one is what a given payer may pick. They were briefly the
+ * same list, which meant a saved 75 parsed back as blank while still counting
+ * as a manual override — blank and frozen blank (Greptile, PR #55).
+ * `SupplyLengthField` therefore takes its options as a REQUIRED prop rather
+ * than defaulting to either list.
  */
 export function supplyLengthOptions(primaryInsurance: string): string[] {
   return payerAllows75Days(primaryInsurance)

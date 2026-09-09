@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   emptyIntake,
+  SUPPLY_LENGTHS,
   intakeHasContent,
   formatIntakeBlock,
   stampedIntakeEntry,
@@ -324,5 +325,41 @@ describe("forward compatibility", () => {
   it("survives a block missing its end sentinel", () => {
     const log = [INTAKE_BLOCK_START, "Confirmed: oop", "Unconfirmed: none"].join("\n");
     expect(parseIntakeBlock(log)?.confirmed.oop).toBe(true);
+  });
+});
+
+describe("⚠️ 75-day supply round-trips through the block (Greptile, PR #55)", () => {
+  it("parses a saved 75 back out instead of dropping it", () => {
+    // It was added as an Aetna option while SUPPLY_LENGTHS still read
+    // ["30","60","90"], so the parser dropped the value while still restoring
+    // supplyLengthManual: true — which disables the payer default. The field
+    // came back blank AND frozen blank, and the next send wrote no length.
+    const i = emptyIntake();
+    i.supplyLength = "75";
+    i.supplyLengthManual = true;
+    const log = appendIntakeToNotes("", i, { initials: "JH", now: AT });
+    const parsed = parseIntakeBlock(log);
+    expect(parsed?.supplyLength).toBe("75");
+    expect(parsed?.supplyLengthManual).toBe(true);
+  });
+
+  it("round-trips every length the block can store", () => {
+    for (const len of SUPPLY_LENGTHS) {
+      const i = emptyIntake();
+      i.supplyLength = len;
+      expect(parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }))?.supplyLength).toBe(len);
+    }
+  });
+
+  it("⚠️ never leaves a manual override with no value to override with", () => {
+    // The failure mode is the PAIR, not either half: a dropped value alongside
+    // a restored `manual: true` is what freezes the field.
+    for (const len of SUPPLY_LENGTHS) {
+      const i = emptyIntake();
+      i.supplyLength = len;
+      i.supplyLengthManual = true;
+      const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
+      if (parsed?.supplyLengthManual) expect(parsed.supplyLength).not.toBe("");
+    }
   });
 });

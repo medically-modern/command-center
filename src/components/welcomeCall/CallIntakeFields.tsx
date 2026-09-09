@@ -26,7 +26,6 @@ import {
   CONFIRM_LABELS,
   MAX_EXTRA_PHONES,
   PHONE_KINDS,
-  SUPPLY_LENGTHS,
 } from "@/lib/welcomeCall/callIntake";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -82,14 +81,14 @@ export function SupplyLengthField({
   onChange,
   derivedNote,
   options,
-}: IntakeProps & { derivedNote?: string; options?: string[] }) {
-  /* ⚠️ 75 days is offered to AETNA ONLY (Brandon, 2026-09-09) and is never a
-   * default, so the list is payer-driven rather than the flat SUPPLY_LENGTHS.
-   * Falling back to SUPPLY_LENGTHS keeps every other caller working — and
-   * SUPPLY_LENGTHS deliberately does NOT contain 75, so a caller that forgets
-   * to pass the list under-offers rather than offering a length the payer
-   * will not pay for. */
-  const lengths = options ?? SUPPLY_LENGTHS;
+}: IntakeProps & { derivedNote?: string; options: string[] }) {
+  /* ⚠️ `options` is REQUIRED, not defaulted to SUPPLY_LENGTHS. 75 days is
+   * offered to AETNA ONLY (Brandon, 2026-09-09), and SUPPLY_LENGTHS now
+   * contains it so the notes block can round-trip it — so falling back to that
+   * list would offer 75 to every payer. The two lists answer different
+   * questions; making this a required prop is what stops them being confused
+   * for one another again. */
+  const lengths = options;
   return (
     <div>
       <label className={LABEL_CLS}>Supply Length</label>

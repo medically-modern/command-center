@@ -27,11 +27,21 @@
  * supplies-only patient (CLAUDE.md §5.22, $3,787): we would be billing Medicare
  * for a device we have no evidence they need. The rep is asked instead.
  *
- * ⚠️ **`MONITOR_LIFETIME_YEARS` mirrors `samantha/benefitsDerive.ts`
- * `sosLookbackDays("cgm-monitor", …, isMedicare = true)`**, which is `365 * 5`.
- * It is duplicated rather than imported because `lib/shared/*` must not depend
- * on a role slice — the same call `monitorPurchaseDate.ts` makes one file over.
- * `monitorSale.test.ts` pins the two together, so a change to either is loud.
+ * ⚠️ **The cutoff is counted in DAYS, not calendar years** —
+ * `MONITOR_LIFETIME_DAYS` mirrors `samantha/benefitsDerive.ts`
+ * `sosLookbackDays("cgm-monitor", …, isMedicare = true)`, which is `365 * 5`,
+ * and `daysBeforeYmd` mirrors that module's `addDaysYmd`. Subtracting five
+ * CALENDAR years instead is off by one day for every span containing a leap
+ * day: from 2026-09-09 the Insurance stage's cutoff is **2021-09-10** (1,825
+ * days) while calendar math gives 2021-09-09, so a patient last billed
+ * 2021-09-09 reads Clear on the Insurance board and `cannot-send` here — two
+ * stages disagreeing about one patient, which is the drift this codebase keeps
+ * getting bitten by. Caught by Greptile on PR #55 before it shipped.
+ * ⚠️ It is duplicated rather than imported because `lib/shared/*` must not
+ * depend on a role slice — the same call `monitorPurchaseDate.ts` makes one
+ * file over. `monitorSale.test.ts` pins the two by comparing the actual
+ * CUTOFF DATES across a range of days, not just the constant: the constant
+ * matched all along while the arithmetic around it did not.
  *
  * ── WHAT THIS DOES NOT DO ──
  * It does not touch Monitor Purchase Date. The rolling ~24-month placeholder
@@ -42,8 +52,14 @@
  * always has.
  */
 
-/** Medicare's reasonable useful lifetime for a CGM monitor. */
+/** Medicare's reasonable useful lifetime for a CGM monitor, in years — for copy. */
 export const MONITOR_LIFETIME_YEARS = 5;
+
+/**
+ * The same lifetime as the Insurance stage counts it: whole days, never
+ * calendar years. Must equal `sosLookbackDays("cgm-monitor", …, isMedicare)`.
+ */
+export const MONITOR_LIFETIME_DAYS = 365 * MONITOR_LIFETIME_YEARS;
 
 export type MonitorSaleState =
   /** The lifetime has run out (or Medicare has no record) — a monitor is billable. */
@@ -92,24 +108,18 @@ export function etTodayYmd(now: Date = new Date()): string {
 }
 
 /**
- * The date `years` before `todayYmd`, as YYYY-MM-DD. Pure string/integer math —
- * no `Date` parsing, for the timezone reason above.
+ * The date `days` before `todayYmd`, as YYYY-MM-DD.
  *
- * Feb 29 lands on Feb 28 in a non-leap year rather than rolling into March,
- * which is the conservative direction: it makes the cutoff a day EARLIER, so a
- * patient is never declared sellable a day too soon.
+ * ⚠️ Deliberately the SAME implementation as `benefitsDerive.addDaysYmd` —
+ * UTC-anchored day arithmetic — so the two stages' cutoffs are identical by
+ * construction rather than by coincidence. Anchoring at UTC is safe here
+ * because both operands are bare dates with no time component.
  */
-export function yearsBeforeYmd(todayYmd: string, years: number): string {
+export function daysBeforeYmd(todayYmd: string, days: number): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(todayYmd.trim());
   if (!m) return "";
-  const y = Number(m[1]) - years;
-  const mo = Number(m[2]);
-  let d = Number(m[3]);
-  if (mo === 2 && d === 29) {
-    const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
-    if (!leap) d = 28;
-  }
-  return `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - days * 86_400_000;
+  return new Date(t).toISOString().slice(0, 10);
 }
 
 /** "2024-05-17" → "05/2024". "" for anything unparseable. */
@@ -138,7 +148,7 @@ export function monitorSaleVerdict(i: MonitorSaleInput): MonitorSaleVerdict {
   const today = i.todayYmd ?? etTodayYmd();
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(lastBill)) {
-    const cutoff = yearsBeforeYmd(today, MONITOR_LIFETIME_YEARS);
+    const cutoff = daysBeforeYmd(today, MONITOR_LIFETIME_DAYS);
     // ISO dates compare lexically. STRICTLY before the cutoff clears it —
     // matching `sosCutoffYmd`'s own "a last bill strictly before this derives
     // Clear", so the two never disagree on a boundary date.
