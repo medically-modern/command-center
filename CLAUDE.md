@@ -477,7 +477,7 @@ survives as board schema only. That left **Verified Referrals with exactly one e
 gated on the readiness checklist — so a referral that is genuinely missing information had no in-app
 route out of that queue. This doc recorded that as "the accepted consequence, not an oversight".
 ⚠️ **It was not accepted — REVERSED 2026-08-20** (Josh, second report from the floor): patients whose
-insurance came back inactive and who wouldn't answer the phone (Richard Clark the reported one) piled
+insurance came back inactive and who wouldn't answer the phone (the reported one) piled
 up in the queue with a greyed-out Advance to MN and nothing else to press. **Mark as Stuck now renders
 on BOTH of this page's queues**, and the fix is deliberately the DIRECT exit, not the Propose Stuck
 ladder — Josh, same day: *"no propose stuck anywhere"*. The rep decides, a reason is required, the
@@ -540,7 +540,7 @@ Referral Type is "Patient" (TYPE only — referralSplit's vocabulary rule; the S
 "Patient" label decides nothing). Leads = a slim 60s poll of the two New Form groups
 (`fetchDtcFormLeads` / `useDtcFormLeads`) PLUS patient-form items already inside the page's own
 queue fetch — a form row marked "Yes" is MOVED into the in-system group and leaves the form groups
-(the Ivy Gushea pair, 2026-07-28), so the poll alone would miss exactly the twin the flag exists
+(the twin pair, 2026-07-28), so the poll alone would miss exactly the twin the flag exists
 for. ⚠️ **READ-ONLY DISPLAY**: no queue membership, role count, baseline or board write changes,
 which is why — unlike the splits above — it has NO keep-in-agreement list. Do not "promote" the
 form groups into the queue fetch to feed it: `profileReferralRole` would route a flag-"Yes" form
@@ -877,7 +877,7 @@ because that's the moment the intent exists) or typing a number into the setting
 gateway: the board + phone-column registry is systemMgmt's `BOARDS`, and a server-side copy is
 exactly the drift §5.9/§5.10 exist to prevent. ⚠️ It matches on the **last four digits** then filters
 by `toE164` equality — boards store numbers in whatever shape they were typed, and the last four are
-the only substring present in every rendering (`3475550101` and `(347) 555-0101` share nothing else).
+the only substring present in every rendering (`5555550100` and `(555) 555-0100` share nothing else).
 
 ⚠️ **Deliveries are an ENVELOPE, not the shape the docs example shows.** What arrives is
 `AccountTelephonySessionsEvent` — `{uuid, event, timestamp, subscriptionId, ownerId, body:{…}}` — and
@@ -1134,8 +1134,8 @@ Not an error: **HTTP 200 with an empty `records` list**, which is indistinguisha
 nobody has ever called. `message-store` (SMS + fax) is the exact opposite — it *wants* the `+` —
 so `toE164()` output is right for texting and wrong here, on the same API, with no signal either
 way. This shipped, and every patient read "No calls with this number in the last year" while the
-same window held 13 calls. Verified live: `+17174242514` → 0 records, `17174242514` → 13,
-`(717) 424-2514` → 0. `callLogPhoneParam` is the one place that strips it; don't "tidy" it back to
+same window held 13 calls. Verified live: `+15555550101` → 0 records, `15555550101` → 13,
+`(555) 555-0101` → 0. `callLogPhoneParam` is the one place that strips it; don't "tidy" it back to
 `toE164`. The E.164 form is still what the local re-match and the display use — only the QUERY
 differs. (`direction` is deliberately not passed: both directions is the default.)
 
@@ -1481,7 +1481,7 @@ for **Original Medicare A&B** has no network indicator at all (fee-for-service M
 network — only supplier participation), so the column comes back the literal string **`Unknown`**.
 The old boolean read anything-that-isn't-Yes as a No, so the readout printed **No** and the gate then
 stranded the patient on a condition that could never pass — the same dead end §5.10 records reversing
-for Verified Referrals. Reported on **Thomas Swan** (`12895859856`), Medicare A&B, DMERC Region C.
+for Verified Referrals. Reported on one patient (`12895859856`), Medicare A&B, DMERC Region C.
 A board scan the same day found the column held **Yes ×2 and Unknown ×9 across 500 rows — not one
 real negative had ever been written**, so the gate had only ever fired on missing data.
 Canonical rule: **`lib/profile/intakeUnlock.ts` `networkAnswer`** (+ tests) — four states
@@ -1664,7 +1664,7 @@ to disagree, and whichever one a downstream writer happens to key off decides wh
 actually receives. Canonical rule: **`lib/shared/servingLines.ts`** (+ tests, whose fixtures are the
 two real board rows).
 
-- **Bradan French (WC item `12676537026`), 2026-08-03 — a pump shipped that shouldn't have.**
+- **WC item `12676537026`, 2026-08-03 — a pump shipped that shouldn't have.**
   Serving was `Supplies + CGM` (patient already owns the pump), but the Welcome Call save wrote
   **Pump Qty = 1**. Final Confirm passed, and Cardinal order `1119501795` shipped a t:slim at
   **$3,787.83** the next morning; caught 8/20, return opened 8/21.
@@ -1675,7 +1675,7 @@ two real board rows).
   second one; never gate Pump Qty on the first. The only rule that had looked at this,
   `C14_PUMP_QTY_ON_CGM`, fired on `serving === "CGM"` **exactly**, so both `Supplies …` labels — the
   precise population that already owns a pump — were its blind spot.
-- **Leann Austin (WC item `12740990902`), 2026-08-10 — a reorder was missed.**
+- **WC item `12740990902`, 2026-08-10 — a reorder was missed.**
   Serving said `Insulin Pump` (no CGM) while CGM Type was `Dexcom G7` and Subscription Type was
   `Sensors & Supplies`. `resolveNextOrderWrite` keys off **Serving alone**, read "CGM not served",
   and **wrote blank** to Sensors Next Order Date — which carried to Subscription empty, so nothing
@@ -2128,8 +2128,8 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   BATCHED read, never a lookup per row.** Rule: **`lib/commsHub/directory.ts`** (+ tests); batching
   and caching: **`hooks/commsHub/useDirectoryNames.ts`**. Until 2026-09-02 the lists showed a bare
   number whenever RingCentral had no contact, which is most patients — reps keep offices and
-  manufacturers in RingCentral, not the ~6,000 people on our boards — so a text from Tonasila Gray
-  read as `(815) 523-7259`. "One cross-board query per conversation per poll" is still forbidden
+  manufacturers in RingCentral, not the ~6,000 people on our boards — so a text from an unsaved contact
+  read as `(555) 555-0102`. "One cross-board query per conversation per poll" is still forbidden
   (it is the incident's shape); what makes this safe is that it is the opposite of that, on four
   properties that are all load-bearing:
   1. **`any_of` takes the whole batch in ONE rule** (100 numbers = 300 compare values), and every
@@ -2168,7 +2168,7 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   nothing retrying and nothing erroring. Pinned by `useDirectoryNames.test.tsx`, along with the
   `inflight` chain: the `finally` belongs to the CHAINED promise, or an older pass nulls the slot
   while the one behind it is still running and the next call starts a third alongside. ⚠️ The row's avatar takes `""` rather than the label when the label IS the number —
-  `Initials` would otherwise read `(5` out of `(815) 523-7259`. A number shared by two people
+  `Initials` would otherwise read `(5` out of `(555) 555-0102`. A number shared by two people
   resolves to one of them (same semantics as `findPatientByPhone`); the dossier pane is where a rep
   confirms who they are talking to. The SELECTED conversation still gets its real record there:
   one lookup, on click, memoised.
@@ -2268,7 +2268,7 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   source answered, because *"we know this office but nobody of ours is with them"* and *"we have
   never heard of this number"* are different answers with different next moves.
   ⚠️ **The `@rcfax.com` join itself is NOT the bug — audited live 2026-09-02** when Josh reported
-  `(858) 366-6900` as unmatched. `contains_text` on the last four digits works fine against the
+  `(555) 555-0103` as unmatched. `contains_text` on the last four digits works fine against the
   EMAIL column (`8458775008` · `5008` · `rcfax` · the full address all return the right row), and
   `faxDigits` strips the address before comparing. That number is genuinely on no board: not in any
   doctor-fax column on any of the five boards, not in the Doctor Database, and not in any doctor
@@ -2312,28 +2312,28 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   erroring. Caught in review before it shipped; the same trap §7 records for `oversightApi.ts`.
 - ⚠️ **A PHONE MATCH IS NOT A PERSON either** (`dossier.splitByPerson` + `personKey`, tested).
   Audited over the live boards 2026-09-02: of **3,140 distinct numbers, 18 are shared by genuinely
-  different patients** — households (John and Sue Hartley on `3046977788`, Charles and Linda
-  Stanley, Annie and Richard Higginbottom, Mariano Gonzalez and Mariano Gonzalez Jr) and several
-  pairs with different surnames (Raymond King / Ruth Bullock, Jimmie Woodruff / John Chadwell,
-  Carolyn Torrence / Herma Clunis). `fetchDossierItems` keeps every item whose phone matches, so
+  different patients** — households (a couple sharing `5555550104`, two further couples under one
+  surname, and a parent/Jr pair) and several pairs of patients with different
+  surnames. `fetchDossierItems` keeps every item whose phone matches, so
   those used to become ONE blended dossier: two people's stage paths and notes under one header,
   and — because the pane's composer writes to `dossier.active.itemId` and the page derives
   `threadPatient` from the same object — a note or an outbound text could be filed against the
   wrong one. The pane now says **"N patients share this number"** and offers a switcher; everything
   downstream follows the selection. ⚠️ **A rep who picked a patient BY NAME opens on them**
   (`useDossier`'s `preferPerson`): the Start-a-conversation name hit passed only the phone number,
-  so searching "Sue Hartley" and clicking her opened John, who shares `(304) 697-7788` and wins the
+  so searching a patient by name and clicking her opened the other person on that
+  number, who shares `(555) 555-0104` and wins the
   default ordering. Navigating by NUMBER instead — a conversation row, a call, a typed number —
   clears the preference, or it would follow the rep onto an unrelated thread. ⚠️ `personKey` strips only the annotations reps actually add to
   a title (`(ip)`, `(cgm)`, `(copy)`, `(OLD)`, a trailing `old`) and deliberately does **not**
-  fuzzy-match: `Bradley Comstock` / `Bradley Comstuck` stay two entries, because over-splitting
+  fuzzy-match: `Patient S` / `Patient 5` (one character apart) stay two entries, because over-splitting
   shows a rep both records and makes a duplicate obvious, while over-merging is the bug this exists
   to fix. ⚠️ The completed-record name pass runs for **every** person on the number, capped at 3 —
   it used to run for `byPhone.find(...)` alone, so the second patient's history was silently
   missing from a pane already merging them.
 - **When the number is on no board, the pane offers the SEARCH** (Josh, 2026-09-03 —
-  `components/commsHub/DossierSearch`). James McDowell rang from (202) 867-4525; every board holds
-  him at (202) 867-5900, so the pane correctly said the number was on no board and the rep had no way
+  `components/commsHub/DossierSearch`). A caller rang from (555) 555-0105; every board holds
+  him at (555) 555-0106, so the pane correctly said the number was on no board and the rep had no way
   to get his profile up beside the call. The empty state now carries the **same search as System
   Management** — the same `useLiveSearch` hook, the same Active / Completed / Stuck folders, the same
   stage-first row (`lib/systemMgmt/boardTone` is shared so the two cannot drift). Picking a row is an
@@ -2431,7 +2431,7 @@ only against **positive evidence**: we saw that exact item and it now holds a di
 Absence still deletes nothing, and the prune is **skipped entirely on a truncated run**, since
 "we saw this item and it moved" is exactly the claim a partial scan cannot make. ⚠️ `collapseRows` keeps **one row per number**, won by the furthest-along board (a later stage
 holds the name a rep corrected), with a **deterministic** id tie-break: two live items for one
-number is a household (John and Sue Hartley share `3046977788` live), and Monday's scan order is not
+number is a household (two patients share `5555550104` live), and Monday's scan order is not
 stable, so without it the displayed name would flip between two real people day to day.
 
 ⚠️ **The board list MIRRORS the SPA's `BOARDS` registry** — the gateway is a separate Node service
@@ -2601,7 +2601,7 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   columnExclusivity.test.ts` guards the "two" half, over ME · Insurance · Intake, from the real
   chart defs. Medical Evaluation had the second failure for as long as the manager views existed:
   its Processor Overview charts excluded escalation index 2 but **not index 0**, so 20 escalated
-  patients (Ruben Dickens the reported one) were counted in the processor column AND a manager
+  patients (the reported one) were counted in the processor column AND a manager
   column, while being absent from the rep's sidebar and burndown — the processor bar was showing
   work nobody was doing. All five now exclude **[0, 2]**, matching Insurance and Doctor
   Appointments. Two consequences that must move together: the `*-escalations` ("Attempt 4+")
@@ -2734,7 +2734,7 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   IndexedDB snapshot up to **24h old** — so the first seconds of every visit searched yesterday's
   boards. Katie stopped using it and looked patients up on Monday instead. Now each debounced query
   is ONE aliased request across all seven boards with `contains_text` rules — name by WORD, ANDed
-  (so "delgado, jose" finds Jose Delgado), or the phone column by digit substring — measured at
+  (so "doe, jane" finds `Jane Doe`), or the phone column by digit substring — measured at
   **200 complexity vs 16,020 per full page**, sub-second, and re-run silently every 45s while a
   query is on screen. Latest-wins (older in-flight requests are aborted and their answers dropped);
   a failure says so rather than substituting older rows — and the invalidation happens on the
@@ -2757,7 +2757,7 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   `settings_str` — DTC Intake's MASTER STAGE says "Stuck Final Review" and **"Can't Proceed"**, so
   a `^Stuck` pattern would have missed one and over-matched elsewhere; Greptile caught the pattern on
   PR #53) OR **Proposed Stuck** (Escalation index 2, awaiting Final Decisions — Josh, 2026-09-03,
-  pointing at Gregory White on that screen: *"stuck patients absolutely do have a UI"*; to the
+  pointing at a stuck patient on that screen: *"stuck patients absolutely do have a UI"*; to the
   manager this search serves a proposal and an approval are one queue, and the Profile Status badge
   still tells them apart) ⇒ **stuck**; everything else ⇒ **active** — Manager Intervention (index 0)
   included, since that patient is being worked, by a manager. Defaults to Active; an empty folder
