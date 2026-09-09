@@ -28,6 +28,7 @@ function filled(): CallIntake {
     confirmed: { pump: true, address: true, primary: true, secondary: false, oop: true },
     secondaryCoverage: "unknown",
     supplyLength: "90",
+    pumpConfirmedModel: "t:slim",
     // Set so the full-fidelity round trip covers the override marker too.
     supplyLengthManual: true,
     oopAmount: "$42.50",
@@ -361,5 +362,38 @@ describe("⚠️ 75-day supply round-trips through the block (Greptile, PR #55)"
       const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
       if (parsed?.supplyLengthManual) expect(parsed.supplyLength).not.toBe("");
     }
+  });
+});
+
+describe("⚠️ the confirmed pump model round-trips (Josh, 2026-09-09)", () => {
+  it("records which model the rep confirmed", () => {
+    const i = emptyIntake();
+    i.confirmed.pump = true;
+    i.pumpConfirmedModel = "t:slim";
+    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
+    expect(parsed?.confirmed.pump).toBe(true);
+    expect(parsed?.pumpConfirmedModel).toBe("t:slim");
+  });
+
+  it("writes nothing when the box isn't ticked", () => {
+    const i = emptyIntake();
+    i.pumpConfirmedModel = "t:slim";
+    const log = appendIntakeToNotes("", i, { initials: "JH", now: AT });
+    expect(log).not.toContain("Pump confirmed:");
+  });
+
+  it("⚠️ survives a block written before the field existed", () => {
+    // The notes column carries history. An older block has no "Pump confirmed"
+    // line at all; parsing must yield "" rather than undefined, because
+    // pumpConfirmationStale reads it and a crash here breaks the send.
+    const legacy = [
+      "--- WC INTAKE v1 ---",
+      "Confirmed: pump, address",
+      "Unconfirmed: primary, secondary, oop",
+      "--- END WC INTAKE ---",
+    ].join("\n");
+    const parsed = parseIntakeBlock(legacy);
+    expect(parsed?.confirmed.pump).toBe(true);
+    expect(parsed?.pumpConfirmedModel).toBe("");
   });
 });

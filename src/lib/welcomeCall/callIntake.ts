@@ -144,6 +144,22 @@ export interface CallIntake {
   /** What the rep actually quoted the patient, as typed. Free text on purpose —
    *  reps say "about $40" and "$0 with Medicaid" as often as a clean number. */
   oopAmount: string;
+  /**
+   * The Pump Type the rep had on screen when they ticked `confirmed.pump`.
+   *
+   * ⚠️ Recorded because the confirmation is about ONE MODEL — the rep said
+   * "t:slim" out loud to the patient — so it cannot survive the model
+   * changing. Brandon, 2026-09-09: "If Pump Type changes after it's checked,
+   * uncheck it automatically." Comparing values is the only way to notice; a
+   * bare boolean has nothing to compare against, and a tick left standing
+   * would put an audit line in the notes claiming a conversation that never
+   * happened about the pump now on order.
+   *
+   * ⚠️ It lives in the block rather than in component state so the tick
+   * survives a reload — a rep returning to the patient tomorrow keeps a
+   * confirmation they really did get. Empty whenever `confirmed.pump` is false.
+   */
+  pumpConfirmedModel: string;
   /** Numbers BEYOND the board's `Pt. Phone`. Bounded so the block can't grow
    *  without limit against the 2000-character ceiling. */
   phones: IntakePhone[];
@@ -170,6 +186,7 @@ export function emptyIntake(): CallIntake {
     supplyLength: "",
     supplyLengthManual: false,
     oopAmount: "",
+    pumpConfirmedModel: "",
     phones: [],
     caretaker: { ...EMPTY_CARETAKER },
     authNotes: "",
@@ -182,6 +199,7 @@ export function intakeHasContent(i: CallIntake | null | undefined): boolean {
   if (!i) return false;
   if (CONFIRM_KEYS.some((k) => i.confirmed[k])) return true;
   if (i.secondaryCoverage || i.supplyLength || i.oopAmount.trim() || i.authNotes.trim()) return true;
+  if ((i.pumpConfirmedModel ?? "").trim()) return true;
   if (i.phones.some((p) => p.number.trim())) return true;
   const c = i.caretaker;
   return !!(c.name.trim() || c.relationship.trim() || c.phone.trim() || c.email.trim() || c.notes.trim());
@@ -248,6 +266,10 @@ export function formatIntakeBlock(intake: CallIntake): string {
   lines.push(`Confirmed: ${yes.length ? yes.join(", ") : "none"}`);
   lines.push(`Unconfirmed: ${no.length ? no.join(", ") : "none"}`);
 
+  // ⚠️ `?? ""` is not defensive noise: this runs on the send path, and callers
+  // include blocks parsed from notes written before this field existed.
+  const pumpModel = (intake.pumpConfirmedModel ?? "").trim();
+  if (intake.confirmed.pump && pumpModel) lines.push(`Pump confirmed: ${oneLine(pumpModel)}`);
   if (intake.secondaryCoverage) lines.push(`Secondary coverage: ${titleCase(intake.secondaryCoverage)}`);
   if (intake.supplyLength)
     lines.push(`Supply length: ${intake.supplyLength} days${intake.supplyLengthManual ? " (override)" : ""}`);
@@ -378,6 +400,9 @@ export function parseIntakeBlock(notes: string | undefined | null): CallIntake |
         intake.supplyLengthManual = /\(override\)/i.test(value);
         break;
       }
+      case "pump confirmed":
+        intake.pumpConfirmedModel = value.trim();
+        break;
       case "oop amount":
         intake.oopAmount = value;
         break;

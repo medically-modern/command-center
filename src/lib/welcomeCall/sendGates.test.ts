@@ -101,23 +101,33 @@ describe("the label names the model", () => {
 });
 
 describe("⚠️ a pump change invalidates an existing confirmation", () => {
+  const stale = (confirmedModel: string, pumpType: string, confirmed = true) =>
+    pumpConfirmationStale({ confirmed, confirmedModel, pumpType });
+
   it("goes stale when the model changes under a tick", () => {
     // The rep said "t:slim" out loud. Left checked after a change to Mobi, the
     // audit line would claim a conversation that never happened about the pump
     // now on order.
-    expect(pumpConfirmationStale("t:slim", "Mobi")).toBe(true);
+    expect(stale("t:slim", "Mobi")).toBe(true);
   });
 
   it("is not stale while the model is unchanged", () => {
-    expect(pumpConfirmationStale("t:slim", "t:slim")).toBe(false);
+    expect(stale("t:slim", "t:slim")).toBe(false);
   });
 
-  it("is not stale when nothing was ever confirmed", () => {
-    expect(pumpConfirmationStale("", "t:slim")).toBe(false);
-    expect(pumpConfirmationStale("", "")).toBe(false);
+  it("is not stale when the box was never ticked", () => {
+    expect(stale("", "t:slim", false)).toBe(false);
+    expect(stale("t:slim", "Mobi", false)).toBe(false);
   });
 
   it("goes stale when the pump is cleared entirely", () => {
-    expect(pumpConfirmationStale("t:slim", "")).toBe(true);
+    expect(stale("t:slim", "")).toBe(true);
+  });
+
+  it("⚠️ treats a tick with NO recorded model as stale", () => {
+    // Blocks written before pumpConfirmedModel existed. The confirmation was
+    // real, but we cannot say which pump it was about, and assuming it still
+    // holds is exactly the failure this guards. Re-asking costs one question.
+    expect(stale("", "t:slim")).toBe(true);
   });
 });

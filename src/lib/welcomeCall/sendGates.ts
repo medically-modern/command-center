@@ -29,7 +29,7 @@
  * "Supplies Only" and would demand a pump confirmation from a patient who
  * already owns theirs. That conflation is CLAUDE.md §5.22's $3,787 incident.
  */
-import { servingSellsPumpDevice, servingIncludesCgm } from "@/lib/shared/servingLines";
+import { servingSellsPumpDevice } from "@/lib/shared/servingLines";
 import type { CallIntake } from "./callIntake";
 
 /** Advance? `color_mm301cpp` — 1 = Advance, 2 = Don't Advance. */
@@ -110,22 +110,26 @@ export function unmetSendRequirements(i: SendGateInput): SendRequirement[] {
  * cannot survive the model changing. Left checked, the audit line in the notes
  * would claim a conversation that never happened about the pump now on order.
  *
- * The caller records the model that was confirmed; this reports whether it
- * still matches.
+ * The model that was confirmed is carried in the call-intake block as
+ * `pumpConfirmedModel` (Josh, 2026-09-09), so the tick survives a reload and a
+ * rep coming back tomorrow keeps a confirmation they really did get.
+ *
+ * ⚠️ An untouched tick with NO recorded model is treated as stale. Those are
+ * blocks written before this field existed: the confirmation is real but we
+ * cannot say which pump it was about, and assuming it still holds is the
+ * failure this exists to prevent. Re-asking costs one question on the call.
  */
-export function pumpConfirmationStale(confirmedModel: string, pumpType: string): boolean {
-  const was = (confirmedModel ?? "").trim();
-  const now = (pumpType ?? "").trim();
-  // Nothing confirmed yet, or nothing to compare against, is not staleness.
-  if (!was) return false;
+export function pumpConfirmationStale(args: {
+  /** `intake.confirmed.pump`. */
+  confirmed: boolean;
+  /** `intake.pumpConfirmedModel`. */
+  confirmedModel: string;
+  /** Pump Type as it now reads. */
+  pumpType: string;
+}): boolean {
+  if (!args.confirmed) return false;
+  const was = (args.confirmedModel ?? "").trim();
+  const now = (args.pumpType ?? "").trim();
+  if (!was) return true;
   return was !== now;
-}
-
-/**
- * Whether the CGM section's own confirmation applies. Kept here beside the
- * others so every "is this section required" question has one home, even though
- * only the two above gate the send today.
- */
-export function servesCgm(serving: string): boolean {
-  return servingIncludesCgm(serving);
 }
