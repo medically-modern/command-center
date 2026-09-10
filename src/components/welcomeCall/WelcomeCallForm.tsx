@@ -294,15 +294,21 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
   });
   /* Subscription Type: "Default from the product mix, editable, required"
      (Brandon, 2026-09-09), with the same one-hint card as Order Frequency.
-     ⚠️ The ref carries the PATIENT ID, like the two transition effects below:
-     without it, the label we filled for the last patient would be read as this
-     one's auto-fill and mislabel a board value as our guess. */
-  const autoFilledSub = useRef<{ patientId: string; label: string } | null>(null);
+     ⚠️ Keyed BY PATIENT, not a single slot. The form stays mounted across a
+     sidebar click while each patient's auto-filled value lives on their own
+     overlay, so a one-slot ref only ever describes the patient filled most
+     recently: going A → B → A left A still holding our guess with the "from
+     product mix" hint gone, and a later edit showing no "edited" hint either —
+     the value survives the round trip and its provenance did not (Greptile,
+     PR #57). A Map is also what stops the label filled for the LAST patient
+     being read as this one's, which would mislabel a board value as our guess.
+     Session-scoped by design: a reload is a fresh read of the board, where a
+     value we filled and saved is simply a board value. */
+  const autoFilledSub = useRef<Map<string, string>>(new Map());
   const subType = subscriptionTypeState({
     current: patient.subscriptionType,
     derived: expectedSubscriptionType(patient),
-    autoFilled:
-      autoFilledSub.current?.patientId === patient.id ? autoFilledSub.current.label : "",
+    autoFilled: autoFilledSub.current.get(patient.id) ?? "",
   });
   useEffect(() => {
     if (!subType.needsFill) return;
@@ -310,7 +316,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
     if (!derived) return;
     const option = SUBSCRIPTION_TYPE_OPTIONS.find((o) => o.label === derived);
     if (!option) return; // a label the board doesn't carry writes a blank (§5.12)
-    autoFilledSub.current = { patientId: patient.id, label: derived };
+    autoFilledSub.current.set(patient.id, derived);
     handleSelectChange("subscriptionType", option.label, option.index);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, subType.needsFill]);
