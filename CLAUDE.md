@@ -2858,12 +2858,49 @@ supplies both — and is stamped only on the **off→on** transition
 (`caregiverConsentJustGiven`, compared against the BOARD), or every later send re-appends the
 same claim about one conversation.
 
-**Still to do:** the phone fields into `sendWelcomeCallTextToMonday`'s push (it writes **no**
-phone column before flipping the trigger — workflow 7918318033 reads Primary Phone), blocking
-or warning on Can Text = No there, the Can Text backfill, and widening `BoardDef.phoneColId` to
-a LIST so the phone→patient lookup matches an Alternate Phone (SPA `lib/systemMgmt/mondayApi.ts`
-+ the gateway's `patientDirectory.mjs` mirror + `directoryCoverage.test.ts`, all three
-together — §5.29).
+**The Send Welcome Call Text push carries the phone fields from 2026-09-10.** It wrote **no**
+phone column at all before flipping the trigger, and automation **7918318033** ("Welcome Call
+Text → Send → Send SMS from RC Number") reads **Primary Phone** — harmless only while the
+banner's Save button owned that column, and a live bug the moment the STAR did.
+⚠️ **Can Text = No BLOCKS that button**, it does not warn (`welcomeCallTextBlock`). RingCentral
+ACCEPTS a text to a landline and only flips it to `SendingFailed` seconds later (§5.5), so a
+click-through warning buys a green toast and a patient who heard nothing. ⚠️ An **unanswered**
+Can Text does not block — blank is unknown, and this button is pressed mid-call, often before the
+rep reaches that question.
+
+**The phone→patient lookup matches Alternate Phone from 2026-09-10.** ⚠️ `phoneColId` did NOT
+become a list: it stays the ONE number a search row displays, and `altPhoneColIds` is a separate
+match-only set (`phoneColIdsFor`). Two of the three consumers want one number and only the
+lookups want all of them; a single list would have forced every reader to pick which entry was
+"the" number, and they would not have agreed.
+⚠️ **The rules are ORed, not ANDed** — in `searchPatientsLive`'s `rulesLiteral` and in
+`findPatientByPhone`'s fan-out. The digits are in the primary OR the alternate, never both, so
+the default AND matches nobody and Monday answers that with 200 and an empty list — which reads
+exactly like "this caller is not a patient".
+⚠️ `findPatientByPhone` narrows on **every** number the row carries (`PatientRef.phones`), not
+the displayed one: the wide `contains_text` net can match on the alternate, and comparing to
+`p.phone` alone would then discard the row for not equalling the patient's primary — the
+caregiver's call would come up anonymous having been found.
+⚠️ The gateway mirror writes **one directory row per NUMBER** (`toDirectoryRows`), so one item
+yields two. Safe against the prune by construction: `prunePlan` keeps every (item, hmac) pair it
+wrote. `directoryCoverage.test.ts` now fails on an alternate-column drift too — verified to fail.
+
+**The Can Text backfill is `services/monday-gateway/canTextBackfill.mjs`** (+ `canTextRules.mjs`,
+pure and tested). ⚠️ **It lives on the GATEWAY and structurally cannot live in this repo**: the
+evidence is `sms_archive`, keyed by `phone_hmac`, and hashing a board number needs
+`PHONE_HMAC_PEPPER` — a Railway variable that deliberately exists nowhere else.
+⚠️ **DRY RUN by default** (`CANTEXT_BACKFILL_APPLY=1` to write); it is a bulk write against live
+PHI rows, and §10 records what an unattended one did on 2026-09-02. It reads `errors[]` and stops,
+for the same reason.
+⚠️⚠️ **It only ever writes "Yes".** A missing Yes costs a rep one question; a wrong No routes that
+patient's reorders to a call queue silently. And the evidence for No is genuinely weak — a failed
+outbound text looks identical for a landline, a disconnected mobile, a typo and a carrier having a
+bad afternoon (§5.5's `SMS-CAR-104`/`-199` ride on messages that were fine). Answering No needs a
+real **line-type lookup**, which nobody has bought; until then it stays the rep's answer.
+⚠️ A merely **`Sent`** outbound text is NOT evidence — §5.5 again: accepted is not delivered, so
+counting it would mark exactly the landlines Yes. Only `Delivered`, or any INBOUND text.
+⚠️ **The archive is younger than the boards** (it began 2026-08-01), so a patient last texted in
+June looks identical to one never texted. Re-run it as the archive grows.
 ⚠️ The five WC→Subscription workflows need these six columns added **and** Order Frequency
 re-pointed (§5.31c) — the same five ids, so it is one off-hours sitting: 7918317925, 7918340632,
 7918343137, 7918601476, 7919753399.

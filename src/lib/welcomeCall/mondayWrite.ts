@@ -440,6 +440,33 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
     tasks.push(writeLocation(p.id, COL.address, p.addressEdited, lat, lng));
   }
 
+  /* ── The phone slots (§5.31d) ──
+     ⚠️ This writer had NO phone column in its push at all, and the automation
+     it fires — 7918318033, "Welcome Call Text → Send → Send SMS from RC Number"
+     — reads **Primary Phone**. That was harmless only while the banner's own
+     Save button owned that column; now the STAR does, so a rep who stars the
+     caregiver's cell and presses this would have texted the number the board
+     still held. Brandon's handoff calls this out by name.
+
+     Written in Phase 1 with everything else, so the value is committed before
+     Phase 2 flips the trigger. Same shapes and the same skip-vs-clear rules as
+     `buildDataTasks` — an unparseable number writes nothing rather than
+     clearing a real one. */
+  {
+    const w = phoneSlotWrites(phoneSlotsFor(p), caregiverFor(p));
+    const pushPhone = (columnId: string, value: string) => {
+      if (planPhoneWrite(value).action === "skip") return;
+      tasks.push(writePhone(p.id, columnId, value));
+    };
+    pushPhone(COL.phone, w.primaryPhone);
+    pushPhone(COL.alternatePhone, w.alternatePhone);
+    tasks.push(writeStatusOrClear(p.id, COL.primaryContact, w.primaryContactId));
+    tasks.push(writeStatusOrClear(p.id, COL.alternateContact, w.alternateContactId));
+    tasks.push(writeStatusOrClear(p.id, COL.canText, w.canTextId));
+    tasks.push(writeText(p.id, COL.caregiverName, w.caregiverName));
+    tasks.push(writeCheckbox(p.id, COL.caregiverAuthorized, w.caregiverAuthorized));
+  }
+
   // Phase 1: wait for every data field to commit
   await Promise.all(tasks);
 

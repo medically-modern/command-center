@@ -25,11 +25,14 @@ const rules = readFileSync(
 );
 
 /** The literal board table out of the gateway source. */
-function gatewayBoards(): { boardId: number; phoneColId: string }[] {
+function gatewayBoards(): { boardId: number; phoneColId: string; altPhoneColIds: string[] }[] {
   const block = rules.slice(rules.indexOf("DIRECTORY_BOARDS = ["), rules.indexOf("];", rules.indexOf("DIRECTORY_BOARDS = [")));
-  return [...block.matchAll(/boardId:\s*(\d+),\s*name:\s*"([^"]+)",\s*phoneColId:\s*"([^"]+)"/g)].map((m) => ({
+  return [...block.matchAll(
+    /boardId:\s*(\d+),\s*name:\s*"([^"]+)",\s*phoneColId:\s*"([^"]+)"([^}]*)/g,
+  )].map((m) => ({
     boardId: Number(m[1]),
     phoneColId: m[3],
+    altPhoneColIds: [...(m[4] ?? "").matchAll(/"(phone_[a-z0-9]+)"/g)].map((x) => x[1]),
   }));
 }
 
@@ -44,6 +47,24 @@ describe("patient directory board coverage", () => {
           `Add it to services/monday-gateway/patientDirectoryRules.mjs.`,
       ).toBe(true);
       expect(gw.get(b.boardId), `Phone column drift on board ${b.boardId} (${b.boardName})`).toBe(b.phoneColId);
+    }
+  });
+
+  it("mirrors every ALTERNATE phone column too", () => {
+    // ⚠️ Same silent failure one column over (§5.31d): an Alternate Phone the
+    // SPA matches on and the gateway does not scan means a caregiver's number
+    // resolves in the browser fan-out and never from the directory — so the
+    // card that appears WHILE THE PHONE IS RINGING, which reads Postgres first,
+    // stays anonymous for exactly the calls that column was added to name.
+    const gw = new Map(gatewayBoards().map((b) => [b.boardId, b.altPhoneColIds]));
+    for (const b of BOARDS) {
+      const want = [...(b.altPhoneColIds ?? [])].sort();
+      const got = [...(gw.get(b.boardId) ?? [])].sort();
+      expect(
+        got,
+        `Alternate phone columns drift on board ${b.boardId} (${b.boardName}) — ` +
+          `edit services/monday-gateway/patientDirectoryRules.mjs`,
+      ).toEqual(want);
     }
   });
 

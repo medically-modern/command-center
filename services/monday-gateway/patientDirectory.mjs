@@ -53,7 +53,8 @@ import {
   collapseRows,
   directoryHealth,
   prunePlan,
-  toDirectoryRow,
+  toDirectoryRows,
+  phoneColIdsFor,
 } from "./patientDirectoryRules.mjs";
 
 const MONDAY_URL = "https://api.monday.com/v2";
@@ -148,7 +149,7 @@ const NEXT_PAGE = `
 
 /** Every named, phone-bearing item on one board. */
 async function scanBoard(board) {
-  const cols = [board.phoneColId];
+  const cols = phoneColIdsFor(board);
   const rows = [];
   let pages = 0;
   let truncated = false;
@@ -158,8 +159,9 @@ async function scanBoard(board) {
   for (;;) {
     pages += 1;
     for (const it of page?.items ?? []) {
-      const row = toDirectoryRow(it, board, phoneHmac);
-      if (row) rows.push(row);
+      // One row PER NUMBER — an Alternate Phone is a second way to reach the
+      // same patient, and resolving it is the whole point of that column.
+      rows.push(...toDirectoryRows(it, board, phoneHmac));
     }
     const cursor = page?.cursor ?? null;
     if (!cursor) break;

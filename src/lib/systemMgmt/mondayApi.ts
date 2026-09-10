@@ -79,8 +79,24 @@ export interface BoardDef {
   escalationColId: string | null;
   /** Column ID for escalation notes long_text (null = board has no escalation notes) */
   escalationNotesColId: string | null;
-  /** Column ID for phone */
+  /** Column ID for phone — the PRIMARY one, and the one a row renders as its
+   *  `phone`. Exactly one, deliberately: a search row shows one number. */
   phoneColId: string;
+  /**
+   * Further phone columns to MATCH on, never to display (§5.31d).
+   *
+   * Welcome Call and Subscription grew an **Alternate Phone** on 2026-09-10,
+   * and a caregiver texting or calling from their own number has to resolve to
+   * their patient — the whole reason that column exists. Kept separate from
+   * `phoneColId` rather than making it a list, because two of the three
+   * consumers want ONE number (the row's displayed `phone`) and only the
+   * lookups want all of them; a single list would have forced every reader to
+   * decide which entry was "the" number, and they would not have agreed.
+   *
+   * ⚠️ Mirrored into the gateway's `DIRECTORY_BOARDS` — `directoryCoverage.test.ts`
+   * fails the build when the two disagree.
+   */
+  altPhoneColIds?: string[];
   /** Column ID for Stage Advancer (used by masheke to sub-route) */
   stageAdvancerColId: string | null;
   /** Column ID for "Days Since Stage Started" status */
@@ -215,6 +231,7 @@ export const BOARDS: BoardDef[] = [
     escalationColId: null,
     escalationNotesColId: null,
     phoneColId: "phone_mkp0q3cw",
+    altPhoneColIds: ["phone_mm72r19q"],
     stageAdvancerColId: null,
     daysSinceStageColId: null,
     // ⚠️ Was null until 2026-09-01, which read as "this board has no notes".
@@ -309,6 +326,7 @@ export const BOARDS: BoardDef[] = [
     escalationColId: "color_mm1x7997",
     escalationNotesColId: "long_text_mm3jgh1y",
     phoneColId: "phone_mm1x44yk",
+    altPhoneColIds: ["phone_mm7265hp"],
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
     notesColId: "text_mm6vqq2k",
@@ -387,8 +405,13 @@ interface RawItem {
  * present on one path and not the other would render as a blank field with no
  * error (§5.11's trap).
  */
+/** Every phone column this board should be MATCHED on, primary first. */
+export function phoneColIdsFor(board: BoardDef): string[] {
+  return [board.phoneColId, ...(board.altPhoneColIds ?? [])];
+}
+
 export function searchColumnIds(board: BoardDef): string[] {
-  const colIds = [board.phoneColId];
+  const colIds = [...phoneColIdsFor(board)];
   if (board.escalationColId) colIds.push(board.escalationColId);
   if (board.escalationNotesColId) colIds.push(board.escalationNotesColId);
   if (board.stageAdvancerColId) colIds.push(board.stageAdvancerColId);
@@ -731,10 +754,17 @@ export function liveSearchRules(query: string): LiveSearchRules | null {
 function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
   const rule = (columnId: string, value: string) =>
     `{column_id: ${JSON.stringify(columnId)}, compare_value: [${JSON.stringify(value)}], operator: contains_text}`;
-  const list =
-    rules.kind === "phone"
-      ? [rule(board.phoneColId, rules.digits)]
-      : rules.terms.map((t) => rule("name", t));
+  /* ⚠️ The two kinds need OPPOSITE operators, which is why this is not one
+     list. Name terms are ANDed — "doe, jane" must find `Jane Doe` and not
+     every Jane — while phone columns are ORed: the digits are in the primary
+     number or the alternate, never both, so ANDing them finds nobody at all.
+     Search silently returning zero rows is the failure this whole file's
+     comments keep recording. */
+  if (rules.kind === "phone") {
+    const list = phoneColIdsFor(board).map((c) => rule(c, rules.digits));
+    return `{rules: [${list.join(", ")}], operator: or}`;
+  }
+  const list = rules.terms.map((t) => rule("name", t));
   return `{rules: [${list.join(", ")}], operator: and}`;
 }
 

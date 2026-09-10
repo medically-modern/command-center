@@ -23,11 +23,11 @@
 export const DIRECTORY_BOARDS = [
   { boardId: 18392794310, name: "DTC Intake", phoneColId: "phone_mkwrkc73" },
   { boardId: 18413019028, name: "Secondary Claims", phoneColId: "phone_mm1znnww" },
-  { boardId: 18407459988, name: "Subscription Board", phoneColId: "phone_mkp0q3cw" },
+  { boardId: 18407459988, name: "Subscription Board", phoneColId: "phone_mkp0q3cw", altPhoneColIds: ["phone_mm72r19q"] },
   { boardId: 18406352652, name: "Profile Send Off", phoneColId: "phone_mm1x44yk" },
   { boardId: 18406060017, name: "Medical Evaluation", phoneColId: "phone_mm1x44yk" },
   { boardId: 18410601299, name: "Insurance", phoneColId: "phone_mm1x44yk" },
-  { boardId: 18410804557, name: "Welcome Call", phoneColId: "phone_mm1x44yk" },
+  { boardId: 18410804557, name: "Welcome Call", phoneColId: "phone_mm1x44yk", altPhoneColIds: ["phone_mm7265hp"] },
 ];
 
 /**
@@ -88,21 +88,50 @@ export function toE164(value) {
  * can never be looked up, and a row with no name would render as blank, which
  * is worse than falling through to the phone number.
  */
-export function toDirectoryRow(item, board, hash) {
+export function phoneColIdsFor(board) {
+  return [board.phoneColId, ...(board.altPhoneColIds ?? [])];
+}
+
+/**
+ * Every directory row this item yields — ONE PER NUMBER, not one per item.
+ *
+ * ⚠️ Welcome Call and Subscription carry an **Alternate Phone** from
+ * 2026-09-10 (§5.31d), and a caregiver ringing from their own number is
+ * precisely who that column exists to name. Both numbers therefore get a row,
+ * under the same item id and the same patient name.
+ *
+ * That is safe against the prune by construction: `prunePlan` keeps every
+ * (item, hmac) pair it actually WROTE, so two rows for one item survive, and
+ * `isOrphanRow` still deletes a number the item has genuinely moved off.
+ */
+export function toDirectoryRows(item, board, hash) {
   const name = String(item?.name ?? "").trim();
-  if (!name) return null;
-  const raw = (item?.column_values ?? []).find((c) => c && c.id === board.phoneColId)?.text;
-  const e164 = toE164(raw);
-  if (!e164) return null;
-  return {
-    phoneHmac: hash(e164),
-    last4: last10(e164).slice(-4),
-    name,
-    mondayItemId: String(item.id),
-    boardId: Number(board.boardId),
-    boardName: board.name,
-    rank: boardRank(board.boardId),
-  };
+  if (!name) return [];
+  const cols = item?.column_values ?? [];
+  const out = [];
+  const seen = new Set();
+  for (const colId of phoneColIdsFor(board)) {
+    const raw = cols.find((c) => c && c.id === colId)?.text;
+    const e164 = toE164(raw);
+    // A patient with the same number in both columns is one row, not two.
+    if (!e164 || seen.has(e164)) continue;
+    seen.add(e164);
+    out.push({
+      phoneHmac: hash(e164),
+      last4: last10(e164).slice(-4),
+      name,
+      mondayItemId: String(item.id),
+      boardId: Number(board.boardId),
+      boardName: board.name,
+      rank: boardRank(board.boardId),
+    });
+  }
+  return out;
+}
+
+/** Single-row form, kept for callers that want the primary only. */
+export function toDirectoryRow(item, board, hash) {
+  return toDirectoryRows(item, board, hash)[0] ?? null;
 }
 
 /**

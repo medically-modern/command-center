@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  welcomeCallTextBlock,
   slotsFromPatient,
   addSlot,
   starSlot,
@@ -255,6 +256,43 @@ describe("phoneSlotGaps", () => {
     for (const n of ["(347) 555-0102", "347-555-0102", "3475550102"]) {
       expect(phoneSlotGaps([slot({ number: n })])).toEqual([]);
     }
+  });
+});
+
+describe("welcomeCallTextBlock", () => {
+  it("allows the send when the starred number takes texts", () => {
+    expect(welcomeCallTextBlock([slot({ canText: "yes" })])).toBeNull();
+  });
+
+  it("BLOCKS when the starred number is marked No", () => {
+    // Not a warning. The automation texts Primary Phone, RingCentral ACCEPTS a
+    // text to a landline and only fails it seconds later (§5.5), so a
+    // click-through warning buys a green toast and a patient who heard nothing.
+    expect(welcomeCallTextBlock([slot({ canText: "no" })])).toMatch(/not able to receive texts/);
+  });
+
+  it("does NOT block on an unanswered Can Text", () => {
+    // Blank is unknown, not No — and this button is pressed mid-call, often
+    // before the rep has reached that question.
+    expect(welcomeCallTextBlock([slot({ canText: "" })])).toBeNull();
+  });
+
+  it("blocks when there is no number at all", () => {
+    expect(welcomeCallTextBlock([slot({ number: "" })])).toMatch(/Add the patient's phone number/);
+  });
+
+  it("blocks a number Monday could not store", () => {
+    expect(welcomeCallTextBlock([slot({ number: "555-121" })])).toMatch(/can't be saved/);
+  });
+
+  it("reads the STARRED slot, not the first one", () => {
+    // The whole point of the star: a rep who stars the caregiver's cell must
+    // have that number judged, not the one the board still holds.
+    let s = addSlot([slot({ number: "5555550100", canText: "yes" })]);
+    s = setSlotNumber(s, 1, "5555550199");
+    s = starSlot(s, 1);
+    s = setSlotCanText(s, 1, "no");
+    expect(welcomeCallTextBlock(s)).toMatch(/5555550199/);
   });
 });
 

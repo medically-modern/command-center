@@ -300,6 +300,34 @@ export function phoneSlotGaps(slots: PhoneSlot[]): string[] {
   return out;
 }
 
+/**
+ * Why the Welcome Call Text must not be sent, or `null` when it may.
+ *
+ * ⚠️ **Can Text = No is a hard block, not a warning.** The handoff says "block
+ * (or at least warn)"; block is the honest one, because the automation this
+ * button fires (7918318033, *Welcome Call Text → Send → Send SMS from RC
+ * Number*) reads **Primary Phone** and texts it. On a landline that text is
+ * ACCEPTED by RingCentral and only flips to `SendingFailed` seconds later
+ * (§5.5) — so the rep gets a green toast, the patient hears nothing, and the
+ * only surface carrying the verdict is a thread nobody opens. A warning that
+ * can be clicked through buys exactly that outcome.
+ *
+ * ⚠️ An UNANSWERED Can Text does not block. Blank is unknown, not No, and the
+ * send gate already makes the rep answer it before Advance — this button is
+ * pressed mid-call, often before that. Blocking on absent data would stop a
+ * rep texting a patient they are talking to.
+ */
+export function welcomeCallTextBlock(slots: PhoneSlot[]): string | null {
+  const starred = slots.find((s) => s.starred && s.number.trim()) ?? null;
+  if (!starred) return "Add the patient's phone number before sending the text.";
+  if (starred.canText === "no") {
+    return `${starred.number.trim()} is marked as not able to receive texts. Star a textable number first.`;
+  }
+  const rejection = phoneRejectionReason(starred.number);
+  if (rejection) return `${starred.number.trim()} can't be saved — ${rejection}`;
+  return null;
+}
+
 /* ─── What gets written ─── */
 
 export interface PhoneSlotWrites {

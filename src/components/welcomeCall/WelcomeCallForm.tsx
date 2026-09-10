@@ -45,6 +45,7 @@ import {
 } from "@/lib/welcomeCall/infusionSelection";
 import { monitorSaleVerdict } from "@/lib/shared/monitorSale";
 import { pumpConfirmLabel, pumpConfirmationStale, needsPumpConfirmation } from "@/lib/welcomeCall/sendGates";
+import { phoneSlotsFor, welcomeCallTextBlock } from "@/lib/welcomeCall/phoneSlots";
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import { ConfirmCheck } from "./CallIntakeFields";
 import { PhoneSlotsSection } from "./PhoneSlotsSection";
@@ -453,6 +454,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
   // Section visibility based on serving — with user override toggles
   const effectiveServing = patient.servingEdited ?? patient.serving;
+  /* ⚠️ Read through `phoneSlotsFor`, not the columns — the rep may have starred
+     a different number seconds ago and it lives on the page overlay (§5.31d). */
+  const textBlock = welcomeCallTextBlock(phoneSlotsFor(patient));
   const defaultShowCgm = servingIncludesCgm(effectiveServing);
   const defaultShowPump = servingIncludesPump(effectiveServing);
 
@@ -1276,7 +1280,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         <div className="mt-6">
           <Button
             variant={patient.welcomeCallTextIndex !== null ? "secondary" : "default"}
-            disabled={sendingWelcomeText}
+            disabled={sendingWelcomeText || (patient.welcomeCallTextIndex === null && textBlock !== null)}
             className={cn(
               "gap-2 w-full sm:w-auto",
               patient.welcomeCallTextIndex !== null && "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300"
@@ -1309,6 +1313,12 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 ? "Welcome Call Text: Queued"
                 : "Send Welcome Call Text"}
           </Button>
+          {/* One source for the disabled button AND its reason — the same rule
+              `unmetSendRequirements` follows, because a greyed-out control with
+              no stated reason is what reps report as "the app is broken". */}
+          {patient.welcomeCallTextIndex === null && textBlock && (
+            <p className="text-xs font-medium text-red-600 mt-2">{textBlock}</p>
+          )}
           <p className="text-xs text-muted-foreground mt-2">
             Pushes the form data above to Monday, then flips the Welcome Call Text trigger to Send.
           </p>
