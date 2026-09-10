@@ -3816,24 +3816,32 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   claiming `h-screen`, because the host owns the layout, and it drops the **back
   button alone** — the host's own header sits 45px above with a back button that
   goes to the same place.
+  ⚠️⚠️ **THE HOST MUST THEN GIVE IT A DEFINITE HEIGHT — `h-screen overflow-hidden`
+  on the Communications tab, never the page's ordinary `min-h-screen`.** The hub's
+  three panes are `flex-1 min-h-0` and scroll internally, and `min-h-0` can only
+  bound a parent that HAS a definite height. Under a minimum the flex row's height
+  is auto, so the conversation list grows to fit every row: with the live inbox
+  (732 conversations) the document ran ~48,000px tall, and both the message
+  **composer** and the profile pane's `justify-center` **spinner** landed thousands
+  of pixels below the fold. Reported as *"there's literally no bar to send a text
+  at the bottom"* and *"no loading animation for command center profile as well"* —
+  one cause, two symptoms.
+  ⚠️ **IT ONLY REPRODUCES WITH VOLUME, and that cost a wrong verdict.** Measured in
+  a browser at 1440×900: 800 conversations under `min-h-screen` ⇒ document 48,063px,
+  composer at y=47,993, off screen; under `h-screen` ⇒ 900px, composer at 830. With
+  a **two**-conversation fixture the content fits inside 100vh, `min-h-screen`
+  stretches the child to exactly the same layout, and the two are pixel-identical.
+  This fix was made, "disproved" against that thin fixture, reverted, and re-made
+  from a user screenshot showing the page scrolled past its own header. Any re-test
+  of this needs a long list; `systemMgmtTabs.test.ts` pins the class name.
   ⚠️ **EVERYTHING ELSE RENDERS IDENTICALLY, navy bar included** (Josh, same day:
-  *"exactly the same"*). The first cut also restyled the header into a plain
-  white strip and dropped the icon and the "Communications" title, leaving a
-  dialer and a bell floating on white. It was reported as **"there's no way to
-  send a text in this view, it looks incomplete"** — and the composer was in fact
-  present and reachable: measured in a real browser at 1024×640, 1280×700,
-  1440×760 and 1440×900, embedded and standalone, the textarea and its Send
-  button land on the same pixels and neither view scrolls the document. Nothing
-  was broken; a header that said nothing made a working screen read as half-built.
-  ⚠️ Two things follow. **Restyling a header is not a cheaper way to say "this is
-  embedded"** — the three-pane hub is the whole content, so its chrome is the only
-  thing telling a rep the view is finished. And a report of a MISSING CONTROL on
-  an embedded view is worth measuring before it is diagnosed: the first fix here
-  was a `min-h-screen` → `h-screen` change on the host, reasoned from
-  `ConversationThread`'s `flex-1 min-h-0` chain and **wrong** — reverting it moved
-  nothing, because `min-h-screen` already stretches the flex child to the viewport.
-  `systemMgmtTabs.test.ts` pins the header parity (navy, icon, title, and no
-  `embedded` branch in it but the back button) and is verified to fail on a revert.
+  *"exactly the same"*). The first cut also restyled the header into a plain white
+  strip and dropped the icon and the "Communications" title, leaving a dialer and a
+  bell floating on white — a working screen that read as half-built. **Restyling a
+  header is not a cheaper way to say "this is embedded"**: the three-pane hub is
+  the whole content, so its chrome is the only thing telling a rep the view is
+  finished. `systemMgmtTabs.test.ts` pins the parity (navy, icon, title, and no
+  `embedded` branch inside the header but the back button).
   ⚠️ **Mounted CONDITIONALLY, never hidden.** Every RingCentral poll in the hub
   is scoped to its mounted tab (§5.28's "only the OPEN tab polls"), so a
   `hidden`/`display:none` toggle would poll the shared account from a screen
@@ -4401,6 +4409,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
 | A Search row opens the wrong screen, or a different one from Oversight | §7 — `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` is the one rule; it must send the same `?mv=` / `manager` / `escalated` params `OversightTab.handlePatientClick` sends |
+| The Communications tab's composer or profile spinner is off screen | §7 — the host tab needs `h-screen overflow-hidden`, not `min-h-screen`: `min-h-0` cannot bound a parent with no definite height, so a long conversation list grows the document to ~48,000px. ⚠️ Reproducing it needs a REAL list — a couple of conversations fit inside 100vh and the two layouts are pixel-identical |
 | The Escalations tab is missing from System Management | §7 — commented out 2026-09-10 with its header count chip, not deleted; `?tab=escalations` falls through to Search on purpose. Uncomment the `TabBtn` and the `EscalationView` block in `SystemMgmtPage.tsx`. Escalations are worked in Oversight's manager columns meanwhile |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 

@@ -91,6 +91,28 @@ describe("embedding the hub", () => {
   it("stops claiming the viewport height when embedded", () => {
     expect(hub).toContain('embedded ? "min-h-0 flex-1" : "h-screen bg-gradient-subtle"');
   });
+
+  it("gets a DEFINITE height from the host, never a minimum", () => {
+    // ⚠️ The whole reason the hub can be embedded at all. Its three panes are
+    // `flex-1 min-h-0` and scroll internally, and `min-h-0` can only bound a
+    // parent that HAS a definite height. Under the page's ordinary
+    // `min-h-screen` the flex row's height is auto, so the conversation list
+    // grows to fit all 732 of its rows, the document scrolls, and both the
+    // message composer and the profile pane's centred spinner end up thousands
+    // of pixels below the fold — reported 2026-09-10 as "there's literally no
+    // bar to send a text at the bottom" and "no loading animation for command
+    // center profile as well".
+    //
+    // ⚠️ It only reproduces WITH VOLUME. Measured in a browser at 1440x900:
+    // with 800 conversations and `min-h-screen` the document is 48,063px tall
+    // and the composer sits at y=47,993; with `h-screen` it is 900px and the
+    // composer is at 830. With a two-conversation fixture the content fits
+    // inside 100vh and the two are pixel-identical — which is how this was
+    // once "verified" fixed and reverted. Any re-test needs a long list.
+    expect(livePage).toContain('activeTab === "communications" ? "h-screen overflow-hidden" : "min-h-screen"');
+    // The navy header must not be squeezed by the flex row below it.
+    expect(livePage).toMatch(/<header className="shrink-0 bg-gradient-navy/);
+  });
 });
 
 describe("the Escalations tab is commented out, not deleted", () => {

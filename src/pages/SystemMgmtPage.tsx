@@ -291,13 +291,26 @@ const SystemMgmtPage = () => {
 
   return (
     <>
-    <div className="min-h-screen flex flex-col bg-gradient-subtle">
+    <div className={cn(
+      "flex flex-col bg-gradient-subtle",
+      // ⚠️ The Communications tab needs a DEFINITE height, not a minimum. The hub
+      // is a three-pane layout whose panes are `flex-1 min-h-0` and scroll
+      // internally; under `min-h-screen` the row's height is auto, so a long
+      // conversation list (732 live, 2026-09-10) makes the whole PAGE grow and
+      // pushes the message composer below the fold — reported as "there's
+      // literally no bar to send a text at the bottom". `min-h-0` cannot bound a
+      // parent that has no definite height to bound against.
+      // ⚠️ It only reproduces WITH VOLUME: with a handful of conversations the
+      // content fits inside 100vh and min-h-screen stretches it to exactly the
+      // same layout, so a thin fixture makes the two indistinguishable.
+      activeTab === "communications" ? "h-screen overflow-hidden" : "min-h-screen",
+    )}>
       {/* Fixed notes panel on right edge */}
       {notesPatient && (
         <NotesPanel patient={notesPatient} onClose={() => setNotesPatient(null)} />
       )}
       {/* Header */}
-      <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
+      <header className="shrink-0 bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
         <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
             <button
