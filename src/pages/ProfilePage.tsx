@@ -39,7 +39,7 @@ import {
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive, isNyMedicaidId,
-  maFamilyLabel, managedMedicaidMco, primaryPayerMismatch, truthy,
+  maFamilyLabel, managedMedicaidMco, primaryPayerMismatch, primaryPayerIsMemberMa, primaryPayerCell, maCobMessage, truthy,
 } from "@/lib/profile/primaryInsurance";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 import { interpretStediError } from "@/lib/profile/stediErrors";
@@ -1163,7 +1163,21 @@ function ProfileBody(p: BodyProps) {
   // The check named a DIFFERENT payer as primary than the payer checked
   // (e.g. Fidelis EP reporting a UHC StudentResources COB record). Drives
   // the red Primary Payer cell + the generic mismatch banner.
-  const ppMismatch = primaryPayerMismatch(pt.stediPrimaryPayer ?? "", pt.stediPayerName ?? "");
+  // EXCEPT for an MA-enrolled member whose COB names Medicare (Tanya
+  // Freckleton, 2026-08-11): the MA plan IS the member's Medicare, so that
+  // record is the dual itself, not a third payer — no red cell, no re-run
+  // banner; the MA banner stays and `maCob` renders the routing instead.
+  const ppSnap = {
+    ma: truthy(pt.stediMedicareAdvantage),
+    maCarrier: pt.stediMedicareAdvantageCarrier ?? "",
+    primaryPayer: pt.stediPrimaryPayer ?? "",
+    payerName: pt.stediPayerName ?? "",
+    qmb: pt.stediQmb ?? "",
+  };
+  const ppRawMismatch = primaryPayerMismatch(ppSnap.primaryPayer, ppSnap.payerName);
+  const maCob = ppRawMismatch && primaryPayerIsMemberMa(ppSnap);
+  const ppMismatch = ppRawMismatch && !maCob;
+  const ppCell = primaryPayerCell(ppSnap);
   // Referral-claimed Secondary Insurance — an UNVERIFIED intake claim, shown
   // as its own "From referral:" chip, never dressed up as a Suggestion.
   // Hidden when it duplicates the engine suggestion or the rep's pick, and
@@ -1534,6 +1548,16 @@ function ProfileBody(p: BodyProps) {
                         <span><b>{pt.stediPayerName || "This payer"} reports {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> This plan pays second — get the primary card, run the check against that payer, and verify coordination of benefits before billing. The co-insurance / deductible / OOP shown below are this plan's numbers, not the primary's — the re-run supplies the real ones.</span>
                       </div>
                     )}
+                    {/* MA member whose COB names Medicare — that Medicare IS
+                        the MA plan (Tanya Freckleton, 2026-08-11). Replaces the
+                        re-run banner above; the MA banner stays. Same text as
+                        the engine's MA_PRIMARY_COB caveat (one builder). */}
+                    {maCob && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span><b>{maCobMessage(ppSnap)}</b></span>
+                      </div>
+                    )}
                     <div className="res-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginTop: 16 }}>
                       <ResCell label="Active?" value={pt.stediEligibilityActive} bad={!!pt.stediEligibilityActive && !p.stediActive} />
                       <ResCell label="Payer Name" value={pt.stediPayerName} />
@@ -1545,16 +1569,10 @@ function ProfileBody(p: BodyProps) {
                           a Medicare Advantage plan, the MA plan IS the primary
                           — show it (Brandon, 2026-07-29: eMedNY check on a
                           dual said "Primary Payer: NYSDOH"). A genuine COB
-                          mismatch (red) always wins over the MA substitution. */}
-                      <ResCell
-                        label="Primary Payer"
-                        value={
-                          !ppMismatch && truthy(pt.stediMedicareAdvantage) && (pt.stediMedicareAdvantageCarrier || "").trim()
-                            ? pt.stediMedicareAdvantageCarrier
-                            : pt.stediPrimaryPayer
-                        }
-                        bad={ppMismatch}
-                      />
+                          mismatch (red) always wins over the MA substitution —
+                          but an MA member's COB naming Medicare is not one
+                          (`primaryPayerCell`, tested with the engine). */}
+                      <ResCell label="Primary Payer" value={ppCell.value} bad={ppCell.bad} />
                       <ResCell label="Plan Begin Date" value={pt.stediPlanBeginDate} />
                     </div>
                     <div className="res-grid" style={{ gridTemplateColumns: `repeat(${4 + (pt.stediQmb ? 1 : 0) + (pt.generalInsurance === "Medicaid" ? 1 : 0)},1fr)`, marginTop: 10 }}>

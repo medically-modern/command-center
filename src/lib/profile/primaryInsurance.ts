@@ -476,31 +476,111 @@ export function primaryPayerMismatch(primaryPayer: string, payerName: string): b
   return true;
 }
 
+type MaCobSnapshot = Pick<StediSnapshot, "ma" | "maCarrier" | "primaryPayer">;
+
+/** True when the COB primary-payer record names MEDICARE for a member the MA
+ *  columns say is enrolled in a Medicare Advantage plan — i.e. the "other
+ *  payer" the Medicaid side reports IS the member's own MA plan, not a third
+ *  payer to re-run against (Tanya Freckleton, 2026-08-11: Fidelis MMC 271 with
+ *  MA = Yes / Wellcare Fidelis Dual Liberty Sync, QMB, and an EB*R / NM1*PRP
+ *  "Primary Payer: Medicare Parts A & B" — the chained HETS check confirmed
+ *  the Medicare on file is the MA plan itself, "HMO - Medicare Risk").
+ *
+ *  Requires ALL of: MA flag Yes, a non-empty MA carrier, and a primary-payer
+ *  name matching /medicare|cms/ that does NOT name a different MA carrier —
+ *  a PRP naming a mapped family other than the MA carrier's (Aetna Medicare
+ *  Full Dual member whose COB says "Wellcare Medicare") is still a genuine
+ *  mismatch. A Medicare name carrying an UNMAPPED brand ("MVP Medicare") is
+ *  treated as another carrier too: the safe direction is to keep today's
+ *  withheld pick, since a wrong confident pick misbills. */
+export function primaryPayerIsMemberMa(s: MaCobSnapshot): boolean {
+  if (s.ma !== true) return false;
+  const carrier = (s.maCarrier || "").trim();
+  const pp = (s.primaryPayer || "").trim();
+  if (!carrier || !pp) return false;
+  if (!/medicare|\bcms\b/i.test(pp)) return false;
+  const ppFamily = maFamilyLabel(pp);
+  if (ppFamily) return ppFamily === maFamilyLabel(carrier);
+  // No mapped carrier in the name: plain Medicare ("Medicare Parts A & B",
+  // "CMS", "Original Medicare") qualifies; anything left over is a brand.
+  const residual = pp.toUpperCase()
+    .replace(/CENTERS FOR MEDICARE (AND|&) MEDICAID SERVICES/g, " ")
+    .replace(/\b(MEDICARE|CMS|PARTS?|A|B|AND|ORIGINAL|TRADITIONAL|FEE FOR SERVICE|FFS|ADVANTAGE|PLAN)\b/g, " ")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim();
+  return residual === "";
+}
+
+/** The banner / caveat text for the MA-member COB case — ONE builder so the
+ *  engine caveat and the ProfilePage banner cannot drift. */
+export function maCobMessage(s: MaCobSnapshot & Pick<StediSnapshot, "payerName" | "qmb">): string {
+  const payer = (s.payerName || "").trim() || "This payer";
+  const pp = (s.primaryPayer || "").trim();
+  const carrier = (s.maCarrier || "").trim();
+  const pick = maFamilyLabel(carrier) || carrier;
+  const medicaid = /^yes/i.test(s.qmb || "") ? "Medicaid (QMB)" : "Medicaid";
+  return payer + " lists " + pp + " as primary — that is the member's Medicare Advantage plan (" + carrier + "). Bill " + pick + "; " + medicaid + " is cost-share secondary only.";
+}
+
+/** What the "Primary Payer" result cell shows, and whether it is red. A
+ *  genuine COB mismatch (red, the named payer) wins; otherwise an MA member's
+ *  cell shows the MA carrier — the MA plan IS the primary (Brandon,
+ *  2026-07-29: eMedNY check on a dual said "Primary Payer: NYSDOH") — and an
+ *  MA member whose COB names Medicare is NOT a mismatch (see
+ *  `primaryPayerIsMemberMa`), so that cell shows the carrier too, not red. */
+export function primaryPayerCell(s: MaCobSnapshot & Pick<StediSnapshot, "payerName">): { value: string; bad: boolean } {
+  const pp = s.primaryPayer || "";
+  const carrier = (s.maCarrier || "").trim();
+  if (primaryPayerMismatch(pp, s.payerName) && !primaryPayerIsMemberMa(s)) return { value: pp, bad: true };
+  if (s.ma === true && carrier) return { value: carrier, bad: false };
+  return { value: pp, bad: false };
+}
+
 /** Main entry — suggest the Primary Insurance from Stedi output. Returns null before Stedi runs.
  *  Post-pass (Brandon, 2026-07-20 — Ryan Impellizeri, Fidelis EP with a UHC
  *  StudentResources COB record): whenever the check names a different payer
  *  as PRIMARY, every branch gets a PRIMARY_PAYER_MISMATCH warning and the
  *  suggestion is WITHHELD entirely (null pick) — the rep ALWAYS re-runs the
  *  check against the named primary, and THAT check's result produces the
- *  suggestion. Medicare keeps its richer MSP_PRIMARY branch untouched. */
+ *  suggestion. Medicare keeps its richer MSP_PRIMARY branch untouched.
+ *
+ *  ONE carve-out (2026-09-10, Tanya Freckleton): an MA-enrolled member whose
+ *  Medicaid-side COB names MEDICARE is not a mismatch — the MA plan is the
+ *  member's Medicare, so there is no third payer to re-run against. The pick
+ *  is the MA family (`maFamilyLabel`) at high confidence, PRIMARY_PAYER_MISMATCH
+ *  is not raised, and an MA_PRIMARY_COB caveat carries the routing. This wins
+ *  over a CGM-only Can't Serve for the same reason the straight-Medicaid
+ *  branch checks MA before its CGM block: an MA member isn't a Medicaid-only
+ *  serve. Non-Medicare PRPs (Impellizeri) and PRPs naming a DIFFERENT MA
+ *  carrier keep the withheld pick. */
 export function suggestPrimary(inp: SuggestionInputs): Suggestion | null {
   const sg = suggestPrimaryInner(inp);
-  if (
-    sg
-    && !sg.cantServe
-    && primaryPayerMismatch(inp.stedi.primaryPayer, inp.stedi.payerName)
-    && !sg.warnings.some((w) => w.code === "MSP_PRIMARY")
-  ) {
-    const pp = inp.stedi.primaryPayer.trim();
-    sg.warnings.push({
-      code: "PRIMARY_PAYER_MISMATCH",
-      message: (inp.stedi.payerName || "The payer") + " reports " + pp + " as the PRIMARY payer — this plan pays second. Get the primary card, run the check against that payer, and verify COB before billing.",
-    });
-    sg.value = null;
-    sg.confidence = "low";
-    sg.secondary = "";
-    sg.reason = (inp.stedi.payerName || "The payer") + " reports " + pp + " as primary — re-run the check against that payer; that check produces the suggestion.";
+  if (!sg) return sg;
+  const s = inp.stedi;
+  if (!primaryPayerMismatch(s.primaryPayer, s.payerName)) return sg;
+  if (sg.warnings.some((w) => w.code === "MSP_PRIMARY")) return sg;
+  if (primaryPayerIsMemberMa(s)) {
+    const maName = s.maCarrier.trim();
+    const mapped = maFamilyLabel(maName);
+    sg.cantServe = false;
+    sg.value = mapped || null;
+    sg.confidence = mapped ? "high" : "low";
+    sg.reason = mapped
+      ? "Medicare Advantage member (" + maName + ") — " + mapped + " from the MA plan name; the Medicare " + (s.payerName || "the payer") + " lists as primary IS this plan. Medicaid is cost-share secondary only."
+      : "Medicare Advantage member (" + maName + ") — carrier not mapped; bill the MA payer, not " + (s.payerName || "this plan") + ".";
+    sg.warnings.push({ code: "MA_PRIMARY_COB", message: maCobMessage(s) });
+    return sg;
   }
+  if (sg.cantServe) return sg;
+  const pp = s.primaryPayer.trim();
+  sg.warnings.push({
+    code: "PRIMARY_PAYER_MISMATCH",
+    message: (s.payerName || "The payer") + " reports " + pp + " as the PRIMARY payer — this plan pays second. Get the primary card, run the check against that payer, and verify COB before billing.",
+  });
+  sg.value = null;
+  sg.confidence = "low";
+  sg.secondary = "";
+  sg.reason = (s.payerName || "The payer") + " reports " + pp + " as primary — re-run the check against that payer; that check produces the suggestion.";
   return sg;
 }
 

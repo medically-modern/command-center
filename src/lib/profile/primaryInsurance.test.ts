@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   suggestPrimary, suggestSecondary, isCoverageActive, primaryPayerMismatch,
+  primaryPayerIsMemberMa, primaryPayerCell, maCobMessage,
   type SuggestionInputs, type StediSnapshot,
 } from "./primaryInsurance";
 
@@ -569,5 +570,142 @@ describe("suggestPrimary — MA gate on the unmapped-carrier fallback", () => {
     }));
     expect(sg?.value).toBe("Fidelis Care New York Medicare");
     expect(sg?.warnings.some((w) => w.code === "UNMAPPED_CARRIER")).toBe(true);
+  });
+});
+
+// ── MA member whose Medicaid-side COB names MEDICARE (2026-09-10, Tanya
+//    Freckleton — Fidelis 11315 check 2026-08-11, sanitized): the 271 is
+//    Fidelis MMC with MA = Yes / Wellcare Fidelis Dual Liberty Sync / QMB AND
+//    an EB*R / NM1*PRP "Primary Payer: Medicare Parts A & B". That Medicare IS
+//    the MA plan (the chained HETS check read "HMO - Medicare Risk"), so the
+//    generic PRIMARY_PAYER_MISMATCH post-pass must not withhold the pick. ──
+describe("suggestPrimary — MA member with a Medicare COB record is not a mismatch", () => {
+  const freckleton = {
+    gins: "Fidelis", payerName: "Fidelis Care New York", covtype: "Medicaid",
+    plan: "Fidelis Medicaid Managed Care", medid: "AB12345C", qmb: "Yes",
+    ma: true, maCarrier: "Wellcare Fidelis Dual Liberty Sync",
+    primaryPayer: "Medicare Parts A & B",
+  };
+
+  it("Freckleton: pick Fidelis Medicare, confident, no PRIMARY_PAYER_MISMATCH", () => {
+    const sg = suggestPrimary(mk({ ...freckleton, requestType: "Insulin Pump" }));
+    expect(sg?.value).toBe("Fidelis Medicare");
+    expect(sg?.confidence).toBe("high");
+    expect(sg?.cantServe).toBeFalsy();
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(false);
+    const cob = sg?.warnings.find((w) => w.code === "MA_PRIMARY_COB");
+    expect(cob?.message).toBe(
+      "Fidelis Care New York lists Medicare Parts A & B as primary — that is the member's Medicare Advantage plan (Wellcare Fidelis Dual Liberty Sync). Bill Fidelis Medicare; Medicaid (QMB) is cost-share secondary only.",
+    );
+  });
+
+  it("Freckleton: the Primary Payer cell shows the MA carrier, not red", () => {
+    const cell = primaryPayerCell({
+      ma: true, maCarrier: freckleton.maCarrier,
+      primaryPayer: freckleton.primaryPayer, payerName: freckleton.payerName,
+    });
+    expect(cell).toEqual({ value: "Wellcare Fidelis Dual Liberty Sync", bad: false });
+  });
+
+  it("Freckleton: QMB dual → NY Medicaid secondary survives the post-pass", () => {
+    expect(suggestSecondary(mk({ ...freckleton, requestType: "Insulin Pump" }))).toBe("NY Medicaid");
+  });
+
+  it("Freckleton: CGM-only is NOT Can't Serve — the MA plan serves CGM", () => {
+    const sg = suggestPrimary(mk({ ...freckleton, requestType: "CGM" }));
+    expect(sg?.cantServe).toBeFalsy();
+    expect(sg?.value).toBe("Fidelis Medicare");
+  });
+
+  it("Wellcare-Fidelis co-brand maps FIDELIS before WELLCARE", () => {
+    const sg = suggestPrimary(mk({ ...freckleton, maCarrier: "WELLCARE FIDELIS DUAL ALIGN", requestType: "Insulin Pump" }));
+    expect(sg?.value).toBe("Fidelis Medicare");
+  });
+
+  it("MA member with an UNMAPPED carrier → no confident pick, still no mismatch", () => {
+    const sg = suggestPrimary(mk({ ...freckleton, maCarrier: "SOME REGIONAL MA PLAN", requestType: "Insulin Pump" }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.confidence).toBe("low");
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(false);
+    expect(sg?.warnings.find((w) => w.code === "MA_PRIMARY_COB")?.message).toContain("Bill SOME REGIONAL MA PLAN");
+  });
+
+  it("PRP naming a DIFFERENT MA carrier keeps today's mismatch (Aetna dual, COB says Wellcare Medicare)", () => {
+    const sg = suggestPrimary(mk({
+      ...freckleton, plan: "Fidelis Care at Home", maCarrier: "Aetna Medicare Full Dual",
+      primaryPayer: "Wellcare Medicare", requestType: "Insulin Pump",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY_COB")).toBe(false);
+    expect(primaryPayerCell({
+      ma: true, maCarrier: "Aetna Medicare Full Dual", primaryPayer: "Wellcare Medicare", payerName: "Fidelis Care New York",
+    })).toEqual({ value: "Wellcare Medicare", bad: true });
+  });
+
+  it("MA flag without a carrier keeps today's mismatch", () => {
+    const sg = suggestPrimary(mk({ ...freckleton, maCarrier: "", requestType: "Insulin Pump" }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
+  });
+
+  it("non-MA member with a Medicare PRP keeps today's mismatch", () => {
+    const sg = suggestPrimary(mk({ ...freckleton, ma: false, maCarrier: "", requestType: "Insulin Pump" }));
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
+  });
+
+  it("Impellizeri (non-Medicare PRP) is untouched — even with MA columns set", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Fidelis", payerName: "Fidelis Care New York", covtype: "Medicaid",
+      plan: "Essential Plan 1", primaryPayer: "United Healthcare Student Resource",
+      ma: true, maCarrier: "Wellcare Fidelis Dual Liberty Sync",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
+  });
+
+  it("Medicare A&B check on an MA member keeps the MA_PRIMARY hard block (no MA carve-out)", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "AETNA HEALTH INC.", ma: true, maCarrier: "Aetna Medicare Plan",
+    }));
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY_COB")).toBe(false);
+    expect(sg?.value).toBeNull();
+  });
+
+  it("primaryPayerIsMemberMa — plain Medicare names qualify, brands do not", () => {
+    const base = { ma: true, maCarrier: "Wellcare Fidelis Dual Liberty Sync" };
+    expect(primaryPayerIsMemberMa({ ...base, primaryPayer: "Medicare Parts A & B" })).toBe(true);
+    expect(primaryPayerIsMemberMa({ ...base, primaryPayer: "MEDICARE" })).toBe(true);
+    expect(primaryPayerIsMemberMa({ ...base, primaryPayer: "CMS" })).toBe(true);
+    expect(primaryPayerIsMemberMa({ ...base, primaryPayer: "Centers for Medicare & Medicaid Services" })).toBe(true);
+    // A PRP that does not say Medicare/CMS at all is a non-Medicare COB
+    // record and keeps today's behaviour — out of this carve-out by design.
+    expect(primaryPayerIsMemberMa({ ...base, primaryPayer: "Wellcare Fidelis Dual Liberty Sync" })).toBe(false);
+    expect(primaryPayerIsMemberMa({ ...base, primaryPayer: "Aetna Medicare Plan" })).toBe(false);
+    expect(primaryPayerIsMemberMa({ ...base, primaryPayer: "MVP Medicare" })).toBe(false);
+    expect(primaryPayerIsMemberMa({ ...base, primaryPayer: "United Healthcare Student Resource" })).toBe(false);
+    expect(primaryPayerIsMemberMa({ ...base, primaryPayer: "" })).toBe(false);
+    expect(primaryPayerIsMemberMa({ ma: true, maCarrier: "", primaryPayer: "Medicare Parts A & B" })).toBe(false);
+    expect(primaryPayerIsMemberMa({ ma: false, maCarrier: "Aetna Medicare", primaryPayer: "Medicare Parts A & B" })).toBe(false);
+  });
+
+  it("maCobMessage — non-QMB member reads plain Medicaid", () => {
+    expect(maCobMessage({
+      ma: true, maCarrier: "Humana Gold Plus", primaryPayer: "Medicare", payerName: "NYSDOH", qmb: "No",
+    })).toBe("NYSDOH lists Medicare as primary — that is the member's Medicare Advantage plan (Humana Gold Plus). Bill Humana; Medicaid is cost-share secondary only.");
+  });
+
+  it("primaryPayerCell — the pre-existing rules are unchanged", () => {
+    // COB record echoes the checked payer, MA member → MA carrier shown.
+    expect(primaryPayerCell({ ma: true, maCarrier: "Wellcare Fidelis Dual Liberty Sync", primaryPayer: "NYSDOH", payerName: "NYSDOH" }))
+      .toEqual({ value: "Wellcare Fidelis Dual Liberty Sync", bad: false });
+    // Non-MA, no mismatch → the primary payer as written.
+    expect(primaryPayerCell({ ma: false, maCarrier: "", primaryPayer: "Fidelis Care New York", payerName: "Fidelis Care New York" }))
+      .toEqual({ value: "Fidelis Care New York", bad: false });
+    // Genuine mismatch (Impellizeri) → red, the named payer.
+    expect(primaryPayerCell({ ma: false, maCarrier: "", primaryPayer: "United Healthcare Student Resource", payerName: "Fidelis Care New York" }))
+      .toEqual({ value: "United Healthcare Student Resource", bad: true });
   });
 });
