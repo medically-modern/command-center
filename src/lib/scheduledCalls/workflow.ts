@@ -36,6 +36,25 @@ export interface ScheduledCall {
 
 export type CallState = "upcoming" | "now" | "passed";
 
+/**
+ * The minimum a thing needs to sit on the day grid.
+ *
+ * `ScheduledCall` satisfies it structurally (no `extends` needed), and so does
+ * the Care Coordinator's `ScheduleEntry`, which also carries welcome-call
+ * bookings read straight from Calendly. The sequencing rules below are widened
+ * to this shape rather than duplicated per source: two copies of "is this
+ * booking live" is exactly how the day view and the reminder drift apart.
+ */
+export interface BookedSlot {
+  name: string;
+  /** YYYY-MM-DD, Eastern. Blank when nothing is booked. */
+  callDate: string;
+  /** HH:mm:ss, Eastern. Blank when there is a date but no time. */
+  callTime: string;
+  /** Scheduled · Unscheduled · Canceled. Blank counts as live. */
+  bookingStatus: string;
+}
+
 /** Minutes either side of the appointment that count as "happening now". */
 const NOW_WINDOW_BEFORE_MIN = 5;
 const NOW_WINDOW_AFTER_MIN = 10;
@@ -63,7 +82,7 @@ export function minutesOfDay(hhmmss: string): number | null {
 }
 
 /** A booking that is actually on today's board and still live. */
-export function isLiveBooking(c: ScheduledCall): boolean {
+export function isLiveBooking(c: BookedSlot): boolean {
   // A canceled call keeps its row; it must never appear in the day view, or a
   // rep rings somebody who called off. Blank status counts as live — the mirror
   // may not have caught up, and showing a call that isn't there is recoverable
@@ -77,7 +96,7 @@ export function isLiveBooking(c: ScheduledCall): boolean {
  * `nowMinutes` is passed in rather than read, so this stays pure and the
  * tests can walk a day without touching the clock.
  */
-export function callState(c: ScheduledCall, nowMinutes: number): CallState {
+export function callState(c: Pick<BookedSlot, "callTime">, nowMinutes: number): CallState {
   const at = minutesOfDay(c.callTime);
   // A booking with a date but no time can't be sequenced. Treat it as still
   // to do rather than silently dropping it off the bottom of the list.
@@ -100,12 +119,12 @@ export function callState(c: ScheduledCall, nowMinutes: number): CallState {
  * `useRoleCounts` plus both baseline generators have to change with it
  * (CLAUDE.md §5.8 counting contract).
  */
-export function remainingToday(calls: ScheduledCall[], nowMinutes: number): number {
+export function remainingToday(calls: BookedSlot[], nowMinutes: number): number {
   return calls.filter((c) => isLiveBooking(c) && callState(c, nowMinutes) !== "passed").length;
 }
 
 /** Time order, with unsequenceable bookings last rather than first. */
-export function sortByTime(calls: ScheduledCall[]): ScheduledCall[] {
+export function sortByTime<T extends BookedSlot>(calls: T[]): T[] {
   return [...calls].sort((a, b) => {
     const ma = minutesOfDay(a.callTime);
     const mb = minutesOfDay(b.callTime);
@@ -141,7 +160,7 @@ export function nowMinutesEt(now: Date = new Date()): number {
 }
 
 /** Today's bookings, in Eastern. `etDate` is passed in to keep this pure. */
-export function callsOn(calls: ScheduledCall[], etDate: string): ScheduledCall[] {
+export function callsOn<T extends BookedSlot>(calls: T[], etDate: string): T[] {
   return calls.filter((c) => isLiveBooking(c) && c.callDate === etDate);
 }
 
@@ -157,7 +176,7 @@ export const REMINDER_LEAD_MIN = 10;
  * counts, and the caller remembers what it has already shown so the reminder
  * appears once rather than on every tick.
  */
-export function dueForReminder(c: ScheduledCall, nowMinutes: number): boolean {
+export function dueForReminder(c: BookedSlot, nowMinutes: number): boolean {
   if (!isLiveBooking(c)) return false;
   const at = minutesOfDay(c.callTime);
   if (at === null) return false;
@@ -166,7 +185,7 @@ export function dueForReminder(c: ScheduledCall, nowMinutes: number): boolean {
 }
 
 /** Minutes until the appointment; negative once it has passed. */
-export function minutesUntil(c: ScheduledCall, nowMinutes: number): number | null {
+export function minutesUntil(c: Pick<BookedSlot, "callTime">, nowMinutes: number): number | null {
   const at = minutesOfDay(c.callTime);
   return at === null ? null : at - nowMinutes;
 }
@@ -177,7 +196,7 @@ export function minutesUntil(c: ScheduledCall, nowMinutes: number): number | nul
  * `now` sits between the two lists rather than in its own bucket, so the rep
  * reads the page top-to-bottom as "done / doing / next".
  */
-export function dayView(calls: ScheduledCall[], nowMinutes: number) {
+export function dayView<T extends BookedSlot>(calls: T[], nowMinutes: number) {
   const live = sortByTime(calls.filter(isLiveBooking));
   return {
     passed: live.filter((c) => callState(c, nowMinutes) === "passed"),

@@ -47,6 +47,7 @@ import { registerSend } from "./send.mjs";
 import { registerRingCentral } from "./ringcentral.mjs";
 import { registerMessaging } from "./messaging.mjs";
 import { registerInboundCalls } from "./inboundCalls.mjs";
+import { registerCalendlyDay } from "./calendlyDay.mjs";
 import { registerStageActor } from "./stageActor.mjs";
 import {
   SCHEMA as REQUEST_LOG_SCHEMA,
@@ -788,6 +789,12 @@ registerMessaging({ app });
 // the messaging Postgres (and its phone-HMAC discipline) — see inboundCalls.mjs
 // for why the browser can't be the thing that learns about an incoming call.
 registerInboundCalls({ app });
+
+// One Eastern day's Calendly bookings, for the Care Coordinator's schedule
+// grid. Welcome-call bookings have no monday mirror — Calendly is their only
+// record — so this proxies the form service (which owns the Calendly token)
+// behind a verified employee identity. See calendlyDay.mjs.
+registerCalendlyDay({ app });
 
 ensureSchema().finally(() => {
   // Retention. Once at boot, then daily — the table is the one durable log here

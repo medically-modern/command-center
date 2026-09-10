@@ -6,6 +6,10 @@
  * Chase Clinicals, and the Welcome Call — with the day's booked intake calls
  * on a grid underneath (the old Scheduled Calls page, whole). CLAUDE.md §5.30.
  *
+ * Confirm Receipt + Chase Clinicals is currently HIDDEN behind
+ * `SHOW_CHASE_COLUMN` (Josh, 2026-09-10) — see that flag for what moves with
+ * it. The page renders two columns until it comes back.
+ *
  * ⚠️ READ-ONLY. Three slim board reads, no writes (lib/careCoordinator/
  * mondayApi.ts). Every button that changes anything — Text, a booking link,
  * "Open" — is either the shared texting component or a hand-off to the stage
@@ -44,7 +48,7 @@ import {
 } from "@/lib/careCoordinator/mondayApi";
 import {
   chaseBuckets, intakeBuckets, overdueCount, summarize, toScheduledCall, uncalledCount, welcomeCallBuckets,
-  MAX_INTAKE_ATTEMPTS, READY_AFTER_HOURS, type IntakeLead,
+  MAX_INTAKE_ATTEMPTS, READY_AFTER_HOURS, type ChaseItem, type IntakeLead,
 } from "@/lib/careCoordinator/workflow";
 import { PipelineColumn, Section } from "@/components/careCoordinator/PipelineColumn";
 import { ChaseCard, IntakeReadyCard, IntakeScheduledCard, WelcomeCard } from "@/components/careCoordinator/cards";
@@ -54,6 +58,28 @@ import { ScheduleGrid } from "@/components/careCoordinator/ScheduleGrid";
  *  columns — the same order of cost as the intake sidebar's own list read
  *  (§5.25), on the same cadence the old Scheduled Calls page used. */
 const POLL_MS = 60_000;
+
+/**
+ * Confirm Receipt + Chase Clinicals is hidden for now (Josh, 2026-09-10) so the
+ * two columns the coordinator actually works get the width. Flip to `true` to
+ * bring it back — nothing else has to change with it.
+ *
+ * ⚠️ The flag governs the READ, the chips and the column TOGETHER, and that is
+ * the point. Hiding the column while still counting the stage would put a
+ * number in "Total in pipeline" that nothing on the page explains — the §7
+ * complaint in reverse. Because the hidden read yields `[]`, `chaseBuckets`
+ * comes back empty and `summarize` drops the stage from Total, overdue and
+ * at-escalation on its own; there is no second place to keep in step.
+ *
+ * Nobody is stranded by this: the stage keeps its own pages, its role bar and
+ * its Oversight row. This screen just stops mirroring it.
+ */
+const SHOW_CHASE_COLUMN: boolean = false;
+
+/** ⚠️ Module-level, not an inline arrow — `useBoardPoll`'s effect re-arms on a
+ *  fetcher that changes identity every render (INCIDENT_2026-08-20 rule 2). */
+const noChaseItems = async (): Promise<ChaseItem[]> => [];
+const chaseFetcher = SHOW_CHASE_COLUMN ? fetchChaseItems : noChaseItems;
 
 /** "Now" for the cards — ticks so "Starts in 8m" and the waits stay honest
  *  between polls without a reload. */
@@ -76,7 +102,7 @@ export default function CareCoordinatorPage() {
   const today = etToday();
 
   const intake = useBoardPoll(fetchIntakeLeads, POLL_MS);
-  const chase = useBoardPoll(fetchChaseItems, POLL_MS);
+  const chase = useBoardPoll(chaseFetcher, POLL_MS);
   const welcome = useBoardPoll(fetchWelcomeCallItems, POLL_MS);
 
   const intakeB = useMemo(
@@ -92,9 +118,16 @@ export default function CareCoordinatorPage() {
   const [linkFor, setLinkFor] = useState<IntakeLead | "cold" | null>(null);
   const openBookingLink = useCallback((lead: IntakeLead) => setLinkFor(lead), []);
 
-  const openIntake = useCallback((c: ScheduledCall) => {
-    navigate(`/unverified-referrals?patientId=${encodeURIComponent(c.id)}&from=care-coordinator`);
-  }, [navigate]);
+  /** The grid hands back a ready route — it knows which board a block belongs
+   *  to (intake vs welcome call), and blocks it can't identify never call this. */
+  const openFromGrid = useCallback((href: string) => navigate(href), [navigate]);
+
+  /** Email → Welcome Call item, so a Calendly welcome-call booking can link to
+   *  the patient's chart. Read from the column's own fetch — no extra query. */
+  const welcomeItems = useMemo(
+    () => (welcome.data ?? []).map((w) => ({ id: w.id, email: w.email })),
+    [welcome.data],
+  );
 
   const refreshAll = () => { intake.refetch(); chase.refetch(); welcome.refetch(); };
   const anyLoading = intake.loading || chase.loading || welcome.loading;
@@ -153,7 +186,7 @@ export default function CareCoordinatorPage() {
         <div className="px-3 sm:px-6 pb-4 flex flex-wrap items-center gap-2 text-xs">
           <Stat label="Total in pipeline" value={summary.total} strong />
           <Stat label="Patient Intake" value={summary.intake} />
-          <Stat label="Confirm / Chase" value={summary.chase} />
+          {SHOW_CHASE_COLUMN && <Stat label="Confirm / Chase" value={summary.chase} />}
           <Stat label="Welcome Call" value={summary.welcome} />
           <span
             className={cn(
@@ -176,11 +209,15 @@ export default function CareCoordinatorPage() {
         )}
         <div className="space-y-2">
           <StaleDataNotice error={intake.error} scope="The Patient Intake column" onRetry={intake.refetch} />
-          <StaleDataNotice error={chase.error} scope="The Confirm Receipt / Chase Clinicals column" onRetry={chase.refetch} />
+          {SHOW_CHASE_COLUMN && (
+            <StaleDataNotice error={chase.error} scope="The Confirm Receipt / Chase Clinicals column" onRetry={chase.refetch} />
+          )}
           <StaleDataNotice error={welcome.error} scope="The Welcome Call column" onRetry={welcome.refetch} />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        {/* Two columns share the width the three used to, so each card gets
+            roughly half the page instead of a third. */}
+        <div className={cn("grid grid-cols-1 gap-4", SHOW_CHASE_COLUMN ? "xl:grid-cols-3" : "lg:grid-cols-2")}>
           {/* ── Patient Intake ─────────────────────────────────── */}
           <PipelineColumn
             tint="sky"
@@ -216,30 +253,32 @@ export default function CareCoordinatorPage() {
             </Section>
           </PipelineColumn>
 
-          {/* ── Confirm Receipt + Chase Clinicals ──────────────── */}
-          <PipelineColumn
-            tint="amber"
-            title="Confirm Receipt + Chase Clinicals"
-            subtitle="Cadence-driven · most overdue first"
-            count={summary.chase}
-            alert={overdue ? `${overdue} overdue` : null}
-            footer={chaseB.proposedStuck > 0 ? <>Not shown: {chaseB.proposedStuck} proposed stuck — awaiting a Final Decision in Oversight.</> : undefined}
-          >
-            {chase.loading && <Skeleton />}
-            {!chase.loading && summary.chase === 0 && chaseB.withManager.length === 0 && <Empty>Nothing in Confirm Receipt or Chase Clinicals.</Empty>}
-            <Section title="Due" count={chaseB.due.length} hint="Next Action Date today or earlier">
-              {chaseB.due.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
-            </Section>
-            <Section title="Waiting" count={chaseB.upcoming.length} defaultOpen={false} hint="snoozed to a future Next Action Date">
-              {chaseB.upcoming.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
-            </Section>
-            <Section title="Awaiting a provider visit" count={chaseB.awaitingVisit.length} defaultOpen={false} hint="booked appointment still ahead">
-              {chaseB.awaitingVisit.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
-            </Section>
-            <Section title="With a manager" count={chaseB.withManager.length} defaultOpen={false} hint="escalated — Manager Intervention">
-              {chaseB.withManager.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
-            </Section>
-          </PipelineColumn>
+          {/* ── Confirm Receipt + Chase Clinicals (hidden — see the flag) ── */}
+          {SHOW_CHASE_COLUMN && (
+            <PipelineColumn
+              tint="amber"
+              title="Confirm Receipt + Chase Clinicals"
+              subtitle="Cadence-driven · most overdue first"
+              count={summary.chase}
+              alert={overdue ? `${overdue} overdue` : null}
+              footer={chaseB.proposedStuck > 0 ? <>Not shown: {chaseB.proposedStuck} proposed stuck — awaiting a Final Decision in Oversight.</> : undefined}
+            >
+              {chase.loading && <Skeleton />}
+              {!chase.loading && summary.chase === 0 && chaseB.withManager.length === 0 && <Empty>Nothing in Confirm Receipt or Chase Clinicals.</Empty>}
+              <Section title="Due" count={chaseB.due.length} hint="Next Action Date today or earlier">
+                {chaseB.due.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
+              </Section>
+              <Section title="Waiting" count={chaseB.upcoming.length} defaultOpen={false} hint="snoozed to a future Next Action Date">
+                {chaseB.upcoming.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
+              </Section>
+              <Section title="Awaiting a provider visit" count={chaseB.awaitingVisit.length} defaultOpen={false} hint="booked appointment still ahead">
+                {chaseB.awaitingVisit.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
+              </Section>
+              <Section title="With a manager" count={chaseB.withManager.length} defaultOpen={false} hint="escalated — Manager Intervention">
+                {chaseB.withManager.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
+              </Section>
+            </PipelineColumn>
+          )}
 
           {/* ── Welcome Call ───────────────────────────────────── */}
           <PipelineColumn
@@ -266,8 +305,9 @@ export default function CareCoordinatorPage() {
 
         <ScheduleGrid
           calls={scheduleCalls}
+          welcomeItems={welcomeItems}
           nowMinutes={nowMinutes}
-          onOpen={openIntake}
+          onOpen={openFromGrid}
           remindersOn={access.type === "processor" && access.profile.roles.includes("scheduledCalls")}
         />
       </main>

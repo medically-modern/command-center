@@ -39,6 +39,7 @@ const chase = (over: Partial<ChaseItem>): ChaseItem => ({
 });
 const wc = (over: Partial<WelcomeCallItem>): WelcomeCallItem => ({
   id: "w", name: "Welcomer", groupId: "group_mm1wvq8p", createdAt: hoursAgo(48), phone: "3475550103",
+  email: "welcomer@example.com",
   escalation: "", followUp: "", followUpDate: "", serving: "Insulin Pump", requestType: "Insulin Pump", pumpQty: "1",
   ipLastBillDate: "", medicarePriorPumpDate: "", callAttempts: "", doctorName: "Dr. Kaminski",
   primaryInsurance: "Medicare A&B", referralReceivedDate: shiftYmd(TODAY, -3), ...over,
@@ -88,7 +89,7 @@ function mount() {
 }
 
 describe("CareCoordinatorPage", () => {
-  it("renders the header, the three columns and the grid from the three reads", async () => {
+  it("renders the header, the two visible columns and the grid", async () => {
     mount();
     expect(screen.getByRole("heading", { level: 1, name: "My Patients" })).toBeInTheDocument();
     expect(screen.getByText("Dana Whitfield")).toBeInTheDocument();
@@ -106,15 +107,14 @@ describe("CareCoordinatorPage", () => {
     // The exhausted shelf exists, closed.
     expect(within(intakeCol).getByRole("button", { name: /Exhausted · 5 attempts/ })).toHaveAttribute("aria-expanded", "false");
 
-    // Chase: most overdue first, escalated behind a closed heading, proposed stuck only counted.
-    const chaseCol = screen.getByRole("region", { name: "Confirm Receipt + Chase Clinicals" });
-    expect(await within(chaseCol).findByText("Rosa Villalobos")).toBeInTheDocument();
-    expect(within(chaseCol).getByText("2d overdue")).toBeInTheDocument();
-    expect(within(chaseCol).getByText(/1 overdue/)).toBeInTheDocument();
-    expect(within(chaseCol).getByText("Attempt 3")).toBeInTheDocument();
-    expect(within(chaseCol).queryByText("Henry Osei")).toBeNull(); // with a manager, collapsed
-    expect(within(chaseCol).queryByText("Proposed Stuck")).toBeNull();
-    expect(within(chaseCol).getByText(/1 proposed stuck/)).toBeInTheDocument();
+    // Chase is hidden (SHOW_CHASE_COLUMN, 2026-09-10): no column, no chip, and
+    // — the half that actually matters — none of its patients counted anywhere.
+    // A hidden stage still counted would put a number in "Total in pipeline"
+    // that nothing on the page explains.
+    expect(screen.queryByRole("region", { name: "Confirm Receipt + Chase Clinicals" })).toBeNull();
+    expect(screen.queryByText("Confirm / Chase")).toBeNull();
+    expect(screen.queryByText("Rosa Villalobos")).toBeNull();
+    expect(screen.queryByText(/proposed stuck/)).toBeNull();
 
     // Welcome Call: the ops flag and the snoozed shelf.
     const wcCol = screen.getByRole("region", { name: "Welcome Call" });
@@ -122,12 +122,34 @@ describe("CareCoordinatorPage", () => {
     expect(within(wcCol).getByText("1st-time pump")).toBeInTheDocument();
     expect(within(wcCol).queryByText("Gerald Pham")).toBeNull(); // Follow up later, collapsed
 
-    // Header chips: 2 intake (booked + ready) + 2 chase (overdue + later) + 2 welcome (now + snoozed).
-    expect(screen.getByText("Total in pipeline").parentElement).toHaveTextContent("6");
-    expect(screen.getByText(/1 overdue · 1 at escalation/)).toBeInTheDocument();
+    // Header chips: 2 intake (booked + ready) + 2 welcome (now + snoozed). The
+    // chase read is stubbed out with the column, so its overdue patient and its
+    // escalated one drop out of both counters too.
+    expect(screen.getByText("Total in pipeline").parentElement).toHaveTextContent("4");
+    expect(screen.getByText(/0 overdue · 0 at escalation/)).toBeInTheDocument();
 
     // The grid is the old Scheduled Calls page, whole.
     expect(screen.getByRole("region", { name: "My schedule" })).toBeInTheDocument();
+  });
+
+  it("offers the schedule-source toggle, and only consults Calendly when it's showing", async () => {
+    mount();
+    const grid = await screen.findByRole("region", { name: "My schedule" });
+    const toggle = within(grid).getByRole("group", { name: /Which calls to show/ });
+    expect(within(toggle).getAllByRole("button").map((b) => b.textContent))
+      .toEqual(["All calls", "Intake", "Welcome"]);
+
+    // Defaults to showing both, so a welcome-call read is wanted. There is no
+    // gateway in this build, so the grid must SAY the welcome half is missing
+    // rather than render an empty day as "nothing booked".
+    expect(within(grid).getByRole("status")).toHaveTextContent(/Welcome-call bookings need the gateway/);
+    expect(within(grid).getByRole("button", { name: /Refresh welcome-call bookings/ })).toBeInTheDocument();
+
+    // Switching to intake-only stops asking, so the notice and the Calendly
+    // refresh both go away — nothing is missing from an intake-only view.
+    fireEvent.click(within(toggle).getByRole("button", { name: "Intake" }));
+    expect(within(grid).queryByRole("status")).toBeNull();
+    expect(within(grid).queryByRole("button", { name: /Refresh welcome-call bookings/ })).toBeNull();
   });
 
   it("fetches a patient's notes only when the drawer is opened", async () => {
@@ -144,15 +166,15 @@ describe("CareCoordinatorPage", () => {
 
   it("opens a collapsed section on click and links Open to the stage page", async () => {
     mount();
-    const chaseCol = await screen.findByRole("region", { name: "Confirm Receipt + Chase Clinicals" });
-    await within(chaseCol).findByText("Rosa Villalobos");
-    fireEvent.click(within(chaseCol).getByRole("button", { name: /With a manager/ }));
-    expect(await within(chaseCol).findByText("Henry Osei")).toBeInTheDocument();
+    const wcCol = await screen.findByRole("region", { name: "Welcome Call" });
+    await within(wcCol).findByText("Amara Nwosu");
+    // "Follow up later" is closed by default — Gerald Pham is behind it.
+    expect(within(wcCol).queryByText("Gerald Pham")).toBeNull();
+    fireEvent.click(within(wcCol).getByRole("button", { name: /Follow up later/ }));
+    expect(await within(wcCol).findByText("Gerald Pham")).toBeInTheDocument();
 
-    const opens = within(chaseCol).getAllByRole("link", { name: /Open/ });
-    const hrefs = opens.map((a) => a.getAttribute("href"));
-    // Confirm Receipt → its own page; Chase Clinicals + Fax → the fax chase role.
-    expect(hrefs).toContain("/confirm-receipt?patientId=overdue&from=care-coordinator");
-    expect(hrefs).toContain("/chase-fax?patientId=mgr&from=care-coordinator");
+    const hrefs = within(wcCol).getAllByRole("link", { name: /Open/ }).map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/welcome-call?patientId=now&from=care-coordinator");
+    expect(hrefs).toContain("/welcome-call?patientId=snz&from=care-coordinator");
   });
 });

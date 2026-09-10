@@ -2926,6 +2926,86 @@ new data or a reversed decision.
 `hooks/careCoordinator/useBoardPoll.ts`, `components/careCoordinator/{cards,PatientCard,PipelineColumn,ScheduleGrid}.tsx`,
 `pages/CareCoordinatorPage.tsx` (+ `CareCoordinatorPage.test.tsx`).
 
+⚠️ **Confirm Receipt + Chase Clinicals is HIDDEN from this page** (Josh, 2026-09-10), behind
+`SHOW_CHASE_COLUMN` in `CareCoordinatorPage.tsx`; the remaining two columns go 2-up so each gets
+about half the page. The flag governs the READ, the header chip and the column **together** — the
+hidden read returns `[]`, so `chaseBuckets` comes back empty and `summarize` drops the stage from
+Total / overdue / at-escalation on its own. That is the whole design: a stage hidden but still
+counted would put a number in "Total in pipeline" that nothing on screen explains. Nobody is
+stranded — the stage keeps its own pages, its role bar and its Oversight row. Flip the flag to
+bring it back; nothing else moves with it.
+
+### 5.30b The schedule grid shows welcome calls too — read straight from Calendly (Sep 2026)
+*"is calendly hooked up to only intake calls? i want to add a toggle to see welcome call too"*
+(Josh, 2026-09-10). It was, and the answer to why is the whole design here.
+
+**Same Calendly account, different EVENT TYPE — not a different calendar.** Both live on the
+`records-medicallymodern` user: **Medically Modern Intake Call** (`d2642463-…`) and **Medically
+Modern Welcome Call** (`96da008d-…`), 10 minutes each. What was intake-only was the *code*:
+`calendly.js` resolved ONE event type by name-match (`CALENDLY_EVENT_TYPE_MATCH`, default
+`intake`), so booking, availability and `/api/intake/scheduling` all meant the intake call.
+
+⚠️ **The webhook, however, was never intake-only — and that was a live bug** (fixed 2026-09-10).
+`reconcileWebhook` subscribes at **`scope: 'user'`**, so every event type on the account is
+delivered, and `handleWebhookEvent` did not look at which one. A patient still sitting in one of
+the two DTC form groups who booked a **welcome** call had their **intake** mirror columns
+overwritten with it, and a later welcome-call cancel blanked them outright. Narrow — it needs both
+facts at once — but silent. `scheduledEvents` had also been **dropping `event_type`**, which is why
+nothing downstream could tell the two apart even in principle. The webhook and `reconcileDay` now
+mirror intake bookings only.
+⚠️ **Positive evidence only** (`calendly.kindOfEventType` returns `''` for "could not ask"): a
+booking is skipped when we KNOW it is another event type, never merely because classification
+failed. Fail-closed would mean a real intake booking silently unmirrored during a Calendly blip —
+the "booked call nobody makes" §5.15 exists to prevent.
+
+**Welcome calls have NO mirror, so the grid reads Calendly.** Verified against the live board
+2026-09-10: the Welcome Call board has **156 columns and not one of them is a booking**, and
+nothing copies the intake mirror across the board hop (§5.26, §5.31b). Calendly is the only record
+there is. The chain, and every hop of it is load-bearing:
+
+    browser --(Google identity)--> gateway --(service token)--> dtc-mm-form-api --> Calendly
+
+⚠️ The browser must never hold a Calendly token (§10), and the gateway must never hold its **own**
+copy — `dtc-mm-form-api` owns the Calendly integration, and a second credential is the §5.7/§5.29
+hand-synced hazard in its worst form. ⚠️ The day read returns **PHI** (patient names + emails),
+unlike `/api/calendly/health` beside it, so `GET /api/calendly/day` is **bearer-authenticated and an
+unset `CALENDLY_DAY_TOKEN` disables it outright** rather than leaving it open, and the gateway's
+`GET /calendly/day` requires a verified employee (`verifyGoogleIdentity`, not `verifyGoogleToken` —
+the ID token is never refreshed and a stale one must not lock a coordinator out mid-shift, §5.4).
+
+**Files.** SPA: `lib/careCoordinator/calendlyDay.ts` (client) · `scheduleEntries.ts` (+ tests — the
+pure adapters) · `hooks/careCoordinator/useCalendlyDay.ts` · `components/careCoordinator/ScheduleGrid.tsx`.
+Gateway: `calendlyDay.mjs` + `calendlyDayRules.mjs` (+ tests), the `callRules`/`rcAllowlist` split.
+Backend: dtc-mm-form `server/src/calendly.js` (`eventTypeFor`, `kindOfEventType`, `dayEvents`),
+`booking.js`, `server.js`.
+
+⚠️ **Both sources are adapted to ONE `ScheduleEntry`**, and `lib/scheduledCalls/workflow.ts`'s
+sequencing helpers were widened to a structural `BookedSlot` rather than duplicated — two copies of
+"is this booking live" is how the day view and the ten-minute reminder drift apart.
+⚠️ **Calendly returns UTC; the grid is naive Eastern.** `etPartsOf` converts. Rendering the instant
+in the browser's zone puts a late-evening booking on the **wrong day** and it vanishes from the day
+being looked at — §5.15's standing trap, tested both sides of ET midnight and across DST.
+⚠️ **An empty day and a failed read are different answers.** `fetchCalendlyDay` returns `{ok, error}`
+and the grid says so in amber: a Calendly outage rendered as "no calls booked" is the one answer a
+coordinator acts on by not ringing anybody.
+⚠️ **No polling.** One read per day viewed, cached 60s in the browser AND 60s on the gateway, one
+in-flight request per day, and **nothing is fetched at all while the toggle is on Intake**. Behind
+each read sit one `/scheduled_events` call plus one `/invitees` call PER booking, against the same
+rate-limited account the patient form books through — INCIDENT_2026-08-20's shape.
+⚠️ **A booking links to a chart by the invitee's EMAIL** (Welcome Call `text_mm1xc140`, well
+populated), and `emailIndex` **poisons an address two patients share** rather than picking one —
+linking the wrong chart on a live call is worse than not linking. No match ⇒ the block still
+renders, with no Open: a booking made with an address we don't hold is real and the coordinator
+needs to see it (the same single join the intake mirror depends on, §5.15). Matching is against the
+**Welcome Call group only** — the page's own read — so a booking for a patient not yet in that
+group won't link either.
+⚠️ **The 10-minute reminder is still INTAKE-ONLY.** `ScheduledCallHost` reads the monday mirror,
+which has no welcome-call rows; the footnote says so rather than promising one (§5.15: "fix the
+copy, not the gate"). Welcome calls also **do not** enter `remainingToday`, the role bar or either
+baseline generator — that would be a counting-contract change (§5.8), deliberately not made.
+**Volume today is low:** a scan of 2026-09-03 → 09-24 found **two** bookings in total, one of each
+kind. The toggle will often be empty, and that is the board's state, not a broken read.
+
 
 
 ### 5.32 Last Bill Date lives in TWO column families — and Welcome Call read the wrong one (Sep 2026)
@@ -4054,6 +4134,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |
 | A booking didn't show up in Scheduled Calls | §5.15 — the mirror joins on the invitee's EMAIL. `lib/scheduledCalls/bookingLink.ts` (the prefill), then dtc-mm-form `server/src/booking.js` |
 | Booked-call queue / the 10-min reminder | `lib/scheduledCalls/workflow.ts` + `components/careCoordinator/ScheduleGrid.tsx` (the grid, on `pages/CareCoordinatorPage.tsx`) + `components/scheduledCalls/ScheduledCallHost.tsx` (§5.15, §5.30) |
+| A welcome call isn't on the schedule grid / a booking has no "Open" | §5.30b — the grid reads Calendly through the gateway, not monday. Check `GET /calendly/day` on the gateway, then `/api/calendly/health` on dtc-mm-form (it reports the welcome event type and whether the day route is enabled). No "Open" means the invitee's email is on no **Welcome Call group** row — the same single join the intake mirror uses; the block is meant to render without a link |
+| A welcome-call booking overwrote a patient's intake booking | §5.30b — fixed 2026-09-10. The webhook is USER-scope and now filters on `scheduled_event.event_type`; if it recurs, check `calendly.kindOfEventType` can still resolve BOTH event types (`/api/calendly/health`) — an unresolvable one falls back to mirroring, deliberately |
 | The Care Coordinator dashboard shows a patient it shouldn't, or hides one it should | §5.30 — `lib/careCoordinator/workflow.ts` (`intakeBuckets` / `chaseBuckets` / `welcomeCallBuckets`, tested). Read the column's footer first: every excluded row is counted there with its reason. The page never writes, so nothing here can have moved a patient |
 | Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |
 | A text was sent but the patient never got it | §5.5 — `lib/shared/smsDelivery.ts` (status decides, code explains), rendered by `components/shared/SmsDeliveryNote.tsx`; the gateway half is `/messaging/conversation` in `services/monday-gateway/messaging.mjs` |

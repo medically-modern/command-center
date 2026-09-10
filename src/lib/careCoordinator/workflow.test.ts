@@ -41,7 +41,7 @@ const chase = (over: Partial<ChaseItem> = {}): ChaseItem => ({
 
 const wc = (over: Partial<WelcomeCallItem> = {}): WelcomeCallItem => ({
   id: "w1", name: "Welcome Patient", groupId: "group_mm1wvq8p", createdAt: hoursAgo(48),
-  phone: "3475550103", escalation: "", followUp: "", followUpDate: "",
+  phone: "3475550103", email: "wc1@example.com", escalation: "", followUp: "", followUpDate: "",
   serving: "Insulin Pump", requestType: "Insulin Pump", pumpQty: "1",
   ipLastBillDate: "", medicarePriorPumpDate: "", callAttempts: "",
   doctorName: "Dr. Kaminski", primaryInsurance: "Medicare A&B", referralReceivedDate: "2026-09-05",

@@ -235,7 +235,10 @@ export async function fetchChaseItems(): Promise<ChaseItem[]> {
 const WC_ESCALATION_COL = "color_mm1x7997";
 
 const WC_COLS: string[] = [
-  WC_COL.phone, WC_ESCALATION_COL,
+  // Email is here for ONE reason: it is the only join between a Calendly
+  // welcome-call booking and this patient's chart (the grid's "Open"). The
+  // Calendly mirror uses the same single join for intake — §5.15.
+  WC_COL.phone, WC_COL.email, WC_ESCALATION_COL,
   WC_COL.followUp, WC_COL.followUpDate, WC_COL.serving, WC_COL.requestType, WC_COL.pumpQty,
   WC_COL.ipLastBillDate, WC_COL.medicarePriorPumpDate, WC_COL.callAttempts, WC_COL.doctorName,
   WC_COL.primaryInsurance, WC_COL.referralReceivedDate,
@@ -248,6 +251,7 @@ function toWelcomeCallItem(item: RawItem): WelcomeCallItem {
     groupId: item.group?.id ?? "",
     createdAt: item.created_at,
     phone: text(item, WC_COL.phone),
+    email: text(item, WC_COL.email),
     escalation: text(item, WC_ESCALATION_COL),
     followUp: text(item, WC_COL.followUp),
     followUpDate: text(item, WC_COL.followUpDate),

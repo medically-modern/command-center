@@ -127,6 +127,9 @@ export interface WelcomeCallItem {
   groupId: string;
   createdAt: string;
   phone: string;
+  /** The join between a Calendly welcome-call booking and this chart — the
+   *  schedule grid's "Open". Nothing else on this page reads it. */
+  email: string;
   escalation: string;
   followUp: string;
   followUpDate: string;
