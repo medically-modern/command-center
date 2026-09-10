@@ -2935,6 +2935,38 @@ counted would put a number in "Total in pipeline" that nothing on screen explain
 stranded — the stage keeps its own pages, its role bar and its Oversight row. Flip the flag to
 bring it back; nothing else moves with it.
 
+**Each column says how far its read has got** (Josh, 2026-09-10: *"it takes a very long time to
+load patient intake … I need to see an update bar showing me what it's loading and how close we
+are"*). `lib/careCoordinator/loadProgress.ts` (+ tests) · the bar is `LoadBar` in
+`PipelineColumn.tsx` · `useBoardPoll` accumulates page reports from `mondayApi`'s `PageReport`.
+
+**Why it is slow, measured 2026-09-10:** Patient Intake reads **1,754 rows** — Partial Leads
+**1,718** + Completed 29 + Clean-Up 7 — and Monday caps `items_page` at 500, so Partial Leads
+alone is **four sequential round trips** before anything renders. Welcome Call is **41 rows**, one
+request; its bar barely flashes, which is correct. ~97% of the intake rows are the 8/25 bulk import
+the column then excludes, but they cannot be filtered server-side: the footer COUNTS them (§7's
+nothing-is-invisible rule), an escalated or booked import still has to appear, and Monday's
+`query_params` cannot express that OR across a group rule. Every one of the ~23 columns is read by
+something on screen — checked field by field, so there is nothing to trim either. The real fix is a
+two-tier read (§5.25's shape); this is visibility, not a speed-up.
+
+⚠️ **MONDAY REPORTS NO TOTAL, so a percentage can only be REMEMBERED.** `ItemsResponse` has exactly
+`cursor` and `items` (live schema, 2026-09-10); `groups` has no count and only `boards
+{ items_count }` exists, board-wide. So `expected` is what the LAST COMPLETE run returned, kept in
+localStorage per column key. Which makes the honesty rules the whole module:
+`loaded` is always real; the percentage is **capped at 99 until the fetch resolves** and a run that
+overshoots its remembered total stays at 99 rather than reading >100 or snapping back to
+indeterminate; with no memory at all the bar is an indeterminate sweep and the text is a bare count
+— it never invents a denominator. ⚠️ **Nothing is remembered from a failed or partial run**, or the
+next load parks at "100%" with rows still arriving. ⚠️ Every localStorage access is wrapped —
+a progress bar must never break the page it decorates.
+⚠️ **A background poll shows NOTHING**; only the first load and a Refresh the coordinator pressed
+do (`visible`), because a bar reappearing every 60s on a page somebody reads all day is the noise
+that teaches people to ignore it — §5.28's naming-progress rule. The indeterminate sweep reuses the
+app's existing `.burndown-shimmer`, not a second animation saying the same thing.
+⚠️ `PageReport` is *"N more rows"*, never a position: the intake read runs its three groups in
+PARALLEL and their pages interleave, so the hook may only ever accumulate.
+
 ### 5.30b The schedule grid shows welcome calls too — read straight from Calendly (Sep 2026)
 *"is calendly hooked up to only intake calls? i want to add a toggle to see welcome call too"*
 (Josh, 2026-09-10). It was, and the answer to why is the whole design here.
@@ -4136,6 +4168,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Booked-call queue / the 10-min reminder | `lib/scheduledCalls/workflow.ts` + `components/careCoordinator/ScheduleGrid.tsx` (the grid, on `pages/CareCoordinatorPage.tsx`) + `components/scheduledCalls/ScheduledCallHost.tsx` (§5.15, §5.30) |
 | A welcome call isn't on the schedule grid / a booking has no "Open" | §5.30b — the grid reads Calendly through the gateway, not monday. Check `GET /calendly/day` on the gateway, then `/api/calendly/health` on dtc-mm-form (it reports the welcome event type and whether the day route is enabled). No "Open" means the invitee's email is on no **Welcome Call group** row — the same single join the intake mirror uses; the block is meant to render without a link |
 | A welcome-call booking overwrote a patient's intake booking | §5.30b — fixed 2026-09-10. The webhook is USER-scope and now filters on `scheduled_event.event_type`; if it recurs, check `calendly.kindOfEventType` can still resolve BOTH event types (`/api/calendly/health`) — an unresolvable one falls back to mirroring, deliberately |
+| Patient Intake takes ages to load / the load bar reads wrong | §5.30 — it is 1,754 rows in four sequential Monday pages and that is inherent; the bar is `lib/careCoordinator/loadProgress.ts`. A bar with no percentage is CORRECT on a first-ever visit (Monday reports no total, so the denominator is remembered from the last complete run); one stuck at 99% means the fetch has not resolved, not that the maths is off |
 | The Care Coordinator dashboard shows a patient it shouldn't, or hides one it should | §5.30 — `lib/careCoordinator/workflow.ts` (`intakeBuckets` / `chaseBuckets` / `welcomeCallBuckets`, tested). Read the column's footer first: every excluded row is counted there with its reason. The page never writes, so nothing here can have moved a patient |
 | Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |
 | A text was sent but the patient never got it | §5.5 — `lib/shared/smsDelivery.ts` (status decides, code explains), rendered by `components/shared/SmsDeliveryNote.tsx`; the gateway half is `/messaging/conversation` in `services/monday-gateway/messaging.mjs` |

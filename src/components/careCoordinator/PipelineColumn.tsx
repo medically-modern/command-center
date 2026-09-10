@@ -11,6 +11,9 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  progressLabel, progressPercent, type LoadProgress,
+} from "@/lib/careCoordinator/loadProgress";
 
 const PAGE = 12;
 
@@ -57,7 +60,7 @@ export function Section({
 }
 
 export function PipelineColumn({
-  title, subtitle, count, alert, alertTone = "bad", tint, children, footer,
+  title, subtitle, count, alert, alertTone = "bad", tint, children, footer, progress,
 }: {
   title: string;
   subtitle: string;
@@ -70,6 +73,9 @@ export function PipelineColumn({
   children: ReactNode;
   /** Small print at the bottom — the honest "what isn't on this screen". */
   footer?: ReactNode;
+  /** The read in flight, or null when nothing is loading (or a background poll
+   *  is, which deliberately shows nothing). */
+  progress?: LoadProgress | null;
 }) {
   const wash = {
     sky: "border-sky-200/70 bg-sky-50/40 dark:border-sky-900/50 dark:bg-sky-950/10",
@@ -99,8 +105,67 @@ export function PipelineColumn({
           <span className="rounded-full border bg-background px-2 py-0.5 text-xs font-semibold tabular-nums">{count}</span>
         </div>
       </header>
+      {progress && <LoadBar progress={progress} label={title} />}
       <div className="space-y-4">{children}</div>
       {footer && <div className="mt-4 border-t pt-2 text-[11px] leading-relaxed text-muted-foreground">{footer}</div>}
     </section>
+  );
+}
+
+/**
+ * What is loading, and how close we are.
+ *
+ * The Patient Intake column is four sequential Monday pages over ~1,754 rows,
+ * so it can sit for many seconds looking identical to a broken screen. This
+ * says which column is working and how far it has got.
+ *
+ * ⚠️ **A percentage is only drawn when one can be justified.** Monday reports no
+ * total, so the denominator is what the LAST complete run returned; with no
+ * memory of one — a first-ever visit, a private window, a cleared store — the
+ * bar is an indeterminate sweep and the text is a plain row count. It never
+ * invents a number, and it never reads 100% while rows are still arriving
+ * (`progressPercent` caps at 99 until the fetch resolves).
+ */
+function LoadBar({ progress, label }: { progress: LoadProgress; label: string }) {
+  const pct = progressPercent(progress);
+  const text = progressLabel(progress);
+  return (
+    <div
+      className="mb-3"
+      role="progressbar"
+      aria-label={`Loading ${label}`}
+      // Omitted entirely when indeterminate — that is what the ARIA state for
+      // "busy, position unknown" IS, and reporting a made-up 0 would be read
+      // aloud as no progress on a load that is running fine.
+      aria-valuenow={pct ?? undefined}
+      aria-valuemin={pct === null ? undefined : 0}
+      aria-valuemax={pct === null ? undefined : 100}
+      aria-valuetext={text || undefined}
+    >
+      <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
+        <span className="truncate">Loading {label.toLowerCase()}…</span>
+        <span className="shrink-0 tabular-nums">
+          {text}
+          {pct !== null && <span className="ml-1.5 font-semibold">{pct}%</span>}
+        </span>
+      </div>
+      <div className="relative h-1 overflow-hidden rounded-full bg-foreground/10">
+        {pct === null ? (
+          // Indeterminate: the app's existing sweep (`burndown-shimmer`, the
+          // one DailyBurndown uses while live counts load) rather than a second
+          // animation saying the same thing. Visibly WORKING, without claiming
+          // a position it does not have.
+          <div
+            className="burndown-shimmer absolute inset-y-0 w-1/3"
+            style={{ background: "linear-gradient(90deg, transparent, hsl(var(--primary)), transparent)" }}
+          />
+        ) : (
+          <div
+            className="h-full rounded-full bg-sky-500 transition-[width] duration-300 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        )}
+      </div>
+    </div>
   );
 }

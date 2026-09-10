@@ -101,9 +101,14 @@ export default function CareCoordinatorPage() {
   const { nowMinutes, nowMs } = useNow();
   const today = etToday();
 
-  const intake = useBoardPoll(fetchIntakeLeads, POLL_MS);
-  const chase = useBoardPoll(chaseFetcher, POLL_MS);
-  const welcome = useBoardPoll(fetchWelcomeCallItems, POLL_MS);
+  // ⚠️ The third argument is the key the remembered row total is stored under,
+  // and it is what lets the bar show a PERCENTAGE rather than a bare count —
+  // Monday reports no total, so the denominator is what the last complete run
+  // returned (lib/careCoordinator/loadProgress.ts). Stable strings; changing one
+  // costs a coordinator their first percentage after deploy and nothing else.
+  const intake = useBoardPoll(fetchIntakeLeads, POLL_MS, "intake");
+  const chase = useBoardPoll(chaseFetcher, POLL_MS, "chase");
+  const welcome = useBoardPoll(fetchWelcomeCallItems, POLL_MS, "welcome");
 
   const intakeB = useMemo(
     () => intakeBuckets(intake.data ?? [], { today, nowMinutes, nowMs, formGroupIds: INTAKE_FORM_GROUP_IDS }),
@@ -224,6 +229,7 @@ export default function CareCoordinatorPage() {
             title="Patient Intake"
             subtitle="Callbacks first, then longest-waiting"
             count={summary.intake}
+            progress={intake.progress}
             alert={uncalled ? `${uncalled} not yet called` : null}
             alertTone="warn"
             footer={
@@ -260,6 +266,7 @@ export default function CareCoordinatorPage() {
               title="Confirm Receipt + Chase Clinicals"
               subtitle="Cadence-driven · most overdue first"
               count={summary.chase}
+              progress={chase.progress}
               alert={overdue ? `${overdue} overdue` : null}
               footer={chaseB.proposedStuck > 0 ? <>Not shown: {chaseB.proposedStuck} proposed stuck — awaiting a Final Decision in Oversight.</> : undefined}
             >
@@ -286,6 +293,7 @@ export default function CareCoordinatorPage() {
             title="Welcome Call"
             subtitle="Live calls · pump & CGM flags"
             count={summary.welcome}
+            progress={welcome.progress}
             alert={wcUncalled ? `${wcUncalled} not yet called` : null}
             alertTone="warn"
           >

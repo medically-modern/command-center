@@ -66,7 +66,20 @@ const ITEM_FIELDS = `id name created_at group { id } column_values(ids: $cols) {
  * `compare_value` is inlined, not a variable — Monday rejects a `[String!]`
  * variable in that position (see lib/scheduledCalls/mondayApi.ts).
  */
-async function fetchGroup(boardId: string | number, groupId: string, cols: string[]): Promise<RawItem[]> {
+/**
+ * Called after each page lands, with that page's row count.
+ *
+ * ⚠️ Reports PAGES, not a fraction. Monday's `items_page` returns `cursor` and
+ * `items` and nothing else — there is no total anywhere in the API — so the
+ * only honest thing a fetch can say is how much it has actually got
+ * (`lib/careCoordinator/loadProgress.ts` turns that into a percentage against a
+ * remembered total, and says so).
+ */
+export type PageReport = (rows: number) => void;
+
+async function fetchGroup(
+  boardId: string | number, groupId: string, cols: string[], onPage?: PageReport,
+): Promise<RawItem[]> {
   const first = await gql<{ boards: { items_page: PageResult }[] }>(
     `query ($boardId: ID!, $cols: [String!]) {
        boards(ids: [$boardId]) {
@@ -80,6 +93,7 @@ async function fetchGroup(boardId: string | number, groupId: string, cols: strin
   );
   const page = first.boards?.[0]?.items_page;
   const all: RawItem[] = [...(page?.items ?? [])];
+  onPage?.(page?.items?.length ?? 0);
   let cursor = page?.cursor ?? null;
   while (cursor) {
     const next = await gql<{ next_items_page: PageResult }>(
@@ -89,6 +103,7 @@ async function fetchGroup(boardId: string | number, groupId: string, cols: strin
       { cursor, cols },
     );
     all.push(...(next.next_items_page?.items ?? []));
+    onPage?.(next.next_items_page?.items?.length ?? 0);
     cursor = next.next_items_page?.cursor ?? null;
   }
   return all;
@@ -172,8 +187,16 @@ function toIntakeLead(item: RawItem): IntakeLead {
   };
 }
 
-export async function fetchIntakeLeads(): Promise<IntakeLead[]> {
-  const pages = await Promise.all(INTAKE_GROUP_IDS.map((g) => fetchGroup(PROFILE_BOARD_ID, g, INTAKE_COLS)));
+/**
+ * ⚠️ The three groups run in PARALLEL and their pages interleave, so `onPage`
+ * fires out of order and the caller must only ever ACCUMULATE — never treat a
+ * report as "page N of this group". Partial Leads alone is ~1,718 rows, i.e.
+ * four sequential pages of its own, which is where the wait actually is.
+ */
+export async function fetchIntakeLeads(onPage?: PageReport): Promise<IntakeLead[]> {
+  const pages = await Promise.all(
+    INTAKE_GROUP_IDS.map((g) => fetchGroup(PROFILE_BOARD_ID, g, INTAKE_COLS, onPage)),
+  );
   return pages.flat().map(toIntakeLead);
 }
 
@@ -220,8 +243,8 @@ function toChaseItem(item: RawItem): ChaseItem {
  * the same way, and one paged read of ~200 rows is cheaper than two filtered
  * ones. Only the two stages come back.
  */
-export async function fetchChaseItems(): Promise<ChaseItem[]> {
-  const rows = await fetchGroup(ME_BOARD_ID, ME_GROUPS.medicalNecessity, CHASE_COLS);
+export async function fetchChaseItems(onPage?: PageReport): Promise<ChaseItem[]> {
+  const rows = await fetchGroup(ME_BOARD_ID, ME_GROUPS.medicalNecessity, CHASE_COLS, onPage);
   const stages = new Set<string>(CHASE_STAGES);
   return rows.map(toChaseItem).filter((i) => stages.has(i.subStage.trim()));
 }
@@ -267,8 +290,8 @@ function toWelcomeCallItem(item: RawItem): WelcomeCallItem {
   };
 }
 
-export async function fetchWelcomeCallItems(): Promise<WelcomeCallItem[]> {
-  const rows = await fetchGroup(WC_BOARD_ID, WC_GROUPS.welcomeCall, WC_COLS);
+export async function fetchWelcomeCallItems(onPage?: PageReport): Promise<WelcomeCallItem[]> {
+  const rows = await fetchGroup(WC_BOARD_ID, WC_GROUPS.welcomeCall, WC_COLS, onPage);
   return rows.map(toWelcomeCallItem);
 }
 

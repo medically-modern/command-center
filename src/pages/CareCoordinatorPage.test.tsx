@@ -130,6 +130,10 @@ describe("CareCoordinatorPage", () => {
 
     // The grid is the old Scheduled Calls page, whole.
     expect(screen.getByRole("region", { name: "My schedule" })).toBeInTheDocument();
+
+    // The load bars are GONE once the reads resolved. One left on screen is
+    // indistinguishable from a column that never finished loading.
+    expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
   });
 
   it("offers the schedule-source toggle, and only consults Calendly when it's showing", async () => {
