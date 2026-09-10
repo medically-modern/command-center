@@ -1,4 +1,4 @@
-import { writeStatusIndex, writeStatusClear, writeCheckbox, writeNumber, clearNumberColumn, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
+import { writeStatusIndex, writeStatusClear, writeCheckbox, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { appendIntakeToNotes } from "./callIntake";
@@ -12,7 +12,6 @@ import { coercePumpQty } from "@/lib/shared/servingLines";
 import { resolveLastBillDates } from "@/lib/shared/lastBillDate";
 import { coerceMonitorQty } from "@/lib/shared/monitorQty";
 import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "./orderFrequency";
-import { infusionSetWriteAction } from "./infusionSelection";
 import { phoneSlotsFor, caregiverFor, phoneSlotWrites, caregiverConsentJustGiven, caregiverConsentNote } from "./phoneSlots";
 import type { Patient } from "./workflow";
 
@@ -214,26 +213,9 @@ export async function sendPatientToMonday(
   // profile and shipped a pump. See lib/shared/servingLines.ts.
   const pumpQtyToWrite = coercePumpQty(p.pumpQty, p.servingEdited ?? p.serving);
   if (pumpQtyToWrite !== "") tasks.push({ label: "Pump Qty", columnId: COL.pumpQty, value: String(Number(pumpQtyToWrite)), fn: () => writeNumber(p.id, COL.pumpQty, Number(pumpQtyToWrite)) });
-  /* Infusion + cartridge quantities. ⚠️ A BLANK is a CLEAR, never a skip — the
-     same rule and the same reason as the two set columns below, and the same
-     reason Monitor Qty stopped being skipped above. Both routes that empty one
-     of these are automatic (`setsInvalidatedByPump`, `setTwoTransition`) and
-     both leave the rep looking at an emptied control, so skipping left a
-     quantity on the board attached to a set that is no longer there.
-     ⚠️ The clear goes through `clearNumberColumn`, not `writeNumber(0)`: on this
-     board 0 is a real quantity and blank is "no set chosen". */
-  const qtyTask = (label: string, columnId: string, value: string) => {
-    const blank = (value ?? "").trim() === "";
-    tasks.push({
-      label,
-      columnId,
-      value: blank ? "" : String(Number(value)),
-      fn: blank ? () => clearNumberColumn(p.id, columnId) : () => writeNumber(p.id, columnId, Number(value)),
-    });
-  };
-  qtyTask("Infusion Set 1 Qty", COL.qtyInf1, p.qtyInf1);
-  qtyTask("Infusion Set 2 Qty", COL.qtyInf2, p.qtyInf2);
-  qtyTask("Qty Cartridge", COL.qtyCartridge, p.qtyCartridge);
+  if (p.qtyInf1 !== "") tasks.push({ label: "Infusion Set 1 Qty", columnId: COL.qtyInf1, value: String(Number(p.qtyInf1)), fn: () => writeNumber(p.id, COL.qtyInf1, Number(p.qtyInf1)) });
+  if (p.qtyInf2 !== "") tasks.push({ label: "Infusion Set 2 Qty", columnId: COL.qtyInf2, value: String(Number(p.qtyInf2)), fn: () => writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)) });
+  if (p.qtyCartridge !== "") tasks.push({ label: "Qty Cartridge", columnId: COL.qtyCartridge, value: String(Number(p.qtyCartridge)), fn: () => writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)) });
 
   // Medicare Prior Pump Date (Original-Medicare-only MM/YYYY text). Always write so
   // an empty value clears the cell — the form zeroes local state once the field is
@@ -248,25 +230,10 @@ export async function sendPatientToMonday(
   // eligible, so writing unconditionally is what clears the board cell.
   tasks.push({ label: "Monitor Purchase Date", columnId: COL.monitorPurchaseDate, value: p.monitorPurchaseDate, fn: () => writeText(p.id, COL.monitorPurchaseDate, p.monitorPurchaseDate) });
 
-  /* Infusion sets. ⚠️ An emptied slot CLEARS the column — see
-     `infusionSelection.infusionSetWriteAction` for why, and for why an
-     unmappable label is skipped instead. Brandon asked for this in the same
-     breath as the split rules: "write blanks to Infusion Set 2 / Qty Inf. 2 on
-     Monday — don't leave the old values on the board." */
-  const setTask = (label: string, columnId: string, index: number | null, boardLabel: string) => {
-    const action = infusionSetWriteAction(index, boardLabel);
-    if (action === "skip") return;
-    tasks.push({
-      label,
-      columnId,
-      value: action === "write" ? { index: index! } : {},
-      fn: action === "write"
-        ? () => writeStatusIndex(p.id, columnId, index!)
-        : () => writeStatusClear(p.id, columnId),
-    });
-  };
-  setTask("Infusion Set 1", COL.infusionSet1, p.infusionSet1Index, p.infusionSet1);
-  setTask("Infusion Set 2", COL.infusionSet2, p.infusionSet2Index, p.infusionSet2);
+  if (p.infusionSet1Index !== null)
+    tasks.push({ label: "Infusion Set 1", columnId: COL.infusionSet1, value: { index: p.infusionSet1Index! }, fn: () => writeStatusIndex(p.id, COL.infusionSet1, p.infusionSet1Index!) });
+  if (p.infusionSet2Index !== null)
+    tasks.push({ label: "Infusion Set 2", columnId: COL.infusionSet2, value: { index: p.infusionSet2Index! }, fn: () => writeStatusIndex(p.id, COL.infusionSet2, p.infusionSet2Index!) });
   if (p.subscriptionTypeIndex !== null)
     tasks.push({ label: "Subscription Type", columnId: COL.subscriptionType, value: { index: p.subscriptionTypeIndex! }, fn: () => writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex!) });
   if (p.welcomeCallTextIndex !== null)
@@ -437,33 +404,15 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
   // Serving label does not support either.
   const pumpQtyToWrite = coercePumpQty(p.pumpQty, p.servingEdited ?? p.serving);
   if (pumpQtyToWrite !== "") tasks.push(writeNumber(p.id, COL.pumpQty, Number(pumpQtyToWrite)));
-  /* ⚠️ Same blank-is-a-clear rule as the send above, and it matters MORE here:
-     this writer exists to put the latest values in front of the autotext
-     automation, so a set the rep just cleared must not be the one the patient is
-     texted about. */
-  const qtyPush = (columnId: string, value: string) => {
-    tasks.push(
-      (value ?? "").trim() === ""
-        ? clearNumberColumn(p.id, columnId)
-        : writeNumber(p.id, columnId, Number(value)),
-    );
-  };
-  qtyPush(COL.qtyInf1, p.qtyInf1);
-  qtyPush(COL.qtyInf2, p.qtyInf2);
-  qtyPush(COL.qtyCartridge, p.qtyCartridge);
+  if (p.qtyInf1 !== "") tasks.push(writeNumber(p.id, COL.qtyInf1, Number(p.qtyInf1)));
+  if (p.qtyInf2 !== "") tasks.push(writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)));
+  if (p.qtyCartridge !== "") tasks.push(writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)));
 
   // Infusion Sets + Subscription Type + Order Handling
-  const setPush = (columnId: string, index: number | null, boardLabel: string) => {
-    const action = infusionSetWriteAction(index, boardLabel);
-    if (action === "skip") return;
-    tasks.push(
-      action === "write"
-        ? writeStatusIndex(p.id, columnId, index!)
-        : writeStatusClear(p.id, columnId),
-    );
-  };
-  setPush(COL.infusionSet1, p.infusionSet1Index, p.infusionSet1);
-  setPush(COL.infusionSet2, p.infusionSet2Index, p.infusionSet2);
+  if (p.infusionSet1Index !== null)
+    tasks.push(writeStatusIndex(p.id, COL.infusionSet1, p.infusionSet1Index));
+  if (p.infusionSet2Index !== null)
+    tasks.push(writeStatusIndex(p.id, COL.infusionSet2, p.infusionSet2Index));
   if (p.subscriptionTypeIndex !== null)
     tasks.push(writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex));
   if (p.orderHandlingIndex !== null)

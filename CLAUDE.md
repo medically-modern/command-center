@@ -1725,25 +1725,20 @@ The Welcome Call board's four order-creation automations all fire on Stage Advan
 (`18405457690`). ⚠️ **Read the WHOLE chain — two of them open with an `is empty` guard**, which is
 what makes this column's blank load-bearing today:
 
-✅ **THE CUTOVER IS DONE — re-read live 2026-09-10 and the table below is the CURRENT state.**
-7918341001 was **edited in place** rather than replaced: its guard now reads Monitor Qty **`= 0`**,
-which is exactly what the standby branch 7921725444 was built to do, so that one is still INACTIVE
-and no longer needs enabling. Every condition on all four is now `is equal to` — **there is no
-`is empty` guard left on this board**, so the app's Monitor Qty coercion and the automations agree.
-
-| id | state | chain (verified live 2026-09-10) |
+| id | state | chain |
 |---|---|---|
-| 7918340959 | **LIVE** | Pump Qty `= 1` AND Monitor Qty `= 1` → create ("pump and monitor") |
-| 7918341001 | **LIVE** | Pump Qty `= 1` AND Monitor Qty **`= 0`** → create ("pump only") |
-| 7918341011 | **LIVE** | Monitor Qty `= 1` (no Pump Qty condition at all) → create ("monitor only") |
-| 7921725444 | **INACTIVE** | Pump Qty `= 1` AND Monitor Qty `= 0` — a duplicate of 7918341001, leave off |
+| 7918341001 | **LIVE** | **Monitor Qty IS EMPTY** → Pump Qty `= 1` → create ("pump only") |
+| 7918341011 | **LIVE** | **Pump Qty IS EMPTY** → Monitor Qty `= 1` → create ("monitor only") |
+| 7918340959 | **LIVE** | Pump Qty `= 1` → Monitor Qty `= 1` → create ("pump and monitor") |
+| 7921725444 | **INACTIVE** | Pump Qty `= 1` → Monitor Qty `= 0` → create ("monitor = 0") |
 
-⚠️ Two warnings elsewhere in this file are downstream of the OLD table and are now stale: there is
-no pending coordinated cutover, and **the "symmetric trap" below no longer holds** — 7918341011
-carries no `Pump Qty is empty` condition any more, so making Pump Qty binary would not silence it.
-Do not act on either without re-reading the live definitions first (`list_automations` on this
-board, then resolve each condition block's `numberColumnId` through `workflow_variables` — the
-titles alone say only "item number is greater than some amount" and are wrong about the operator).
+⚠️⚠️ **THE APP CHANGE AND 7918341001 CANNOT BOTH BE LIVE — this is a coordinated cutover.**
+"pump only" is what serves a pump patient with no monitor, and it identifies them by Monitor Qty
+being **empty**, the exact state the coercion abolishes. Deploy the SPA while "pump only" is still
+enabled and a pump-only order **stops being created at all**; 7921725444, the branch built to catch
+those patients as `Monitor Qty = 0`, was still switched **off** when this landed (2026-09-08).
+Nothing errors either way — the board just goes quiet. **Enable 7921725444 and retire 7918341001 as
+the SPA deploys** (Monday-side, off-hours — §10).
 
 The everyday failure it fixes is the mirror image: a blank matches neither `= 0` nor `= 1`, so
 every branch that names the monitor **by value** skips it silently — "pump and monitor" can't see a
@@ -2611,26 +2606,6 @@ otherwise.** `components/welcomeCall/pumpInfusionWiring.test.ts` scans the call 
   would wipe board data on mount, and switching patients also changes Pump Type.
 - **`infusionQtyPlan`** renders one line for the PAIR (the fact is about the order), warning
   in both directions and erroring only on a missing quantity — Brandon's "(warn if over)".
-
-⚠️ **An emptied set or quantity CLEARS its column — it is not skipped** (fixed 2026-09-10).
-Both routes that empty these controls are automatic and both leave the rep looking at an emptied
-control: `setsInvalidatedByPump` when they correct Pump Type (which also toasts *"Infusion set
-cleared"*), and `setTwoTransition` when the second set goes away. `buildDataTasks` guarded them with
-`if (p.infusionSet1Index !== null)` / `if (p.qtyInf1 !== "")`, so it pushed **no task at all**: the
-send went green, the screen said "no set", and Monday kept the incompatible set and its quantity for
-the create-item automations to copy onto the order. Nothing errored — §5.22's shape one product
-over, and a straight contradiction of the requirement in `infusionSelection.ts`'s own header
-(*"write blanks … don't leave the old values on the board"*).
-⚠️ **`skip` survives as a third answer**: a null index with a **non-empty label** means the board
-holds a set this app could not map (renamed label, unparsed `value`), and clearing there would
-destroy a real selection on the strength of a bad read. `mondayMapping` maps `txt` and `statusIndex`
-independently, so the surviving label is the evidence. Rule: `infusionSetWriteAction`; both writers
-(the send and the Welcome Call Text push) go through it; `infusionClear.test.ts` is verified to fail
-when the guard returns.
-⚠️ A blank quantity clears via **`clearNumberColumn`**, never `writeNumber(0)` — 0 is a real
-quantity on this board and blank is "no set chosen". Safe against the order automations: none of the
-four has a CONDITION on an infusion column (all four gate on Pump Qty / Monitor Qty only, re-read
-live 2026-09-10), so these five columns are only ever COPIED.
 
 **Stock is real, from the Cardinal SKU Tracker `18420366344`** —
 `lib/welcomeCall/stockApi.ts` + `hooks/welcomeCall/useInfusionStock.ts`, one shared
@@ -4403,8 +4378,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
-| A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Re-read the automations' conditions live before concluding anything: as of 2026-09-10 all four gate with `is equal to` and **no `is empty` guard survives**, so a coerced 0 is what "pump only" (7918341001) now requires rather than what silences it |
-| A rep cleared an infusion set (or the pump change cleared it for them) and Monday kept the old one | §5.31b — `infusionSelection.infusionSetWriteAction`. An emptied slot CLEARS the column; a null index with a **non-empty label** is skipped on purpose, because that means the board holds a set this app could not map and clearing would destroy it on a bad read. `infusionClear.test.ts` pins all three answers |
+| A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |
 | An infusion set is missing from the dropdown, or its stock pill is wrong | §5.31b — `lib/welcomeCall/infusionSelection.ts` filters by pump compatibility and excludes the other slot's set; `withCurrentSelection` means a value the BOARD holds is always shown, so a genuinely absent option was filtered. Stock is `stockApi` → `infusionStock`: "No stock data" means no tracker row for that label (re-run the name-join audit), "Stock unknown" means either a stale stamp or a row with no readable quantity — neither is a shortage |
 | Send is greyed out on Welcome Call with no obvious reason | §5.31b — the button and its reasons come from ONE array (`sendGates.unmetSendRequirements`), so the sentences under it are the answer. They apply to **Advance only**; the pump confirmation is hidden entirely when the serving sells no pump device |
 | A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |
