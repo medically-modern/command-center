@@ -164,6 +164,19 @@ export const COL = {
   sosNeverBilledMonitor: "boolean_mm5ad9rm",
   sosLastBillMonitor: "date_mm599gk8",
 
+  // The other four per-product "SoS Last Bill" columns, same create-item
+  // automation (7918324247), same source family as sosLastBillMonitor above.
+  // ⚠ These are the columns that actually hold a last bill date for a product
+  // whose SoS came back CLEAR — the legacy `*LastBillDate` columns above are
+  // written only on "Not Clear" and are cleared otherwise, so they read blank
+  // for most billed patients. `shared/lastBillDate.resolveLastBill` is the one
+  // place that decides between the two; read its header before touching either
+  // family.
+  sosLastBillSensors: "date_mm59n1x1",
+  sosLastBillIp: "date_mm593ghh",
+  sosLastBillInfusionSet: "date_mm59jcf5",
+  sosLastBillCartridge: "date_mm59mw5n",
+
   // Stage
   stageAdvancer: "color_mm1ws96t",
   escalation: "color_mm1x7997",
@@ -206,6 +219,8 @@ export const READ_COLUMN_IDS = [
   COL.escalationNotes,
   COL.neverBilledIsCar, COL.neverBilledCgm,
   COL.sosNeverBilledMonitor, COL.sosLastBillMonitor,
+  COL.sosLastBillSensors, COL.sosLastBillIp,
+  COL.sosLastBillInfusionSet, COL.sosLastBillCartridge,
 ];
 
 export interface MondayColumnValue {

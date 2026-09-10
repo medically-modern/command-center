@@ -1055,12 +1055,17 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
               onChange={(v) => onFieldChange("doctorNpi", v)}
               suppressWarning
             />
+            {/* ⚠️ The one field in this block that does NOT suppress its blank
+                warning (Brandon, 2026-09-10) — it pairs with check
+                C30_DOCTOR_PHONE_MISSING, so the ring and the finding agree.
+                Amber for the same reason C30 is amber: a missing input, not
+                evidence the profile is wrong. */}
             <EditableTextField
               icon={<Phone className="h-4 w-4" />}
               label="Doctor Phone"
               value={patient.doctorPhone}
               onChange={(v) => onFieldChange("doctorPhone", v)}
-              suppressWarning
+              emptyTone="amber"
             />
             <EditableTextField
               icon={<Mail className="h-4 w-4" />}

@@ -165,6 +165,14 @@ export interface Patient {
   sosNeverBilledMonitor: boolean;
   /** "CGM Monitor SoS Last Bill" — YYYY-MM-DD or "". */
   sosLastBillMonitor: string;
+  /** The other four "<product> SoS Last Bill" columns — YYYY-MM-DD or "".
+   *  These, not the legacy `*LastBillDate` fields above, hold the date for a
+   *  product whose SoS came back Clear. Resolve the pair through
+   *  `shared/lastBillDate.resolveLastBill`; never read one family alone. */
+  sosLastBillSensors: string;
+  sosLastBillIp: string;
+  sosLastBillInfusionSet: string;
+  sosLastBillCartridge: string;
   /** Welcome Call facts that have NO Monday column — the five confirmation
    *  flags, caretaker, extra phone numbers, supply length, the OOP amount
    *  quoted and free-text auth notes. Captured in the form, serialised into the

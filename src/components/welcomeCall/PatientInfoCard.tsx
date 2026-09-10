@@ -4,6 +4,7 @@ import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS
 import { authWindow, secondaryAsk, secondaryAskNote, isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { expectedPos } from "@/lib/shared/pos";
 import { servedOrderLines } from "@/lib/shared/servingLines";
+import { resolveLastBill } from "@/lib/shared/lastBillDate";
 import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -776,12 +777,23 @@ export function NextOrderDatesCard({
     qtyInf2: patient.qtyInf2,
   });
 
+  // ⚠️ Each product's last bill date lives in EITHER of two columns and the
+  // legacy one is blank for most billed patients — see
+  // shared/lastBillDate.ts. Resolve once here so the "Last Bill Date" a rep
+  // reads and the date `computeNextOrder` defaults from are the same value,
+  // and so both agree with what `mondayWrite` writes on send.
+  const monitorLastBill = resolveLastBill(patient.sosLastBillMonitor, patient.cgmLastBillDate);
+  const sensorsLastBill = resolveLastBill(patient.sosLastBillSensors, patient.sensorsLastBillDate);
+  const ipLastBill = resolveLastBill(patient.sosLastBillIp, patient.ipLastBillDate);
+  const infusionSetLastBill = resolveLastBill(patient.sosLastBillInfusionSet, patient.infusionSetLastBillDate);
+  const cartridgeLastBill = resolveLastBill(patient.sosLastBillCartridge, patient.cartridgeLastBillDate);
+
   const rows = [
     served.sensors && {
       key: "sensors",
       label: "Sensors",
-      lastBill: patient.sensorsLastBillDate || patient.cgmLastBillDate,
-      lastBillDates: [patient.sensorsLastBillDate, patient.cgmLastBillDate],
+      lastBill: sensorsLastBill || monitorLastBill,
+      lastBillDates: [sensorsLastBill, monitorLastBill],
       mondayDate: patient.sensorsNextOrderDate,
       editedDate: patient.sensorsNextOrderDateEdited,
       editedField: "sensorsNextOrderDateEdited" as keyof Patient,
@@ -789,8 +801,8 @@ export function NextOrderDatesCard({
     served.insulinPump && {
       key: "pump",
       label: "Insulin Pump",
-      lastBill: patient.ipLastBillDate,
-      lastBillDates: [patient.ipLastBillDate],
+      lastBill: ipLastBill,
+      lastBillDates: [ipLastBill],
       mondayDate: patient.ipNextOrderDate,
       editedDate: patient.ipNextOrderDateEdited,
       editedField: "ipNextOrderDateEdited" as keyof Patient,
@@ -801,11 +813,11 @@ export function NextOrderDatesCard({
       // Brandon: the Supplies row shows the LATER of infusion set / cartridge —
       // the reorder is driven by whichever ran out most recently.
       lastBill:
-        [patient.infusionSetLastBillDate, patient.cartridgeLastBillDate]
+        [infusionSetLastBill, cartridgeLastBill]
           .filter(Boolean)
           .sort()
           .pop() ?? "",
-      lastBillDates: [patient.infusionSetLastBillDate, patient.cartridgeLastBillDate],
+      lastBillDates: [infusionSetLastBill, cartridgeLastBill],
       mondayDate: patient.suppliesNextOrderDate,
       editedDate: patient.suppliesNextOrderDateEdited,
       editedField: "suppliesNextOrderDateEdited" as keyof Patient,
@@ -841,7 +853,7 @@ export function NextOrderDatesCard({
               className="text-sm font-medium"
               title={
                 r.key === "supplies"
-                  ? `Infusion set ${patient.infusionSetLastBillDate || "—"} · Cartridge ${patient.cartridgeLastBillDate || "—"}`
+                  ? `Infusion set ${infusionSetLastBill || "—"} · Cartridge ${cartridgeLastBill || "—"}`
                   : undefined
               }
             >

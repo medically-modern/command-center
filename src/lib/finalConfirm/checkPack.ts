@@ -836,6 +836,34 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
     blankDetail: "Cardinal requires the doctor's address on every order (doctorInfo) — a blank one is blocked at submit.",
   })) add(f);
 
+  // C30 — the doctor's phone. Cardinal's order carries a `doctorInfo` block and
+  // the clinic is who we call when an order or an auth needs chasing, so a
+  // blank number is a hole nobody downstream can fill. Brandon, 2026-09-10:
+  // "blank doctor phone should be flagged in final profile confirmation —
+  // right now it's not being flagged and i accidentally advanced a patient
+  // with it empty." It was invisible because the whole Doctor Info block
+  // renders with `suppressWarning`, and no check looked at it either.
+  //
+  // ⚠️ AMBER, not red, and deliberately: this is a MISSING INPUT, which is the
+  // pack's own meaning for amber (§5.17 — like C22's blank DOB), and the blank
+  // Clinic Address beside it (C26_CLINIC_ADDRESS_MISSING, which Cardinal DOES
+  // hard-block on) is amber too. Red here would out-rank a check for a harder
+  // failure and is how a check pack gets ignored. Amber still carries the
+  // per-finding ack in SendWithChecksButton, which is what an accidental
+  // advance needs.
+  //
+  // ⚠️ Final Confirm is warnings-only by design — this does NOT block Send.
+  // The number is editable right there on the page, which is the whole reason
+  // the check belongs at this stage; Welcome Call reads no phone for the
+  // doctor at all (§5.17), so it has no equivalent.
+  if (blank(p.doctorPhone)) {
+    add({
+      id: "C30_DOCTOR_PHONE_MISSING", severity: "amber", field: "doctorPhone",
+      title: "Doctor phone is blank",
+      detail: "No number on file for the prescriber — the Cardinal order carries the doctor's details, and nobody can chase the clinic on an order or an auth without it.",
+    });
+  }
+
   if (blank(p.dob)) {
     add({
       id: "C22_DOB_MISSING", severity: "amber", field: "dob",

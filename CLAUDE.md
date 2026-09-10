@@ -2826,6 +2826,90 @@ new data or a reversed decision.
 `pages/CareCoordinatorPage.tsx` (+ `CareCoordinatorPage.test.tsx`).
 
 
+
+### 5.32 Last Bill Date lives in TWO column families — and Welcome Call read the wrong one (Sep 2026)
+Brandon, 2026-09-10: *"last bill date for SoS on welcome call — we have 2 diff columns for it
+(`date_mm59n1x1` and `date_mm33jsyt`) — might be issue with other products too, but noticing it
+the most with sensors. Need to make sure it links up properly from insurance board."*
+
+Both the Insurance board and Welcome Call carry **two** per-product last-bill families:
+
+| | Insurance (sensors) | Welcome Call (sensors) | Written when |
+|---|---|---|---|
+| **LEGACY** "Sensors Last Bill Date" | `date_mm332rhq` | `date_mm33jsyt` | **only** SoS = Not Clear (or Auth = No Auth Needed) — **actively CLEARED otherwise** |
+| **NEW** "CGM Sensors SoS Last Bill" | `date_mm59ejs2` | `date_mm59n1x1` | **every billed product**, Clear included |
+
+⚠️ **The hop is NOT broken — do not go looking for a bad mapping.** Create-item automation
+**7918324247** copies all ten dates plus their Units and No-Billing-History siblings,
+source→destination, every pair correct (verified against the live workflow definition
+2026-09-10). Brandon's "make sure it links up properly" was the right instinct pointed one step
+too far downstream: the divergence is created on the **Insurance board, by the write rules**, and
+on that side it is deliberate. `samantha/mondayWrite` maintains the legacy column as a **Not Clear
+flag** — its date PRESENCE is what `finalConfirm/mondayMapping` derives `sosMonitor`/`sosSensors`/…
+from, and what the check pack's `authExpiryMoot` reads — while the SoS family is "the full record …
+without disturbing the legacy lastBillDate contract".
+
+So for the **common** case — SoS came back Clear — the real date lands in the new column and the
+legacy one is blanked. Welcome Call read the legacy family alone, so the Last Bill Date row showed
+**"—"** and the next-order-date default had nothing to compute from, while the true date sat one
+column over, unread. Nothing errored.
+> ⚠️ This is also why the Final Confirm Last Bill block looked empty so often. Brandon asked on
+> 2026-09-02 for its five fields to go amber-not-red because they are "empty together on any
+> patient we have not billed yet" — a good number of those were patients we HAD billed.
+
+**Measured on the live boards, 2026-09-10.** Insurance, sensors: **46** items carry both dates,
+**28 carry only the new one**, 5 only the legacy. Welcome Call, new-only: **sensors 11**, insulin
+pump 1, infusion sets 1, cartridges 1, monitor 0 — which is exactly why he saw it "the most with
+sensors". Thirteen Welcome Call rows carry only a legacy date (written before the new family
+existed), which is what makes the direction of the fix matter.
+
+Canonical rule: **`lib/shared/lastBillDate.ts`** (`resolveLastBill` / `resolveLastBillDates`, +
+tests whose fixtures are the real board rows). Prefer the SoS column, **fall back** to the legacy
+one — never re-point, or those 13 rows go blank. When both are present they were written from the
+same rep answer and agree (every such pair in the live sample is identical), so the preference only
+ever breaks a tie.
+
+⚠️ **READ-ONLY SURFACES ONLY — do not wire this into a control that WRITES a legacy column.**
+Welcome Call never writes them (it reads for display + `resolveNextOrderWrite`'s default), which is
+what makes the fix safe there. **Final Profile Confirmation's Last Bill fields are editable and
+written back on send**, so prefilling them from the SoS column would flip that item's `sos*`
+derivation from `""` to **"Not Clear"** for a product that was Clear, and silence C18's auth-expiry
+warning through `authExpiryMoot`. Left alone deliberately; fixing FC means deciding what those five
+editable fields are FOR, not changing where they read from.
+⚠️ Both consumers resolve through the same helper on purpose: `PatientInfoCard`'s
+`NextOrderDatesCard` and `welcomeCall/mondayWrite`'s `nextOrderDateWrites`. They already had a
+"single source of truth with the send path" rule — the date on screen is the date that gets
+written — and reading the pair in one place and the single column in the other would have broken it
+silently.
+
+**Known, not fixed:** `authExpiryMoot` reads the legacy column as a proxy for *"have we
+successfully billed this product"*, which the SoS family answers properly. Pointing it at the SoS
+column would be more correct semantically and would **widen** the silencing of auth-expiry
+warnings — the dangerous direction (§5.17), so it needs Brandon's call, not a refactor. As it
+stands it over-warns, which is safe.
+
+### 5.32b C30 — a blank doctor phone is flagged at Final Confirm (Sep 2026)
+Brandon, same day: *"blank doctor phone should be flagged in final profile confirmation — right
+now it's not being flagged and i accidentally advanced a patient with it empty."*
+
+It was invisible **twice**: no check in `checkPack.ts` looked at the field, and the Doctor Info
+block renders every input with `suppressWarning`, so the empty box had no ring either. Both halves
+moved together — `C30_DOCTOR_PHONE_MISSING` plus `emptyTone="amber"` on that one field, so the
+finding and the ring agree.
+⚠️ **AMBER, not red, and the pack's own severity language is why** (§5.17): red is "positive
+evidence the profile is wrong", amber is "a missing input" — and the blank **Clinic Address** right
+beside it, which Cardinal actually *hard-blocks* on, is amber. Red here would out-rank a check for
+a harder failure, which is how a check pack gets ignored. Amber still carries the per-finding ack
+in `SendWithChecksButton`, which is what an accidental advance needs.
+⚠️ **Presence only — C30 does not judge FORMAT.** A format rule would need the same live-board
+audit C25/C26 got before anyone could pick its severity.
+⚠️ Final Confirm is warnings-only by design, so this does **not** block Send. The number is
+editable right there, which is the whole reason the check belongs at this stage — **Welcome Call
+has no doctor phone at all** (it reads `doctorName` + `doctorNpi` only, §5.17), so there is no
+equivalent to add there. `doctorPhoneCheck.test.ts` pins the severity and the field.
+Blast radius when it shipped: **2** live patients (one blank across the whole doctor block, one
+phone-only); 0 in Final Profile Confirmation itself, so nobody is stranded by it today.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -3757,6 +3841,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |
 | "Auto. Texts" reads 0 for somebody we definitely texted | §5.24 — it counts **only** the intake form's 30-minute + 24-hour nudges (`numeric_mm67822b`). A rep's own text and both link families deliberately do not move it |
 | A patient's text thread looks empty, or stops ~30 days back | §5.27 — RingCentral retains ~30 days and answers **200 with an empty list**, which looks identical to "never texted". `GET /messaging/archive-health`, then `services/monday-gateway/smsArchive.mjs` |
+| A Last Bill Date reads "—" on Welcome Call for a patient we have billed | §5.32 — there are TWO column families and the legacy one is blank whenever SoS came back **Clear**. `lib/shared/lastBillDate.ts` resolves the pair. The Insurance→WC hop (automation 7918324247) is correct on all ten pairs — do not go looking there |
+| A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |
