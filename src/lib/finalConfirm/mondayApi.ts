@@ -81,6 +81,20 @@ export const COL = {
    *  (CLAUDE.md §10 / audit B5). */
   sosNeverBilledMonitor: "boolean_mm5ad9rm",
   sosLastBillMonitor: "date_mm599gk8",
+  /** The other four "<product> SoS Last Bill" columns, same automation, same
+   *  family as sosLastBillMonitor above — READ-ONLY here.
+   *  ⚠ These, not the `lastBillDate` map below, hold the last bill date for a
+   *  product whose SoS came back CLEAR. The legacy columns are written by
+   *  Benefits only on "Not Clear" and are cleared otherwise, so they read
+   *  blank for most patients we HAVE billed. See shared/lastBillDate.ts.
+   *  ⚠ This stage must NEVER write these, and must never feed them into the
+   *  legacy columns: date-presence in `lastBillDate` is what
+   *  mondayMapping derives `sosMonitor`/`sosSensors`/… ("Not Clear") from, so
+   *  copying a Clear product's date across would relabel it. */
+  sosLastBillSensors: "date_mm59n1x1",
+  sosLastBillIp: "date_mm593ghh",
+  sosLastBillInfusionSet: "date_mm59jcf5",
+  sosLastBillCartridge: "date_mm59mw5n",
   orderHandling: "color_mm2776fg",
 
   /** "POS" (Office = 0 | Home = 1). Written automatically at Welcome Call from
@@ -162,6 +176,8 @@ export const READ_COLUMN_IDS = [
   COL.infusionSet2, COL.qtyInf2, COL.qtyCartridge, COL.monitorQty, COL.pumpQty,
   COL.medicarePriorPumpDate,
   COL.monitorPurchaseDate, COL.sosNeverBilledMonitor, COL.sosLastBillMonitor,
+  COL.sosLastBillSensors, COL.sosLastBillIp,
+  COL.sosLastBillInfusionSet, COL.sosLastBillCartridge,
   COL.orderHandling, COL.pos,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,

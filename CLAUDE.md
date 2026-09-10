@@ -2882,6 +2882,23 @@ editable fields are FOR, not changing where they read from.
 written — and reading the pair in one place and the single column in the other would have broken it
 silently.
 
+**Final Confirm shows the date as a CAPTION, not as the field's value** (2026-09-10). Its five Last
+Bill boxes had the identical blank for the identical patients, but they are **editable and written
+back**, so the fix could not be the same one. Pouring the SoS date into the input breaks three
+things at once: `mondayWrite` writes that field straight into the LEGACY column, so a Clear product
+would **relabel itself Not Clear** on the next send; that same presence silences C18's auth-expiry
+warning via `authExpiryMoot`, hiding a genuinely lapsed auth; and the box could never be **cleared**
+(blanking it would fall back to the SoS date and spring straight back — §5.10/§5.20's no-passing-move
+dead end). So the input keeps meaning *the Not Clear date*, a muted line under it says
+*"Billed 2025-03-14 — Same-or-Similar came back clear, so this box is empty"*, and the amber
+missing-input ring stands down. ⚠️ That ring change is the real answer to Brandon's 2026-09-02 ask:
+he read those five fields as "empty on any patient we have not billed yet", and a good number were
+patients we HAD billed. ⚠️ The caption prints the **raw YYYY-MM-DD** — Monday's dates are naive ET
+and the container is UTC, so parsing one to "format" it renders a day out (§9). ⚠️ The five new
+fields are **read-only and never written** (`lastBillDisplay.test.ts` pins that, and is verified to
+fail when the legacy write is pointed at them); they follow their legacy twin through
+`getSplitOverrides`, or a supplies-only half would caption a sensors date it does not serve.
+
 **Known, not fixed:** `authExpiryMoot` reads the legacy column as a proxy for *"have we
 successfully billed this product"*, which the SoS family answers properly. Pointing it at the SoS
 column would be more correct semantically and would **widen** the silencing of auth-expiry
@@ -3842,6 +3859,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | "Auto. Texts" reads 0 for somebody we definitely texted | §5.24 — it counts **only** the intake form's 30-minute + 24-hour nudges (`numeric_mm67822b`). A rep's own text and both link families deliberately do not move it |
 | A patient's text thread looks empty, or stops ~30 days back | §5.27 — RingCentral retains ~30 days and answers **200 with an empty list**, which looks identical to "never texted". `GET /messaging/archive-health`, then `services/monday-gateway/smsArchive.mjs` |
 | A Last Bill Date reads "—" on Welcome Call for a patient we have billed | §5.32 — there are TWO column families and the legacy one is blank whenever SoS came back **Clear**. `lib/shared/lastBillDate.ts` resolves the pair. The Insurance→WC hop (automation 7918324247) is correct on all ten pairs — do not go looking there |
+| Final Confirm's Last Bill box is blank but captions a date underneath | §5.32 — working as intended. The box is the **Not Clear** date (editable, written back, and what `sos*` / `authExpiryMoot` key off); the caption is what we actually billed. Do not merge them — `lastBillDisplay.test.ts` says why |
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |

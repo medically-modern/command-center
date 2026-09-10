@@ -396,20 +396,46 @@ function AuthDetailBlock({
  *  carry. That is the ordinary case, not evidence the profile is wrong, so a
  *  wall of five red boxes was the pack's own severity language pointed at
  *  nothing. Amber matches the meaning the panel already assigns it: red = we
- *  believe this is wrong, amber = worth a look. */
+ *  believe this is wrong, amber = worth a look.
+ *
+ *  ⚠️ `sosDate` is the SAME FACT out of the OTHER column family, and it is
+ *  deliberately a CAPTION rather than the input's value (Brandon, 2026-09-10 —
+ *  §5.32). Three things break if it is poured into the box instead:
+ *   1. `mondayWrite` writes this field straight back to the LEGACY column,
+ *      whose date-PRESENCE is what `mondayMapping` derives
+ *      `sosMonitor`/`sosSensors`/… = "Not Clear" from — so a Clear product
+ *      would relabel itself Not Clear on the next send, silently.
+ *   2. That same presence silences C18's auth-expiry warning through
+ *      `authExpiryMoot`, i.e. it would hide a genuinely lapsed auth.
+ *   3. The input could never be CLEARED: blanking it would fall back to the
+ *      SoS date and spring straight back — the no-passing-move dead end
+ *      §5.10/§5.20 each record reversing.
+ *  So the box keeps meaning "the Not Clear date", the caption says what we
+ *  actually billed and when, and the amber ring stands down — a patient we
+ *  have billed is not a patient with a missing input, which is the half of
+ *  Brandon's 2026-09-02 complaint that was never really about colour.
+ *  ⚠️ The caption prints the raw YYYY-MM-DD deliberately: Monday's dates are
+ *  timezone-naive ET strings and this container is UTC, so parsing one into a
+ *  Date to "format" it is how a date renders a day out (§9). */
 function EditableDateField({
   label,
   dateStr,
+  sosDate,
   onChange,
   icon,
 }: {
   label: string;
   dateStr: string;
+  /** Read-only "<product> SoS Last Bill" for the same product, or "". */
+  sosDate?: string;
   onChange: (v: string) => void;
   /** Optional leading icon, so this can sit in a grid of icon fields. */
   icon?: React.ReactNode;
 }) {
-  const isEmpty = !dateStr;
+  const billed = (sosDate ?? "").trim();
+  // Empty means "no bill date for this product ANYWHERE". A blank box beside a
+  // real SoS date is not missing data, so it must not ring.
+  const isEmpty = !dateStr && !billed;
   const body = (
     <div className={icon ? "min-w-0 flex-1" : undefined}>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
@@ -419,6 +445,11 @@ function EditableDateField({
         value={dateStr}
         onChange={(e) => onChange(e.target.value)}
       />
+      {!dateStr && billed && (
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Billed {billed} — Same-or-Similar came back clear, so this box is empty
+        </p>
+      )}
     </div>
   );
   return (
@@ -1602,14 +1633,14 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Left column — CGM side */}
           <div className="space-y-4">
-            <EditableDateField label="CGM Last Bill Date" dateStr={patient.lastBillDateMonitor} onChange={(v) => onFieldChange("lastBillDateMonitor", v)} />
-            <EditableDateField label="Sensors Last Bill Date" dateStr={patient.lastBillDateSensors} onChange={(v) => onFieldChange("lastBillDateSensors", v)} />
+            <EditableDateField label="CGM Last Bill Date" dateStr={patient.lastBillDateMonitor} sosDate={patient.sosLastBillMonitor} onChange={(v) => onFieldChange("lastBillDateMonitor", v)} />
+            <EditableDateField label="Sensors Last Bill Date" dateStr={patient.lastBillDateSensors} sosDate={patient.sosLastBillSensors} onChange={(v) => onFieldChange("lastBillDateSensors", v)} />
           </div>
           {/* Right column — Pump side */}
           <div className="space-y-4">
-            <EditableDateField label="IP Last Bill Date" dateStr={patient.lastBillDateIp} onChange={(v) => onFieldChange("lastBillDateIp", v)} />
-            <EditableDateField label="Infusion Set Last Bill Date" dateStr={patient.lastBillDateInfusionSet} onChange={(v) => onFieldChange("lastBillDateInfusionSet", v)} />
-            <EditableDateField label="Cartridge Last Bill Date" dateStr={patient.lastBillDateCartridge} onChange={(v) => onFieldChange("lastBillDateCartridge", v)} />
+            <EditableDateField label="IP Last Bill Date" dateStr={patient.lastBillDateIp} sosDate={patient.sosLastBillIp} onChange={(v) => onFieldChange("lastBillDateIp", v)} />
+            <EditableDateField label="Infusion Set Last Bill Date" dateStr={patient.lastBillDateInfusionSet} sosDate={patient.sosLastBillInfusionSet} onChange={(v) => onFieldChange("lastBillDateInfusionSet", v)} />
+            <EditableDateField label="Cartridge Last Bill Date" dateStr={patient.lastBillDateCartridge} sosDate={patient.sosLastBillCartridge} onChange={(v) => onFieldChange("lastBillDateCartridge", v)} />
           </div>
         </div>
       </Card>

@@ -105,6 +105,15 @@ export interface Patient {
   sosNeverBilledMonitor: boolean;
   /** "CGM Monitor SoS Last Bill" — YYYY-MM-DD or "" (read-only). */
   sosLastBillMonitor: string;
+  /** The other four "<product> SoS Last Bill" columns — READ-ONLY, display
+   *  only. The real last bill date for a product whose SoS came back Clear;
+   *  the `lastBillDate*` fields below are the Not-Clear date and stay the
+   *  editable, written ones. Resolve the pair with
+   *  shared/lastBillDate.resolveLastBill; never write these back. */
+  sosLastBillSensors: string;
+  sosLastBillIp: string;
+  sosLastBillInfusionSet: string;
+  sosLastBillCartridge: string;
   orderHandling: string;
   orderHandlingIndex: number | null;
   /** Place of Service — "Office" | "Home" | "". Auto-computed and written at
@@ -697,6 +706,8 @@ export function getSplitOverrides(
       monitorPurchaseDate: "",
       lastBillDateSensors: "",
       lastBillDateMonitor: "",
+      sosLastBillSensors: "",
+      sosLastBillMonitor: "",
       nextOrderDateSensors: "",
       // ── Pump/supplies-side fields → explicitly preserve from original
       //    (this profile IS the supplies order, so these keep the originals)
@@ -766,6 +777,9 @@ export function getSplitOverrides(
     lastBillDateIp: "",
     lastBillDateInfusionSet: "",
     lastBillDateCartridge: "",
+    sosLastBillIp: "",
+    sosLastBillInfusionSet: "",
+    sosLastBillCartridge: "",
     nextOrderDateIp: "",
     nextOrderDateSupplies: "",
     // ── Sensor-side fields → explicitly preserve from original ───────
@@ -787,6 +801,8 @@ export function getSplitOverrides(
     pos: original.pos,
     lastBillDateSensors: original.lastBillDateSensors,
     lastBillDateMonitor: original.lastBillDateMonitor,
+    sosLastBillSensors: original.sosLastBillSensors,
+    sosLastBillMonitor: original.sosLastBillMonitor,
     nextOrderDateSensors: original.nextOrderDateSensors,
     // ── New side identity ────────────────────────────────────────────
     servingIndex: SERVING_CGM,

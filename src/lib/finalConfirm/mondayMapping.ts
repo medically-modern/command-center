@@ -102,6 +102,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     // Checkbox: Monday renders a checked box as non-empty text, blank when clear.
     sosNeverBilledMonitor: !!(cv(item, COL.sosNeverBilledMonitor)?.text ?? ""),
     sosLastBillMonitor: cv(item, COL.sosLastBillMonitor)?.text ?? "",
+    sosLastBillSensors: cv(item, COL.sosLastBillSensors)?.text ?? "",
+    sosLastBillIp: cv(item, COL.sosLastBillIp)?.text ?? "",
+    sosLastBillInfusionSet: cv(item, COL.sosLastBillInfusionSet)?.text ?? "",
+    sosLastBillCartridge: cv(item, COL.sosLastBillCartridge)?.text ?? "",
     orderHandling: cv(item, COL.orderHandling)?.text ?? "",
     orderHandlingIndex: parseIndex(cv(item, COL.orderHandling)?.value ?? null),
     pos: cv(item, COL.pos)?.text ?? "",

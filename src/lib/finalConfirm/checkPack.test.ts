@@ -29,6 +29,9 @@ export const basePatient = (): Patient => {
     "carecentrixIntakeId", "subscriptionType", "infusionSet1", "qtyInf1",
     "infusionSet2", "qtyInf2", "qtyCartridge", "monitorQty", "pumpQty",
     "medicarePriorPumpDate", "monitorPurchaseDate", "sosLastBillMonitor", "orderHandling", "pos",
+    // The other four SoS Last Bill columns (§5.32) — read-only display, but the
+    // fixture defaults every Patient field so it keeps compiling as the type grows.
+    "sosLastBillSensors", "sosLastBillIp", "sosLastBillInfusionSet", "sosLastBillCartridge",
     "sosMonitor", "sosSensors", "sosIp", "sosInfusionSet", "sosCartridge",
     "lastBillDateMonitor", "lastBillDateSensors", "lastBillDateIp",
     "lastBillDateInfusionSet", "lastBillDateCartridge",
