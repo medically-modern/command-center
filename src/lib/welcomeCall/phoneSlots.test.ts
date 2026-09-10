@@ -242,6 +242,20 @@ describe("phoneSlotGaps", () => {
   it("ignores an empty second slot the rep thought better of", () => {
     expect(phoneSlotGaps(addSlot([slot()]))).toEqual([]);
   });
+
+  it("refuses a number Monday could not store", () => {
+    // ⚠️ `writePhone` SKIPS an unparseable number rather than throwing, so
+    // without this the send reports success having written nothing.
+    expect(phoneSlotGaps([slot({ number: "555-121" })]).join(" ")).toMatch(/can't be saved/);
+  });
+
+  it("accepts a number a rep typed the way the provider says it", () => {
+    // Reps type "(347) 555-0102" and "347-555-0102"; both are storable and
+    // must not be reported — a gate that fires on ordinary input gets ignored.
+    for (const n of ["(347) 555-0102", "347-555-0102", "3475550102"]) {
+      expect(phoneSlotGaps([slot({ number: n })])).toEqual([]);
+    }
+  });
 });
 
 describe("phoneSlotWrites", () => {

@@ -127,25 +127,20 @@ export type SupplyLength = "" | "30" | "60" | "75" | "90";
  */
 export const SUPPLY_LENGTHS: SupplyLength[] = ["30", "60", "75", "90"];
 
-export type PhoneKind = "cell" | "home" | "work" | "other";
-
-export const PHONE_KINDS: PhoneKind[] = ["cell", "home", "work", "other"];
-
-export interface IntakePhone {
-  number: string;
-  kind: PhoneKind;
-  /** Marks which number the patient actually wants us to use. The board's one
-   *  `Pt. Phone` column stays the system of record; this says "ring that one". */
-  preferred: boolean;
-}
-
+/**
+ * ⚠️ Caretaker is NOTES ONLY from 2026-09-10 (§5.31d).
+ *
+ * Name, relationship, authorisation and the numbers are **Monday columns** now
+ * — Caregiver Name `text_mm727mrm`, Caregiver Authorized `boolean_mm72tf9z`
+ * and the two phone slots — so keeping them here too would be a second answer
+ * that drifts from the first, exactly what moving supply length onto Order
+ * Frequency avoided. Caretaker NOTES stay because they are the one caregiver
+ * fact with no column, and Brandon's handoff says to keep them here.
+ *
+ * The parser still READS the retired lines and folds them into `notes`, so a
+ * block written before this change keeps every word it carried.
+ */
 export interface Caretaker {
-  name: string;
-  relationship: string;
-  phone: string;
-  email: string;
-  /** HIPAA-relevant: may we discuss the patient's care with this person. */
-  authorized: boolean;
   notes: string;
 }
 
@@ -179,24 +174,11 @@ export interface CallIntake {
    * confirmation they really did get. Empty whenever `confirmed.pump` is false.
    */
   pumpConfirmedModel: string;
-  /** Numbers BEYOND the board's `Pt. Phone`. Bounded so the block can't grow
-   *  without limit against the 2000-character ceiling. */
-  phones: IntakePhone[];
   caretaker: Caretaker;
   authNotes: string;
 }
 
-/** Hard cap on extra numbers — see the 2000-character note in the header. */
-export const MAX_EXTRA_PHONES = 4;
-
-export const EMPTY_CARETAKER: Caretaker = {
-  name: "",
-  relationship: "",
-  phone: "",
-  email: "",
-  authorized: false,
-  notes: "",
-};
+export const EMPTY_CARETAKER: Caretaker = { notes: "" };
 
 export function emptyIntake(): CallIntake {
   return {
@@ -206,7 +188,6 @@ export function emptyIntake(): CallIntake {
     supplyLengthManual: false,
     oopAmount: "",
     pumpConfirmedModel: "",
-    phones: [],
     caretaker: { ...EMPTY_CARETAKER },
     authNotes: "",
   };
@@ -219,9 +200,7 @@ export function intakeHasContent(i: CallIntake | null | undefined): boolean {
   if (CONFIRM_KEYS.some((k) => i.confirmed[k])) return true;
   if (i.secondaryCoverage || i.supplyLength || i.oopAmount.trim() || i.authNotes.trim()) return true;
   if ((i.pumpConfirmedModel ?? "").trim()) return true;
-  if (i.phones.some((p) => p.number.trim())) return true;
-  const c = i.caretaker;
-  return !!(c.name.trim() || c.relationship.trim() || c.phone.trim() || c.email.trim() || c.notes.trim());
+  return !!i.caretaker.notes.trim();
 }
 
 /* ── Serialise ── */
@@ -240,10 +219,7 @@ function titleCase(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
-function formatPhone(p: IntakePhone): string {
-  const flags = [p.kind, p.preferred ? "preferred" : ""].filter(Boolean).join(", ");
-  return `${oneLine(p.number)} (${flags})`;
-}
+
 
 /**
  * ⚠️ The relationship is NOT on this line — it has one of its own.
@@ -262,16 +238,7 @@ function formatPhone(p: IntakePhone): string {
  * gets its own labelled one. Nothing is guessed, and both round-trip whatever
  * the rep types.
  */
-function formatCaretaker(c: Caretaker): string {
-  return [
-    oneLine(c.name),
-    oneLine(c.phone),
-    oneLine(c.email),
-    c.authorized ? "authorized" : "not authorized",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
+
 
 /**
  * The block body, WITHOUT the stamp line. Only lines with content are emitted,
@@ -299,14 +266,13 @@ export function formatIntakeBlock(intake: CallIntake): string {
      `REPORTED_CONFIRM_KEYS` needs just above. */
   if (intake.oopAmount.trim()) lines.push(`OOP amount: ${oneLine(intake.oopAmount)}`);
 
-  const phones = intake.phones.filter((p) => p.number.trim());
-  if (phones.length) lines.push(`Phones: ${phones.map(formatPhone).join("; ")}`);
-
+  /* ⚠️ `Phones:`, `Caretaker:` and `Caretaker relationship:` are PARSE-ONLY
+     from 2026-09-10 — six Monday columns own those facts now (§5.31d), and a
+     note line beside a column is a second answer that drifts from the first.
+     The parser still reads them and folds them into the notes, so blocks
+     already on patients keep every word. Same two-list split as
+     `CONFIRM_KEYS` / `REPORTED_CONFIRM_KEYS` above. */
   const c = intake.caretaker;
-  if (c.name.trim() || c.phone.trim() || c.email.trim() || c.relationship.trim()) {
-    lines.push(`Caretaker: ${formatCaretaker(c)}`);
-  }
-  if (c.relationship.trim()) lines.push(`Caretaker relationship: ${oneLine(c.relationship)}`);
   if (c.notes.trim()) lines.push(`Caretaker notes: ${oneLine(c.notes)}`);
   if (intake.authNotes.trim()) lines.push(`Auth notes: ${oneLine(intake.authNotes)}`);
 
@@ -347,35 +313,9 @@ function splitKv(line: string): [string, string] | null {
   return [line.slice(0, i).trim(), line.slice(i + 1).trim()];
 }
 
-function parsePhone(chunk: string): IntakePhone | null {
-  const m = chunk.trim().match(/^(.*?)\s*\(([^)]*)\)\s*$/);
-  const number = (m ? m[1] : chunk).trim();
-  if (!number) return null;
-  const flags = (m ? m[2] : "").split(",").map((f) => f.trim().toLowerCase()).filter(Boolean);
-  const kind = (PHONE_KINDS.find((k) => flags.includes(k)) ?? "other") as PhoneKind;
-  return { number, kind, preferred: flags.includes("preferred") };
-}
 
-function parseCaretaker(value: string): Caretaker {
-  const parts = value.split("·").map((p) => p.trim());
-  const c: Caretaker = { ...EMPTY_CARETAKER };
-  for (const part of parts) {
-    if (!part) continue;
-    const low = part.toLowerCase();
-    if (low === "authorized") { c.authorized = true; continue; }
-    if (low === "not authorized") { c.authorized = false; continue; }
-    if (part.includes("@")) { c.email = part; continue; }
-    // A part that is mostly digits is the phone.
-    if (/^[+()\d\s.-]{7,}$/.test(part)) { c.phone = part; continue; }
-    // The name is the only free-text field this line carries. A SECOND
-    // free-text part can only come from a block written before the
-    // relationship moved to its own line, so it is read positionally, with any
-    // wrapping parens from the interim marked format stripped off.
-    if (!c.name) c.name = part;
-    else if (!c.relationship) c.relationship = part.replace(/^\((.*)\)$/, "$1").trim();
-  }
-  return c;
-}
+
+
 
 /**
  * Read the LAST intake block out of a notes log. Returns null when the log has
@@ -394,6 +334,8 @@ export function parseIntakeBlock(notes: string | undefined | null): CallIntake |
 
   const intake = emptyIntake();
   let sawConfirmLine = false;
+  /** Retired contact lines, folded into the caretaker notes below. */
+  const legacy: string[] = [];
 
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -430,26 +372,16 @@ export function parseIntakeBlock(notes: string | undefined | null): CallIntake |
       case "oop amount":
         intake.oopAmount = value;
         break;
+      /* The three retired contact lines. Collected VERBATIM and folded into the
+         caretaker notes after the loop — the raw line IS the information, and
+         re-parsing it into fields nothing renders any more would be work whose
+         only possible outcome is getting it wrong. Folded after the loop rather
+         than here because `Caretaker notes:` can arrive on any line and the
+         fold has to sit in front of it. */
       case "phones":
-        intake.phones = value
-          .split(";")
-          .map(parsePhone)
-          .filter((p): p is IntakePhone => p !== null)
-          .slice(0, MAX_EXTRA_PHONES);
-        break;
-      case "caretaker": {
-        // Keep what the dedicated lines already set — line order is not
-        // guaranteed, and those values are exact where this line's are inferred.
-        const parsed = parseCaretaker(value);
-        intake.caretaker = {
-          ...parsed,
-          relationship: intake.caretaker.relationship || parsed.relationship,
-          notes: intake.caretaker.notes,
-        };
-        break;
-      }
+      case "caretaker":
       case "caretaker relationship":
-        intake.caretaker.relationship = value;
+        legacy.push(`${label}: ${value}`);
         break;
       case "caretaker notes":
         intake.caretaker.notes = value;
@@ -460,6 +392,21 @@ export function parseIntakeBlock(notes: string | undefined | null): CallIntake |
       default:
         break;
     }
+  }
+
+  /* Fold whatever the retired lines carried into the caretaker notes, ahead of
+     anything the rep wrote. Nothing is lost when the fields behind those lines
+     stop existing, and the header says where it came from rather than leaving
+     the next reader wondering why a phone number is sitting in a notes box.
+     ⚠️ Measured before shipping (2026-09-10): ZERO live Welcome Call patients
+     carried an intake block at all — not in the notes column, not in the
+     retired `long_text_mm2ffsme` — so this protects only what a rep writes
+     between that scan and the deploy. Cheap insurance, not a migration. */
+  if (legacy.length) {
+    const folded = `From an earlier call block — ${legacy.join("; ")}`;
+    intake.caretaker.notes = intake.caretaker.notes.trim()
+      ? `${folded}. ${intake.caretaker.notes}`
+      : folded;
   }
 
   // A block with a sentinel but no recognisable content is still a block —

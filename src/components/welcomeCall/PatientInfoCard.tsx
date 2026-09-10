@@ -26,7 +26,6 @@ import { PatientActivityCard } from "@/components/welcomeCall/PatientActivityCar
 interface Props {
   patient: Patient;
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
-  onSavePhone?: (phone: string) => Promise<void>;
   onSaveSecondaryInsurance?: (label: string, index: number) => Promise<void>;
 }
 
@@ -434,107 +433,15 @@ function NextOrderDateField({
   );
 }
 
-function PhoneField({
-  phone,
-  phoneEdited,
-  onFieldChange,
-  onSavePhone,
-}: {
-  phone: string;
-  phoneEdited: string | null;
-  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
-  onSavePhone?: (phone: string) => Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const displayPhone = phoneEdited ?? phone;
+/* ⚠️ `PhoneField` was DELETED on 2026-09-10 (§5.31d). Primary Phone is owned by
+   the phone-slots section now — slot 1, starred — and two controls writing one
+   column is how they disagree, which is exactly why the Secondary Insurance
+   select was pulled out of this card the day before. Editing the number here
+   would also have bypassed the rule that clears Can Text when the digits
+   change, leaving a "yes, this takes texts" answer standing against a number
+   nobody asked about. */
 
-  if (!phone && !phoneEdited) return null;
-
-  const handleSave = async () => {
-    const val = phoneEdited ?? phone;
-    if (!val || !onSavePhone) return;
-    // Check BEFORE writing. writePhone silently skips a number it can't parse
-    // so a stray value can't abort a bulk send (shared/phoneCell.ts) — but this
-    // is a human explicitly saving one, and a skip would read as success. Reps
-    // type the number the way the provider says it ("917-968-9304"), which is
-    // fine; this only fires on something genuinely unusable, and says why
-    // instead of showing Monday's API-documentation link.
-    const rejection = phoneRejectionReason(val);
-    if (rejection) {
-      toast.error("Can't save that phone number", { description: rejection });
-      return;
-    }
-    setSaving(true);
-    try {
-      await onSavePhone(val);
-      toast.success(`Phone updated to ${formatPhone(val)}`);
-      setEditing(false);
-    } catch (e) {
-      toast.error("Failed to update phone", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    onFieldChange?.("phoneEdited", null);
-    setEditing(false);
-  };
-
-  return (
-    <div className="text-right">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-        Phone
-      </p>
-      {editing ? (
-        <div className="flex items-center justify-end gap-1.5">
-          <Input
-            className="h-9 text-sm font-semibold w-44"
-            value={phoneEdited ?? phone}
-            onChange={(e) => onFieldChange?.("phoneEdited", e.target.value)}
-            autoFocus
-            placeholder="(555) 555-5555"
-          />
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300 transition-colors disabled:opacity-50"
-            title="Save phone to Monday"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-          </button>
-          <button
-            onClick={handleCancel}
-            disabled={saving}
-            className="p-1.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            title="Cancel"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center justify-end gap-1.5">
-          <a href={`tel:${displayPhone}`} className="text-lg font-semibold text-primary hover:underline">
-            {formatPhone(displayPhone)}
-          </a>
-          <CallHistoryButton phone={displayPhone} display={formatPhone(displayPhone)} />
-          <button
-            onClick={() => setEditing(true)}
-            className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
-            title="Edit phone number"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSecondaryInsurance }: Props) {
+export function PatientInfoCard({ patient, onFieldChange, onSaveSecondaryInsurance }: Props) {
   const hasSecondaryInsurance = !!patient.secondaryInsurance && patient.secondaryInsurance !== "";
   const hasMemberId2 = !!patient.memberId2 && patient.memberId2 !== "";
 
@@ -666,17 +573,6 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
           Text buttons in its header — the "lower down" the banner note points
           at. Collapsed by default and fetches nothing until opened. */}
       <PatientActivityCard phone={patient.phoneEdited ?? patient.phone} />
-
-      {/* The number itself is still editable — it just is not in the banner any
-          more. It sits with the identity facts it belongs to. */}
-      <Card className="p-4">
-        <PhoneField
-          phone={patient.phone}
-          phoneEdited={patient.phoneEdited}
-          onFieldChange={onFieldChange}
-          onSavePhone={onSavePhone}
-        />
-      </Card>
 
       {/* Row 1: Referral/Product + SOS + Insurance */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

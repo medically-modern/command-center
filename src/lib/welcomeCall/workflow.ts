@@ -45,6 +45,14 @@ export interface Patient {
   /** "Jane Doe (daughter)" — name and relationship in one value. */
   caregiverName: string;
   caregiverAuthorized: boolean;
+
+  /* ⚠️ The two overlay fields the phone section edits. They exist so slot and
+     caregiver state reaches the PAGE — `phoneSlotGaps` feeds the send gate, and
+     state trapped in the component is §5.31c's gate-with-no-passing-move.
+     Always read through `phoneSlots.phoneSlotsFor` / `caregiverFor`, never
+     directly, and never off the columns above once these are set. */
+  phoneSlotsEdited?: import("./phoneSlots").PhoneSlot[] | null;
+  caregiverEdited?: import("./phoneSlots").CaregiverDetails | null;
   // Insurance (editable)
   primaryInsurance: string;
   primaryInsuranceIndex: number | null;

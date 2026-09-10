@@ -1,7 +1,8 @@
-import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
+import { writeStatusIndex, writeStatusClear, writeCheckbox, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { appendIntakeToNotes } from "./callIntake";
+import { appendStampedNote } from "@/lib/shared/noteStamp";
 import { assertTextLikeFits } from "../shared/longText";
 import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
@@ -11,6 +12,7 @@ import { coercePumpQty } from "@/lib/shared/servingLines";
 import { resolveLastBillDates } from "@/lib/shared/lastBillDate";
 import { coerceMonitorQty } from "@/lib/shared/monitorQty";
 import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "./orderFrequency";
+import { phoneSlotsFor, caregiverFor, phoneSlotWrites, caregiverConsentJustGiven, caregiverConsentNote } from "./phoneSlots";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -47,6 +49,23 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
   return null;
 }
 
+/**
+ * Write a status by label id, or CLEAR the column when the id is null.
+ *
+ * ⚠️ Monday clears a status with `{}` and there is no "index: null" — passing
+ * null to `writeStatusIndex` would serialise `{"index":null}`, which the API
+ * takes as a value it cannot read. The phone columns need both halves: a
+ * removed second number has to clear Alternate Contact, not leave it standing
+ * against a number that is gone.
+ */
+async function writeStatusOrClear(itemId: string, columnId: string, id: number | null): Promise<void> {
+  if (id === null) {
+    await writeStatusClear(itemId, columnId);
+    return;
+  }
+  await writeStatusIndex(itemId, columnId, id);
+}
+
 export async function sendPatientToMonday(
   p: Patient,
   /** Blocking save: "the gateway accepted it" is NOT success — the call only
@@ -61,22 +80,6 @@ export async function sendPatientToMonday(
   },
 ): Promise<void> {
   const tasks: WriteTask[] = [];
-
-  // Phone edit
-  if (p.phoneEdited !== null && p.phoneEdited !== "") {
-    // writePhone SKIPS an unparseable number (writes nothing). A task carrying
-    // `{}` would CLEAR a real patient phone number instead, so an unparseable
-    // value pushes no task at all — byte-for-byte today's no-op.
-    const phonePlan = planPhoneWrite(p.phoneEdited);
-    if (phonePlan.action !== "skip") {
-      tasks.push({
-        label: "Phone",
-        columnId: COL.phone,
-        value: phonePlan.action === "write" ? { phone: phonePlan.phone, countryShortName: "US" } : {},
-        fn: () => writePhone(p.id, COL.phone, p.phoneEdited!),
-      });
-    }
-  }
 
   // Serving override
   if (p.servingIndexEdited !== null)
@@ -134,6 +137,55 @@ export async function sendPatientToMonday(
     if (index !== undefined)
       tasks.push({ label: "Order Frequency", columnId: COL.orderFrequency, value: { index }, fn: () => writeStatusIndex(p.id, COL.orderFrequency, index) });
   }
+  /* ── Phone slots & caregiver (§5.31d) ──
+     The STAR decides: the starred slot becomes Primary Phone, the other becomes
+     Alternate Phone, and only the final state of the call is written however
+     many times the star moved.
+
+     ⚠️ `null` from `phoneSlotWrites` means CLEAR, not skip — these columns are
+     the source of truth now, so a removed second number has to remove Alternate
+     Contact with it, and a caregiver who is no longer on either slot has their
+     name and HIPAA tick cleared. A standing authorisation against a patient who
+     no longer shares their account is a record that says the wrong thing.
+
+     ⚠️ Every `value` is a real value, never `undefined` — one undefined task
+     disables the gateway's durable fast path for the WHOLE send (§5.2), the
+     trap `writeTaskParity.test.ts` caught on Member ID 2. */
+  {
+    const w = phoneSlotWrites(phoneSlotsFor(p), caregiverFor(p));
+    const statusValue = (id: number | null) => (id === null ? {} : { index: id });
+
+    /* ⚠️ A phone task's declared `value` must be the bytes `writePhone` really
+       sends — `{phone, countryShortName}`, never the bare string. The gateway's
+       durable fast path sends the DECLARED value (§5.2), so a bare string would
+       reach a phone column and be refused at HTTP 200 with "invalid value,
+       please check our API documentation for the correct data structure for
+       this column" (§10). Caught by `writeTaskParity.test.ts`, which is the
+       only thing that would have.
+       ⚠️ An UNPARSEABLE number pushes NO TASK: `writePhone` skips it, so a task
+       declaring `{}` would CLEAR a real number instead of leaving it alone. The
+       gate refuses these before the send anyway (`phoneSlotGaps`); this is the
+       second line. A blank IS a clear — that is how a removed second number
+       takes Alternate Phone with it. */
+    const phoneTask = (label: string, columnId: string, value: string) => {
+      const plan = planPhoneWrite(value);
+      if (plan.action === "skip") return;
+      tasks.push({
+        label,
+        columnId,
+        value: plan.action === "write" ? { phone: plan.phone, countryShortName: "US" } : {},
+        fn: () => writePhone(p.id, columnId, value),
+      });
+    };
+    phoneTask("Primary Phone", COL.phone, w.primaryPhone);
+    phoneTask("Alternate Phone", COL.alternatePhone, w.alternatePhone);
+    tasks.push({ label: "Primary Contact", columnId: COL.primaryContact, value: statusValue(w.primaryContactId), fn: () => writeStatusOrClear(p.id, COL.primaryContact, w.primaryContactId) });
+    tasks.push({ label: "Alternate Contact", columnId: COL.alternateContact, value: statusValue(w.alternateContactId), fn: () => writeStatusOrClear(p.id, COL.alternateContact, w.alternateContactId) });
+    tasks.push({ label: "Can Text", columnId: COL.canText, value: statusValue(w.canTextId), fn: () => writeStatusOrClear(p.id, COL.canText, w.canTextId) });
+    tasks.push({ label: "Caregiver Name", columnId: COL.caregiverName, value: w.caregiverName, fn: () => writeText(p.id, COL.caregiverName, w.caregiverName) });
+    tasks.push({ label: "Caregiver Authorized", columnId: COL.caregiverAuthorized, value: w.caregiverAuthorized ? { checked: "true" } : {}, fn: () => writeCheckbox(p.id, COL.caregiverAuthorized, w.caregiverAuthorized) });
+  }
+
   if (typeof p.memberId2Edited === "string")
     tasks.push({ label: "Member ID 2", columnId: COL.memberId2, value: p.memberId2Edited, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited as string) });
   if (typeof p.insuranceNotesEdited === "string")
@@ -268,7 +320,17 @@ export async function sendPatientToMonday(
   // appended as one delimited, parseable block (lib/welcomeCall/callIntake.ts).
   // Nothing is appended when the rep didn't touch those fields, so an ordinary
   // call's notes log is unchanged.
-  const notesToWrite = appendIntakeToNotes(p.notes, p.callIntake);
+  const notesBase = appendIntakeToNotes(p.notes, p.callIntake);
+  /* ⚠️ The HIPAA consent audit line, stamped ONLY on the off→on transition
+     (`caregiverConsentJustGiven` compares against what the BOARD holds). The
+     checkbox records the CURRENT state; this records that consent was obtained,
+     by whom and when — the half a checkbox cannot carry, and the half Brandon
+     asked for by name. Stamping on "is it ticked now" instead would re-append
+     the same line on every subsequent send until the log is a wall of claims
+     about one conversation. */
+  const notesToWrite = caregiverConsentJustGiven(p)
+    ? appendStampedNote(notesBase, caregiverConsentNote(), "Welcome Call")
+    : notesBase;
   if (typeof notesToWrite === "string" && notesToWrite.trim() !== "") {
     // ⚠️ Monday long-text columns hold 2000 chars and truncate SILENTLY,
     // dropping the NEWEST content — i.e. the block we just appended, which is

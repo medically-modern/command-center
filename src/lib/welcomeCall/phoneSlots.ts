@@ -28,6 +28,7 @@
  * `phoneSlotWrites`' output onto column ids; the form owns the interaction.
  */
 import type { Patient } from "./workflow";
+import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 
 /* ─── Vocabulary ─── */
 
@@ -280,6 +281,12 @@ export function phoneSlotGaps(slots: PhoneSlot[]): string[] {
     return out;
   }
   for (const s of filled) {
+    /* ⚠️ In the GATE, not only in the input's red ring. `writePhone` SKIPS a
+       number it cannot parse rather than throwing, so without this the send
+       reports success having written nothing — the silent half-save
+       `unwritableDoctorFields` exists to prevent on the DVS page (§7). */
+    const rejection = phoneRejectionReason(s.number);
+    if (rejection) out.push(`${s.number.trim()} can't be saved — ${rejection}`);
     if (s.owner === "") {
       out.push(
         `Say whether ${s.number.trim()} is the patient's or a caregiver's in the Phone Numbers section.`,
@@ -342,13 +349,76 @@ export function phoneSlotWrites(
   };
 }
 
+/* ─── The overlay seam ─── */
+
+/**
+ * The slots the screen edits, and the ONLY thing the send gate may read.
+ *
+ * ⚠️⚠️ **Slot state lives on the page overlay (`phoneSlotsEdited`), never in the
+ * phone component.** This mirrors `secondaryCoverage.secondaryStateFor`, and it
+ * mirrors it because that pattern exists to fix a bug that already shipped
+ * (§5.31c, Greptile PR #56): `InsuranceBlock` held the secondary "Unknown"
+ * answer in `useState`, invisible to the page, so the page's send gate went on
+ * reading the column — and a patient already carrying NY Medicaid showed
+ * Unknown on screen while Advance stayed shut on a CIN the rep had just
+ * recorded as unknown. **A gate with no passing move.** `tsc` was happy with
+ * both files; only the PAIR was wrong.
+ *
+ * The exposure here is larger, because `phoneSlotGaps` IS a gate input: slots
+ * trapped in the component would leave the gate reading columns the rep had
+ * just edited past. Both ends call this function; `phoneSlotsSource.test.ts`
+ * fails the build if either reaches for the columns directly.
+ *
+ * ⚠️ Keyed per patient by construction — the overlay is per item id — which is
+ * what retires the hand-rolled "did the patient change?" guard the secondary
+ * answer needed before it moved here.
+ */
+export function phoneSlotsFor(
+  p: PhoneSource & { phoneSlotsEdited?: PhoneSlot[] | null },
+): PhoneSlot[] {
+  return p.phoneSlotsEdited ?? slotsFromPatient(p);
+}
+
+type CaregiverSource = { caregiverName: string; caregiverAuthorized: boolean };
+
+/**
+ * The caregiver details the screen edits — same overlay rule as the slots.
+ * Board columns until the rep touches them, `caregiverEdited` afterwards.
+ */
+export function caregiverFor(
+  p: CaregiverSource & { caregiverEdited?: CaregiverDetails | null },
+): CaregiverDetails {
+  if (p.caregiverEdited) return p.caregiverEdited;
+  const { name, relationship } = parseCaregiver(p.caregiverName);
+  return { name, relationship, authorized: p.caregiverAuthorized };
+}
+
+/**
+ * Has the HIPAA tick just gone from off to on?
+ *
+ * ⚠️ Compared against what the BOARD holds, not against "is it ticked now" —
+ * otherwise every subsequent send re-stamps the same consent line into the
+ * notes and the log fills with claims about one conversation. The same
+ * before-the-write comparison `advancerNoop` makes, and for the same reason:
+ * "already true" and "just became true" are different facts.
+ */
+export function caregiverConsentJustGiven(
+  p: CaregiverSource & { caregiverEdited?: CaregiverDetails | null },
+): boolean {
+  return !p.caregiverAuthorized && caregiverFor(p).authorized;
+}
+
 /**
  * The audit line stamped into Welcome Call notes when the tick goes on.
  *
- * The handoff asks for it by name. The column records the CURRENT state; this
- * records that consent was obtained, by whom and when, which is the half a
- * checkbox cannot carry.
+ * ⚠️ Deliberately carries NO date and NO initials of its own: every note in
+ * this app goes through `shared/noteStamp`, whose stamp is
+ * `[ET timestamp] <Stage>: <text> —<initials>`. Brandon's handoff spells the
+ * line out as "…, [date], [rep]" because he was describing the whole record,
+ * not asking for a second copy of two fields the stamp already supplies —
+ * repeating them would read as a different date from the one beside it the
+ * moment anything drifted.
  */
-export function caregiverConsentNote(dateLabel: string, repInitials: string): string {
-  return `Caregiver authorized — verbal consent on welcome call, ${dateLabel}, ${repInitials}`;
+export function caregiverConsentNote(): string {
+  return "Caregiver authorized — verbal consent on welcome call";
 }

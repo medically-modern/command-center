@@ -17,16 +17,10 @@
 import type {
   CallIntake,
   ConfirmKey,
-  IntakePhone,
-  PhoneKind,
   SecondaryCoverage,
   SupplyLength,
 } from "@/lib/welcomeCall/callIntake";
-import {
-  CONFIRM_LABELS,
-  MAX_EXTRA_PHONES,
-  PHONE_KINDS,
-} from "@/lib/welcomeCall/callIntake";
+import { CONFIRM_LABELS } from "@/lib/welcomeCall/callIntake";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -98,165 +92,17 @@ export function ConfirmCheck({
   );
 }
 
-/* ⚠️ `SupplyLengthField` was DELETED on 2026-09-09. Brandon: "call it Order
-   Frequency, not Supply length, so it matches the boards" — and "stop writing
-   supply length to the notes block". The control is now an inline select in
-   Subscription & Logistics writing the real Monday column
-   (`color_mm71xdhj`), so this one had no call sites left. Deleted rather than
-   left unimported: a dead component that still looks live is how a later edit
-   lands somewhere nothing renders (§5.11). The payer-eligibility guarantee it
-   carried moved with it — see `orderFrequencyOptionsSource.test.ts`. */
+/* ⚠️ `PhoneRow`, `PhoneNumbersSection` and `CaretakerSection` were DELETED on
+   2026-09-10 (§5.31d). Phone numbers and the caregiver are six MONDAY COLUMNS
+   now, so they are not intake fields and do not belong in this file, whose job
+   is the facts with no column. They live in
+   `components/welcomeCall/PhoneSlotsSection.tsx`, reading and writing the page
+   overlay rather than the notes block.
 
-function PhoneRow({
-  phone,
-  onPhoneChange,
-  onRemove,
-  onMakePreferred,
-}: {
-  phone: IntakePhone;
-  onPhoneChange: (p: IntakePhone) => void;
-  onRemove: () => void;
-  onMakePreferred: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Input
-        className="flex-1 min-w-[10rem]"
-        placeholder="Phone number"
-        value={phone.number}
-        onChange={(e) => onPhoneChange({ ...phone, number: e.target.value })}
-      />
-      <Select value={phone.kind} onValueChange={(v) => onPhoneChange({ ...phone, kind: v as PhoneKind })}>
-        <SelectTrigger className="w-28">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {PHONE_KINDS.map((k) => (
-            <SelectItem key={k} value={k}>
-              {k}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        type="button"
-        size="sm"
-        variant={phone.preferred ? "default" : "outline"}
-        onClick={onMakePreferred}
-        title="Mark this as the number the patient wants us to use"
-      >
-        {phone.preferred ? "Preferred" : "Set preferred"}
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={onRemove} aria-label="Remove number">
-        ✕
-      </Button>
-    </div>
-  );
-}
+   Deleted rather than left unimported, per §5.11 — a dead section that still
+   compiles is one a later reader wires back up. Caretaker NOTES survive, as a
+   textarea inside the new caregiver panel. */
 
-/* The contacts block used to be ONE section ("Contacts & Caretaker") sitting
-   below the product sections. Brandon's 2026-09-09 mockup opens the call with
-   it and splits it in two, which is how the call actually runs: you confirm who
-   you are talking to and how to reach them before you talk about product.
-   Same fields, same notes-block round-trip (§ callIntake.ts) — only the framing
-   changed, so nothing downstream of `intake` can tell the difference. */
-
-export function PhoneNumbersSection({ intake, onChange }: IntakeProps) {
-  const phones = intake.phones;
-  const setPhones = (next: IntakePhone[]) => onChange({ ...intake, phones: next });
-
-  return (
-    <div>
-      {/* Extra phone numbers. The board's one Pt. Phone column stays the system
-          of record — these are additional, with a flag saying which to ring. */}
-      <p className="text-xs text-muted-foreground mb-2">
-        The patient&apos;s main number stays on the profile above. Add any others here and mark
-        which one they actually want us to use.
-      </p>
-      <div className="space-y-2">
-        {phones.map((p, i) => (
-          <PhoneRow
-            key={i}
-            phone={p}
-            onPhoneChange={(next) => setPhones(phones.map((x, j) => (j === i ? next : x)))}
-            onRemove={() => setPhones(phones.filter((_, j) => j !== i))}
-            // Preferred is single-select: setting one clears the others, so the
-            // block can never record two "ring this one" numbers.
-            onMakePreferred={() =>
-              setPhones(phones.map((x, j) => ({ ...x, preferred: j === i && !x.preferred })))
-            }
-          />
-        ))}
-      </div>
-      {phones.length < MAX_EXTRA_PHONES && (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="mt-2"
-          onClick={() => setPhones([...phones, { number: "", kind: "cell", preferred: false }])}
-        >
-          + Add number
-        </Button>
-      )}
-    </div>
-  );
-}
-
-export function CaretakerSection({ intake, onChange }: IntakeProps) {
-  const setCaretaker = (patch: Partial<CallIntake["caretaker"]>) =>
-    onChange({ ...intake, caretaker: { ...intake.caretaker, ...patch } });
-
-  return (
-    <div>
-      <p className="text-xs text-muted-foreground mb-2">
-        Fill this in if someone else manages the patient&apos;s supplies or takes their calls.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <Input
-          placeholder="Name"
-          value={intake.caretaker.name}
-          onChange={(e) => setCaretaker({ name: e.target.value })}
-        />
-        <Input
-          placeholder="Relationship (daughter, spouse…)"
-          value={intake.caretaker.relationship}
-          onChange={(e) => setCaretaker({ relationship: e.target.value })}
-        />
-        <Input
-          placeholder="Phone"
-          value={intake.caretaker.phone}
-          onChange={(e) => setCaretaker({ phone: e.target.value })}
-        />
-        <Input
-          placeholder="Email"
-          value={intake.caretaker.email}
-          onChange={(e) => setCaretaker({ email: e.target.value })}
-        />
-      </div>
-      <label
-        htmlFor="wc-caretaker-auth"
-        className="flex items-center gap-2 cursor-pointer select-none text-sm mt-2"
-      >
-        <Checkbox
-          id="wc-caretaker-auth"
-          checked={intake.caretaker.authorized}
-          onCheckedChange={(v) => setCaretaker({ authorized: v === true })}
-        />
-        <span className={intake.caretaker.authorized ? "text-foreground" : "text-muted-foreground"}>
-          Authorized to discuss the patient&apos;s care
-        </span>
-      </label>
-      <Textarea
-        className="mt-2"
-        rows={2}
-        placeholder="Caretaker notes (best times to call, who to ask for…)"
-        value={intake.caretaker.notes}
-        onChange={(e) => setCaretaker({ notes: e.target.value })}
-      />
-    </div>
-  );
-}
 
 /* ── Section: insurance confirmation, cost, auth notes ── */
 

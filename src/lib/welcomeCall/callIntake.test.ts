@@ -39,18 +39,7 @@ function filled(): CallIntake {
     // Set so the full-fidelity round trip covers the override marker too.
     supplyLengthManual: false,
     oopAmount: "$42.50",
-    phones: [
-      { number: "3475550101", kind: "cell", preferred: true },
-      { number: "7185550199", kind: "home", preferred: false },
-    ],
-    caretaker: {
-      name: "Jane Doe",
-      relationship: "Daughter",
-      phone: "3475550102",
-      email: "jane@example.com",
-      authorized: true,
-      notes: "Prefers calls after 5pm",
-    },
+    caretaker: { notes: "Prefers calls after 5pm" },
     authNotes: "Sensors auth resubmitted 8/20, awaiting response",
   };
 }
@@ -71,9 +60,9 @@ describe("intakeHasContent", () => {
     expect(intakeHasContent(i)).toBe(true);
   });
 
-  it("ignores a phone row with a blank number", () => {
+  it("is false for whitespace-only caretaker notes", () => {
     const i = emptyIntake();
-    i.phones = [{ number: "   ", kind: "cell", preferred: false }];
+    i.caretaker.notes = "   ";
     expect(intakeHasContent(i)).toBe(false);
   });
 });
@@ -167,165 +156,76 @@ describe("free text can't break the block", () => {
   });
 });
 
-describe("phones", () => {
-  it("keeps kind and preferred flags", () => {
-    const i = emptyIntake();
-    i.phones = [
-      { number: "3475550101", kind: "work", preferred: false },
-      { number: "7185550199", kind: "cell", preferred: true },
-    ];
-    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-    expect(parsed?.phones).toEqual(i.phones);
+/* ⚠️ The round-trip suites for `phones` and the caretaker FIELDS are gone with
+   the fields themselves (2026-09-10, §5.31d). Those facts are six Monday
+   columns now — `phoneSlots.test.ts` covers them — and asserting that this
+   block still carries them would pin behaviour Brandon's handoff removes.
+   What the block still owes those lines is that it can READ one written before
+   the change without losing a word, which is what these assert. */
+describe("retired contact lines fold into the caretaker notes", () => {
+  const legacyBlock = (...lines: string[]) =>
+    [INTAKE_BLOCK_START, "Confirmed: none", ...lines, INTAKE_BLOCK_END].join("\n");
+
+  it("folds a legacy Caretaker line verbatim", () => {
+    const c = parseIntakeBlock(
+      legacyBlock("Caretaker: Jane Doe · Daughter · 3475550102 · jane@example.com · authorized"),
+    )?.caretaker;
+    expect(c?.notes).toContain("From an earlier call block");
+    // Verbatim: the raw line IS the information, so every part survives.
+    expect(c?.notes).toContain("Jane Doe");
+    expect(c?.notes).toContain("Daughter");
+    expect(c?.notes).toContain("3475550102");
+    expect(c?.notes).toContain("jane@example.com");
+    expect(c?.notes).toContain("authorized");
   });
 
-  it("drops blank rows on the way out", () => {
-    const i = emptyIntake();
-    i.phones = [
-      { number: "3475550101", kind: "cell", preferred: false },
-      { number: "", kind: "home", preferred: false },
-    ];
-    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-    expect(parsed?.phones).toHaveLength(1);
-  });
-});
-
-describe("caretaker", () => {
-  it("round-trips a caretaker with no email", () => {
-    const i = emptyIntake();
-    i.caretaker = {
-      name: "Bob Smith", relationship: "Son", phone: "2125550188",
-      email: "", authorized: false, notes: "",
-    };
-    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-    expect(parsed?.caretaker.name).toBe("Bob Smith");
-    expect(parsed?.caretaker.relationship).toBe("Son");
-    expect(parsed?.caretaker.phone).toBe("2125550188");
-    expect(parsed?.caretaker.authorized).toBe(false);
-  });
-});
-
-describe("caretaker fields never shift position (Greptile #1)", () => {
-  it("keeps a relationship recorded without a name", () => {
-    // Blank fields are dropped from the line, so with both parts bare the
-    // reader could only tell them apart by position: "Daughter · not
-    // authorized" came back as name="Daughter" with no relationship, and the
-    // corrupted record was persisted on the next send.
-    const i = emptyIntake();
-    i.caretaker.relationship = "Daughter";
-    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-    expect(parsed?.caretaker.relationship).toBe("Daughter");
-    expect(parsed?.caretaker.name).toBe("");
+  it("folds a legacy Phones line", () => {
+    const c = parseIntakeBlock(
+      legacyBlock("Phones: 3475550101 (cell, preferred); 7185550199 (home)"),
+    )?.caretaker;
+    expect(c?.notes).toContain("3475550101");
+    expect(c?.notes).toContain("7185550199");
+    expect(c?.notes).toContain("preferred");
   });
 
-  it("round-trips every subset of the caretaker fields", () => {
-    const full = {
-      name: "Jane Doe", relationship: "Daughter", phone: "3475550102",
-      email: "jane@example.com", authorized: true, notes: "",
-    };
-    const keys = ["name", "relationship", "phone", "email"] as const;
-    for (let mask = 0; mask < 16; mask++) {
-      const i = emptyIntake();
-      keys.forEach((k, bit) => {
-        if (mask & (1 << bit)) i.caretaker[k] = full[k];
-      });
-      if (!intakeHasContent(i)) continue;
-      const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-      expect(parsed?.caretaker).toEqual(i.caretaker);
-    }
+  it("folds every retired line at once, and keeps the rep's own notes AFTER them", () => {
+    const c = parseIntakeBlock(
+      legacyBlock(
+        "Phones: 3475550101 (cell, preferred)",
+        "Caretaker: Jane Doe · 3475550102 · authorized",
+        "Caretaker relationship: Daughter",
+        "Caretaker notes: Prefers calls after 5pm",
+      ),
+    )?.caretaker;
+    expect(c?.notes).toContain("3475550101");
+    expect(c?.notes).toContain("Jane Doe");
+    expect(c?.notes).toContain("Daughter");
+    // The rep's own words are not buried by the fold.
+    expect(c?.notes).toContain("Prefers calls after 5pm");
+    expect(c?.notes.indexOf("From an earlier call block")).toBeLessThan(
+      c!.notes.indexOf("Prefers calls after 5pm"),
+    );
   });
 
-  it("does not mistake a parenthesised phone for a relationship", () => {
-    const i = emptyIntake();
-    i.caretaker = { ...i.caretaker, name: "Jane Doe", phone: "(347) 555-0102" };
-    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-    expect(parsed?.caretaker.phone).toBe("(347) 555-0102");
-    expect(parsed?.caretaker.relationship).toBe("");
+  it("adds no fold header when there is nothing retired to fold", () => {
+    const c = parseIntakeBlock(legacyBlock("Caretaker notes: Prefers calls after 5pm"))?.caretaker;
+    expect(c?.notes).toBe("Prefers calls after 5pm");
   });
 
-  it("still reads a legacy block written before the relationship was marked", () => {
-    const log = [
-      INTAKE_BLOCK_START,
-      "Confirmed: none",
-      "Unconfirmed: pump, address, oop",
-      "Caretaker: Jane Doe · Daughter · 3475550102 · jane@example.com · authorized",
-      INTAKE_BLOCK_END,
-    ].join("\n");
-    const c = parseIntakeBlock(log)?.caretaker;
-    expect(c?.name).toBe("Jane Doe");
-    expect(c?.relationship).toBe("Daughter");
-    expect(c?.phone).toBe("3475550102");
-    expect(c?.email).toBe("jane@example.com");
-    expect(c?.authorized).toBe(true);
+  it("NEVER writes the retired lines back out", () => {
+    // The whole point of parse-only: a block re-serialised after a fold must
+    // not re-emit a line a Monday column now owns, or the two answers drift.
+    const parsed = parseIntakeBlock(
+      legacyBlock("Phones: 3475550101 (cell)", "Caretaker: Jane Doe · authorized"),
+    )!;
+    const out = formatIntakeBlock(parsed);
+    expect(out).not.toMatch(/^Phones:/m);
+    expect(out).not.toMatch(/^Caretaker:/m);
+    expect(out).not.toMatch(/^Caretaker relationship:/m);
+    expect(out).toMatch(/^Caretaker notes:/m);
   });
 });
 
-describe("free text never changes field (Greptile round 2)", () => {
-  it("keeps a parenthesised caretaker NAME as the name", () => {
-    // Marking the relationship with parens only moved the ambiguity: a rep
-    // whose caretaker is "(AJ)" had that read as a relationship instead.
-    const i = emptyIntake();
-    i.caretaker.name = "(AJ)";
-    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-    expect(parsed?.caretaker.name).toBe("(AJ)");
-    expect(parsed?.caretaker.relationship).toBe("");
-  });
-
-  it("round-trips a name and relationship that are both awkward", () => {
-    const i = emptyIntake();
-    i.caretaker.name = "(AJ)";
-    i.caretaker.relationship = "step-daughter (primary)";
-    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-    expect(parsed?.caretaker.name).toBe("(AJ)");
-    expect(parsed?.caretaker.relationship).toBe("step-daughter (primary)");
-  });
-
-  it("still reads the interim marked format", () => {
-    const log = [
-      INTAKE_BLOCK_START,
-      "Confirmed: none",
-      "Unconfirmed: pump, address, oop",
-      "Caretaker: Jane Doe · (Daughter) · 3475550102 · authorized",
-      INTAKE_BLOCK_END,
-    ].join("\n");
-    const c = parseIntakeBlock(log)?.caretaker;
-    expect(c?.name).toBe("Jane Doe");
-    expect(c?.relationship).toBe("Daughter");
-  });
-});
-
-
-describe("⚠️ the confirmed pump model round-trips (Josh, 2026-09-09)", () => {
-  it("records which model the rep confirmed", () => {
-    const i = emptyIntake();
-    i.confirmed.pump = true;
-    i.pumpConfirmedModel = "t:slim";
-    const parsed = parseIntakeBlock(appendIntakeToNotes("", i, { initials: "JH", now: AT }));
-    expect(parsed?.confirmed.pump).toBe(true);
-    expect(parsed?.pumpConfirmedModel).toBe("t:slim");
-  });
-
-  it("writes nothing when the box isn't ticked", () => {
-    const i = emptyIntake();
-    i.pumpConfirmedModel = "t:slim";
-    const log = appendIntakeToNotes("", i, { initials: "JH", now: AT });
-    expect(log).not.toContain("Pump confirmed:");
-  });
-
-  it("⚠️ survives a block written before the field existed", () => {
-    // The notes column carries history. An older block has no "Pump confirmed"
-    // line at all; parsing must yield "" rather than undefined, because
-    // pumpConfirmationStale reads it and a crash here breaks the send.
-    const legacy = [
-      "--- WC INTAKE v1 ---",
-      "Confirmed: pump, address",
-      "Unconfirmed: oop",
-      "--- END WC INTAKE ---",
-    ].join("\n");
-    const parsed = parseIntakeBlock(legacy);
-    expect(parsed?.confirmed.pump).toBe(true);
-    expect(parsed?.pumpConfirmedModel).toBe("");
-  });
-});
 
 describe("the insurance confirmations are parse-only", () => {
   /* Brandon removed both checkboxes on 2026-09-09: primary is read-only at this

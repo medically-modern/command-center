@@ -537,6 +537,22 @@ export async function clearStatusColumn(itemId: string, columnId: string): Promi
 }
 
 /**
+ * Clear a STATUS column — Monday takes `{}` as "no label".
+ *
+ * There is no `{"index": null}`: that serialises a value the API cannot read.
+ * Needed because the phone columns must be clearable (§5.31d) — a removed
+ * second number has to take Alternate Contact with it.
+ */
+export async function writeStatusClear(itemId: string, columnId: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({}) });
+}
+
+/**
  * Clear a date column.
  */
 export async function clearDateColumn(itemId: string, columnId: string): Promise<void> {

@@ -34,7 +34,7 @@ import {
 import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock, OctagonX } from "lucide-react";
 import { toast } from "sonner";
 import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
-import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
+import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
 import { BOARD_ID, writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
@@ -44,6 +44,7 @@ import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { unmetSendRequirements } from "@/lib/welcomeCall/sendGates";
+import { phoneSlotGaps, phoneSlotsFor } from "@/lib/welcomeCall/phoneSlots";
 import { secondaryMissing, secondaryStateFor } from "@/lib/welcomeCall/secondaryCoverage";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -116,6 +117,12 @@ const WelcomeCallPage = () => {
                has no board representation, so re-reading the column here made
                this gate disagree with the control the rep had just used and
                held Advance shut on a CIN they had said nobody knew. */
+            /* ⚠️ Through `phoneSlotsFor`, NOT the phone columns. The slots the
+               rep is editing live on the page overlay precisely so this gate
+               can see them; reading the columns here would hold Advance shut on
+               a number they had already corrected — the §5.31c
+               gate-with-no-passing-move, whose fix this mirrors. */
+            phoneGaps: phoneSlotGaps(phoneSlotsFor(selected)),
             secondaryMissing: secondaryMissing({
               ...secondaryStateFor(selected),
               memberId2: selected.memberId2Edited ?? selected.memberId2,
@@ -359,7 +366,6 @@ const WelcomeCallPage = () => {
                   <PatientInfoCard
                     patient={selected}
                     onFieldChange={handleFieldChange}
-                    onSavePhone={(phone) => sendPhoneToMonday(selected.id, phone)}
                     onSaveSecondaryInsurance={(_label, index) => sendSecondaryInsuranceToMonday(selected.id, index)}
                   />
                   <OopEstimateCard patient={selected} />

@@ -51,6 +51,16 @@ export interface SendGateInput {
    * here that could drift from it.
    */
   secondaryMissing?: string[];
+  /**
+   * What the phone slots still need — the output of `phoneSlots.phoneSlotGaps`.
+   *
+   * ⚠️ The Can Text answer is a send requirement in Brandon's handoff, and it
+   * has to be: it decides whether the Day-20 reorder goes out as a text or into
+   * a call queue, and nothing downstream can recover an answer nobody gave.
+   * Passed in rather than derived here so the caller reads the slots through
+   * `phoneSlotsFor` (the page overlay) and this module stays pure.
+   */
+  phoneGaps?: string[];
   /** Serving as the rep has it (edited value wins). */
   serving: string;
   /** Pump Type label, for naming the model in the requirement. */
@@ -59,7 +69,7 @@ export interface SendGateInput {
 }
 
 export interface SendRequirement {
-  key: "pump-confirmed" | "address-confirmed" | "secondary-incomplete";
+  key: "pump-confirmed" | "address-confirmed" | "secondary-incomplete" | "phone-incomplete";
   /** The sentence shown beside the disabled button. */
   label: string;
 }
@@ -111,6 +121,9 @@ export function unmetSendRequirements(i: SendGateInput): SendRequirement[] {
       key: "address-confirmed",
       label: "Confirm the shipping address with the patient in the Confirm Address section.",
     });
+  }
+  for (const m of i.phoneGaps ?? []) {
+    out.push({ key: "phone-incomplete", label: m });
   }
   for (const m of i.secondaryMissing ?? []) {
     out.push({ key: "secondary-incomplete", label: m });

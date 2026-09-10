@@ -46,11 +46,8 @@ import {
 import { monitorSaleVerdict } from "@/lib/shared/monitorSale";
 import { pumpConfirmLabel, pumpConfirmationStale, needsPumpConfirmation } from "@/lib/welcomeCall/sendGates";
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
-import {
-  ConfirmCheck,
-  PhoneNumbersSection,
-  CaretakerSection,
-} from "./CallIntakeFields";
+import { ConfirmCheck } from "./CallIntakeFields";
+import { PhoneSlotsSection } from "./PhoneSlotsSection";
 import { toast } from "sonner";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { Card } from "@/components/ui/card";
@@ -618,25 +615,28 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
       {/* ─── Sections 1 & 2: who we are talking to ───
           Neither has a Monday column; both are captured here and appended to
-          the Notes column as a parseable block on Send (§ callIntake.ts). They
-          were one section ("Contacts & Caretaker") sitting BELOW the product
-          sections until Brandon's 2026-09-09 mockup opened the call with them,
-          which is the order the call actually runs in. */}
+          six MONDAY COLUMNS from 2026-09-10 (§5.31d) — the notes block is no
+          longer the record for them. Caregiver NOTES are the one exception and
+          still ride the block.
+          This was two sections, Phone Numbers and Caretaker, until the caregiver
+          panel moved INSIDE the phone section: it appears when a slot is a
+          caregiver's, so it has no meaning apart from the slots and asking for
+          it separately invited a caregiver with no number. */}
       <Card className="p-6">
         <SectionHeading number={1} title="Phone Numbers" />
-        <PhoneNumbersSection intake={intake} onChange={setIntake} />
+        <PhoneSlotsSection
+          patient={patient}
+          onFieldChange={onFieldChange as (f: keyof Patient, v: unknown) => void}
+          intake={intake}
+          onIntakeChange={setIntake}
+        />
       </Card>
 
-      <Card className="p-6">
-        <SectionHeading number={2} title="Caretaker (optional)" />
-        <CaretakerSection intake={intake} onChange={setIntake} />
-      </Card>
-
-      {/* ─── Section 3: CGM ─── */}
+      {/* ─── Section 2: CGM ─── */}
       {showCgm ? (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <SectionHeading number={3} title="CGM" />
+            <SectionHeading number={2} title="CGM" />
             {!defaultShowCgm && (
               <Button
                 variant="ghost"
@@ -780,11 +780,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </Card>
       )}
 
-      {/* ─── Section 4: Pump & Infusion Sets ─── */}
+      {/* ─── Section 3: Pump & Infusion Sets ─── */}
       {showPump ? (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <SectionHeading number={4} title="Pump & Infusion Sets" />
+            <SectionHeading number={3} title="Pump & Infusion Sets" />
             {!defaultShowPump && (
               <Button
                 variant="ghost"
@@ -1068,22 +1068,22 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </Card>
       )}
 
-      {/* ─── Section 5: Insurance ───
+      {/* ─── Section 4: Insurance ───
           No Monday column: the answers ride out in the notes block on Send
           (§ callIntake.ts). Split from the cost/auth half by the mockup —
           what the payer covers is a different question from what the patient
           owes. */}
       <Card className="p-6">
-        <SectionHeading number={5} title="Insurance" />
+        <SectionHeading number={4} title="Insurance" />
         <InsuranceBlock patient={patient} onFieldChange={onFieldChange} />
       </Card>
 
-      {/* ─── Section 6: Authorizations & Cost ───
+      {/* ─── Section 5: Authorizations & Cost ───
           Same story: no columns. The AUTH RESULTS themselves are read-only and
           render in the patient header above — they are the Insurance stage's
           output, not something the rep sets on the call (§5.26). */}
       <Card className="p-6">
-        <SectionHeading number={6} title="Authorizations" />
+        <SectionHeading number={5} title="Authorizations" />
         <AuthBlock patient={patient} />
         <div className="mt-6 border-t pt-6">
           <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground mb-3">
@@ -1093,9 +1093,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </div>
       </Card>
 
-      {/* ─── Section 7: Subscription & Logistics ─── */}
+      {/* ─── Section 6: Subscription & Logistics ─── */}
       <Card className="p-6">
-        <SectionHeading number={7} title="Subscription & Logistics" />
+        <SectionHeading number={6} title="Subscription & Logistics" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {/* Subscription Type */}
           <div>
@@ -1185,12 +1185,12 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         </div>
       </Card>
 
-      {/* ─── Section 8: Confirm Address ───
+      {/* ─── Section 7: Confirm Address ───
           Split out of Subscription & Logistics by Brandon's mockup. It is its
           own step on the call — you read the address back, then send the text —
           and it was previously buried under the supply-length controls. */}
       <Card className="p-6">
-        <SectionHeading number={8} title="Confirm Address" />
+        <SectionHeading number={7} title="Confirm Address" />
 
         {/* Address — full width */}
         <div className="mt-6 space-y-3">
@@ -1335,7 +1335,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
       {/* ─── End-of-call decision: Advance? ─── */}
       <Card className="p-6">
-        <SectionHeading number={9} title="End of Call" />
+        <SectionHeading number={8} title="End of Call" />
         <p className="text-base text-muted-foreground mb-5">
           Decide whether this patient advances to Order or holds here. Either
           choice routes them back for Profile Review on the board.

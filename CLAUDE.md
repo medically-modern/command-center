@@ -2829,14 +2829,41 @@ authorisation against a patient nobody shares an account with is a record that s
 thing. Empty slots are dropped first, so an abandoned "+ Add number" cannot write a live owner
 against a blank number.
 
-**Still to do (2026-09-10):** the UI rewrite (two slots, star, caregiver panel, dropping the
-caretaker Phone/Email fields), the send writes, stripping Phones/Caretaker out of the notes block
-while still PARSING them for blocks already written, the Caregiver Authorized audit line, all six
-into Review & Send, the phone fields into `sendWelcomeCallTextToMonday`'s push (it currently
-writes **no** phone column before flipping the trigger — workflow 7918318033 reads Primary
-Phone), the Can Text backfill, and widening `BoardDef.phoneColId` to a LIST so the phone→patient
-lookup matches an Alternate Phone (SPA `lib/systemMgmt/mondayApi.ts` + the gateway's
-`patientDirectory.mjs` mirror + `directoryCoverage.test.ts`, all three together — §5.29).
+**The screen, the writes and the notes change shipped 2026-09-10.**
+`components/welcomeCall/PhoneSlotsSection.tsx` is the two slots and the caregiver panel;
+`mondayWrite.buildDataTasks` writes all six; the block's `Phones:` / `Caretaker:` /
+`Caretaker relationship:` lines are **parse-only** and fold verbatim into the caretaker notes.
+
+⚠️⚠️ **SLOT STATE LIVES ON THE PAGE OVERLAY (`phoneSlotsEdited` / `caregiverEdited`), NEVER IN
+THE COMPONENT** — read through `phoneSlotsFor` / `caregiverFor` at every end. `phoneSlotGaps`
+is a SEND-GATE input, so slots trapped in a `useState` would leave the gate reading columns the
+rep had already edited past: §5.31c's gate-with-no-passing-move, which shipped once and whose
+two files were each fine alone. `phoneSlotsSource.test.ts` scans both ends.
+
+⚠️ **The banner's phone editor is DELETED** (`PatientInfoCard`'s `PhoneField`, with
+`onSavePhone` and `sendPhoneToMonday`'s call site). Slot 1 owns Primary Phone, and two controls
+writing one column is how they disagree — the reason the Secondary Insurance select left that
+card the day before. It also bypassed the clear-Can-Text-on-number-change rule.
+
+⚠️ **A phone task's declared `value` is `{phone, countryShortName}`, never the bare string.**
+The gateway's durable fast path sends the DECLARED value (§5.2), so a bare string reaches a
+phone column and is refused at HTTP 200 (§10's "invalid value … data structure" class). An
+UNPARSEABLE number pushes **no task at all** — `writePhone` skips it, so a task declaring `{}`
+would CLEAR a real number — and `phoneSlotGaps` refuses it before the send, because a skip
+inside the writer reads as success (§7's `unwritableDoctorFields`). Caught by
+`writeTaskParity.test.ts`, which is the only thing that would have.
+
+⚠️ The consent audit line carries **no date and no initials of its own** — `shared/noteStamp`
+supplies both — and is stamped only on the **off→on** transition
+(`caregiverConsentJustGiven`, compared against the BOARD), or every later send re-appends the
+same claim about one conversation.
+
+**Still to do:** the phone fields into `sendWelcomeCallTextToMonday`'s push (it writes **no**
+phone column before flipping the trigger — workflow 7918318033 reads Primary Phone), blocking
+or warning on Can Text = No there, the Can Text backfill, and widening `BoardDef.phoneColId` to
+a LIST so the phone→patient lookup matches an Alternate Phone (SPA `lib/systemMgmt/mondayApi.ts`
++ the gateway's `patientDirectory.mjs` mirror + `directoryCoverage.test.ts`, all three
+together — §5.29).
 ⚠️ The five WC→Subscription workflows need these six columns added **and** Order Frequency
 re-pointed (§5.31c) — the same five ids, so it is one off-hours sitting: 7918317925, 7918340632,
 7918343137, 7918601476, 7919753399.
