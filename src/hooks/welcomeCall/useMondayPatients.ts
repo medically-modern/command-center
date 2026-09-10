@@ -66,6 +66,19 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   // local-session overlay so UI edits persist without re-fetching from Monday
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
 
+  // ⚠️ The board's OWN values, before any overlay is merged in — the thing
+  // `clearOverlay` needs to put back on screen.
+  //
+  // Dropping an overlay entry is not the same as undoing its effect: the
+  // rendered patient in `patients` was built by merging that overlay over the
+  // board, so deleting it alone leaves every edited field exactly as the rep
+  // left it until a refetch happens to land. Reset says "cleared local edits"
+  // and then a Send in that window writes the very edits it claims to have
+  // discarded — and if the refetch FAILS there is no window, just the wrong
+  // values (Greptile, PR #57). Keeping the pre-overlay copy makes the revert
+  // synchronous and independent of the network.
+  const baseRef = useRef<Map<string, Patient>>(new Map());
+
   const mountedRef = useRef(true);
 
   // Patients hidden optimistically because a send advanced them out of this
@@ -92,6 +105,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
+      for (const p of ps) baseRef.current.set(p.id, p);
       const merged = ps.map((p) => {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
@@ -109,6 +123,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
           const item = await fetchItemById(injectedPatientId);
           if (item) {
             const injected = mondayItemToPatient(item);
+            baseRef.current.set(injected.id, injected);
             const o = overlayRef.current.get(injected.id);
             merged.unshift(o ? { ...injected, ...o } : injected);
           }
@@ -157,9 +172,25 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     );
   }, []);
 
+  /**
+   * Drop this patient's local edits AND put the board's values back on screen.
+   *
+   * ⚠️ The second half is not a nicety. `patients` holds the MERGED patient, so
+   * deleting the overlay changes nothing that is rendered — the rep's edits stay
+   * up until a refetch lands, and a Send in that window writes exactly the edits
+   * Reset claimed to discard. A failed refetch makes it permanent. Reverting
+   * from `baseRef` makes Reset synchronous and true regardless of the network;
+   * the caller's `refetch()` is then belt-and-braces rather than the mechanism.
+   *
+   * A patient with no base entry (never seen in a fetch) is left alone: there is
+   * nothing truer to show them, and blanking would invent data.
+   */
   const clearOverlay = useCallback((id: string) => {
     overlayRef.current.delete(id);
     removeOverlay(id);
+    const base = baseRef.current.get(id);
+    if (!base) return;
+    setPatients((prev) => prev.map((p) => (p.id === id ? base : p)));
   }, []);
 
 
