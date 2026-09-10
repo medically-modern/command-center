@@ -48,6 +48,7 @@ import { registerRingCentral } from "./ringcentral.mjs";
 import { registerMessaging } from "./messaging.mjs";
 import { registerInboundCalls } from "./inboundCalls.mjs";
 import { registerCalendlyDay } from "./calendlyDay.mjs";
+import { registerCalendlyPatient } from "./calendlyPatient.mjs";
 import { registerStageActor } from "./stageActor.mjs";
 import {
   SCHEMA as REQUEST_LOG_SCHEMA,
@@ -795,6 +796,7 @@ registerInboundCalls({ app });
 // record — so this proxies the form service (which owns the Calendly token)
 // behind a verified employee identity. See calendlyDay.mjs.
 registerCalendlyDay({ app });
+registerCalendlyPatient({ app });
 
 ensureSchema().finally(() => {
   // Retention. Once at boot, then daily — the table is the one durable log here

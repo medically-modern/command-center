@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
 import { authWindow, secondaryAsk, secondaryAskNote, isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
+import { CallScheduledChip } from "@/components/welcomeCall/CallScheduledChip";
 import { expectedPos } from "@/lib/shared/pos";
 import { servedOrderLines } from "@/lib/shared/servingLines";
 import { resolveLastBill } from "@/lib/shared/lastBillDate";
@@ -494,6 +495,11 @@ export function PatientInfoCard({ patient, onFieldChange, onSaveSecondaryInsuran
               serving: patient.servingEdited ?? patient.serving,
               requestType: patient.requestType,
             }) && <HeaderChip tone="amber">Cross-sell</HeaderChip>}
+            {/* Brandon's "call scheduled — date/day/time" chip (§5.31b), read
+                from Calendly rather than from the INTAKE mirror that got the
+                first attempt reverted. Silent for a patient with nothing
+                booked, which is most of them. */}
+            <CallScheduledChip email={patient.email} />
           </div>
         </div>
 

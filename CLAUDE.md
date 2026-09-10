@@ -2901,9 +2901,87 @@ real **line-type lookup**, which nobody has bought; until then it stays the rep'
 counting it would mark exactly the landlines Yes. Only `Delivered`, or any INBOUND text.
 ⚠️ **The archive is younger than the boards** (it began 2026-08-01), so a patient last texted in
 June looks identical to one never texted. Re-run it as the archive grows.
+⚠️ **It has never been run, and that is a DECISION** (Josh, 2026-09-10: *"moving forward we'll add
+can text, no need to backfill"*) — the column fills from the next Welcome Call send onward. The
+script is kept unrun for the day somebody wants the history, not because it is pending.
 ⚠️ The five WC→Subscription workflows need these six columns added **and** Order Frequency
 re-pointed (§5.31c) — the same five ids, so it is one off-hours sitting: 7918317925, 7918340632,
 7918343137, 7918601476, 7919753399.
+
+### 5.31e The "Call scheduled" chip — the welcome call, read from Calendly (Sep 2026)
+Brandon's 2026-09-09 ask, and the third attempt at it. §5.31b **built it and reverted it**: the
+only booking data reachable then was the INTAKE call's mirror on Profile Send Off
+(`date_mm63na19`), and rendering that under "Call scheduled" on this page reads as the welcome
+call — a different appointment, silently wrong. §5.31c recorded it as blocked on board work.
+
+**What unblocked it was §5.30b, not a board change.** That work built the whole credential chain
+for the Care Coordinator grid — browser →(Google identity) gateway →(service token)
+dtc-mm-form-api → Calendly — and taught the backend to tell the two event types apart. Verified
+live 2026-09-10: `/api/calendly/health` reports `day_route: "enabled"` and resolves
+`welcome_event_type` "Medically Modern Welcome Call" (`96da008d-…`). **The Welcome Call board
+still has no booking column and still needs none.**
+
+⚠️ **BUILT OUT OF DAY READS, because that is the only route there is** (Josh, 2026-09-10: *"i
+don't want to touch dtc mm form, it's perfect"*). `/api/calendly/day` is strictly one ET day
+(`etDayBoundsUtc`), and there is no find-this-invitee endpoint our side of the wall. So
+`services/monday-gateway/calendlyPatient.mjs` assembles a patient-shaped answer here: read a short
+forward WINDOW once, index it by invitee email, answer every patient from that shared index.
+`calendlyDay.readDay` is exported for it, so the grid and the chip share ONE day cache rather than
+each paying for the same day.
+
+⚠️ **The window IS the cost** — one index build is `CALENDLY_PATIENT_WINDOW_DAYS` (21) upstream
+day reads, four at a time, cached `CALENDLY_PATIENT_TTL_MS` (10 min) and shared by every browser
+and every patient. That bounds it at ~21 reads per ten minutes however many reps are working. ⚠️ A
+window that is too SHORT fails **silently** — a booking past the edge reads exactly like no
+booking — so widen it rather than narrow it if the two are ever in doubt.
+
+⚠️ **A PARTIAL WINDOW MUST NEVER ANSWER "not booked".** If any day fails, or comes back with the
+welcome event type `unresolved` (which arrives as HTTP 200 + an empty list), the whole answer is
+an error. Three states reach the screen and they are different: booked · genuinely nothing ·
+could-not-check. The chip renders the third as *"Couldn't check Calendly"* — silence there would
+be indistinguishable from no appointment, and *"you're not booked in"* is the one wrong answer a
+rep acts on.
+
+⚠️ **EMAIL IS THE ONLY JOIN, and a NAME IS NOT AN IDENTITY.** The day route hands us invitee name
+and email and nothing else; two patients called Maria Garcia is ordinary at this size, and
+`commsHub/dossier.nameMatchAccepted` already requires a second signal (phone, or blank-phone +
+DOB) before accepting a name — Calendly gives us neither. So no name match is attempted, and a
+patient with no email is **UNANSWERABLE, not unbooked**.
+> That sounds fatal — only **9 of 52** live Welcome Call patients carry an email
+> (`text_mm1xc140`: 8 of 39 in Welcome Call, 1 of 13 in Final Profile Confirmation), and the hop
+> is not at fault (automation 7918324247 does copy Email; Insurance is 186/432 and ME ~242/587).
+> ⚠️ **It measures the wrong population** (Josh, 2026-09-10). Of every Profile Send Off row that
+> has ever touched the booking flow, **6 of 6 carried an email** — the one real booking included —
+> because the flow is only reachable through an address we already hold. The chip therefore
+> renders nothing for an emailless patient rather than a "no email on file" note that would sit on
+> ~5 of 6 headers to flag a case the data says does not arise. The hook still reports `noEmail`
+> for any surface that wants it.
+
+⚠️ **`rescheduleUrl` is the ONLY browser-openable link Calendly gives us.** `eventUri` is an API
+URL that answers 401 JSON to a person, which is why §5.31b records the mockup's "View Calendly
+booking" link as unbuildable — it is buildable, just not out of that field.
+
+⚠️ **Rendered in EASTERN, always** (`formatBookingWhen`, + tests), with a literal `ET` suffix and
+Today/Tomorrow labels. Every other time on these boards is Eastern wall clock (§5.15), so a rep
+must be able to compare this with a Next Action Date without doing arithmetic. Note the one
+inversion of §5.15's usual trap: a Calendly `start_time` IS a real UTC instant, so `new Date` is
+correct here — what must never be parsed that way is a naive monday column.
+
+**Incident guards** (`hooks/welcomeCall/useWelcomeCallBooking.ts`): reads **on patient open, never
+on a timer**, module-scope cache, one in-flight request per address, a stable returned identity
+(rule 2), a `want` ref so a slow answer can't paint the previous patient's appointment onto the
+open one, and **failures are not cached** so re-opening retries.
+
+**Volume is ~nothing today, and that is the board's state rather than a broken read.** A live scan
+2026-09-10 found ONE welcome booking in three weeks; six Profile Send Off rows have ever carried a
+Booking Status and three of those are test rows. Expect the chip to be absent almost always.
+
+Files: `services/monday-gateway/calendlyPatient.mjs` + `calendlyPatientRules.mjs` (+ tests, the
+`callRules`/`rcAllowlist` split) · `calendlyDay.readDay` · `lib/welcomeCall/calendlyBooking.ts`
+(+ tests) · `hooks/welcomeCall/useWelcomeCallBooking.ts` ·
+`components/welcomeCall/CallScheduledChip.tsx`, mounted in `welcomeCall/PatientInfoCard`.
+**Not wired to Final Confirm** — deliberate scope; the chip takes an email and nothing else, so it
+is a one-line addition if wanted.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 The `scheduledCalls` role **became the Care Coordinator dashboard** (Josh, 2026-09-08, from Corey's
@@ -4285,6 +4363,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |
 | A booking didn't show up in Scheduled Calls | §5.15 — the mirror joins on the invitee's EMAIL. `lib/scheduledCalls/bookingLink.ts` (the prefill), then dtc-mm-form `server/src/booking.js` |
 | Booked-call queue / the 10-min reminder | `lib/scheduledCalls/workflow.ts` + `components/careCoordinator/ScheduleGrid.tsx` (the grid, on `pages/CareCoordinatorPage.tsx`) + `components/scheduledCalls/ScheduledCallHost.tsx` (§5.15, §5.30) |
+| The Welcome Call "Call scheduled" chip is missing or says it couldn't check | §5.31e — the chip needs the patient's **Email** on the board; that is the only join Calendly gives us. "Couldn't check" means the window read failed (a partial window is deliberately never reported as "not booked") — check `GET /calendly/patient/health` on the gateway, then `/api/calendly/health` on dtc-mm-form. No chip at all means no booking in the window, which is the normal case |
 | A welcome call isn't on the schedule grid / a booking has no "Open" | §5.30b — the grid reads Calendly through the gateway, not monday. Check `GET /calendly/day` on the gateway, then `/api/calendly/health` on dtc-mm-form (it reports the welcome event type and whether the day route is enabled). No "Open" means the invitee's email is on no **Welcome Call group** row — the same single join the intake mirror uses; the block is meant to render without a link |
 | A welcome-call booking overwrote a patient's intake booking | §5.30b — fixed 2026-09-10. The webhook is USER-scope and now filters on `scheduled_event.event_type`; if it recurs, check `calendly.kindOfEventType` can still resolve BOTH event types (`/api/calendly/health`) — an unresolvable one falls back to mirroring, deliberately |
 | Patient Intake takes ages to load / the load bar reads wrong | §5.30 — it is 1,754 rows in four sequential Monday pages and that is inherent; the bar is `lib/careCoordinator/loadProgress.ts`. A bar with no percentage is CORRECT on a first-ever visit (Monday reports no total, so the denominator is remembered from the last complete run); one stuck at 99% means the fetch has not resolved, not that the maths is off |

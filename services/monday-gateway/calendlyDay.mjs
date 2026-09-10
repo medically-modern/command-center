@@ -81,6 +81,42 @@ async function fetchDay(key, date, kinds) {
   return p;
 }
 
+/**
+ * One day's bookings, for another module on this gateway rather than for a
+ * browser — `calendlyPatient.mjs` assembles a window out of these.
+ *
+ * It goes through the SAME cache and the SAME in-flight map as the route above,
+ * which is the point of exporting it rather than writing a second client: a
+ * coordinator with the schedule grid open and a rep opening a Welcome Call
+ * patient must not each pay their own Calendly read for the same day.
+ *
+ * ⚠️ `unresolved` rides back out deliberately. A day where the welcome event
+ * type could not be resolved answers HTTP 200 with an empty booking list and
+ * the reason in `unresolved` — so a caller that only checks `ok` reads a broken
+ * lookup as "nobody is booked", which is the one answer that gets acted on by
+ * doing nothing.
+ */
+export async function readDay(date, kinds = "welcome") {
+  if (!TOKEN) {
+    return { ok: false, bookings: [], unresolved: [], error: "CALENDLY_DAY_TOKEN not set on the gateway" };
+  }
+  const key = cacheKey(date, kinds);
+  const hit = cache.get(key);
+  if (hit) {
+    return { ok: true, bookings: hit.bookings ?? [], unresolved: hit.unresolved ?? [], error: null };
+  }
+  try {
+    const { status, body } = await fetchDay(key, date, kinds);
+    if (status === 200 && body?.ok) {
+      return { ok: true, bookings: body.bookings ?? [], unresolved: body.unresolved ?? [], error: null };
+    }
+    return { ok: false, bookings: [], unresolved: [], error: body?.error || `upstream ${status}` };
+  } catch (e) {
+    const msg = e?.name === "AbortError" ? "calendly day read timed out" : e.message;
+    return { ok: false, bookings: [], unresolved: [], error: msg };
+  }
+}
+
 export function registerCalendlyDay({ app }) {
   /** Is the upstream credential configured at all? Reported to the browser so
    *  the grid can say "not configured in this build" instead of "no bookings". */
