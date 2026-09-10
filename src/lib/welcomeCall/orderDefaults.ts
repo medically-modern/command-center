@@ -88,3 +88,79 @@ export function setTwoTransition(had: boolean, has: boolean): SetTwoChange {
 export function isSetChosen(label: string): boolean {
   return chosen(label);
 }
+
+/* ─── Subscription Type ─── */
+
+export interface SubscriptionTypeState {
+  /** The label the card should show, or "" when nothing answers yet. */
+  label: string;
+  /** The muted hint, or "" — a value the BOARD already held gets neither. */
+  hint: string;
+  /** The chosen value disagrees with the products. Reported, never overridden. */
+  mismatch: string;
+  /** The field is blank and we have a derived answer: the caller should fill it. */
+  needsFill: boolean;
+}
+
+/**
+ * What the Subscription Type card should show.
+ *
+ * Brandon, 2026-09-09: *"Subscription Type: Sensors / Sensors & Supplies /
+ * Supplies. **Default from the product mix**, editable, required"*, with the
+ * same single muted hint as the Order Frequency card beside it — *"from product
+ * mix"* while it is our guess, flipping to *"edited"* once the rep changes it.
+ *
+ * ⚠️ Until now the app COMPUTED the answer and declined to use it. The only
+ * consumer of `expectedSubscriptionType` was a red *"Mismatch: expected X but Y
+ * is selected"* line, which by construction cannot render on a blank field — it
+ * needs a selected value to compare against. So the rep re-picked it on every
+ * patient, and the one piece of help appeared only after they had already
+ * picked something else.
+ *
+ * ⚠️ The derived value never OVERRIDES a stated one, only fills a blank. Unlike
+ * Order Frequency — where an ineligible cadence is dropped wherever it came
+ * from, because the payer will not pay for it — a Subscription Type that
+ * disagrees with the products is a legitimate override, and Serving and the
+ * product columns are editable right there. It is reported and left alone.
+ *
+ * `autoFilled` is what THIS session filled in for THIS patient ("" if we did
+ * not), which is the only way to tell our own guess from a value the board
+ * already held — they are the same string by then.
+ */
+export function subscriptionTypeState(args: {
+  /** `patient.subscriptionType` — the board value with any overlay edit applied. */
+  current: string;
+  /** `expectedSubscriptionType(patient)`, or null when the mix says nothing. */
+  derived: string | null;
+  /** What this session auto-filled for this patient, or "". */
+  autoFilled: string;
+}): SubscriptionTypeState {
+  const current = (args.current ?? "").trim();
+  const derived = (args.derived ?? "").trim();
+  const autoFilled = (args.autoFilled ?? "").trim();
+
+  if (!current) {
+    return {
+      label: "",
+      hint: "",
+      mismatch: "",
+      needsFill: !!derived,
+    };
+  }
+
+  const mismatch =
+    derived && current !== derived
+      ? `Based on the selections above this reads as ${derived}.`
+      : "";
+
+  // Our own guess, untouched — the only case that earns "from product mix".
+  if (autoFilled && current === autoFilled) {
+    return { label: current, hint: "from product mix", mismatch, needsFill: false };
+  }
+  // We filled it and the rep then changed it.
+  if (autoFilled) {
+    return { label: current, hint: "edited", mismatch, needsFill: false };
+  }
+  // A value the board already carried: neither our guess nor this call's edit.
+  return { label: current, hint: "", mismatch, needsFill: false };
+}

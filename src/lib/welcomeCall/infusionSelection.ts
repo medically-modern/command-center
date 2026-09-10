@@ -206,3 +206,38 @@ export function infusionQtyPlan(i: QtyPlanInput): QtyPlan {
   }
   return { split, error: null, warning: null };
 }
+
+/**
+ * What a send should do with one infusion-set column.
+ *
+ * Three answers, not two — and the third is the one that matters:
+ *
+ *  · **write** — a real index. Normal.
+ *  · **clear** — a null index AND no label. The rep emptied the slot, either by
+ *    hand or via `setTwoTransition` / `setsInvalidatedByPump`, and the column
+ *    has to follow (Brandon, 2026-09-09: *"write blanks to Infusion Set 2 /
+ *    Qty Inf. 2 on Monday — don't leave the old values on the board"*).
+ *  · ⚠️ **skip** — a null index but a NON-EMPTY label. That is not a removal,
+ *    it is a BAD READ: the board holds a set this app could not map, because
+ *    the label was renamed or the column's `value` did not parse.
+ *
+ * The third case exists because `mondayMapping` derives the two independently —
+ * the label from the column's `text`, the index from `JSON.parse(value).index`,
+ * which returns null on any parse failure. So a set that is really there can
+ * arrive with a null index, and clearing on that basis destroys a live
+ * selection on the strength of a read that failed. The surviving label IS the
+ * evidence there is something to keep.
+ *
+ * Same principle as `isOrphanRow` in the patient directory and the pending-advance
+ * rule in `useMondayPatients`: act on positive evidence, and let a thing we
+ * failed to read mean nothing at all.
+ */
+export type InfusionSetWrite = "write" | "clear" | "skip";
+
+export function infusionSetWriteAction(
+  index: number | null,
+  boardLabel: string,
+): InfusionSetWrite {
+  if (index !== null) return "write";
+  return (boardLabel ?? "").trim() === "" ? "clear" : "skip";
+}

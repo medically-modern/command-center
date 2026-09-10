@@ -6,6 +6,7 @@ import { appendStampedNote } from "@/lib/shared/noteStamp";
 import { assertTextLikeFits } from "../shared/longText";
 import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
+import { infusionSetWriteAction } from "./infusionSelection";
 import { coercePumpQty } from "@/lib/shared/servingLines";
 // ⚠️ The next-order default must compute from the SAME date the card shows —
 // see shared/lastBillDate.ts for why one column alone reads blank.
@@ -64,6 +65,32 @@ async function writeStatusOrClear(itemId: string, columnId: string, id: number |
     return;
   }
   await writeStatusIndex(itemId, columnId, id);
+}
+
+/**
+ * A quantity as Monday wants it, where a BLANK is a clear and not a zero.
+ *
+ * ⚠️ `Number("")` is 0, so routing a blank through `Number()` writes a real
+ * quantity and reports success. Two of this board's live automations compare
+ * quantities with "is empty" / "is equal to" (7918341011 gates "monitor only"
+ * on **Pump Qty is empty**), so the difference is not cosmetic — see
+ * `lib/shared/monitorQty.ts` for the whole chain.
+ */
+function blankOrNumber(v: string): number | "" {
+  return (v ?? "").trim() === "" ? "" : Number(v);
+}
+
+/** The same value as `change_multiple_column_values` wants it — the DECLARED
+ *  `value` on a WriteTask must match what `fn` sends, or the gateway's durable
+ *  fast path forwards something different from the client path (§5.2). */
+function blankOrText(v: string): string {
+  return (v ?? "").trim() === "" ? "" : String(Number(v));
+}
+
+/** Declared value for a status task: `{}` is Monday's clear, matching
+ *  `writeStatusOrClear` above. */
+function statusValue(id: number | null): unknown {
+  return id === null ? {} : { index: id };
 }
 
 export async function sendPatientToMonday(
@@ -213,8 +240,20 @@ export async function sendPatientToMonday(
   // profile and shipped a pump. See lib/shared/servingLines.ts.
   const pumpQtyToWrite = coercePumpQty(p.pumpQty, p.servingEdited ?? p.serving);
   if (pumpQtyToWrite !== "") tasks.push({ label: "Pump Qty", columnId: COL.pumpQty, value: String(Number(pumpQtyToWrite)), fn: () => writeNumber(p.id, COL.pumpQty, Number(pumpQtyToWrite)) });
-  if (p.qtyInf1 !== "") tasks.push({ label: "Infusion Set 1 Qty", columnId: COL.qtyInf1, value: String(Number(p.qtyInf1)), fn: () => writeNumber(p.id, COL.qtyInf1, Number(p.qtyInf1)) });
-  if (p.qtyInf2 !== "") tasks.push({ label: "Infusion Set 2 Qty", columnId: COL.qtyInf2, value: String(Number(p.qtyInf2)), fn: () => writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)) });
+  // The two infusion quantities are ALWAYS written, blank included, because a
+  // blank here is a REMOVAL and not an absence of opinion. Brandon, 2026-09-09:
+  // "If Set 2 is removed, restore Qty 1's default and write blanks to Infusion
+  // Set 2 / Qty Inf. 2 on Monday — don't leave the old values on the board."
+  // The old `if (p.qtyInf2 !== "")` guard meant a rep who dropped the second set
+  // saw it clear on screen, pressed Send, got a green toast, and left the old
+  // set and quantity sitting on the row — which then rode to the Order board and
+  // Cardinal as a second set the patient never agreed to. Same `!== ""` shape as
+  // the Member ID 2 bug fixed on 2026-09-09 (§5.31c).
+  // ⚠️ `blankOrNumber` exists because `Number("")` is 0: funnelling the blank
+  // through `Number()` writes a zero and reports success, and 0 is a real
+  // quantity, not a clear.
+  tasks.push({ label: "Infusion Set 1 Qty", columnId: COL.qtyInf1, value: blankOrText(p.qtyInf1), fn: () => writeNumber(p.id, COL.qtyInf1, blankOrNumber(p.qtyInf1)) });
+  tasks.push({ label: "Infusion Set 2 Qty", columnId: COL.qtyInf2, value: blankOrText(p.qtyInf2), fn: () => writeNumber(p.id, COL.qtyInf2, blankOrNumber(p.qtyInf2)) });
   if (p.qtyCartridge !== "") tasks.push({ label: "Qty Cartridge", columnId: COL.qtyCartridge, value: String(Number(p.qtyCartridge)), fn: () => writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)) });
 
   // Medicare Prior Pump Date (Original-Medicare-only MM/YYYY text). Always write so
@@ -230,10 +269,27 @@ export async function sendPatientToMonday(
   // eligible, so writing unconditionally is what clears the board cell.
   tasks.push({ label: "Monitor Purchase Date", columnId: COL.monitorPurchaseDate, value: p.monitorPurchaseDate, fn: () => writeText(p.id, COL.monitorPurchaseDate, p.monitorPurchaseDate) });
 
-  if (p.infusionSet1Index !== null)
-    tasks.push({ label: "Infusion Set 1", columnId: COL.infusionSet1, value: { index: p.infusionSet1Index! }, fn: () => writeStatusIndex(p.id, COL.infusionSet1, p.infusionSet1Index!) });
-  if (p.infusionSet2Index !== null)
-    tasks.push({ label: "Infusion Set 2", columnId: COL.infusionSet2, value: { index: p.infusionSet2Index! }, fn: () => writeStatusIndex(p.id, COL.infusionSet2, p.infusionSet2Index!) });
+  // The set column goes with its quantity, never one without the other — see the
+  // quantities above for why an emptied slot must reach the board.
+  // ⚠️ But an emptied slot and a slot we FAILED TO READ look identical from the
+  // index alone, so `infusionSetWriteAction` reads the label too: a null index
+  // beside a live label is a bad read, and clearing there would destroy a real
+  // selection. It returns "skip" and no task is pushed at all.
+  const setTask = (label: string, columnId: string, index: number | null, boardLabel: string) => {
+    const action = infusionSetWriteAction(index, boardLabel);
+    if (action === "skip") return;
+    tasks.push({
+      label,
+      columnId,
+      // `{}` is Monday's clear for a status column, and the DECLARED value has
+      // to be what `fn` sends or the gateway's durable fast path forwards
+      // something the client path does not (§5.2).
+      value: action === "clear" ? {} : { index: index! },
+      fn: () => writeStatusOrClear(p.id, columnId, action === "clear" ? null : index!),
+    });
+  };
+  setTask("Infusion Set 1", COL.infusionSet1, p.infusionSet1Index, p.infusionSet1);
+  setTask("Infusion Set 2", COL.infusionSet2, p.infusionSet2Index, p.infusionSet2);
   if (p.subscriptionTypeIndex !== null)
     tasks.push({ label: "Subscription Type", columnId: COL.subscriptionType, value: { index: p.subscriptionTypeIndex! }, fn: () => writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex!) });
   if (p.welcomeCallTextIndex !== null)
@@ -404,15 +460,20 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
   // Serving label does not support either.
   const pumpQtyToWrite = coercePumpQty(p.pumpQty, p.servingEdited ?? p.serving);
   if (pumpQtyToWrite !== "") tasks.push(writeNumber(p.id, COL.pumpQty, Number(pumpQtyToWrite)));
-  if (p.qtyInf1 !== "") tasks.push(writeNumber(p.id, COL.qtyInf1, Number(p.qtyInf1)));
-  if (p.qtyInf2 !== "") tasks.push(writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)));
+  // Always written, blank = clear — same contract as buildDataTasks above, and
+  // this writer must match it or the two send paths would disagree about
+  // whether a removed set is really removed.
+  tasks.push(writeNumber(p.id, COL.qtyInf1, blankOrNumber(p.qtyInf1)));
+  tasks.push(writeNumber(p.id, COL.qtyInf2, blankOrNumber(p.qtyInf2)));
   if (p.qtyCartridge !== "") tasks.push(writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)));
 
   // Infusion Sets + Subscription Type + Order Handling
-  if (p.infusionSet1Index !== null)
-    tasks.push(writeStatusIndex(p.id, COL.infusionSet1, p.infusionSet1Index));
-  if (p.infusionSet2Index !== null)
-    tasks.push(writeStatusIndex(p.id, COL.infusionSet2, p.infusionSet2Index));
+  // Same three-way rule as the send above — an unmappable label is skipped, not
+  // cleared. The two writers must agree about what a removal is.
+  if (infusionSetWriteAction(p.infusionSet1Index, p.infusionSet1) !== "skip")
+    tasks.push(writeStatusOrClear(p.id, COL.infusionSet1, p.infusionSet1Index));
+  if (infusionSetWriteAction(p.infusionSet2Index, p.infusionSet2) !== "skip")
+    tasks.push(writeStatusOrClear(p.id, COL.infusionSet2, p.infusionSet2Index));
   if (p.subscriptionTypeIndex !== null)
     tasks.push(writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex));
   if (p.orderHandlingIndex !== null)

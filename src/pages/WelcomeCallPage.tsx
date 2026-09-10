@@ -155,6 +155,29 @@ const WelcomeCallPage = () => {
     update(selected.id, { escalated: !selected.escalated });
   };
 
+  /**
+   * Reset = "discard my local edits and show me what Monday holds".
+   *
+   * ⚠️ It must NOT install blank overrides for a column the send writes
+   * UNCONDITIONALLY, because the overlay is merged over the board's values on
+   * every refetch and the writer cannot tell that blank from a rep deliberately
+   * removing something. `clearOverlay` above already reverts every field to the
+   * board — the explicit blanks below only exist to empty fields on SCREEN, and
+   * for an always-written column that emptiness reaches Monday as a clear.
+   *
+   * So the always-written product columns are deliberately absent here:
+   *   · Monitor Qty — `coerceMonitorQty("")` is "0", pushed on every send, so a
+   *     Reset followed by a Send used to overwrite a real monitor sale with 0.
+   *   · Infusion Set 1/2 + their quantities — always written from 2026-09-10 so
+   *     that REMOVING a set actually clears the board (Brandon's ask). Blanking
+   *     them here would make Reset wipe the patient's whole infusion order.
+   * Both now come back from the board on reset, which is what Reset means.
+   * `resetPatchIsSafe.test.ts` fails the build if one is added back.
+   *
+   * Pump Qty stays blanked: its write is still guarded (`pumpQtyToWrite !== ""`),
+   * so the blank never reaches Monday. Make that write unconditional and it has
+   * to leave this list too.
+   */
   const resetForNewPatient = () => {
     if (!selected) return;
     clearOverlay(selected.id);
@@ -170,18 +193,11 @@ const WelcomeCallPage = () => {
       secondaryInsuranceIndex: null,
       memberId2Edited: null,
       phoneEdited: null,
-      monitorQty: "",
       pumpQty: "",
       medicarePriorPumpDate: "",
       monitorPurchaseDate: "",
       sosNeverBilledMonitor: false,
       sosLastBillMonitor: "",
-      qtyInf1: "",
-      infusionSet1: "",
-      infusionSet1Index: null,
-      qtyInf2: "",
-      infusionSet2: "",
-      infusionSet2Index: null,
       subscriptionType: "",
       subscriptionTypeIndex: null,
       welcomeCallText: "",
