@@ -1,0 +1,102 @@
+/**
+ * System Management's tab strip — a source scan (the `listColumns.test.ts`
+ * convention).
+ *
+ * Two of these properties are load-bearing and neither fails loudly if it
+ * regresses:
+ *
+ *  · The **Communications hub must MOUNT ONLY on its own tab.** Every
+ *    RingCentral poll inside it is scoped to the mounted tab (§5.28, "only the
+ *    OPEN tab polls"), so a "simplification" to `hidden`/CSS toggling — or to
+ *    rendering it always and switching with `display` — would poll the shared
+ *    account from a screen nobody is looking at. That is INCIDENT_2026-08-20's
+ *    shape, and it would look like nothing at all on this page.
+ *  · **`?tab=escalations` must still resolve to a real tab.** The Escalations
+ *    tab is commented out, not deleted, so a stale bookmark or a Back into that
+ *    URL would otherwise select a tab with no button and no body — a blank
+ *    screen with no way out.
+ */
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const page = readFileSync(join(process.cwd(), "src/pages/SystemMgmtPage.tsx"), "utf8");
+const hub = readFileSync(join(process.cwd(), "src/pages/AssignedPatientsPage.tsx"), "utf8");
+
+/**
+ * The source with every comment removed.
+ *
+ * ⚠️ Required, and the reason is the point of this whole file: the Escalations
+ * tab is COMMENTED OUT rather than deleted, so a raw scan finds its markup and
+ * cannot tell "still shipping" from "kept for the day it comes back". Only the
+ * comment-free source answers "is this rendered".
+ */
+const live = (src: string) =>
+  src.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+const livePage = live(page);
+
+describe("the Communications tab", () => {
+  it("is in the strip", () => {
+    expect(page).toContain('selectTab("communications")');
+    expect(page).toContain('label="Communications"');
+  });
+
+  it("mounts the hub CONDITIONALLY, never hidden", () => {
+    expect(livePage).toContain('{activeTab === "communications" && (');
+    expect(livePage).toContain("<CommsHub embedded />");
+    // If this ever becomes a `hidden` prop or a `display:none` class, the hub
+    // keeps polling RingCentral from an unopened tab.
+    expect(page).not.toMatch(/<CommsHub[^>]*hidden/);
+  });
+
+  it("keeps the rest of the page off the hub's tab", () => {
+    // The hub owns a three-pane full-height layout; <main>'s scrolling
+    // max-width column would squash it.
+    expect(page).toContain('{activeTab !== "communications" && (');
+  });
+
+  it("loads the hub lazily, through the chunk-reload wrapper (§9)", () => {
+    expect(page).toContain('const CommsHub = lazyWithReload(() => import("./AssignedPatientsPage"))');
+  });
+});
+
+describe("embedding the hub", () => {
+  it("is opt-in and defaults to the standalone page", () => {
+    expect(hub).toContain("embedded = false");
+  });
+
+  it("KEEPS the dialer and the ring-settings bell", () => {
+    // These are the only way to call an arbitrary number and the only way to
+    // change which calls ring you — dropping the header wholesale would lose
+    // both with nothing saying so.
+    expect(hub).toContain('aria-label="Call any number"');
+    expect(hub).toContain("setRingSettings(true)");
+  });
+
+  it("stops claiming the viewport height when embedded", () => {
+    expect(hub).toContain('embedded ? "min-h-0 flex-1" : "h-screen bg-gradient-subtle"');
+  });
+});
+
+describe("the Escalations tab is commented out, not deleted", () => {
+  it("has no button and no live body", () => {
+    expect(livePage).not.toContain('selectTab("escalations")');
+    expect(livePage).not.toContain("<EscalationView");
+    // …and the chip that reported a count this page can no longer show.
+    expect(livePage).not.toContain("Escalation{escalated.length !== 1");
+  });
+
+  it("sends an old ?tab=escalations link somewhere real", () => {
+    // Absent from the initialTab chain ⇒ it falls through to "search".
+    const chain = livePage.slice(livePage.indexOf("const initialTab"), livePage.indexOf("const [activeTab"));
+    expect(chain).not.toContain('"escalations"');
+  });
+
+  it("keeps everything needed to put it back", () => {
+    // The union member, the view, the fetch and the removal handler all stay,
+    // so restoring the tab is uncommenting two blocks.
+    expect(page).toContain('| "escalations" |');
+    expect(page).toContain("EscalationView");
+    expect(page).toContain("handleRemoveEscalation");
+  });
+});

@@ -7,7 +7,7 @@
  * (D) Escalation panel shows all escalated profiles grouped by stage
  * (E) Remove-escalation button per patient
  */
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, Suspense } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   useSystemPatients,
@@ -30,10 +30,16 @@ import {
 } from "@/lib/systemMgmt/escalationDetail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { lazyWithReload } from "@/lib/shared/chunkReload";
 import { cn } from "@/lib/utils";
+/** ⚠️ LAZY, and through `lazyWithReload` like every other route-sized chunk
+ *  (§9): the hub pulls in the whole RingCentral/messaging surface, and System
+ *  Management should not pay for it on a tab nobody opened. */
+const CommsHub = lazyWithReload(() => import("./AssignedPatientsPage"));
 import {
   Search,
   AlertTriangle,
+  MessageSquare,
   ArrowLeft,
   RotateCcw,
   Settings2,
@@ -66,7 +72,13 @@ import {
 import { rowIsWorkable, searchOpenUrl, workableFirst } from "@/lib/systemMgmt/searchOpen";
 import { boardStageLabel, boardTone } from "@/lib/systemMgmt/boardTone";
 
-type Tab = "search" | "escalations" | "operations" | "stageManager" | "oversight";
+/**
+ * ⚠️ `escalations` is COMMENTED OUT of the tab strip and the body (Josh,
+ * 2026-09-10), not deleted — the fetch, `removeEscalation`, the detail modal
+ * and this union member all stay, so putting it back is uncommenting two
+ * blocks. See the two `escalations` markers below.
+ */
+type Tab = "search" | "escalations" | "communications" | "operations" | "stageManager" | "oversight";
 
 const SystemMgmtPage = () => {
   const navigate = useNavigate();
@@ -84,7 +96,16 @@ const SystemMgmtPage = () => {
     useSystemPatients();
 
   const tabParam = searchParams.get("tab");
-  const initialTab: Tab = tabParam === "escalations" ? "escalations" : tabParam === "operations" ? "operations" : tabParam === "stageManager" ? "stageManager" : tabParam === "oversight" ? "oversight" : "search";
+  // ⚠️ `escalations` deliberately falls through to Search while the tab is
+  // commented out: an old bookmark or a Back into `?tab=escalations` would
+  // otherwise land on a tab with no button and no body — a blank page with no
+  // way out.
+  const initialTab: Tab =
+    tabParam === "communications" ? "communications"
+    : tabParam === "operations" ? "operations"
+    : tabParam === "stageManager" ? "stageManager"
+    : tabParam === "oversight" ? "oversight"
+    : "search";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   /** Switch tab AND mirror it into the URL (replace, no history entry) so
@@ -296,12 +317,19 @@ const SystemMgmtPage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* ── the escalation count — commented out with its tab, 2026-09-10.
+                It was never clickable, so with the Escalations tab gone it
+                advertises a number this page can no longer show anybody: the
+                §7 stranded-row complaint in chip form. Escalations are worked
+                in Oversight's manager columns. Uncomment with the tab.
+
             {escalated.length > 0 && (
               <div className="flex items-center gap-1.5 bg-red-500/20 text-red-200 px-3 py-1.5 rounded-full text-xs font-semibold">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 {escalated.length} Escalation{escalated.length !== 1 ? "s" : ""}
               </div>
             )}
+                ── */}
             <Button
               onClick={handleRefresh}
               disabled={refreshing}
@@ -320,12 +348,20 @@ const SystemMgmtPage = () => {
             icon={<Search className="w-4 h-4" />}
             label="Search"
           />
+          {/* ── escalations — commented out 2026-09-10, see the Tab type ──
           <TabBtn
             active={activeTab === "escalations"}
             onClick={() => selectTab("escalations")}
             icon={<AlertTriangle className="w-4 h-4" />}
             label={`Escalations${escalated.length ? ` (${escalated.length})` : ""}`}
             alert={escalated.length > 0}
+          />
+          ── */}
+          <TabBtn
+            active={activeTab === "communications"}
+            onClick={() => selectTab("communications")}
+            icon={<MessageSquare className="w-4 h-4" />}
+            label="Communications"
           />
           <TabBtn
             active={activeTab === "stageManager"}
@@ -348,7 +384,21 @@ const SystemMgmtPage = () => {
         </div>
       </header>
 
+      {/* ── Communications ──────────────────────────────────────────────
+          The hub owns its own three-pane layout and needs a real height, so it
+          renders as a flex CHILD of the page shell rather than inside <main>'s
+          scrolling, max-width column — the same reason Oversight widens to
+          max-w-full, one step further.
+          ⚠️ Conditional, never hidden: unmounting is what stops its RingCentral
+          polls when another tab is open (§5.28). */}
+      {activeTab === "communications" && (
+        <Suspense fallback={<div className="flex-1 p-8 text-sm text-muted-foreground">Loading Communications…</div>}>
+          <CommsHub embedded />
+        </Suspense>
+      )}
+
       {/* Content */}
+      {activeTab !== "communications" && (
       <main className={cn("flex-1 px-3 sm:px-6 py-6 overflow-y-auto transition-[margin] duration-300", notesPatient ? "mr-[400px]" : "mr-0")}>
         <div className={cn("mx-auto", activeTab === "oversight" ? "max-w-full" : "max-w-4xl xl:max-w-6xl 2xl:max-w-[1800px]")}>
           {/* ⚠️ Search is exempt from both gates. The snapshot below takes
@@ -365,7 +415,7 @@ const SystemMgmtPage = () => {
             <OperationsTab />
           ) : activeTab === "oversight" ? (
             <OversightTab />
-          ) : activeTab === "search" ? (
+          ) : (
             <SearchView
               query={query}
               onQueryChange={handleQueryChange}
@@ -398,7 +448,15 @@ const SystemMgmtPage = () => {
               stageFilter={stageFilter}
               onClearStageFilter={() => setStageFilter(null)}
             />
-          ) : (
+          )}
+          {/* ── escalations body — commented out 2026-09-10 with its tab.
+              Search is the fallback branch now, which is why `initialTab` also
+              sends `?tab=escalations` there: neither a stale bookmark nor a
+              Back can land on an empty screen.
+              `EscalationView`, `escalatedByStage`, `handleRemoveEscalation`
+              and `EscalationDetailModal` are all still here and still wired —
+              putting the tab back is uncommenting this and the TabBtn above.
+
             <EscalationView
               escalatedByStage={escalatedByStage}
               onPatientClick={handlePatientClick}
@@ -406,16 +464,13 @@ const SystemMgmtPage = () => {
               removingId={removingId}
               completionMap={completionMap}
               onCompletedStageClick={handleCompletedStageClick}
-              // One modal for every stage: it shows the Propose Stuck reason,
-              // the manager decisions AND the attempt log, so Chase / Confirm
-              // Receipt no longer need a separate attempt-only view that hid
-              // the stated reason from them.
               onViewDetails={setDetailPatient}
               onMarkStuck={(p) => setStuckConfirmPatient(p)}
             />
-          )}
+          ── */}
         </div>
       </main>
+      )}
     </div>
     <EscalationDetailModal
       open={!!detailPatient}

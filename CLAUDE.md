@@ -3678,6 +3678,33 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   ⚠️ The retired **`EscalationFormModal`** is commented out on the four ME pages but **still live
   on `WelcomeCallPage` + `FinalConfirmPage`**, so those two stages can still write the dead column.
   Left in place (Josh, 2026-08-14) pending a Propose Stuck equivalent for Welcome Call.
+- **Communications is a System Management TAB** (Josh, 2026-09-10) — the same
+  `AssignedPatientsPage` hub as `/assigned-patients` (§5.28), rendered with an
+  **`embedded`** prop. That prop drops only this page's own navy header (back
+  button, title) because the host already has one, and stops it claiming
+  `h-screen` because the host owns the layout. ⚠️ It **keeps the dialer and the
+  ring-settings bell** on a plain strip: those are the only way to call an
+  arbitrary number and the only way to change which calls ring you, so dropping
+  the header wholesale would lose both silently.
+  ⚠️ **Mounted CONDITIONALLY, never hidden.** Every RingCentral poll in the hub
+  is scoped to its mounted tab (§5.28's "only the OPEN tab polls"), so a
+  `hidden`/`display:none` toggle would poll the shared account from a screen
+  nobody is looking at — INCIDENT_2026-08-20's shape, and invisible on this page.
+  ⚠️ It renders as a flex CHILD of the page shell, outside `<main>`'s scrolling
+  max-width column (the same reason Oversight widens to `max-w-full`, one step
+  further), and is `lazyWithReload`-imported so the tab nobody opened costs
+  nothing. `systemMgmtTabs.test.ts` scans for all of it — verified to fail when
+  the conditional mount is replaced by an always-render.
+- ⚠️ **The Escalations tab is COMMENTED OUT, not deleted** (Josh, 2026-09-10) —
+  the `TabBtn`, the `EscalationView` body and the header's escalation-count chip.
+  Everything behind them stays wired (`useSystemPatients`' `escalated`,
+  `removeEscalation`, `EscalationDetailModal`, the `Tab` union member), so
+  restoring it is uncommenting two blocks. The chip went with the tab because it
+  was never clickable: with no tab to open, it advertises a number this page can
+  no longer show anybody. Escalations are worked in **Oversight's manager
+  columns** (§7). ⚠️ `?tab=escalations` deliberately falls through to **Search**
+  — a stale bookmark or a Back into that URL would otherwise select a tab with
+  no button and no body, i.e. a blank screen with no way out.
 - **Patient Questions** (`/patient-questions`) is an inbox merging "patient message" columns from
   the Subscription + Secondary Claims boards. **Mark completed** stamps a "Question Handled At"
   date column (Subscription `date_mm57yzmb`, Claims `date_mm57skrd`); an item shows only while
@@ -4224,6 +4251,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
 | A Search row opens the wrong screen, or a different one from Oversight | §7 — `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` is the one rule; it must send the same `?mv=` / `manager` / `escalated` params `OversightTab.handlePatientClick` sends |
+| The Escalations tab is missing from System Management | §7 — commented out 2026-09-10 with its header count chip, not deleted; `?tab=escalations` falls through to Search on purpose. Uncomment the `TabBtn` and the `EscalationView` block in `SystemMgmtPage.tsx`. Escalations are worked in Oversight's manager columns meanwhile |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---

@@ -91,7 +91,23 @@ const TABS: { id: HubTab; label: string; Icon: typeof Phone }[] = [
   { id: "fax", label: "Fax", Icon: Printer },
 ];
 
-export default function AssignedPatientsPage() {
+/**
+ * @param embedded  Rendered INSIDE another page's chrome — System Management's
+ *   Communications tab. It drops this page's own navy header (back button,
+ *   title) because the host already has one, and stops claiming the viewport
+ *   height, since the host owns the layout.
+ *
+ *   ⚠️ The dialer and the ring-settings bell are NOT chrome — they are the only
+ *   way to call an arbitrary number and the only way to change which calls ring
+ *   you. Embedding keeps both, on a plain strip instead of the navy bar, rather
+ *   than dropping the header wholesale and losing them.
+ *
+ *   ⚠️ The host must render this CONDITIONALLY, not hidden behind CSS: every
+ *   RingCentral poll in here is scoped to the mounted tab (§5.28, "only the OPEN
+ *   tab polls"), so a hidden-but-mounted copy would poll the shared account
+ *   from a screen nobody is looking at — INCIDENT_2026-08-20's shape.
+ */
+export default function AssignedPatientsPage({ embedded = false }: { embedded?: boolean } = {}) {
   // Back is HISTORY-FIRST via the shared hook (CLAUDE.md §9) — do not swap it
   // for a hardcoded route.
   const { goBack } = useBackNavigation();
@@ -543,21 +559,37 @@ export default function AssignedPatientsPage() {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col bg-gradient-subtle">
-      <header className="shrink-0 border-b border-sidebar-border bg-gradient-navy text-navy-foreground">
-        <div className="flex items-center gap-3 px-4 py-4 sm:px-6">
-          <button onClick={goBack} className="rounded-md p-1.5 transition-colors hover:bg-white/10" title="Back">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-primary shadow-elevate">
-            <MessageSquare className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · RingCentral</p>
-            <h1 className="truncate text-xl font-bold">Communications</h1>
-          </div>
+    <div className={cn(
+      "flex flex-col",
+      // Standalone owns the viewport; embedded fills whatever the host gave it.
+      embedded ? "min-h-0 flex-1" : "h-screen bg-gradient-subtle",
+    )}>
+      <header className={cn(
+        "shrink-0 border-b",
+        embedded
+          ? "border-border bg-card"
+          : "border-sidebar-border bg-gradient-navy text-navy-foreground",
+      )}>
+        <div className={cn("flex items-center gap-3 px-4 sm:px-6", embedded ? "py-2" : "py-4")}>
+          {!embedded && (
+            <>
+              <button onClick={goBack} className="rounded-md p-1.5 transition-colors hover:bg-white/10" title="Back">
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-primary shadow-elevate">
+                <MessageSquare className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · RingCentral</p>
+                <h1 className="truncate text-xl font-bold">Communications</h1>
+              </div>
+            </>
+          )}
 
-          <div className="mx-auto flex items-center gap-2 rounded-xl bg-white/10 p-1.5 ring-1 ring-white/20">
+          <div className={cn(
+            "mx-auto flex items-center gap-2 rounded-xl p-1.5 ring-1",
+            embedded ? "ring-border" : "bg-white/10 ring-white/20",
+          )}>
             <div className="relative">
               <Phone className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-400" />
               <input
@@ -568,7 +600,10 @@ export default function AssignedPatientsPage() {
                 }}
                 placeholder="Call any number…"
                 aria-label="Call any number"
-                className="w-56 rounded-lg bg-white py-2 pl-8 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-emerald-400"
+                className={cn(
+                  "w-56 rounded-lg py-2 pl-8 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-emerald-400",
+                  embedded ? "border bg-background" : "bg-white",
+                )}
               />
             </div>
             <button
@@ -584,7 +619,10 @@ export default function AssignedPatientsPage() {
           <button
             onClick={() => setRingSettings(true)}
             title="Which calls ring me"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-white/10"
+            className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors",
+              embedded ? "hover:bg-accent" : "hover:bg-white/10",
+            )}
           >
             <BellRing className="h-4 w-4" />
           </button>
