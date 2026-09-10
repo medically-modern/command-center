@@ -713,6 +713,28 @@ describe("Welcome Call send — task.value matches task.fn", () => {
   });
 
   /**
+   * ⚠️ A null index beside a LIVE LABEL is a bad read, not a removal.
+   *
+   * `mondayMapping` derives the label from `text` and the index from
+   * `JSON.parse(value).index` independently, and that parse returns null on any
+   * failure — so a set really on the board can arrive index-less. Clearing there
+   * destroys a live selection and the send reports success.
+   */
+  it("SKIPS an infusion set whose index did not map but whose label survives", async () => {
+    const { sendPatientToMonday } = await import("../welcomeCall/mondayWrite");
+    await sendPatientToMonday(
+      welcomeCallPatient({
+        infusionSet1: "AutoSoft 90 6mm", infusionSet1Index: null, qtyInf1: "3",
+      }) as never,
+    );
+    const set1 = captured[0].tasks.find((t) => t.label === "Infusion Set 1");
+    expect(
+      set1,
+      "a set we failed to read must not be written at all — clearing it would destroy a real selection",
+    ).toBeUndefined();
+  });
+
+  /**
    * ⚠️ The other half of the same rule: a blank must never become a ZERO.
    * `Number("")` is 0, so routing the blank through `Number()` writes a real
    * quantity and reports success — and 0 is not a clear. This board depends on

@@ -6,6 +6,7 @@ import { appendStampedNote } from "@/lib/shared/noteStamp";
 import { assertTextLikeFits } from "../shared/longText";
 import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
+import { infusionSetWriteAction } from "./infusionSelection";
 import { coercePumpQty } from "@/lib/shared/servingLines";
 // ⚠️ The next-order default must compute from the SAME date the card shows —
 // see shared/lastBillDate.ts for why one column alone reads blank.
@@ -268,12 +269,27 @@ export async function sendPatientToMonday(
   // eligible, so writing unconditionally is what clears the board cell.
   tasks.push({ label: "Monitor Purchase Date", columnId: COL.monitorPurchaseDate, value: p.monitorPurchaseDate, fn: () => writeText(p.id, COL.monitorPurchaseDate, p.monitorPurchaseDate) });
 
-  // Always written, null included — the set column goes with its quantity, never
-  // one without the other. See the quantities above for why. A null declares
-  // `""` rather than `{index: null}`, because `""` is what `writeStatusIndex`
-  // sends for a clear and the gateway's fast path forwards the DECLARED value.
-  tasks.push({ label: "Infusion Set 1", columnId: COL.infusionSet1, value: statusValue(p.infusionSet1Index), fn: () => writeStatusOrClear(p.id, COL.infusionSet1, p.infusionSet1Index) });
-  tasks.push({ label: "Infusion Set 2", columnId: COL.infusionSet2, value: statusValue(p.infusionSet2Index), fn: () => writeStatusOrClear(p.id, COL.infusionSet2, p.infusionSet2Index) });
+  // The set column goes with its quantity, never one without the other — see the
+  // quantities above for why an emptied slot must reach the board.
+  // ⚠️ But an emptied slot and a slot we FAILED TO READ look identical from the
+  // index alone, so `infusionSetWriteAction` reads the label too: a null index
+  // beside a live label is a bad read, and clearing there would destroy a real
+  // selection. It returns "skip" and no task is pushed at all.
+  const setTask = (label: string, columnId: string, index: number | null, boardLabel: string) => {
+    const action = infusionSetWriteAction(index, boardLabel);
+    if (action === "skip") return;
+    tasks.push({
+      label,
+      columnId,
+      // `{}` is Monday's clear for a status column, and the DECLARED value has
+      // to be what `fn` sends or the gateway's durable fast path forwards
+      // something the client path does not (§5.2).
+      value: action === "clear" ? {} : { index: index! },
+      fn: () => writeStatusOrClear(p.id, columnId, action === "clear" ? null : index!),
+    });
+  };
+  setTask("Infusion Set 1", COL.infusionSet1, p.infusionSet1Index, p.infusionSet1);
+  setTask("Infusion Set 2", COL.infusionSet2, p.infusionSet2Index, p.infusionSet2);
   if (p.subscriptionTypeIndex !== null)
     tasks.push({ label: "Subscription Type", columnId: COL.subscriptionType, value: { index: p.subscriptionTypeIndex! }, fn: () => writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex!) });
   if (p.welcomeCallTextIndex !== null)
@@ -452,8 +468,12 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
   if (p.qtyCartridge !== "") tasks.push(writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)));
 
   // Infusion Sets + Subscription Type + Order Handling
-  tasks.push(writeStatusOrClear(p.id, COL.infusionSet1, p.infusionSet1Index));
-  tasks.push(writeStatusOrClear(p.id, COL.infusionSet2, p.infusionSet2Index));
+  // Same three-way rule as the send above — an unmappable label is skipped, not
+  // cleared. The two writers must agree about what a removal is.
+  if (infusionSetWriteAction(p.infusionSet1Index, p.infusionSet1) !== "skip")
+    tasks.push(writeStatusOrClear(p.id, COL.infusionSet1, p.infusionSet1Index));
+  if (infusionSetWriteAction(p.infusionSet2Index, p.infusionSet2) !== "skip")
+    tasks.push(writeStatusOrClear(p.id, COL.infusionSet2, p.infusionSet2Index));
   if (p.subscriptionTypeIndex !== null)
     tasks.push(writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex));
   if (p.orderHandlingIndex !== null)

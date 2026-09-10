@@ -2788,6 +2788,16 @@ invalidated it.
   unreadable value) and never `""` — `writeStatusOrClear` already owned that and is what these
   call; the declared WriteTask `value` is `{}` to match, or the gateway's durable fast path would
   send something the client path does not (§5.2).
+- ⚠️ **An UNMAPPABLE label is a THIRD answer — `skip`, not a clear.** `mondayMapping` derives a
+  set's label from the column's `text` and its index from `JSON.parse(value).index`
+  **independently**, and that parse returns null on any failure — so a set genuinely on the board
+  can arrive with a null index beside a live label. Clearing on that basis destroys a real
+  selection on the strength of a read that failed, and the send reports success. A null index with
+  a NON-EMPTY label is therefore skipped entirely: the surviving label IS the evidence there is
+  something to keep. `infusionSelection.infusionSetWriteAction` owns the rule and both writers use
+  it, because the two must agree about what counts as a removal. Same principle as the patient
+  directory's `isOrphanRow` and the pending-advance rule — act on positive evidence, and let a
+  thing we failed to read mean nothing at all.
 - ⚠️ **Nothing on this board gates on the infusion columns** — checked every condition block on
   every Welcome Call automation, 2026-09-10 — which is what makes a true blank safe here, unlike
   Monitor Qty. Re-run that check before changing what these four write.
