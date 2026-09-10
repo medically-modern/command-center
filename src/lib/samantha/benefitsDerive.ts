@@ -120,6 +120,42 @@ export function sosLookbackLabel(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Payers that check Same-or-Similar even when an auth is required
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ **Auth = Required normally DEFERS the Same-or-Similar check — for
+ * Humana it does not** (Brandon, 2026-09-10: *"even if an auth is required,
+ * we still need to do same or similar check … but for humana only"*).
+ *
+ * Everywhere else `derivedSos` returns "skip" the moment the rep answers
+ * Auth = Required: the product lands in the Skip SoS Products dropdown and
+ * the check is re-asked at Auth Outstanding, but only if that auth comes
+ * back "No Auth Needed" (authOutstandingReview.trackedCards). A Humana
+ * patient's auth essentially never comes back that way — measured on the
+ * live board 2026-09-10, **29 of the 33 worked Humana items read
+ * `Auths Required` + `SoS = Skip`** — so for that payer the deferral was
+ * not a deferral, it was a check that never happened.
+ *
+ * Keyed on PRIMARY insurance only, and that is complete rather than a
+ * narrowing: the Insurance board's Secondary Insurance column
+ * (`color_mm241kqp`) has exactly three live labels — None · NY Medicaid ·
+ * Medicare Supplement — so Humana cannot be a secondary here.
+ *
+ * ⚠️ Matched as a PREFIX, not the exact label. Today the board carries one
+ * Humana label and the two are identical (`color_mm1x157j`, verified
+ * 2026-09-10), so this only differs if a "Humana Medicare" / "Humana Gold
+ * Plus" label is ever added — and the safe direction is to KEEP CHECKING.
+ * An over-broad match asks a rep to record a fact they can record; an
+ * under-broad one silently restores the bug this exists to fix. That is the
+ * opposite call from `deriveNeverBilled`, whose exact `"Medicare A&B"` gate
+ * is deliberate because other Medicare plans genuinely do NOT qualify.
+ */
+export function sosRequiredDespiteAuth(primaryInsurance: string | null | undefined): boolean {
+  return /^humana\b/i.test((primaryInsurance ?? "").trim());
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Derived Same-or-Similar (spec §1)
 // ─────────────────────────────────────────────────────────────────────
 
@@ -128,6 +164,9 @@ export function sosLookbackLabel(
  *
  *   Auth = Required          → "skip"  (deferred until the auth resolves;
  *                                        any entered date/units are ignored)
+ *                                       — UNLESS `sosDespiteAuth`, in which
+ *                                        case the rows below decide as normal
+ *                                        (Humana; sosRequiredDespiteAuth).
  *   No Billing History       → "clear"
  *   Billed, date < cutoff    → "clear"
  *   Billed, date ≥ cutoff    → "not-clear"  (a bill exactly ON the cutoff
@@ -140,8 +179,14 @@ export function derivedSos(
   hasMedicaid: boolean,
   todayYmd: string = etTodayYmd(),
   isMedicare = false,
+  /** This patient's payer checks SoS even with an auth required — pass
+   *  `sosRequiredDespiteAuth(primaryInsurance)`. Trailing-optional and
+   *  defaulting false, like `isMedicare`: both call sites (the preview
+   *  below and `samantha/mondayWrite`) derive it from the same primary
+   *  insurance they already read. */
+  sosDespiteAuth = false,
 ): SosChoice {
-  if (state?.auth === "required") return "skip";
+  if (state?.auth === "required" && !sosDespiteAuth) return "skip";
   if (state?.sosEntry === "never") return "clear";
   if (state?.sosEntry === "billed" && state.lastBillDate) {
     return state.lastBillDate < sosCutoffYmd(codeId, hasMedicaid, todayYmd, isMedicare)
@@ -160,12 +205,23 @@ export function isValidUnits(units: string | undefined): boolean {
 
 /**
  * Is this product's SoS entry complete?
- *   Auth = Required → true (deferred, nothing to fill)
+ *   Auth = Required → true (deferred, nothing to fill) — unless
+ *                     `sosDespiteAuth`, where the entry is still required
  *   Never billed    → true
  *   Billed          → needs BOTH a date and valid units
+ *
+ * ⚠️ `sosDespiteAuth` is REQUIRED, unlike `derivedSos`'s trailing-optional
+ * twin — this one is read by the Benefits UI as well as the send gate, and a
+ * silent `false` default there would leave a Humana card showing "✓ Done"
+ * while `validateBenefitsFactsForSubmit` held the Send button shut with no
+ * stated reason. Making tsc name every call site is the same reasoning
+ * `SupplyLengthField`'s required `options` prop carries (CLAUDE.md §5.31).
  */
-export function sosEntryComplete(state: ProductCodeState | undefined): boolean {
-  if (state?.auth === "required") return true;
+export function sosEntryComplete(
+  state: ProductCodeState | undefined,
+  sosDespiteAuth: boolean,
+): boolean {
+  if (state?.auth === "required" && !sosDespiteAuth) return true;
   if (state?.sosEntry === "never") return true;
   if (state?.sosEntry === "billed") return !!state.lastBillDate && isValidUnits(state.units);
   return false;
@@ -323,10 +379,13 @@ export function validateBenefitsFactsForSubmit(patient: Patient): string[] {
     patient.serving || null,
     patient.secondaryInsurance ?? null,
   );
+  // Humana still owes a Same-or-Similar entry with the auth required, so the
+  // gate asks for it there (sosRequiredDespiteAuth).
+  const sosDespiteAuth = sosRequiredDespiteAuth(patient.primaryInsurance);
   for (const r of resolved.filter((x) => !isAutoFilledMedicaidSupply(x))) {
     const state = ins.codes[PRODUCT_TO_CODE_ID[r.product]];
     if (!state?.auth) missing.push(`${r.hcpc} · Auth Requirements`);
-    else if (!sosEntryComplete(state)) {
+    else if (!sosEntryComplete(state, sosDespiteAuth)) {
       missing.push(`${r.hcpc} · Last Bill Date + Units, or No Billing History`);
     }
   }
@@ -468,6 +527,8 @@ export function deriveBenefitsPreview(
   const hasMedicaid = patientHasMedicaidIns(primary, secondary);
   // Medicare A&B primary → 5-year RUL for pump/CGM monitor same-or-similar.
   const isMedicare = isMedicarePrimary(primary);
+  // Humana → Auth = Required does NOT defer the SoS check.
+  const sosDespiteAuth = sosRequiredDespiteAuth(primary);
 
   const resolved = resolveHcpcs(primary || null, patient.serving || null, secondary || null);
 
@@ -491,8 +552,8 @@ export function deriveBenefitsPreview(
       cid,
       product: r.product,
       auth: state?.auth ?? "",
-      sos: derivedSos(state, cid, hasMedicaid, todayYmd, isMedicare),
-      complete: !!state?.auth && sosEntryComplete(state),
+      sos: derivedSos(state, cid, hasMedicaid, todayYmd, isMedicare, sosDespiteAuth),
+      complete: !!state?.auth && sosEntryComplete(state, sosDespiteAuth),
       hidden: false,
     };
   });

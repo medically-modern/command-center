@@ -15,6 +15,7 @@ import {
   sosCutoffYmd,
   sosEntryComplete,
   sosLookbackDays,
+  sosRequiredDespiteAuth,
   universalEscalationLevel,
   validateBenefitsFactsForSubmit,
 } from "./benefitsDerive";
@@ -96,7 +97,7 @@ describe("lookback windows (spec §1)", () => {
 });
 
 describe("derivedSos (spec §1) — the rep never picks Clear/Not Clear/Skip", () => {
-  it("Auth = Required derives Skip unconditionally, ignoring entered facts", () => {
+  it("Auth = Required derives Skip for an ordinary payer, ignoring entered facts", () => {
     expect(derivedSos(state({ auth: "required" }), "pump", false, TODAY)).toBe("skip");
     expect(
       derivedSos(
@@ -161,15 +162,174 @@ describe("sosEntryComplete — units must be a positive whole number", () => {
     expect(isValidUnits(undefined)).toBe(false);
   });
   it("billed entries need BOTH date and valid units", () => {
-    expect(sosEntryComplete(state({ sosEntry: "billed", lastBillDate: "2026-01-01", units: "2" }))).toBe(true);
-    expect(sosEntryComplete(state({ sosEntry: "billed", lastBillDate: "2026-01-01" }))).toBe(false);
-    expect(sosEntryComplete(state({ sosEntry: "billed", units: "2" }))).toBe(false);
-    expect(sosEntryComplete(state({ sosEntry: "billed", lastBillDate: "2026-01-01", units: "-1" }))).toBe(false);
+    expect(sosEntryComplete(state({ sosEntry: "billed", lastBillDate: "2026-01-01", units: "2" }), false)).toBe(true);
+    expect(sosEntryComplete(state({ sosEntry: "billed", lastBillDate: "2026-01-01" }), false)).toBe(false);
+    expect(sosEntryComplete(state({ sosEntry: "billed", units: "2" }), false)).toBe(false);
+    expect(sosEntryComplete(state({ sosEntry: "billed", lastBillDate: "2026-01-01", units: "-1" }), false)).toBe(false);
   });
   it("never-billed and auth-required entries are complete", () => {
-    expect(sosEntryComplete(state({ sosEntry: "never" }))).toBe(true);
-    expect(sosEntryComplete(state({ auth: "required" }))).toBe(true);
-    expect(sosEntryComplete(state({}))).toBe(false);
+    expect(sosEntryComplete(state({ sosEntry: "never" }), false)).toBe(true);
+    expect(sosEntryComplete(state({ auth: "required" }), false)).toBe(true);
+    expect(sosEntryComplete(state({}), false)).toBe(false);
+  });
+});
+
+describe("Humana still checks Same-or-Similar with an auth required (Brandon, 2026-09-10)", () => {
+  it("names Humana and nothing else on the live Primary Insurance vocabulary", () => {
+    expect(sosRequiredDespiteAuth("Humana")).toBe(true);
+    // Every other label on Insurance color_mm1x157j, read off the live board 2026-09-10.
+    for (const other of [
+      "Medicare A&B", "Medicaid", "NYSHIP", "Cigna", "Wellcare", "Midlands Choice",
+      "Magnacare", "MagnaCare", "Oregon Care", "UMR", "Horizon BCBS",
+      "BCBS TN", "BCBS FL", "BCBS WY",
+      "United Commercial", "United Medicare", "United Medicaid", "United Low-Cost",
+      "Aetna Commercial", "Aetna Medicare",
+      "Fidelis Commercial", "Fidelis Medicaid", "Fidelis Medicare", "Fidelis Low-Cost", "Fidelis CHP",
+      "Anthem BCBS Commercial", "Anthem BCBS Medicare", "Anthem BCBS Medicaid (JLJ)",
+      "Anthem BCBS Low-Cost (JLJ)",
+    ]) {
+      expect(sosRequiredDespiteAuth(other)).toBe(false);
+    }
+  });
+  it("tolerates casing and stray whitespace, and treats absence as not-Humana", () => {
+    expect(sosRequiredDespiteAuth("  humana ")).toBe(true);
+    expect(sosRequiredDespiteAuth("HUMANA")).toBe(true);
+    expect(sosRequiredDespiteAuth("")).toBe(false);
+    expect(sosRequiredDespiteAuth(null)).toBe(false);
+    expect(sosRequiredDespiteAuth(undefined)).toBe(false);
+  });
+  it("matches a future Humana plan label as a PREFIX — the safe direction is to keep checking", () => {
+    expect(sosRequiredDespiteAuth("Humana Gold Plus")).toBe(true);
+    expect(sosRequiredDespiteAuth("Humana Medicare")).toBe(true);
+    // ...but only on a word boundary, so an unrelated payer can't be swept in.
+    expect(sosRequiredDespiteAuth("Humanacare")).toBe(false);
+  });
+
+  it("derivedSos reads the recorded facts instead of returning Skip", () => {
+    const billedRecently = state({
+      auth: "required", sosEntry: "billed", lastBillDate: "2026-07-01", units: "3",
+    });
+    const billedLongAgo = state({
+      auth: "required", sosEntry: "billed", lastBillDate: "2026-01-01", units: "3",
+    });
+    const neverBilled = state({ auth: "required", sosEntry: "never" });
+
+    // Ordinary payer: all three are Skip, the facts ignored.
+    expect(derivedSos(billedRecently, "cgm-sensors", false, TODAY, false, false)).toBe("skip");
+    expect(derivedSos(neverBilled, "cgm-sensors", false, TODAY, false, false)).toBe("skip");
+
+    // Humana: the same three derive real verdicts.
+    expect(derivedSos(billedRecently, "cgm-sensors", false, TODAY, false, true)).toBe("not-clear");
+    expect(derivedSos(billedLongAgo, "cgm-sensors", false, TODAY, false, true)).toBe("clear");
+    expect(derivedSos(neverBilled, "cgm-sensors", false, TODAY, false, true)).toBe("clear");
+  });
+  it("an auth-required Humana product with NO entry is incomplete, never Skip", () => {
+    // The distinction matters: "" holds the stage (deriveInsuranceOutcome reads it
+    // as incomplete), where "skip" would have advanced the patient unchecked.
+    expect(derivedSos(state({ auth: "required" }), "cgm-sensors", false, TODAY, false, true)).toBe("");
+    expect(derivedSos(state({ auth: "required" }), "cgm-sensors", false, TODAY, false, false)).toBe("skip");
+  });
+  it("sosEntryComplete stops auto-completing an auth-required product", () => {
+    expect(sosEntryComplete(state({ auth: "required" }), true)).toBe(false);
+    expect(sosEntryComplete(state({ auth: "required", sosEntry: "never" }), true)).toBe(true);
+    expect(
+      sosEntryComplete(
+        state({ auth: "required", sosEntry: "billed", lastBillDate: "2026-01-01", units: "3" }),
+        true,
+      ),
+    ).toBe(true);
+    // A billed entry still needs its units, exactly as on any other payer.
+    expect(
+      sosEntryComplete(state({ auth: "required", sosEntry: "billed", lastBillDate: "2026-01-01" }), true),
+    ).toBe(false);
+  });
+
+  const humanaCgm = (codes: InsuranceState["codes"]): Patient =>
+    makePatient({
+      serving: "CGM",
+      primaryInsurance: "Humana",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "confirmed", active: "confirmed", "dme-benefits": "confirmed" },
+        codes,
+      },
+    });
+
+  it("the send gate asks for the billing history that Auth = Required used to excuse", () => {
+    const authRequiredOnly = {
+      "cgm-monitor": state({ auth: "required" }),
+      "cgm-sensors": state({ auth: "required" }),
+    };
+    expect(validateBenefitsFactsForSubmit(humanaCgm(authRequiredOnly))).toEqual([
+      "E2103 · Last Bill Date + Units, or No Billing History",
+      "A4239 · Last Bill Date + Units, or No Billing History",
+    ]);
+
+    // The identical answers on any other payer still pass — this is Humana-only.
+    const cigna = makePatient({
+      serving: "CGM",
+      primaryInsurance: "Cigna",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "confirmed", active: "confirmed", "dme-benefits": "confirmed" },
+        codes: authRequiredOnly,
+      },
+    });
+    expect(validateBenefitsFactsForSubmit(cigna)).toEqual([]);
+
+    // Recording the history clears the gate.
+    expect(
+      validateBenefitsFactsForSubmit(
+        humanaCgm({
+          "cgm-monitor": state({ auth: "required", sosEntry: "never" }),
+          "cgm-sensors": state({
+            auth: "required", sosEntry: "billed", lastBillDate: "2026-01-01", units: "3",
+          }),
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("the board preview writes a real SoS verdict instead of parking the products in Skip", () => {
+    const preview = deriveBenefitsPreview(
+      humanaCgm({
+        "cgm-monitor": state({ auth: "required", sosEntry: "never" }),
+        "cgm-sensors": state({
+          auth: "required", sosEntry: "billed", lastBillDate: "2026-07-01", units: "3",
+        }),
+      }),
+      TODAY,
+    );
+    expect(preview.skipProducts).toEqual([]);
+    expect(preview.sos).toBe("Partial / Not Clear");
+    expect(preview.notClearProducts).toEqual(["CGM Sensors"]);
+    expect(preview.auth).toBe("Auths Required");
+    // Auths are still required, so the patient still goes to Submit Auth.
+    expect(preview.stage).toBe("Submit Auth.");
+    // And the Next Order Date now computes — a Skip product contributed nothing.
+    expect(preview.nextOrder.sensors).toBe(addDaysYmd("2026-07-01", 90));
+  });
+  it("the same patient on an ordinary payer keeps the Skip behaviour", () => {
+    const preview = deriveBenefitsPreview(
+      makePatient({
+        serving: "CGM",
+        primaryInsurance: "Cigna",
+        insurance: {
+          ...structuredClone(EMPTY_INSURANCE),
+          universal: { "in-network": "confirmed", active: "confirmed", "dme-benefits": "confirmed" },
+          codes: {
+            "cgm-monitor": state({ auth: "required", sosEntry: "never" }),
+            "cgm-sensors": state({
+              auth: "required", sosEntry: "billed", lastBillDate: "2026-07-01", units: "3",
+            }),
+          },
+        },
+      }),
+      TODAY,
+    );
+    expect(preview.sos).toBe("Skip");
+    expect(preview.skipProducts).toEqual(["CGM Monitor", "CGM Sensors"]);
+    expect(preview.nextOrder.sensors).toBe("");
   });
 });
 

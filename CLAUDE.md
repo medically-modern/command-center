@@ -2458,6 +2458,89 @@ carries 15 numbers or 100**, so viewport-only loading — the obvious "only fetc
 optimisation — would have been ~6× MORE expensive and more round trips, not less. Re-measure with
 `complexity { before query after }` before changing the batching.
 
+### 5.32c Humana checks Same-or-Similar even when an auth is required (Sep 2026)
+> ⚠️ **Numbered 5.32c to match command-center-test, where it was written.** Its §5.32 /
+> §5.32b siblings (the two Last Bill Date column families; the C30 doctor-phone check) are
+> NOT in this repo yet — prod lags test, and only this Humana fix was brought across
+> (Josh, 2026-09-10). The next sync replaces this whole file with test's copy.
+
+Brandon, 2026-09-10: *"For humana only: even if an auth is required, we still need to do same
+or similar check. Right now, if auth is required, we don't check for same or similar ever. But
+for humana only, we still need to check for same or similar, even if auth is required."*
+
+**Benefits' `derivedSos` returned `"skip"` the moment the rep answered Auth = Required**, before
+looking at anything else, and `sosEntryComplete` returned `true` for the same state — so the SoS
+fields greyed out, the send gate stopped asking, and the product landed in the **Skip SoS
+Products** dropdown `dropdown_mm31163t`. That is a DEFERRAL, not a skip: the check is re-asked at
+Auth Outstanding, but only for a product whose auth comes back **"No Auth Needed"**
+(`authOutstandingReview.trackedCards`). Humana's essentially never does.
+
+**Measured on the live Insurance board, 2026-09-10** — **38** Humana items (the third-largest
+payer, after Medicare A&B 109 and Fidelis Medicaid 95): 8 in Benefits, 2 in Auth Outstanding, 26
+Complete, 2 Stuck. Of the **33 that have been worked, 29 read `Auths Required` + `SoS = Skip`**,
+their Skip dropdown holding "CGM Sensors" or "CGM Monitor, CGM Sensors". So for this payer the
+deferral was never a deferral — it was a check that never happened, on almost every patient.
+
+Canonical rule: **`lib/samantha/benefitsDerive.ts` `sosRequiredDespiteAuth(primaryInsurance)`**
+(+ tests). `derivedSos` and `sosEntryComplete` take it and fall through to the ordinary
+facts-in/verdict-out path; **nothing else about the stage changed**, so a Humana product now
+derives Clear / Not Clear from the same Last Bill Date + Units the rep records for anybody else.
+
+⚠️ **Keyed on PRIMARY insurance, and that is complete rather than a narrowing.** The Insurance
+board's Secondary Insurance column `color_mm241kqp` has exactly three live labels — *None · NY
+Medicaid · Medicare Supplement* — so **Humana cannot be a secondary here** and there is no second
+route to check. Nor can a Humana patient have DVS-routed supplies: `suppliesRouteToMedicaid` fires
+only for `Medicaid`, `Fidelis Medicaid` and `Anthem BCBS Medicaid (JLJ)`, so every one of their
+products goes through this rule rather than the hardcoded `isAutoFilledMedicaidSupply` clear.
+
+⚠️ **Matched as a PREFIX (`/^humana\b/i`), not the exact label.** `color_mm1x157j` carries one
+Humana label today (id 16, board index 15) and the two are identical, so this only differs if a
+"Humana Medicare" / "Humana Gold Plus" label is ever added — and the safe direction is to KEEP
+CHECKING. An over-broad match asks a rep to record a fact they can record; an under-broad one
+silently restores the bug. That is the opposite call from `deriveNeverBilled`, whose exact
+`"Medicare A&B"` gate is deliberate because other Medicare plans genuinely do NOT qualify.
+
+⚠️ **`sosEntryComplete`'s new argument is REQUIRED; `derivedSos`'s is trailing-optional.** The
+asymmetry is deliberate. `derivedSos` has two call sites, both of which already derive the payer
+facts beside it. `sosEntryComplete` is read by the **Benefits UI as well as the send gate**, and a
+silent `false` default there would leave a Humana card reading **"✓ Done"** while
+`validateBenefitsFactsForSubmit` held the Send button shut with no stated reason — a greyed-out
+control with no passing move, the dead end §5.10/§5.20/§5.31c each record reversing. Making tsc
+name every call site is the same reasoning `SupplyLengthField`'s required `options` prop carries
+(§5.31); it worked, naming all four the moment the signature changed.
+
+⚠️ **An auth-required Humana product with no entry derives `""`, never `"skip"`.** The distinction
+is the whole safety property: `deriveInsuranceOutcome` reads `""` as *incomplete* and holds the
+stage, where `"skip"` would have advanced the patient with the check unmade.
+
+**Downstream, all of it existing behaviour now reaching a population it never did:**
+- Those products leave the **Skip SoS Products** dropdown and join **Not Clear Products**
+  `dropdown_mm2vez5a` or neither. The stage is unchanged — `anyAuthRequired` still routes them to
+  **Submit Auth.**
+- **Next Order Dates now compute for them.** `resolveNextOrderWrite`'s Skip carve-out blanked the
+  entered date; §5.22's missed-reorder class was exactly this shape one product over.
+- ⚠️ **A Humana INSULIN PUMP coming back Not Clear now blocks at Benefits**, escalating instead of
+  moving to Submit Auth (`deriveInsuranceOutcome` → `blocker`, and `composeEscalationReason` cites
+  it). That is the board's standing pump rule finally applied to this payer; on the live board one
+  Humana item carries a pump in its Skip dropdown, so expect it to be rare and real.
+- **Auth Outstanding is untouched and needs no migration.** The recompute is
+  `context === "benefits"` only, so the 2 live Humana items already sitting at `SoS = Skip` keep
+  their hydrated skip and flow through the existing recheck. Going forward a Humana product is
+  never `"skip"`, so `trackedCards` draws no recheck card for it and `isProductResolved`'s
+  `sos !== "skip"` resolves it — no card, no stranding, because the SoS was done at Benefits.
+
+**No board change and no automation change.** The 8 Humana patients in Benefits today are all
+unanswered, so they are worked under the new rule from the first press.
+
+**Keep-in-agreement:**
+1. **The rule** — `lib/samantha/benefitsDerive.ts` `sosRequiredDespiteAuth` (+ tests, whose payer
+   list is the live `color_mm1x157j` vocabulary).
+2. **The derivation** — `derivedSos` / `sosEntryComplete`, and `validateBenefitsFactsForSubmit` +
+   `deriveBenefitsPreview` which pass it.
+3. **The send** — `samantha/mondayWrite.ts`, the `context === "benefits"` derive block.
+4. **The UI** — `components/samantha/BenefitsPanel.tsx`: `sosDeferred = authReq && !sosDespiteAuth`
+   is what the greying, the `disabled` props, the required star and the hint all key off. ⚠️ Never
+   put `authReq` back on any of them — the card is where the rep discovers the ask.
 
 ---
 
@@ -3338,6 +3421,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |
 | "Auto. Texts" reads 0 for somebody we definitely texted | §5.24 — it counts **only** the intake form's 30-minute + 24-hour nudges (`numeric_mm67822b`). A rep's own text and both link families deliberately do not move it |
 | A patient's text thread looks empty, or stops ~30 days back | §5.27 — RingCentral retains ~30 days and answers **200 with an empty list**, which looks identical to "never texted". `GET /messaging/archive-health`, then `services/monday-gateway/smsArchive.mjs` |
+| A Humana patient's Same-or-Similar was never asked / a product sits in Skip SoS Products | §5.32c — `benefitsDerive.sosRequiredDespiteAuth`. Auth = Required defers the check for every payer EXCEPT Humana; keyed on primary insurance (the secondary column has no Humana label). An auth-required Humana product with no entry derives `""`, which holds the stage — never `"skip"` |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |

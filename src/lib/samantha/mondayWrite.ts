@@ -33,6 +33,7 @@ import {
   isBlankCallRow,
   isValidUnits,
   patientHasMedicaidIns,
+  sosRequiredDespiteAuth,
   universalEscalationLevel,
 } from "./benefitsDerive";
 import {
@@ -179,6 +180,10 @@ export async function sendPatientToMonday(
   const hasMedicaidIns = patientHasMedicaidIns(p.primaryInsurance ?? "", p.secondaryInsurance ?? "");
   // Medicare A&B primary → 5-year RUL for pump/CGM monitor same-or-similar.
   const isMedicare = isMedicarePrimary(p.primaryInsurance ?? "");
+  // Humana → Auth = Required does NOT defer the SoS check, so this send writes a
+  // real Clear / Not Clear for those products instead of parking them in the
+  // Skip SoS Products dropdown (benefitsDerive.sosRequiredDespiteAuth).
+  const sosDespiteAuth = sosRequiredDespiteAuth(p.primaryInsurance ?? "");
 
   // Failed-check path (Medicare-not-Primary handoff §2–§4): any negative
   // universal answer at Benefits means step 2 never ran — write ONLY the
@@ -200,7 +205,10 @@ export async function sendPatientToMonday(
         | undefined;
       if (!cid) continue;
       const st = derivedCodes[cid] ?? ({ status: "pending" } as ProductCodeState);
-      derivedCodes[cid] = { ...st, sos: derivedSos(st, cid, hasMedicaidIns, todayEt, isMedicare) };
+      derivedCodes[cid] = {
+        ...st,
+        sos: derivedSos(st, cid, hasMedicaidIns, todayEt, isMedicare, sosDespiteAuth),
+      };
     }
     const nb = deriveNeverBilled({ ...rawIns, codes: derivedCodes }, p.primaryInsurance ?? "");
     ins = {
