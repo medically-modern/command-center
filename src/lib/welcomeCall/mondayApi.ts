@@ -553,6 +553,23 @@ export async function writeStatusClear(itemId: string, columnId: string): Promis
 }
 
 /**
+ * Clear a NUMBER column — Monday takes an empty string as "no value".
+ *
+ * ⚠️ Not `writeNumber(..., Number(""))`: that is `0`, a real quantity. The two
+ * are different answers on this board — "the rep ordered none" versus "no set is
+ * chosen, so there is nothing to count" — and the infusion quantities have to be
+ * able to say the second one when their set is cleared.
+ */
+export async function clearNumberColumn(itemId: string, columnId: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify("") });
+}
+
+/**
  * Clear a date column.
  */
 export async function clearDateColumn(itemId: string, columnId: string): Promise<void> {

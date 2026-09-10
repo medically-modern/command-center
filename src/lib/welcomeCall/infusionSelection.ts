@@ -117,6 +117,35 @@ export function setsInvalidatedByPump(
   };
 }
 
+/**
+ * What the send should do with ONE infusion-set column.
+ *
+ * ⚠️ **An emptied selection is a CLEAR, not a skip.** Both routes that empty
+ * one of these controls are automatic and both show the rep an emptied control:
+ * `setsInvalidatedByPump` when they correct Pump Type (which also raises a toast
+ * reading "Infusion set cleared"), and `setTwoTransition` when the second set
+ * goes away. The send skipped a null index, so the incompatible set and its
+ * quantity STAYED ON THE BOARD and were copied onto the order by the create-item
+ * automations — the screen said one thing, Monday said another, and nothing
+ * errored. That is §5.22's class of failure one product over: the supplies that
+ * ship do not fit the pump.
+ *
+ * ⚠️ **`skip` is the third answer and it is load-bearing.** A null INDEX with a
+ * non-empty LABEL means the board holds a set this app could not map — a label
+ * renamed on the board, or a `value` that did not parse. Clearing there would
+ * destroy a real selection on the strength of a read failure, which is the
+ * dangerous direction. The two are mapped independently in `mondayMapping`
+ * (`txt` vs `statusIndex`), so the surviving label is the evidence that there is
+ * something there to keep.
+ */
+export function infusionSetWriteAction(
+  index: number | null,
+  label: string,
+): "write" | "clear" | "skip" {
+  if (index !== null) return "write";
+  return label.trim() === "" ? "clear" : "skip";
+}
+
 export interface QtyPlanInput {
   /** Set 1 label as chosen ("" or "Not Serving" mean no set). */
   set1: string;
