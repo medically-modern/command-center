@@ -73,6 +73,21 @@ describe("embedding the hub", () => {
     expect(hub).toContain("setRingSettings(true)");
   });
 
+  it("renders the SAME header — navy bar, icon and title", () => {
+    // Josh, 2026-09-10: "exactly the same". The first cut restyled the header
+    // into a plain white strip and dropped the icon and the title, and the view
+    // was reported as incomplete — as "there's no way to send a text" — while
+    // the composer was in fact present and reachable at every viewport. A
+    // header that says nothing is what made a working screen look broken.
+    const header = live(hub.slice(hub.indexOf("<header"), hub.indexOf("</header>")));
+    expect(header).toContain("bg-gradient-navy");
+    expect(header).toContain(">Communications</h1>");
+    // Nothing in the header may branch on `embedded` except the back button.
+    const branches = header.match(/embedded/g) ?? [];
+    expect(branches).toHaveLength(1);
+    expect(header).toContain("{!embedded && (");
+  });
+
   it("stops claiming the viewport height when embedded", () => {
     expect(hub).toContain('embedded ? "min-h-0 flex-1" : "h-screen bg-gradient-subtle"');
   });

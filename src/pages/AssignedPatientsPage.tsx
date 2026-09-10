@@ -93,14 +93,20 @@ const TABS: { id: HubTab; label: string; Icon: typeof Phone }[] = [
 
 /**
  * @param embedded  Rendered INSIDE another page's chrome — System Management's
- *   Communications tab. It drops this page's own navy header (back button,
- *   title) because the host already has one, and stops claiming the viewport
- *   height, since the host owns the layout.
+ *   Communications tab. It stops claiming the viewport height, since the host
+ *   owns the layout, and drops the BACK BUTTON alone: the host's own header sits
+ *   directly above with a back button that goes to the same place.
  *
- *   ⚠️ The dialer and the ring-settings bell are NOT chrome — they are the only
- *   way to call an arbitrary number and the only way to change which calls ring
- *   you. Embedding keeps both, on a plain strip instead of the navy bar, rather
- *   than dropping the header wholesale and losing them.
+ *   ⚠️ Everything else renders IDENTICALLY to the standalone page, navy bar
+ *   included (Josh, 2026-09-10: "exactly the same"). The first cut restyled the
+ *   header into a plain white strip and dropped the icon and the
+ *   "Communications" title, leaving a dialer and a bell floating on white — and
+ *   it read as a half-built screen, reported as \"there's no way to send a text
+ *   in this view, it looks incomplete\". The composer was in fact present and
+ *   reachable at every viewport (measured in a browser at 1024×640 through
+ *   1440×900, embedded and standalone, pixel-identical); what was missing was
+ *   the chrome that says the view is finished. Restyling a header is not a
+ *   cheaper way to say "this is embedded" — it is a way to say "this is broken".
  *
  *   ⚠️ The host must render this CONDITIONALLY, not hidden behind CSS: every
  *   RingCentral poll in here is scoped to the mounted tab (§5.28, "only the OPEN
@@ -564,32 +570,24 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
       // Standalone owns the viewport; embedded fills whatever the host gave it.
       embedded ? "min-h-0 flex-1" : "h-screen bg-gradient-subtle",
     )}>
-      <header className={cn(
-        "shrink-0 border-b",
-        embedded
-          ? "border-border bg-card"
-          : "border-sidebar-border bg-gradient-navy text-navy-foreground",
-      )}>
-        <div className={cn("flex items-center gap-3 px-4 sm:px-6", embedded ? "py-2" : "py-4")}>
+      <header className="shrink-0 border-b border-sidebar-border bg-gradient-navy text-navy-foreground">
+        <div className="flex items-center gap-3 px-4 sm:px-6 py-4">
+          {/* The one embedded difference: the host's header already has a Back
+              that goes to the same place, so two of them stack 45px apart. */}
           {!embedded && (
-            <>
-              <button onClick={goBack} className="rounded-md p-1.5 transition-colors hover:bg-white/10" title="Back">
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-primary shadow-elevate">
-                <MessageSquare className="h-5 w-5 text-primary-foreground" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · RingCentral</p>
-                <h1 className="truncate text-xl font-bold">Communications</h1>
-              </div>
-            </>
+            <button onClick={goBack} className="rounded-md p-1.5 transition-colors hover:bg-white/10" title="Back">
+              <ArrowLeft className="h-5 w-5" />
+            </button>
           )}
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-primary shadow-elevate">
+            <MessageSquare className="h-5 w-5 text-primary-foreground" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · RingCentral</p>
+            <h1 className="truncate text-xl font-bold">Communications</h1>
+          </div>
 
-          <div className={cn(
-            "mx-auto flex items-center gap-2 rounded-xl p-1.5 ring-1",
-            embedded ? "ring-border" : "bg-white/10 ring-white/20",
-          )}>
+          <div className="mx-auto flex items-center gap-2 rounded-xl bg-white/10 p-1.5 ring-1 ring-white/20">
             <div className="relative">
               <Phone className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-400" />
               <input
@@ -600,10 +598,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                 }}
                 placeholder="Call any number…"
                 aria-label="Call any number"
-                className={cn(
-                  "w-56 rounded-lg py-2 pl-8 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-emerald-400",
-                  embedded ? "border bg-background" : "bg-white",
-                )}
+                className="w-56 rounded-lg bg-white py-2 pl-8 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-emerald-400"
               />
             </div>
             <button
@@ -619,10 +614,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
           <button
             onClick={() => setRingSettings(true)}
             title="Which calls ring me"
-            className={cn(
-              "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors",
-              embedded ? "hover:bg-accent" : "hover:bg-white/10",
-            )}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-white/10"
           >
             <BellRing className="h-4 w-4" />
           </button>

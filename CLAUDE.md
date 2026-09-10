@@ -3812,12 +3812,28 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   Left in place (Josh, 2026-08-14) pending a Propose Stuck equivalent for Welcome Call.
 - **Communications is a System Management TAB** (Josh, 2026-09-10) — the same
   `AssignedPatientsPage` hub as `/assigned-patients` (§5.28), rendered with an
-  **`embedded`** prop. That prop drops only this page's own navy header (back
-  button, title) because the host already has one, and stops it claiming
-  `h-screen` because the host owns the layout. ⚠️ It **keeps the dialer and the
-  ring-settings bell** on a plain strip: those are the only way to call an
-  arbitrary number and the only way to change which calls ring you, so dropping
-  the header wholesale would lose both silently.
+  **`embedded`** prop. That prop does exactly two things: it stops the page
+  claiming `h-screen`, because the host owns the layout, and it drops the **back
+  button alone** — the host's own header sits 45px above with a back button that
+  goes to the same place.
+  ⚠️ **EVERYTHING ELSE RENDERS IDENTICALLY, navy bar included** (Josh, same day:
+  *"exactly the same"*). The first cut also restyled the header into a plain
+  white strip and dropped the icon and the "Communications" title, leaving a
+  dialer and a bell floating on white. It was reported as **"there's no way to
+  send a text in this view, it looks incomplete"** — and the composer was in fact
+  present and reachable: measured in a real browser at 1024×640, 1280×700,
+  1440×760 and 1440×900, embedded and standalone, the textarea and its Send
+  button land on the same pixels and neither view scrolls the document. Nothing
+  was broken; a header that said nothing made a working screen read as half-built.
+  ⚠️ Two things follow. **Restyling a header is not a cheaper way to say "this is
+  embedded"** — the three-pane hub is the whole content, so its chrome is the only
+  thing telling a rep the view is finished. And a report of a MISSING CONTROL on
+  an embedded view is worth measuring before it is diagnosed: the first fix here
+  was a `min-h-screen` → `h-screen` change on the host, reasoned from
+  `ConversationThread`'s `flex-1 min-h-0` chain and **wrong** — reverting it moved
+  nothing, because `min-h-screen` already stretches the flex child to the viewport.
+  `systemMgmtTabs.test.ts` pins the header parity (navy, icon, title, and no
+  `embedded` branch in it but the back button) and is verified to fail on a revert.
   ⚠️ **Mounted CONDITIONALLY, never hidden.** Every RingCentral poll in the hub
   is scoped to its mounted tab (§5.28's "only the OPEN tab polls"), so a
   `hidden`/`display:none` toggle would poll the shared account from a screen
