@@ -27,6 +27,15 @@ export function mondayItemToPatient(item: MondayItem): Patient {
       return cv(id)?.text ?? "";
     }
   };
+  const checkboxVal = (id: string): boolean => {
+    const v = cv(id)?.value;
+    if (!v) return false;
+    try {
+      return JSON.parse(v).checked === "true" || JSON.parse(v).checked === true;
+    } catch {
+      return false;
+    }
+  };
   const locationVal = (id: string) => {
     const v = cv(id)?.value;
     if (!v) return cv(id)?.text ?? "";
@@ -45,6 +54,12 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     email: txt(COL.email),
     address: locationVal(COL.address),
     gender: txt(COL.gender),
+    primaryContact: txt(COL.primaryContact),
+    alternateContact: txt(COL.alternateContact),
+    canText: txt(COL.canText),
+    alternatePhone: phoneVal(COL.alternatePhone),
+    caregiverName: txt(COL.caregiverName),
+    caregiverAuthorized: checkboxVal(COL.caregiverAuthorized),
     primaryInsurance: txt(COL.primaryInsurance),
     primaryInsuranceIndex: statusIndex(COL.primaryInsurance),
     primaryInsuranceEdited: null,

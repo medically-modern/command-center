@@ -26,6 +26,25 @@ export interface Patient {
   email: string;
   address: string;
   gender: string;
+
+  /* ── Phone slots & caregiver (HANDOFF Josh Welcome Call Phones, 2026-09-10).
+     Read straight off the board; `lib/welcomeCall/phoneSlots.ts` turns them
+     into the two slots the screen edits and back into column values on send.
+     The COLUMNS are the source of truth — these are deliberately NOT part of
+     the WC INTAKE notes block. */
+  /** Primary Contact label — "Patient" | "Caregiver" | "" (nobody asked). */
+  primaryContact: string;
+  /** Alternate Contact label — same vocabulary. */
+  alternateContact: string;
+  /** Can Text label — "Yes" | "No" | "".
+   *  ⚠️ "" is UNKNOWN, never a No: a blank means nobody has asked, and a
+   *  fabricated No routes this patient's reorders to a call queue. */
+  canText: string;
+  /** The second number, or "" when the patient has only one. */
+  alternatePhone: string;
+  /** "Jane Doe (daughter)" — name and relationship in one value. */
+  caregiverName: string;
+  caregiverAuthorized: boolean;
   // Insurance (editable)
   primaryInsurance: string;
   primaryInsuranceIndex: number | null;

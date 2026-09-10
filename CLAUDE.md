@@ -2767,6 +2767,80 @@ anyway from a column holding an API URI). Blocked exactly as §5.31b records —
 is the INTAKE call on Profile Send Off, this board has no booking column, and the two Calendly
 event types can't be told apart without calling Calendly.
 
+### 5.31d Phone slots & caregiver — the columns become the source of truth (Sep 2026)
+Brandon's separate phones handoff (2026-09-09). Welcome Call's phone block was **up to four
+extra numbers with a cell/home/work/other kind**, riding in the `--- WC INTAKE v1 ---` notes
+block, writing **no column at all**. It becomes **two slots and a star**: the starred slot is
+Primary Phone, the other is Alternate Phone, and at send only the FINAL state is written,
+however many times the star moved. Canonical rule: **`lib/welcomeCall/phoneSlots.ts`** (+ tests).
+
+**Six new columns, created 2026-09-10 on Welcome Call AND Subscription** (the Subscription
+copies exist so the five WC→Subscription create-item workflows have somewhere to land):
+
+| | Welcome Call | Subscription |
+|---|---|---|
+| Primary Contact (status) | `color_mm72mjha` | `color_mm72vm7p` |
+| Alternate Contact (status) | `color_mm72wngg` | `color_mm723hfk` |
+| Can Text (status) | `color_mm72v5q7` | `color_mm72jg9e` |
+| Alternate Phone (phone) | `phone_mm7265hp` | `phone_mm72r19q` |
+| Caregiver Name (text) | `text_mm727mrm` | `text_mm72mdzk` |
+| Caregiver Authorized (checkbox) | `boolean_mm72tf9z` | `boolean_mm72nt75` |
+
+The **"Pt. Phone" → "Primary Phone" rename was already done** on all four boards (WC
+`phone_mm1x44yk`, Subscription `phone_mkp0q3cw`, Order `phone_mm18rr9v`, Claims
+`phone_mm1znnww`) — ids unchanged, so nothing in the app moved.
+
+⚠️⚠️ **THE WRITE VALUES ARE THE LABEL IDS, AND MONDAY DERIVED THEM FROM THE COLOUR** —
+`Patient = 7 · Caregiver = 4 · Yes = 1 · No = 2`. All six status labels were created asking for
+`index` 0 and 1 and came back as those. `writeStatusIndex` sends `{"index": <label id>}` and
+`mondayItemToPatient` reads the same field, so the two are symmetric — but a write to a label id
+that does not exist is **dropped with no error**, so `{index: 0}` for Patient would have written
+nothing at all. Same trap as Sub-Stage (§5.12), Intake Sub-Stage (§5.20) and Order Frequency
+(§5.31c), which is now four times. `CONTACT_LABEL_ID` / `CAN_TEXT_LABEL_ID` hold them and
+`phoneSlots.test.ts` pins them; read `settings_str` back, never infer.
+
+⚠️ **Alternate Contact is a COLUMN because inference was wrong.** The handoff's first draft
+stored only the starred slot's Patient/Caregiver answer and re-derived the other from Primary
+Contact plus whether a Caregiver Name was present — which is wrong, silently, for a
+two-caregiver household with no patient number. Brandon offered a seventh status and Josh took
+it (2026-09-10). The screen was already asking per slot; the schema was throwing one answer
+away. **Do not replace it with an inference rule.**
+
+⚠️ **A blank Can Text is UNKNOWN, never a No.** Blank means nobody asked; No routes the
+patient's reorders to a call queue instead of the Day-20 text. Same rule as `networkAnswer`
+(§5.20) and the blank secondary (§5.31c), and it constrains the **backfill**: where the
+line-type lookup and RingCentral history give no evidence, leave the cell **blank**, never No.
+⚠️ And note the §5.22b shape waiting downstream — a blank matches neither `= Yes` nor `= No`, so
+whatever reorder automation gets built must handle blank explicitly or those patients fall
+through every branch in silence.
+
+⚠️ **Can Text is held PER SLOT, and editing a number clears it.** Brandon's rule is "if the star
+moves to the other slot, clear it so the rep re-answers"; per-slot satisfies that by construction
+(the other slot has never been answered for) without re-asking when the star moves BACK to a
+number nothing changed about. The rule he did not cover is the one that actually loses data:
+**changing a slot's digits clears that slot's answer**, because the Yes was about the old number
+— the same staleness `sendGates.pumpConfirmationStale` exists for. Compared on digits, so a
+reformat is not a change.
+
+⚠️ `phoneSlotWrites` returns `null` for a status meaning **CLEAR, not skip**: the columns are the
+source of truth now, so a removed second number has to remove Alternate Contact with it, and a
+caregiver who is no longer on either slot has their name and HIPAA tick cleared — a standing
+authorisation against a patient nobody shares an account with is a record that says the wrong
+thing. Empty slots are dropped first, so an abandoned "+ Add number" cannot write a live owner
+against a blank number.
+
+**Still to do (2026-09-10):** the UI rewrite (two slots, star, caregiver panel, dropping the
+caretaker Phone/Email fields), the send writes, stripping Phones/Caretaker out of the notes block
+while still PARSING them for blocks already written, the Caregiver Authorized audit line, all six
+into Review & Send, the phone fields into `sendWelcomeCallTextToMonday`'s push (it currently
+writes **no** phone column before flipping the trigger — workflow 7918318033 reads Primary
+Phone), the Can Text backfill, and widening `BoardDef.phoneColId` to a LIST so the phone→patient
+lookup matches an Alternate Phone (SPA `lib/systemMgmt/mondayApi.ts` + the gateway's
+`patientDirectory.mjs` mirror + `directoryCoverage.test.ts`, all three together — §5.29).
+⚠️ The five WC→Subscription workflows need these six columns added **and** Order Frequency
+re-pointed (§5.31c) — the same five ids, so it is one off-hours sitting: 7918317925, 7918340632,
+7918343137, 7918601476, 7919753399.
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 The `scheduledCalls` role **became the Care Coordinator dashboard** (Josh, 2026-09-08, from Corey's
 Phase 3 mockup): label "Care Coordinator", route **`/care-coordinator`** (the old `/scheduled-calls`
@@ -3860,6 +3934,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's text thread looks empty, or stops ~30 days back | §5.27 — RingCentral retains ~30 days and answers **200 with an empty list**, which looks identical to "never texted". `GET /messaging/archive-health`, then `services/monday-gateway/smsArchive.mjs` |
 | A Last Bill Date reads "—" on Welcome Call for a patient we have billed | §5.32 — there are TWO column families and the legacy one is blank whenever SoS came back **Clear**. `lib/shared/lastBillDate.ts` resolves the pair. The Insurance→WC hop (automation 7918324247) is correct on all ten pairs — do not go looking there |
 | Final Confirm's Last Bill box is blank but captions a date underneath | §5.32 — working as intended. The box is the **Not Clear** date (editable, written back, and what `sos*` / `authExpiryMoot` key off); the caption is what we actually billed. Do not merge them — `lastBillDisplay.test.ts` says why |
+| A phone/caregiver answer isn't saving, or a status write silently did nothing | §5.31d — `lib/welcomeCall/phoneSlots.ts`. The write value is the label **id** (Patient 7 · Caregiver 4 · Yes 1 · No 2), not the display index, and a bad id is dropped with no error. A blank Can Text is unknown, never a No |
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |

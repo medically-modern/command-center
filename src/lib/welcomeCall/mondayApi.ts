@@ -28,8 +28,37 @@ export const COL = {
   joshDebug: "text_mm35b391",
   // Demographics (read-only)
   dob: "text_mm1xvxst",
+  /** Renamed "Pt. Phone" → "Primary Phone" on all four boards (Brandon,
+   *  2026-09-09). The id is unchanged, so nothing here moved. */
   phone: "phone_mm1x44yk",
   email: "text_mm1xc140",
+
+  /* ── Phone slots & caregiver (created 2026-09-10, HANDOFF Josh Welcome Call
+     Phones §1). The COLUMNS are the source of truth for these; the WC INTAKE
+     notes block is not. Every one is mirrored on the Subscription board so the
+     five WC→Subscription create-item workflows can copy them across.
+
+     ⚠️ Status WRITE values are the label IDs below, which Monday derived from
+     each label's COLOUR — not the display order the create call asked for.
+     Read back from the live board 2026-09-10; never guess one, because a write
+     to a label id that does not exist is dropped with no error (§5.12/§5.20). */
+  /** Who Primary Phone belongs to. Written from the STARRED phone slot. */
+  primaryContact: "color_mm72mjha",
+  /** Who Alternate Phone belongs to. Written from the UNSTARRED slot.
+   *  ⚠️ Brandon's first draft INFERRED this from Primary Contact plus whether a
+   *  Caregiver Name was present, and that rule is wrong for a two-caregiver
+   *  household with no patient number — he offered the column instead and Josh
+   *  took it (2026-09-10). The screen already asks per slot; this is the half
+   *  the schema used to throw away. */
+  alternateContact: "color_mm72wngg",
+  /** Whether Primary Phone can receive texts. */
+  canText: "color_mm72v5q7",
+  /** The second number. Blank when the patient has only one. */
+  alternatePhone: "phone_mm7265hp",
+  /** Name AND relationship in one value, "Jane Doe (daughter)". */
+  caregiverName: "text_mm727mrm",
+  /** Verbal HIPAA consent to discuss the account with the caregiver. */
+  caregiverAuthorized: "boolean_mm72tf9z",
   address: "location_mm1xhw17",
   gender: "color_mm1x1bdg",
   
@@ -185,6 +214,10 @@ export const COL = {
 
 export const READ_COLUMN_IDS = [
   COL.dob, COL.phone, COL.email, COL.address, COL.gender,
+  // Phone slots & caregiver. ⚠️ §5.11's trap: a COL entry that is not ALSO in
+  // this list reads permanently blank, with no error anywhere.
+  COL.primaryContact, COL.alternateContact, COL.canText, COL.alternatePhone,
+  COL.caregiverName, COL.caregiverAuthorized,
   COL.primaryInsurance, COL.memberId1, COL.secondaryInsurance, COL.memberId2, COL.planName, COL.orderFrequency,
   COL.serving, COL.pumpType, COL.cgmType, COL.requestType, COL.doctorName, COL.doctorNpi,
   COL.referralSource, COL.referralReceivedDate,
@@ -442,6 +475,26 @@ export async function writeDate(itemId: string, columnId: string, date: string):
     itemId,
     columnId,
     value: JSON.stringify({ date }),
+  });
+}
+
+/**
+ * Write a checkbox column. checked=true → ✓; checked=false → cleared.
+ *
+ * Ported from `samantha/mondayApi.ts`, which held the app's only copy — this
+ * stage had no checkbox writer at all until Caregiver Authorized needed one.
+ */
+export async function writeCheckbox(itemId: string, columnId: string, checked: boolean): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify(checked ? { checked: "true" } : {}),
   });
 }
 
