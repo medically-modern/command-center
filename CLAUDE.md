@@ -3001,6 +3001,85 @@ equivalent to add there. `doctorPhoneCheck.test.ts` pins the severity and the fi
 Blast radius when it shipped: **2** live patients (one blank across the whole doctor block, one
 phone-only); 0 in Final Profile Confirmation itself, so nobody is stranded by it today.
 
+### 5.32c Humana checks Same-or-Similar even when an auth is required (Sep 2026)
+Brandon, 2026-09-10: *"For humana only: even if an auth is required, we still need to do same
+or similar check. Right now, if auth is required, we don't check for same or similar ever. But
+for humana only, we still need to check for same or similar, even if auth is required."*
+
+**Benefits' `derivedSos` returned `"skip"` the moment the rep answered Auth = Required**, before
+looking at anything else, and `sosEntryComplete` returned `true` for the same state — so the SoS
+fields greyed out, the send gate stopped asking, and the product landed in the **Skip SoS
+Products** dropdown `dropdown_mm31163t`. That is a DEFERRAL, not a skip: the check is re-asked at
+Auth Outstanding, but only for a product whose auth comes back **"No Auth Needed"**
+(`authOutstandingReview.trackedCards`). Humana's essentially never does.
+
+**Measured on the live Insurance board, 2026-09-10** — **38** Humana items (the third-largest
+payer, after Medicare A&B 109 and Fidelis Medicaid 95): 8 in Benefits, 2 in Auth Outstanding, 26
+Complete, 2 Stuck. Of the **33 that have been worked, 29 read `Auths Required` + `SoS = Skip`**,
+their Skip dropdown holding "CGM Sensors" or "CGM Monitor, CGM Sensors". So for this payer the
+deferral was never a deferral — it was a check that never happened, on almost every patient.
+
+Canonical rule: **`lib/samantha/benefitsDerive.ts` `sosRequiredDespiteAuth(primaryInsurance)`**
+(+ tests). `derivedSos` and `sosEntryComplete` take it and fall through to the ordinary
+facts-in/verdict-out path; **nothing else about the stage changed**, so a Humana product now
+derives Clear / Not Clear from the same Last Bill Date + Units the rep records for anybody else.
+
+⚠️ **Keyed on PRIMARY insurance, and that is complete rather than a narrowing.** The Insurance
+board's Secondary Insurance column `color_mm241kqp` has exactly three live labels — *None · NY
+Medicaid · Medicare Supplement* — so **Humana cannot be a secondary here** and there is no second
+route to check. Nor can a Humana patient have DVS-routed supplies: `suppliesRouteToMedicaid` fires
+only for `Medicaid`, `Fidelis Medicaid` and `Anthem BCBS Medicaid (JLJ)`, so every one of their
+products goes through this rule rather than the hardcoded `isAutoFilledMedicaidSupply` clear.
+
+⚠️ **Matched as a PREFIX (`/^humana\b/i`), not the exact label.** `color_mm1x157j` carries one
+Humana label today (id 16, board index 15) and the two are identical, so this only differs if a
+"Humana Medicare" / "Humana Gold Plus" label is ever added — and the safe direction is to KEEP
+CHECKING. An over-broad match asks a rep to record a fact they can record; an under-broad one
+silently restores the bug. That is the opposite call from `deriveNeverBilled`, whose exact
+`"Medicare A&B"` gate is deliberate because other Medicare plans genuinely do NOT qualify.
+
+⚠️ **`sosEntryComplete`'s new argument is REQUIRED; `derivedSos`'s is trailing-optional.** The
+asymmetry is deliberate. `derivedSos` has two call sites, both of which already derive the payer
+facts beside it. `sosEntryComplete` is read by the **Benefits UI as well as the send gate**, and a
+silent `false` default there would leave a Humana card reading **"✓ Done"** while
+`validateBenefitsFactsForSubmit` held the Send button shut with no stated reason — a greyed-out
+control with no passing move, the dead end §5.10/§5.20/§5.31c each record reversing. Making tsc
+name every call site is the same reasoning `SupplyLengthField`'s required `options` prop carries
+(§5.31); it worked, naming all four the moment the signature changed.
+
+⚠️ **An auth-required Humana product with no entry derives `""`, never `"skip"`.** The distinction
+is the whole safety property: `deriveInsuranceOutcome` reads `""` as *incomplete* and holds the
+stage, where `"skip"` would have advanced the patient with the check unmade.
+
+**Downstream, all of it existing behaviour now reaching a population it never did:**
+- Those products leave the **Skip SoS Products** dropdown and join **Not Clear Products**
+  `dropdown_mm2vez5a` or neither. The stage is unchanged — `anyAuthRequired` still routes them to
+  **Submit Auth.**
+- **Next Order Dates now compute for them.** `resolveNextOrderWrite`'s Skip carve-out blanked the
+  entered date; §5.22's missed-reorder class was exactly this shape one product over.
+- ⚠️ **A Humana INSULIN PUMP coming back Not Clear now blocks at Benefits**, escalating instead of
+  moving to Submit Auth (`deriveInsuranceOutcome` → `blocker`, and `composeEscalationReason` cites
+  it). That is the board's standing pump rule finally applied to this payer; on the live board one
+  Humana item carries a pump in its Skip dropdown, so expect it to be rare and real.
+- **Auth Outstanding is untouched and needs no migration.** The recompute is
+  `context === "benefits"` only, so the 2 live Humana items already sitting at `SoS = Skip` keep
+  their hydrated skip and flow through the existing recheck. Going forward a Humana product is
+  never `"skip"`, so `trackedCards` draws no recheck card for it and `isProductResolved`'s
+  `sos !== "skip"` resolves it — no card, no stranding, because the SoS was done at Benefits.
+
+**No board change and no automation change.** The 8 Humana patients in Benefits today are all
+unanswered, so they are worked under the new rule from the first press.
+
+**Keep-in-agreement:**
+1. **The rule** — `lib/samantha/benefitsDerive.ts` `sosRequiredDespiteAuth` (+ tests, whose payer
+   list is the live `color_mm1x157j` vocabulary).
+2. **The derivation** — `derivedSos` / `sosEntryComplete`, and `validateBenefitsFactsForSubmit` +
+   `deriveBenefitsPreview` which pass it.
+3. **The send** — `samantha/mondayWrite.ts`, the `context === "benefits"` derive block.
+4. **The UI** — `components/samantha/BenefitsPanel.tsx`: `sosDeferred = authReq && !sosDespiteAuth`
+   is what the greying, the `disabled` props, the required star and the hint all key off. ⚠️ Never
+   put `authReq` back on any of them — the card is where the rep discovers the ask.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -3935,6 +4014,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Last Bill Date reads "—" on Welcome Call for a patient we have billed | §5.32 — there are TWO column families and the legacy one is blank whenever SoS came back **Clear**. `lib/shared/lastBillDate.ts` resolves the pair. The Insurance→WC hop (automation 7918324247) is correct on all ten pairs — do not go looking there |
 | Final Confirm's Last Bill box is blank but captions a date underneath | §5.32 — working as intended. The box is the **Not Clear** date (editable, written back, and what `sos*` / `authExpiryMoot` key off); the caption is what we actually billed. Do not merge them — `lastBillDisplay.test.ts` says why |
 | A phone/caregiver answer isn't saving, or a status write silently did nothing | §5.31d — `lib/welcomeCall/phoneSlots.ts`. The write value is the label **id** (Patient 7 · Caregiver 4 · Yes 1 · No 2), not the display index, and a bad id is dropped with no error. A blank Can Text is unknown, never a No |
+| A Humana patient's Same-or-Similar was never asked / a product sits in Skip SoS Products | §5.32c — `benefitsDerive.sosRequiredDespiteAuth`. Auth = Required defers the check for every payer EXCEPT Humana; keyed on primary insurance (the secondary column has no Humana label). An auth-required Humana product with no entry derives `""`, which holds the stage — never `"skip"` |
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |

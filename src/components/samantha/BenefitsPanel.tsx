@@ -40,6 +40,7 @@ import {
   failedUniversalChecks,
   patientHasMedicaidIns,
   sosEntryComplete,
+  sosRequiredDespiteAuth,
   ymdToUs,
 } from "@/lib/samantha/benefitsDerive";
 import "./benefitsRedesign.css";
@@ -137,9 +138,15 @@ function CallLog({
 
 /* ── Step 2 — product card ────────────────────────────────────────── */
 
-/** Rep-facing status — never exposes derived Clear/Not Clear. */
-function statusPill(state: ProductCodeState | undefined) {
-  if (!state?.auth || !sosEntryComplete(state)) return <span className="pill pending">● Pending</span>;
+/** Rep-facing status — never exposes derived Clear/Not Clear.
+ *  ⚠️ `sosDespiteAuth` is what keeps this pill honest for Humana: there the SoS
+ *  entry is still owed with the auth required, so the card must read Pending
+ *  until it is filled rather than jumping straight to "Auth required" while the
+ *  send gate holds the button shut (benefitsDerive.sosRequiredDespiteAuth). */
+function statusPill(state: ProductCodeState | undefined, sosDespiteAuth: boolean) {
+  if (!state?.auth || !sosEntryComplete(state, sosDespiteAuth)) {
+    return <span className="pill pending">● Pending</span>;
+  }
   if (state.auth === "required") return <span className="pill warn">◷ Auth required</span>;
   return <span className="pill clear">✓ Done</span>;
 }
@@ -161,18 +168,24 @@ function ProductCard({
   state,
   hasMedicaid,
   isMedicare,
+  sosDespiteAuth,
   onChange,
 }: {
   resolved: ResolvedProduct;
   state: ProductCodeState | undefined;
   hasMedicaid: boolean;
   isMedicare: boolean;
+  /** This payer checks Same-or-Similar even when an auth is required (Humana). */
+  sosDespiteAuth: boolean;
   onChange: (patch: Partial<ProductCodeState>) => void;
 }) {
   const codeId = PRODUCT_TO_CODE_ID[resolved.product];
   const meta = PRODUCT_CODES.find((c) => c.id === codeId);
   const auth = state?.auth ?? "";
   const authReq = auth === "required";
+  // ⚠️ Everything below keys off `sosDeferred`, NOT `authReq` — Humana answers
+  // Auth = Required and still owes the billing history, so its fields stay live.
+  const sosDeferred = authReq && !sosDespiteAuth;
   const entry = state?.sosEntry ?? "";
   const entryLocked = entry === "never";
   const isRec = meta?.cadence === "RECURRING";
@@ -201,7 +214,7 @@ function ProductCard({
           <div className="prod-code">{resolved.hcpc}</div>
           <div className="prod-name">{meta?.name ?? PRODUCT_LABELS[resolved.product]}</div>
         </div>
-        {statusPill(state)}
+        {statusPill(state, sosDespiteAuth)}
       </div>
       <div className="prod-grid">
         <div className="prod-q">
@@ -227,9 +240,9 @@ function ProductCard({
             </button>
           </div>
         </div>
-        <div className={`prod-q ${authReq ? "off" : ""}`}>
+        <div className={`prod-q ${sosDeferred ? "off" : ""}`}>
           <div className="flabel">
-            Same or Similar · Billing History {!authReq && <span className="req-star">*</span>}
+            Same or Similar · Billing History {!sosDeferred && <span className="req-star">*</span>}
           </div>
           <div className="sos-grid">
             <div className={`sos-pair ${entryLocked ? "locked" : ""}`}>
@@ -238,7 +251,7 @@ function ProductCard({
                 <input
                   type="date"
                   value={state?.lastBillDate ?? ""}
-                  disabled={entryLocked || authReq}
+                  disabled={entryLocked || sosDeferred}
                   onChange={(e) => setBilled({ lastBillDate: e.target.value })}
                 />
               </div>
@@ -250,7 +263,7 @@ function ProductCard({
                   step={1}
                   placeholder="0"
                   value={state?.units ?? ""}
-                  disabled={entryLocked || authReq}
+                  disabled={entryLocked || sosDeferred}
                   onChange={(e) => setBilled({ units: e.target.value })}
                 />
               </div>
@@ -258,7 +271,7 @@ function ProductCard({
             <div className="sos-or">OR</div>
             <button
               className={`sos-toggle nv ${entry === "never" ? "on" : ""}`}
-              disabled={authReq}
+              disabled={sosDeferred}
               onClick={() =>
                 onChange(
                   entry === "never"
@@ -270,8 +283,13 @@ function ProductCard({
               No Billing History
             </button>
           </div>
-          {authReq && <div className="fhint">Deferred until the auth is resolved.</div>}
-          {!authReq && nextOrder && (
+          {sosDeferred && <div className="fhint">Deferred until the auth is resolved.</div>}
+          {authReq && sosDespiteAuth && (
+            <div className="fhint">
+              This payer needs Same-or-Similar even with an auth required — record it now.
+            </div>
+          )}
+          {!sosDeferred && nextOrder && (
             <div className="fhint">
               Next Order Date auto-set to{" "}
               <b style={{ color: "var(--bnr-foreground)" }}>{ymdToUs(nextOrder)}</b>.
@@ -326,6 +344,8 @@ export function BenefitsPanel({
     patient.primaryInsurance ?? "",
     patient.secondaryInsurance ?? "",
   );
+  // Humana: Auth = Required does not defer the Same-or-Similar check (§5.32c).
+  const sosDespiteAuth = sosRequiredDespiteAuth(patient.primaryInsurance);
 
   const universalCount = Object.values(ins.universal).filter((v) => v === "confirmed").length;
   const universalDone = universalCount === 3;
@@ -366,7 +386,7 @@ export function BenefitsPanel({
     visibleResolved.length > 0 &&
     visibleResolved.every((r) => {
       const st = ins.codes[PRODUCT_TO_CODE_ID[r.product]];
-      return !!st?.auth && sosEntryComplete(st);
+      return !!st?.auth && sosEntryComplete(st, sosDespiteAuth);
     });
 
   // Medicaid + Insulin Pump serving: the pump always requires auth, so
@@ -549,6 +569,7 @@ export function BenefitsPanel({
                     state={ins.codes[PRODUCT_TO_CODE_ID[r.product]]}
                     hasMedicaid={hasMedicaid}
                     isMedicare={isMedicarePrimary(patient.primaryInsurance ?? "")}
+                    sosDespiteAuth={sosDespiteAuth}
                     onChange={(patch) => onCodeChange(PRODUCT_TO_CODE_ID[r.product], patch)}
                   />
                 ))}
