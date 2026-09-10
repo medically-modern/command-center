@@ -67,6 +67,22 @@
 /* ============ patient header ============ */
 .bnr .ph-name{font-size:1.875rem;font-weight:900;letter-spacing:-.025em}
 .bnr .ph-dob{margin-top:4px;font-size:1.125rem;color:var(--bnr-muted-foreground)}
+/* Patient Phone inline editor — Auth Outstanding only (BenefitsPatientHeader).
+   ⚠️ `.bnr button` above zeroes background/border/colour on EVERY button in this
+   subtree, and `.bnr button` (one class + one type) out-specifies every
+   single-class Tailwind utility — so a shadcn <Button> renders here as plain
+   text with a stray shadow. Same trap CLAUDE.md §9 records for `.pf-root`.
+   Use these classes and `.tbtn`, not utilities, and never reach for !important. */
+.bnr .ph-phone-edit{
+  display:inline-flex;align-items:center;gap:4px;vertical-align:middle;
+  font-size:.8rem;font-weight:600;color:var(--mm-teal);
+  border-radius:6px;padding:2px 8px;
+  border:1px solid var(--bnr-border);background:var(--bnr-card);
+}
+.bnr .ph-phone-edit:hover{border-color:var(--mm-mint-ring);background:oklch(0.973 0.011 175)}
+.bnr .ph-phone-row{display:inline-flex;align-items:center;gap:8px;vertical-align:middle;flex-wrap:wrap}
+.bnr .ph-phone-row input[type=text]{width:190px;height:38px}
+.bnr .ph-phone-row .tbtn{padding:7px 12px;font-size:.8rem}
 .bnr .ph-groups{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
 .bnr .hgroup{border:1px solid var(--bnr-border);border-radius:12px;background:oklch(0.968 0.007 247.896 / 0.3);padding:16px}
 .bnr .hgroup .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
