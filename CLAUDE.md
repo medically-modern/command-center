@@ -2542,6 +2542,60 @@ unanswered, so they are worked under the new rule from the first press.
    is what the greying, the `disabled` props, the required star and the hint all key off. ⚠️ Never
    put `authReq` back on any of them — the card is where the rep discovers the ask.
 
+### 5.32d The patient's phone is editable on Auth Outstanding (Sep 2026)
+Josh, 2026-09-10. A rep clearing the Auth Outstanding bucket rings the patient; a wrong number
+is what stops them, and the only fix was to leave the app and edit the board. The number is now
+editable in place — **one field, on one page.**
+
+⚠️ **This is NOT a way back to the manager "Edit profile" dialog §7 removed, and must not grow
+into one.** That dialog edited Serving · Primary/Secondary Insurance · Member ID 1/2 — five facts
+whose correction is only *half* the job, because changing the payer means re-verifying eligibility
+and the Insurance board cannot run a Stedi check (no trigger column, neither eligibility input
+column, ~9 of 33 result columns; §7 has the full argument). **A phone number has no Stedi half**:
+nothing derives from it, no eligibility answer depends on it, and a wrong one is the single reason
+a rep on this page cannot do their job. Those five facts still go back through Profile Send-Off.
+
+**Opt-in per page.** `BenefitsPatientHeader` is shared by **Benefits · Submit Auth · Auth
+Outstanding**, so the affordance is a prop: `onSavePhone` absent ⇒ byte-identical read-only markup.
+Only `AuthOutstandingPage` passes it. Widening it to the other two is somebody's decision — §7
+records this header as read-only for everyone after a deliberate removal — so
+`patientPhoneEdit.test.tsx` fails the build if a page picks it up quietly.
+
+⚠️ **The rejection check runs BEFORE the write, never after.** Every `writePhone` routes through
+`planPhoneWrite`, which **SKIPS** a value it cannot parse rather than throwing (`shared/phoneCell.ts`
+— the skip protects the 50-column verified sends, where one rejected column aborts the whole
+transaction). So an unchecked 9-digit number, or one carrying an extension, saves **green having
+written nothing** — §10's optimistic-UI trap, and the same reason `DvsPage` checks its doctor draft
+with `unwritableDoctorFields` before its first write. The guard is `phoneRejectionReason` and it
+lives in the HEADER, not the page, so any page that opts in gets it instead of having to remember.
+A refusal keeps the editor open with the rep's text: they fix it rather than retype a number they
+just read off a call. So does a failed board write.
+
+⚠️ **Straight to the board, not into the page overlay** — two independent reasons, either alone
+sufficient. The overlay is this page's staging area for the auth/SoS answers and **`hasOverlay`
+drives the header's Save Progress button**, so a phone in there marks the patient dirty for work
+that is already durably written. And the send that *would* carry it — `sendPatientToMonday` has
+built a Patient Phone task from `p.patientPhone` all along — is **Auth Review Complete, the stage
+mover**: a number corrected today would sit unsaved until the auth resolves, which can be weeks.
+Same posture as this page's own notes save and as the DVS doctor editor. The awaited `refetch(true)`
+puts the board's own value back on screen and cannot turn a landed write into a failure toast
+(refetch never rejects — it catches a bad read into `error`, which is what `StaleDataNotice` renders).
+
+⚠️ **The editor carries `key={patient.id}`.** All three pages mount this header with no key, so React
+reuses it across a sidebar click — a draft that survives that is the §9 notes-box bug **with a phone
+number in it**, one Save from writing the previous patient's number onto the open one. Pinned twice
+(a source scan and a behavioural rerender), and verified to fail when the key is removed.
+
+⚠️ **`.bnr button` zeroes background/border/colour on every button in this subtree** and, at one
+class + one type, out-specifies every single-class Tailwind utility — the same trap §9 records for
+`.pf-root`. Use the page's `.tbtn` and the new `.ph-phone-edit` / `.ph-phone-row` rules in
+`benefitsRedesign.css`; a shadcn `<Button>` renders here as plain text.
+
+A **blank is a deliberate clear**, matching `planPhoneWrite`'s own contract and the DVS doctor
+editor beside it — refusing one would be a control with no passing move, and the rep types it back.
+**No board change, no column added, no automation touched**; `COL.patientPhone` `phone_mm1x44yk` was
+already in the read set and already written by every Insurance send.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -3421,6 +3475,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |
 | "Auto. Texts" reads 0 for somebody we definitely texted | §5.24 — it counts **only** the intake form's 30-minute + 24-hour nudges (`numeric_mm67822b`). A rep's own text and both link families deliberately do not move it |
 | A patient's text thread looks empty, or stops ~30 days back | §5.27 — RingCentral retains ~30 days and answers **200 with an empty list**, which looks identical to "never texted". `GET /messaging/archive-health`, then `services/monday-gateway/smsArchive.mjs` |
+| The patient's phone is wrong and a rep can't fix it | §5.32d — editable on **Auth Outstanding only**, via `BenefitsPatientHeader`'s opt-in `onSavePhone`. The refusal fires BEFORE the write (`planPhoneWrite` skips what it can't parse, so an unchecked save is green and empty); the write goes straight to the board, never into the overlay. Not a route back to the retired Edit-profile dialog — §7 |
 | A Humana patient's Same-or-Similar was never asked / a product sits in Skip SoS Products | §5.32c — `benefitsDerive.sosRequiredDespiteAuth`. Auth = Required defers the check for every payer EXCEPT Humana; keyed on primary insurance (the secondary column has no Humana label). An auth-required Humana product with no entry derives `""`, which holds the stage — never `"skip"` |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |

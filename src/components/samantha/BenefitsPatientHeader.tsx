@@ -1,13 +1,14 @@
 /**
- * BenefitsPatientHeader — READ-ONLY patient header for the redesigned
- * Benefits tab, using the prototype's exact markup/classes (spec §6,
- * decisions D5/S5; benefits-redesign.html `renderHeader()` is the visual
- * spec — styles live in benefitsRedesign.css, scoped under .bnr).
+ * BenefitsPatientHeader — patient header for the redesigned Benefits tab,
+ * using the prototype's exact markup/classes (spec §6, decisions D5/S5;
+ * benefits-redesign.html `renderHeader()` is the visual spec — styles live in
+ * benefitsRedesign.css, scoped under .bnr).
  *
- * Read-only for EVERYONE: Serving, Primary/Secondary Insurance, Member IDs and
- * everything else are finalized at Profile Send-Off. The prototype's DEMO
- * dropdowns are deliberately absent (production strips them, spec §6). Every
- * value is user-select-all for one-click copy.
+ * Read-only for EVERYONE with ONE opt-in exception, the patient's PHONE:
+ * Serving, Primary/Secondary Insurance, Member IDs and everything else are
+ * finalized at Profile Send-Off. The prototype's DEMO dropdowns are
+ * deliberately absent (production strips them, spec §6). Every value is
+ * user-select-all for one-click copy.
  *
  * A manager-only "Edit profile" dialog lived here from 2026-07-30 until
  * 2026-08-02, letting the oversight escalation views correct Serving /
@@ -18,13 +19,27 @@
  * service is bound to the Profile Send-Off board). Corrections go back through
  * Profile Send-Off rather than being made blind here.
  *
+ * ⚠️ `onSavePhone` is NOT a way back to that dialog, and must not grow into
+ * one. A phone number has no Stedi half: nothing derives from it, no
+ * eligibility answer depends on it, and a wrong one is the single reason a rep
+ * on this page cannot do their job — they are looking at the header precisely
+ * because they are trying to ring the patient. The five identity/insurance
+ * facts still go back through Profile Send-Off.
+ *
+ * ⚠️ It is OPT-IN per page (`onSavePhone` absent ⇒ exactly the old read-only
+ * markup). Auth Outstanding passes it (Josh, 2026-09-10); Benefits and Submit
+ * Auth share this component and deliberately do not, so widening it is a
+ * decision somebody makes, not something a shared header does on its own.
+ *
  * Stedi strip: Home Plan / Coverage Type / Medicaid ID / Active? have no
  * Insurance-board columns yet — the strip shows what the board carries
  * (Plan Name, Plan Begin, QMB for Medicare payers, Coinsurance %,
  * Deductible / OOP Max remaining).
  */
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Loader2, Pencil, X } from "lucide-react";
+import { toast } from "sonner";
+import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import type { Patient } from "@/lib/samantha/workflow";
 import { authHomePlan } from "@/lib/samantha/submitAuthRules";
@@ -62,11 +77,121 @@ function SBox({ label, value, strong }: { label: string; value: string; strong?:
   );
 }
 
-interface Props {
-  patient: Patient;
+/**
+ * The patient's phone — read-only text, or an inline editor when the page
+ * passed `onSavePhone`.
+ *
+ * ⚠️ The rejection check runs BEFORE the save is attempted, never after.
+ * Every `writePhone` in the app routes through `planPhoneWrite`, which SKIPS a
+ * value it cannot parse rather than throwing — so a 9-digit number, or one
+ * with an extension, would save GREEN having written nothing. That is §10's
+ * optimistic-UI trap, and it is the same reason `DvsPage` checks its doctor
+ * draft with `unwritableDoctorFields` before its first write. The guard lives
+ * HERE rather than in the page so that any page which opts in gets it, instead
+ * of each one having to remember.
+ *
+ * ⚠️ A failed save keeps the editor open with the rep's text intact. Closing it
+ * would discard the number they just read off a call.
+ *
+ * ⚠️ The caller keys this on the patient id. A draft that outlives a sidebar
+ * click is the §9 notes-box bug with a PHONE NUMBER in it — one Save from
+ * writing the previous patient's number onto the open one.
+ */
+function PatientPhoneLine({
+  phone,
+  onSavePhone,
+}: {
+  phone: string;
+  onSavePhone?: (phone: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(phone);
+  const [saving, setSaving] = useState(false);
+
+  const display = formatPhone(phone) || "—";
+
+  if (!onSavePhone) {
+    return <span style={{ userSelect: "all" }}>{display}</span>;
+  }
+
+  const save = async () => {
+    if (saving) return;
+    const rejection = phoneRejectionReason(draft);
+    if (rejection) {
+      toast.error("That phone number can't be saved", { description: rejection });
+      return; // stays open, draft intact — nothing was written
+    }
+    const next = draft.trim();
+    setSaving(true);
+    try {
+      await onSavePhone(next);
+      setEditing(false);
+      toast.success(next ? "Phone number updated" : "Phone number cleared");
+    } catch (e) {
+      toast.error("Couldn't save the phone number", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <>
+        <span style={{ userSelect: "all" }}>{display}</span>{" "}
+        <button
+          type="button"
+          className="ph-phone-edit"
+          aria-label="Edit phone number"
+          title="Correct the patient's phone number"
+          onClick={() => {
+            setDraft(phone);
+            setEditing(true);
+          }}
+        >
+          <Pencil size={13} /> Edit
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <span className="ph-phone-row">
+      <input
+        type="text"
+        value={draft}
+        autoFocus
+        disabled={saving}
+        placeholder="(555) 555-0100"
+        aria-label="Patient phone number"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void save();
+          if (e.key === "Escape") setEditing(false);
+        }}
+      />
+      <button type="button" className="tbtn" disabled={saving} onClick={() => void save()}>
+        {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Save
+      </button>
+      <button type="button" className="tbtn" disabled={saving} onClick={() => setEditing(false)}>
+        <X size={13} /> Cancel
+      </button>
+    </span>
+  );
 }
 
-export function BenefitsPatientHeader({ patient }: Props) {
+interface Props {
+  patient: Patient;
+  /**
+   * Opt in to editing the patient's phone number. Absent ⇒ the header is
+   * read-only exactly as it has always been. See the ⚠️ notes at the top of
+   * this file before passing it from a new page.
+   */
+  onSavePhone?: (phone: string) => Promise<void>;
+}
+
+export function BenefitsPatientHeader({ patient, onSavePhone }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const isMedicarePayer = /medicare/i.test(patient.primaryInsurance ?? "");
@@ -85,7 +210,11 @@ export function BenefitsPatientHeader({ patient }: Props) {
         </div>
         <div className="ph-dob">
           DOB <span style={{ userSelect: "all" }}>{patient.dob || "—"}</span> ·{" "}
-          <span style={{ userSelect: "all" }}>{formatPhone(patient.patientPhone ?? "") || "—"}</span>
+          <PatientPhoneLine
+            key={patient.id}
+            phone={patient.patientPhone ?? ""}
+            onSavePhone={onSavePhone}
+          />
         </div>
         <div className="mt-1.5">
           <CallHistoryButton

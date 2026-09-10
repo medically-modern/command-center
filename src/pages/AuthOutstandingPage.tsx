@@ -39,7 +39,7 @@ import { sendPatientToMonday, saveNoAuthNeededToMonday } from "@/lib/samantha/mo
 import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
 import { validateAuthReviewForComplete } from "@/lib/samantha/authOutstandingReview";
 import { addDaysYmd, etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
-import { writeLongText, writeDate, COL } from "@/lib/samantha/mondayApi";
+import { writeLongText, writeDate, writePhone, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
@@ -313,8 +313,38 @@ const AuthOutstandingPage = () => {
                     </Button>
                   </div>
 
-                  {/* Same read-only header as Benefits + Submit Auth (.bnr skin) */}
-                  <div className="bnr"><BenefitsPatientHeader patient={selected} /></div>
+                  {/*
+                    Same header as Benefits + Submit Auth (.bnr skin), plus the
+                    one thing this page can edit: the patient's PHONE (Josh,
+                    2026-09-10). A rep clearing this bucket rings the patient;
+                    a wrong number is what stops them, and until now the only
+                    fix was to leave the app and edit the board.
+
+                    ⚠️ Straight to the board, not into the overlay. Two reasons.
+                    The overlay is this page's staging area for the auth/SoS
+                    answers, and `hasOverlay` drives the header's Save Progress
+                    button — a phone in there marks the patient dirty for work
+                    that is already durably written. And the send that WOULD
+                    carry it (`sendPatientToMonday` builds a Patient Phone task
+                    from `p.patientPhone`) is Auth Review Complete, the stage
+                    mover: a number corrected today would sit unsaved until the
+                    auth resolves, which can be weeks. Same posture as this
+                    page's own notes save, and as DvsPage's doctor editor.
+
+                    The awaited `refetch(true)` is what puts the board's own
+                    value back on screen. It cannot turn a landed write into a
+                    failure toast: refetch never rejects — it catches a bad read
+                    into `error`, which is what StaleDataNotice renders.
+                  */}
+                  <div className="bnr">
+                    <BenefitsPatientHeader
+                      patient={selected}
+                      onSavePhone={async (phone) => {
+                        await writePhone(selected.id, COL.patientPhone, phone);
+                        await refetch(true);
+                      }}
+                    />
+                  </div>
                   <AuthOutstandingPanel
                     patient={selected}
                     onCodeChange={updateCode}
