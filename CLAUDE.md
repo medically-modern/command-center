@@ -1732,13 +1732,21 @@ what makes this column's blank load-bearing today:
 | 7918340959 | **LIVE** | Pump Qty `= 1` → Monitor Qty `= 1` → create ("pump and monitor") |
 | 7921725444 | **INACTIVE** | Pump Qty `= 1` → Monitor Qty `= 0` → create ("monitor = 0") |
 
-⚠️⚠️ **THE APP CHANGE AND 7918341001 CANNOT BOTH BE LIVE — this is a coordinated cutover.**
-"pump only" is what serves a pump patient with no monitor, and it identifies them by Monitor Qty
-being **empty**, the exact state the coercion abolishes. Deploy the SPA while "pump only" is still
-enabled and a pump-only order **stops being created at all**; 7921725444, the branch built to catch
-those patients as `Monitor Qty = 0`, was still switched **off** when this landed (2026-09-08).
-Nothing errors either way — the board just goes quiet. **Enable 7921725444 and retire 7918341001 as
-the SPA deploys** (Monday-side, off-hours — §10).
+✅ **THE CUTOVER IS DONE — verified live 2026-09-10.** It did NOT happen the way the table above
+describes, so read the live automation rather than this paragraph's history. **7918341001 was
+re-pointed in place**: its two conditions now read Pump Qty `= 1` AND **Monitor Qty `= 0`**, i.e. the
+`is empty` gate is gone and it has become the branch 7921725444 was built to be. 7921725444 is
+therefore redundant and correctly stays **inactive** — do not "finish the cutover" by enabling it,
+that would double every pump-only order. 7918340959 ("pump and monitor") is Pump Qty `= 1` AND
+Monitor Qty `= 1`, unchanged.
+⚠️ **7918341011 ("monitor only") still gates on `Pump Qty IS EMPTY`, and that is correct and
+load-bearing** — `coercePumpQty` deliberately leaves a blank Pump Qty blank (see the symmetric trap
+below). Nothing in the app may write a `0` there.
+> The original plan was "enable 7921725444 and retire 7918341001 as the SPA deploys". A session
+> reading only that sentence on 2026-09-10 reported a live outage that did not exist, because
+> `is_active` on 7918341001 is still `true` and the id list looks unchanged — **the conditions are
+> what moved.** Resolve automation variables (`numberColumnId` / `numberColumnValueConditions` /
+> `numberColumnValue`) before concluding anything about these four.
 
 The everyday failure it fixes is the mirror image: a blank matches neither `= 0` nor `= 1`, so
 every branch that names the monitor **by value** skips it silently — "pump and monitor" can't see a
@@ -2761,6 +2769,49 @@ in Serving no longer render** — it drew all three unconditionally, asking a re
 reorder for a patient who owns their pump. `servedOrderLines` is the same rule the send uses.
 Supplies shows the **later** of infusion set / cartridge, both on hover.
 
+**Two of Brandon's asks that shipped incomplete, fixed 2026-09-10.**
+⚠️ **Removing an infusion set now reaches the board.** *"If Set 2 is removed, restore Qty 1's
+default and write blanks to Infusion Set 2 / Qty Inf. 2 on Monday — don't leave the old values on
+the board."* `setTwoTransition` cleared the FORM and the send then skipped the columns —
+`if (p.qtyInf2 !== "")` / `if (p.infusionSet2Index !== null)` — so a removal showed green and left
+the old set and quantity on the row, which rode to the Order board and Cardinal as a second set the
+patient never agreed to. Exactly the `!== ""` shape fixed for Member ID 2 the day before. All four
+infusion columns (both sets, both quantities) are now written on **every** send in **both** writers,
+blank = clear. The same guard was silently dropping Set 1's clear when a Pump Type change
+invalidated it.
+- ⚠️ **Blank, not zero, and the two are not interchangeable.** `writeNumber` takes `number | ""`
+  (ported from `finalConfirm/mondayApi.ts`, which has carried the contract since §5.22b) because
+  `Number("")` is **0** — funnelling a blank through `Number()` writes a real quantity and reports
+  success. This board depends on the difference: **7918341011 gates "monitor only" on Pump Qty
+  `is empty`**. `blankOrNumber` / `blankOrText` are the one place that conversion happens.
+- ⚠️ A status column clears with **`{}`**, never `{"index": null}` (which Monday reads as an
+  unreadable value) and never `""` — `writeStatusOrClear` already owned that and is what these
+  call; the declared WriteTask `value` is `{}` to match, or the gateway's durable fast path would
+  send something the client path does not (§5.2).
+- ⚠️ **Nothing on this board gates on the infusion columns** — checked every condition block on
+  every Welcome Call automation, 2026-09-10 — which is what makes a true blank safe here, unlike
+  Monitor Qty. Re-run that check before changing what these four write.
+- Pinned by `writeTaskParity.test.ts`' *"a removed Infusion Set 2 writes blanks"*, verified to fail
+  when either guard is restored. A regression is silent on screen, so the test is the only catch.
+
+⚠️ **Subscription Type now defaults from the product mix** — *"Default from the product mix,
+editable, required"*, with the same one muted hint as the Order Frequency card beside it.
+`expectedSubscriptionType` had computed the right answer since long before, and its ONLY consumer
+was a red *"Mismatch: expected X but Y is selected"* line — which **cannot render on a blank field**,
+because it needs a selected value to compare against. So the field never defaulted, the rep re-picked
+it on every patient, and the one piece of help appeared only after they had already picked something
+else. `orderDefaults.subscriptionTypeState` (+ tests) mirrors `frequencyState`: rep → board →
+derived, `"from product mix"` while it is our guess, `"edited"` once changed, **nothing** for a value
+the board already held.
+⚠️ **It fills a blank and never overrides a stated value** — deliberately unlike Order Frequency,
+where an ineligible cadence is dropped wherever it came from because the payer will not pay for it.
+A Subscription Type disagreeing with the products is a legitimate override, and Serving and the
+product columns are editable right there; the mismatch line survives as a genuine override warning
+rather than as the only feedback there is.
+⚠️ The auto-fill ref carries the **patient id**, like the two transition effects beside it: without
+it the label filled for the previous patient reads as this one's auto-fill and mislabels a board
+value as our guess.
+
 **Still not built, and why:** the *"call scheduled — date/day/time"* chip. Brandon asked for
 the DATE (the mockup's "View Calendly booking" link was never his ask, and is unbuildable
 anyway from a column holding an API URI). Blocked exactly as §5.31b records — the only mirror
@@ -2904,9 +2955,12 @@ June looks identical to one never texted. Re-run it as the archive grows.
 ⚠️ **It has never been run, and that is a DECISION** (Josh, 2026-09-10: *"moving forward we'll add
 can text, no need to backfill"*) — the column fills from the next Welcome Call send onward. The
 script is kept unrun for the day somebody wants the history, not because it is pending.
-⚠️ The five WC→Subscription workflows need these six columns added **and** Order Frequency
-re-pointed (§5.31c) — the same five ids, so it is one off-hours sitting: 7918317925, 7918340632,
-7918343137, 7918601476, 7919753399.
+✅ **The five WC→Subscription workflows carry all six columns — verified live 2026-09-10**
+(7918317925, 7918340632, 7918343137, 7918601476, 7919753399).
+⚠️ **Order Frequency is NOT among them and is a separate, still-open job** (§5.31c): all five still
+write a hardcoded `"90-Days"` / `"60-Days"` `user_config` literal into Subscription's
+`color_mm48kv1c`, so the WC column the app fills reaches nobody. Parked deliberately (Josh,
+2026-09-10) — not forgotten.
 
 ### 5.31e The "Call scheduled" chip — the welcome call, read from Calendly (Sep 2026)
 Brandon's 2026-09-09 ask, and the third attempt at it. §5.31b **built it and reverted it**: the

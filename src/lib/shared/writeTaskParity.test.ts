@@ -678,6 +678,53 @@ describe("Welcome Call send — task.value matches task.fn", () => {
     await sendPatientToMonday(welcomeCallPatient({ phoneEdited: "" }) as never);
     await expectParity(captured[0], "welcomeCall/blank-phone");
   });
+
+  /**
+   * ⚠️ REMOVING the second infusion set has to reach the board.
+   *
+   * Brandon, 2026-09-09: "If Set 2 is removed, restore Qty 1's default and write
+   * blanks to Infusion Set 2 / Qty Inf. 2 on Monday — don't leave the old values
+   * on the board." Both columns used to be guarded (`if (p.qtyInf2 !== "")` /
+   * `if (p.infusionSet2Index !== null)`), so a removal cleared on screen, sent
+   * green, and left the old set and quantity on the row — which then rode to the
+   * Order board and Cardinal as a second set the patient never agreed to. Same
+   * `!== ""` shape as the Member ID 2 bug fixed the same week (§5.31c).
+   *
+   * A regression here is SILENT on screen, so this test is the only thing that
+   * would catch it.
+   */
+  it("a removed Infusion Set 2 writes blanks rather than being skipped", async () => {
+    const { sendPatientToMonday } = await import("../welcomeCall/mondayWrite");
+    await sendPatientToMonday(
+      welcomeCallPatient({
+        infusionSet1: "AutoSoft 90 6mm", infusionSet1Index: 3, qtyInf1: "3",
+        infusionSet2: "", infusionSet2Index: null, qtyInf2: "",
+      }) as never,
+    );
+    const tasks = captured[0].tasks;
+    const set2 = tasks.find((t) => t.label === "Infusion Set 2");
+    const qty2 = tasks.find((t) => t.label === "Infusion Set 2 Qty");
+    expect(set2, "Infusion Set 2 must still be written when it is removed").toBeTruthy();
+    expect(qty2, "Qty Inf. 2 must still be written when it is removed").toBeTruthy();
+    // {} is Monday's clear for a status column; "" for a numbers column.
+    expect(set2!.value, "a removed set must CLEAR, not carry an index").toEqual({});
+    expect(qty2!.value, "a removed quantity must CLEAR, not write 0").toBe("");
+    await expectParity(captured[0], "welcomeCall/removed-set-2");
+  });
+
+  /**
+   * ⚠️ The other half of the same rule: a blank must never become a ZERO.
+   * `Number("")` is 0, so routing the blank through `Number()` writes a real
+   * quantity and reports success — and 0 is not a clear. This board depends on
+   * the difference: 7918341011 ("monitor only") gates on Pump Qty **is empty**.
+   */
+  it("a blank infusion quantity clears rather than writing 0", async () => {
+    const { sendPatientToMonday } = await import("../welcomeCall/mondayWrite");
+    await sendPatientToMonday(welcomeCallPatient({ qtyInf1: "", qtyInf2: "" }) as never);
+    const qty1 = captured[0].tasks.find((t) => t.label === "Infusion Set 1 Qty");
+    expect(qty1!.value).toBe("");
+    expect(qty1!.value).not.toBe("0");
+  });
 });
 
 describe("Subscription send — task.value matches task.fn", () => {

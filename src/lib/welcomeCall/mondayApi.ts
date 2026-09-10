@@ -359,6 +359,11 @@ export async function fetchGroupItems(
 
 /**
  * Write a status column by index. value is a JSON string like '{"index": 1}'.
+ *
+ * ⚠️ There is no index that means "blank" — to CLEAR a status column use
+ * `writeStatusClear` (Monday's clear shape is `{}`), or `writeStatusOrClear` in
+ * mondayWrite.ts, which picks between the two. Passing null here would
+ * serialise `{"index":null}`, which the API takes as a value it cannot read.
  */
 export async function writeStatusIndex(itemId: string, columnId: string, index: number): Promise<void> {
   const query = `
@@ -412,8 +417,18 @@ export async function writeDropdownIds(itemId: string, columnId: string, ids: nu
 
 /**
  * Write a number column.
+ *
+ * ⚠️ `""` CLEARS the cell, which is NOT the same as writing 0 — an automation
+ * gated on "is empty" fires for a cleared cell and never for one holding 0.
+ * This board depends on that distinction today: 7918341011 ("monitor only")
+ * gates on **Pump Qty is empty**, so a 0 written there silences it. Ported from
+ * `finalConfirm/mondayApi.ts`, which has carried the same contract and the same
+ * warning since the Monitor Qty work (§5.22b).
+ *
+ * ⚠️ `Number("")` is 0, so a caller that funnels a blank through `Number()`
+ * writes a zero while believing it cleared. Pass the `"" `through.
  */
-export async function writeNumber(itemId: string, columnId: string, num: number): Promise<void> {
+export async function writeNumber(itemId: string, columnId: string, num: number | ""): Promise<void> {
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
@@ -423,7 +438,7 @@ export async function writeNumber(itemId: string, columnId: string, num: number)
     boardId: BOARD_ID,
     itemId,
     columnId,
-    value: JSON.stringify(String(num)),
+    value: num === "" ? JSON.stringify("") : JSON.stringify(String(num)),
   });
 }
 

@@ -34,7 +34,7 @@ import { InsuranceBlock, AuthBlock, OopBlock } from "@/components/welcomeCall/In
 import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
 import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
 import { etTodayYmd } from "@/lib/shared/monitorSale";
-import { shouldDefaultPumpQty, setTwoTransition, isSetChosen } from "@/lib/welcomeCall/orderDefaults";
+import { shouldDefaultPumpQty, setTwoTransition, isSetChosen, subscriptionTypeState } from "@/lib/welcomeCall/orderDefaults";
 import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "@/lib/welcomeCall/orderFrequency";
 import { NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
 import {
@@ -292,6 +292,29 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
     primaryInsurance: effectivePrimary,
     secondaryInsurance: effectiveSecondary,
   });
+  /* Subscription Type: "Default from the product mix, editable, required"
+     (Brandon, 2026-09-09), with the same one-hint card as Order Frequency.
+     ⚠️ The ref carries the PATIENT ID, like the two transition effects below:
+     without it, the label we filled for the last patient would be read as this
+     one's auto-fill and mislabel a board value as our guess. */
+  const autoFilledSub = useRef<{ patientId: string; label: string } | null>(null);
+  const subType = subscriptionTypeState({
+    current: patient.subscriptionType,
+    derived: expectedSubscriptionType(patient),
+    autoFilled:
+      autoFilledSub.current?.patientId === patient.id ? autoFilledSub.current.label : "",
+  });
+  useEffect(() => {
+    if (!subType.needsFill) return;
+    const derived = expectedSubscriptionType(patient);
+    if (!derived) return;
+    const option = SUBSCRIPTION_TYPE_OPTIONS.find((o) => o.label === derived);
+    if (!option) return; // a label the board doesn't carry writes a blank (§5.12)
+    autoFilledSub.current = { patientId: patient.id, label: derived };
+    handleSelectChange("subscriptionType", option.label, option.index);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, subType.needsFill]);
+
   const derivedSupplyDays = String(supplyLengthDays(effectivePrimary, effectiveSecondary)) as SupplyLength;
   const setIntake = (next: CallIntake) => onIntakeChange?.(next);
 
@@ -1124,20 +1147,19 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 ))}
               </SelectContent>
             </Select>
-            {(() => {
-              const expected = expectedSubscriptionType(patient);
-              const selected = patient.subscriptionTypeIndex !== null
-                ? SUBSCRIPTION_TYPE_OPTIONS.find((o) => o.index === patient.subscriptionTypeIndex)?.label ?? null
-                : null;
-              if (expected && selected && expected !== selected) {
-                return (
-                  <p className="mt-2 text-xs font-medium text-red-600">
-                    Mismatch: based on the selections above, expected <span className="font-semibold">{expected}</span> but <span className="font-semibold">{selected}</span> is selected.
-                  </p>
-                );
-              }
-              return null;
-            })()}
+            {/* One muted hint, only while it means something — "from product
+                mix" while it is our guess, "edited" once the rep changes it,
+                nothing for a value the board already held. Same rule and same
+                look as the Order Frequency card below. */}
+            {subType.hint && (
+              <p className="mt-1.5 text-xs text-muted-foreground">{subType.hint}</p>
+            )}
+            {/* Kept, and now a genuine override warning rather than the only
+                feedback there is: with the field defaulted it fires when the rep
+                has deliberately picked against the products. */}
+            {subType.mismatch && (
+              <p className="mt-1.5 text-xs font-medium text-red-600">{subType.mismatch}</p>
+            )}
           </div>
 
           {/* Order Frequency — Brandon: "call it that, not 'Supply length', so
