@@ -29,6 +29,7 @@ import {
   starSlot,
   MAX_SLOTS,
   type CanText,
+  type CaregiverDetails,
   type PhoneSlot,
   type SlotOwner,
 } from "@/lib/welcomeCall/phoneSlots";
@@ -63,14 +64,26 @@ export function PhoneSlotsSection({ patient, onFieldChange, intake, onIntakeChan
   const slots = phoneSlotsFor(patient);
   const caregiver = caregiverFor(patient);
   const setSlots = (next: PhoneSlot[]) => onFieldChange("phoneSlotsEdited", next);
-  const setCaregiver = (patch: Partial<typeof caregiver>) =>
+  const setCaregiver = (patch: Partial<CaregiverDetails>) =>
     onFieldChange("caregiverEdited", { ...caregiver, ...patch });
+
+  /* ⚠️ ONE caregiver record, rendered beside the FIRST slot that claims one.
+     Brandon, 2026-09-11: *"the caregiver drop-down doesn't need a whole new
+     row… it can pop up to the right if whose number is this is caregiver"*.
+     Both slots can be a caregiver's, and there is still only one Caregiver Name
+     column, so the panel is attached to a slot for LAYOUT and is not owned by
+     it — rendering one per caregiver slot would put two editors on one column,
+     which is how they disagree. */
+  const caregiverSlot = slots.findIndex((s) => s.owner === "caregiver");
+  const showCaregiver = caregiverPanelVisible(slots);
 
   return (
     <div className="space-y-4">
+      {/* Brandon, 2026-09-11: shorten it. Kept "and call" because the star does
+          not only pick the automated-text number — it becomes Primary Phone,
+          which is the number every automation and every rep dials. */}
       <p className="text-sm text-muted-foreground">
-        The starred number is the one we call and text, and the one every automation uses.
-        Star the other slot to swap them — the number it replaces becomes the alternate.
+        The starred number is the one we text and call, and the one automations use.
       </p>
 
       <div className="space-y-3">
@@ -84,6 +97,8 @@ export function PhoneSlotsSection({ patient, onFieldChange, intake, onIntakeChan
             onCanText={(v) => setSlots(setSlotCanText(slots, i, v))}
             onStar={() => setSlots(starSlot(slots, i))}
             onRemove={() => setSlots(removeSlot(slots, i))}
+            caregiver={showCaregiver && i === caregiverSlot ? caregiver : null}
+            onCaregiver={setCaregiver}
           />
         ))}
       </div>
@@ -94,44 +109,20 @@ export function PhoneSlotsSection({ patient, onFieldChange, intake, onIntakeChan
         </Button>
       )}
 
-      {/* ⚠️ Either slot, not just the starred one — a caregiver on the alternate
-          number still needs a name and a HIPAA answer. */}
-      {caregiverPanelVisible(slots) && (
-        <div className="rounded-lg border border-input bg-muted/20 p-4 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Caregiver
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {/* Two boxes, ONE column — written as "Jane Doe (daughter)". */}
-            <Input
-              placeholder="Name"
-              value={caregiver.name}
-              onChange={(e) => setCaregiver({ name: e.target.value })}
-            />
-            <Input
-              placeholder="Relationship (daughter, spouse…)"
-              value={caregiver.relationship}
-              onChange={(e) => setCaregiver({ relationship: e.target.value })}
-            />
-          </div>
-          <label
-            htmlFor="wc-caregiver-auth"
-            className="flex items-center gap-2 cursor-pointer select-none text-sm"
-          >
-            <Checkbox
-              id="wc-caregiver-auth"
-              checked={caregiver.authorized}
-              onCheckedChange={(v) => setCaregiver({ authorized: v === true })}
-            />
-            <span className={caregiver.authorized ? "text-foreground" : "text-muted-foreground"}>
-              Authorized to discuss the patient&apos;s account (verbal HIPAA consent)
-            </span>
+      {/* Caregiver NOTES are the one caregiver fact with no column, so they stay
+          in the intake block — and they are optional, which the label now says
+          outright (Brandon, 2026-09-11). Full width under the slots rather than
+          in the side panel: it is a free-text box and the panel is deliberately
+          narrow. */}
+      {showCaregiver && (
+        <div>
+          <label htmlFor="wc-caregiver-notes" className={LABEL_CLS}>
+            Caregiver notes <span className="normal-case tracking-normal font-normal">— optional, anything worth knowing</span>
           </label>
-          {/* No phone and no email here on purpose — Brandon: "the caretaker's
-              number lives in a slot, and there's no email column". */}
           <Textarea
+            id="wc-caregiver-notes"
             rows={2}
-            placeholder="Caregiver notes (best times to call, who to ask for…)"
+            placeholder="Best times to call, who to ask for, anything the next rep should know"
             value={intake.caretaker.notes}
             onChange={(e) =>
               onIntakeChange({
@@ -146,6 +137,50 @@ export function PhoneSlotsSection({ patient, onFieldChange, intake, onIntakeChan
   );
 }
 
+/** The caregiver record, rendered narrow beside the slot that claims one. */
+function CaregiverPanel({
+  caregiver,
+  onCaregiver,
+}: {
+  caregiver: CaregiverDetails;
+  onCaregiver: (patch: Partial<CaregiverDetails>) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-input bg-muted/30 p-3 space-y-2">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        Caregiver
+      </p>
+      {/* Two boxes, ONE column — written as "Jane Doe (daughter)". */}
+      <Input
+        className="h-9"
+        placeholder="Name"
+        value={caregiver.name}
+        onChange={(e) => onCaregiver({ name: e.target.value })}
+      />
+      <Input
+        className="h-9"
+        placeholder="Relationship (daughter, spouse…)"
+        value={caregiver.relationship}
+        onChange={(e) => onCaregiver({ relationship: e.target.value })}
+      />
+      {/* No phone and no email here on purpose — Brandon: "the caretaker's
+          number lives in a slot, and there's no email column". */}
+      <label
+        htmlFor="wc-caregiver-auth"
+        className="flex items-start gap-2 cursor-pointer select-none text-xs pt-0.5"
+      >
+        <Checkbox id="wc-caregiver-auth" className="mt-0.5"
+          checked={caregiver.authorized}
+          onCheckedChange={(v) => onCaregiver({ authorized: v === true })}
+        />
+        <span className={caregiver.authorized ? "text-foreground" : "text-muted-foreground"}>
+          Authorized to discuss the account (verbal HIPAA consent)
+        </span>
+      </label>
+    </div>
+  );
+}
+
 function SlotRow({
   slot,
   canDelete,
@@ -154,6 +189,8 @@ function SlotRow({
   onCanText,
   onStar,
   onRemove,
+  caregiver,
+  onCaregiver,
 }: {
   slot: PhoneSlot;
   canDelete: boolean;
@@ -162,6 +199,9 @@ function SlotRow({
   onCanText: (v: CanText) => void;
   onStar: () => void;
   onRemove: () => void;
+  /** Non-null on the one slot that renders the shared caregiver record. */
+  caregiver: CaregiverDetails | null;
+  onCaregiver: (patch: Partial<CaregiverDetails>) => void;
 }) {
   /* ⚠️ Shown here rather than left to the writer. `writePhone` SKIPS a number
      it cannot parse instead of throwing, so a typo would otherwise save green
@@ -194,7 +234,18 @@ function SlotRow({
           />
         </Button>
 
-        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Brandon: the owner dropdown doesn't need to be so wide, and the
+            caregiver details belong to its right rather than on a row of their
+            own. Fixed 180px for the answer, the rest to the number, and the
+            caregiver panel taking a third track only when there is one. */}
+        <div
+          className={cn(
+            "flex-1 grid grid-cols-1 gap-3",
+            caregiver
+              ? "sm:grid-cols-[minmax(0,1fr)_180px] lg:grid-cols-[minmax(0,1fr)_180px_minmax(0,1.1fr)]"
+              : "sm:grid-cols-[minmax(0,1fr)_180px]",
+          )}
+        >
           <div>
             <label className={LABEL_CLS}>
               {slot.starred ? "Primary phone" : "Alternate phone"}
@@ -212,10 +263,17 @@ function SlotRow({
 
           <div>
             <label className={LABEL_CLS}>Whose number is this?</label>
-            <Select
-              value={slot.owner || undefined}
-              onValueChange={(v) => onOwner(v as SlotOwner)}
-            >
+            {/* ⚠️⚠️ `value={slot.owner}`, NEVER `slot.owner || undefined`.
+                Radix reads `undefined` as "uncontrolled" and then keeps its own
+                internal answer, so the box can display a choice the page never
+                kept — which is exactly what Brandon reported as "I have Patient
+                selected but the bottom still asks me to pick", and the same
+                defect made the caregiver panel need a toggle to Patient and
+                back before it would open. An empty STRING is still controlled
+                and still shows the placeholder (Radix's own
+                `shouldShowPlaceholder` treats "" and undefined alike), so the
+                placeholder is not lost by fixing this. */}
+            <Select value={slot.owner} onValueChange={(v) => onOwner(v as SlotOwner)}>
               <SelectTrigger>
                 <SelectValue placeholder="Patient or caregiver" />
               </SelectTrigger>
@@ -225,6 +283,12 @@ function SlotRow({
               </SelectContent>
             </Select>
           </div>
+
+          {caregiver && (
+            <div className="sm:col-span-2 lg:col-span-1">
+              <CaregiverPanel caregiver={caregiver} onCaregiver={onCaregiver} />
+            </div>
+          )}
         </div>
 
         {canDelete && (

@@ -537,6 +537,45 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
 }
 
 /**
+ * Mark this patient Stuck, with a reason.
+ *
+ * ⚠️ **This is what replaced "Don't Advance"** (Josh, 2026-09-11: *"remove
+ * don't advance completely"*). That button was broken in a way worth
+ * remembering: BOTH end-of-call choices wrote Stage Advancer → Review Profile,
+ * which is the move to Final Profile Confirmation — so the button labelled
+ * "hold this patient" moved them forward.
+ *
+ * ⚠️ **Not a Propose Stuck, and deliberately not pretending to be one.** This
+ * board has no propose→approve ladder: `StageActionBar` does not render here,
+ * `StageKey` has no `welcome-call`, and the Escalation column carries only
+ * "Escalation Required" and "Done" — no index 2 for the ladder to write, and
+ * Monday drops a write to a label that does not exist at HTTP 200 with no
+ * error. This is the DIRECT exit, which is the same call already made for
+ * Profile Send Off (§5.10, Josh 2026-08-20: "no propose stuck anywhere").
+ *
+ * ⚠️ **Reason FIRST, advancer second** — the §5.10 ordering rule. A failed
+ * advancer then leaves a stamped patient still in the rep's queue, visible and
+ * retryable; the other order parks somebody in the Stuck group with no
+ * explanation of why. And the reason is REQUIRED because this board has no
+ * stuck-reason column: the stamped note is the only record that will exist.
+ *
+ * ⚠️ Appends onto the polled copy of Notes, like every other stage-page note
+ * path — the same one-poll lost-update exposure, not a new one.
+ */
+export async function markStuckWithReason(p: Patient, reason: string): Promise<void> {
+  const text = reason.trim();
+  if (!text) throw new Error("A reason is required to mark a patient stuck");
+  const notes = appendStampedNote(p.notes, `Marked stuck — ${text}`, "Welcome Call");
+  await assertTextLikeFits(BOARD_ID, COL.notes, notes, "Welcome Call Notes");
+  await writeLongText(p.id, COL.notes, notes);
+  await writeStatusIndex(p.id, COL.stageAdvancer, STAGE_ADVANCER_STUCK);
+}
+
+/** Stage Advancer `color_mm1ws96t` — 0 Review Profile · 2 Stuck / Don't
+ *  Proceed · 4 Completed · 7 Welcome Call. Read off the live board. */
+export const STAGE_ADVANCER_STUCK = 2;
+
+/**
  * Immediately push phone to Monday (called on check-mark press).
  */
 export async function sendPhoneToMonday(itemId: string, phone: string): Promise<void> {

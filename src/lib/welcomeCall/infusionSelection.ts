@@ -37,6 +37,64 @@ export interface SetOption {
 /** The one label that means "no second set", handled specially throughout. */
 export const NOT_SERVING = "Not Serving";
 
+/* ─── Favourites (Brandon, 2026-09-11) ─── */
+
+/**
+ * *"Set a default to AutoSoft XC 6mm 23\" … not default, but like have it be
+ * the first one on the list as like a favourites list. Also for any patient
+ * from Joslin the favourite should be TruSteel 6mm 23\" instead."*
+ *
+ * ⚠️ **A favourite REORDERS, it never selects.** Nothing is written until a rep
+ * picks — Brandon said "not default" in the same breath. Auto-selecting an
+ * infusion set would put a product on an order nobody chose, which is the
+ * §5.22 class of error that shipped a $3,787 pump.
+ */
+export const FAVOURITE_SET = 'AutoSoft XC 6 mm 23"';
+export const FAVOURITE_SET_JOSLIN = 'TruSteel 6 mm 23"';
+
+/**
+ * Compare labels the way a human would, so a board label that gains or loses a
+ * space — `9mm` vs `9 mm`, the exact mismatch the stock tracker already needs
+ * normalising for — still matches its favourite. Curly quotes fold to straight.
+ */
+function setKey(label: string): string {
+  return (label ?? "")
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u201c\u201d]/g, '"')
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+/**
+ * Which set leads the list for this patient.
+ *
+ * ⚠️ **Any Joslin clinic, not one exact label** (Josh, 2026-09-11: "all joslin,
+ * yes"). The Clinic Name dropdown holds five Joslin entries — the exact
+ * "Joslin Pediatric Educators" plus four spellings of the SUNY Upstate Joslin
+ * practice — and on a scan of all 466 Welcome Call items the exact one appears
+ * 3 times, all long finished, while the SUNY spellings carry the other 33.
+ * Matching the exact label alone would have made this fire for nobody.
+ */
+export function favouriteSetLabel(clinicName: string): string {
+  return /joslin/i.test(clinicName ?? "") ? FAVOURITE_SET_JOSLIN : FAVOURITE_SET;
+}
+
+/**
+ * Move this patient's favourite to the top of an already-filtered list.
+ *
+ * ⚠️ Adds nothing and removes nothing. A favourite that is not in `options` —
+ * filtered out as incompatible with the pump, or already chosen in the other
+ * slot — simply does not appear, rather than being re-admitted: compatibility
+ * outranks preference, and re-adding it would offer a set the pump cannot take.
+ */
+export function withFavouriteFirst(options: SetOption[], favourite: string): SetOption[] {
+  const key = setKey(favourite);
+  if (!key) return options;
+  const i = options.findIndex((o) => setKey(o.label) === key);
+  if (i <= 0) return options;
+  return [options[i], ...options.slice(0, i), ...options.slice(i + 1)];
+}
+
 /** Positively-wrong pairings. `unverified` is deliberately absent. */
 function isBlockedPairing(pumpType: string, label: string): boolean {
   if (!label || label === NOT_SERVING) return false;

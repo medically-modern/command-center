@@ -9,7 +9,6 @@ import type { CallIntake } from "@/lib/welcomeCall/callIntake";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { sidebarVisibleList } from "@/lib/welcomeCall/sidebarList";
 import { PatientInfoCard, NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
-import { OopEstimateCard } from "@/components/welcomeCall/OopEstimateCard";
 import { WelcomeCallForm } from "@/components/welcomeCall/WelcomeCallForm";
 import { ReviewPanel } from "@/components/welcomeCall/ReviewPanel";
 import { PatientsSidebar } from "@/components/welcomeCall/PatientsSidebar";
@@ -21,6 +20,7 @@ import { CallAttemptsCounter } from "@/components/welcomeCall/CallAttemptsCounte
 import { FollowUpModal } from "@/components/welcomeCall/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,7 +34,7 @@ import {
 import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock, OctagonX } from "lucide-react";
 import { toast } from "sonner";
 import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
-import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
+import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendSecondaryInsuranceToMonday, markStuckWithReason } from "@/lib/welcomeCall/mondayWrite";
 import { BOARD_ID, writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
@@ -64,6 +64,11 @@ const WelcomeCallPage = () => {
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [stuckOpen, setStuckOpen] = useState(false);
   const [stuckSending, setStuckSending] = useState(false);
+  /* ⚠️ Required, not optional. Stuck replaced "Don't Advance" (Josh,
+     2026-09-11) and this board has NO stuck-reason column, so the stamped note
+     `markStuckWithReason` writes is the only record of why the call stopped.
+     Cleared on close so the next patient never inherits a reason. */
+  const [stuckReason, setStuckReason] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -280,11 +285,17 @@ const WelcomeCallPage = () => {
 
   const handleStuck = async () => {
     if (!selected) return;
+    if (!stuckReason.trim()) return;
     setStuckSending(true);
     try {
-      await writeStatusIndex(selected.id, COL.stageAdvancer, 2);
+      await markStuckWithReason(selected, stuckReason);
       toast.success(`${selected.name} marked as Stuck`);
       setStuckOpen(false);
+      setStuckReason("");
+      // The advancer moved them to the Stuck group — take them off screen now
+      // rather than leaving a worked-on patient in the queue until the poll AND
+      // the board automation catch up (§9's re-send window).
+      markAdvanced(selected.id);
       refetch();
     } catch (e) {
       toast.error("Failed to mark as Stuck", {
@@ -384,7 +395,11 @@ const WelcomeCallPage = () => {
                     onFieldChange={handleFieldChange}
                     onSaveSecondaryInsurance={(_label, index) => sendSecondaryInsuranceToMonday(selected.id, index)}
                   />
-                  <OopEstimateCard patient={selected} />
+                  {/* ⚠️ OopEstimateCard was removed from this page (Brandon,
+                      2026-09-11 — one of the three rows to delete). The
+                      out-of-pocket step lives in the form's Insurance section
+                      as `OopBlock`; the component is still in the tree and
+                      still used by nothing else here. */}
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
                   {/* Order dates moved INTO Subscription & Logistics (form
                       section 7) on 2026-09-09 — Brandon: "under the cards, in
@@ -425,20 +440,45 @@ const WelcomeCallPage = () => {
           onSuccess={refetch}
         />
       )}
-      <AlertDialog open={stuckOpen} onOpenChange={setStuckOpen}>
+      <AlertDialog
+        open={stuckOpen}
+        onOpenChange={(o) => {
+          setStuckOpen(o);
+          if (!o) setStuckReason("");
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Mark this patient as stuck?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will immediately set Stage Advancer to <span className="font-semibold">Stuck / Don't Proceed</span> for{" "}
-              {selected?.name ?? "this patient"} on Monday.
+              This holds {selected?.name ?? "this patient"} here — Stage Advancer goes to{" "}
+              <span className="font-semibold">Stuck / Don&apos;t Proceed</span> and the board
+              moves them to the Stuck group. This is what replaced Don&apos;t Advance.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-1.5">
+            <label htmlFor="wc-stuck-reason" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+              Why are they stuck? <span className="text-red-600">Required</span>
+            </label>
+            <Textarea
+              id="wc-stuck-reason"
+              rows={3}
+              autoFocus
+              value={stuckReason}
+              onChange={(e) => setStuckReason(e.target.value)}
+              placeholder="e.g. Patient wants to cancel — moving to a different supplier"
+            />
+            {/* There is no stuck-reason column on this board, so this note IS
+                the record a manager will find later. */}
+            <p className="text-xs text-muted-foreground">
+              Saved to Welcome Call Notes with your initials and the date.
+            </p>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={stuckSending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleStuck}
-              disabled={stuckSending}
+              disabled={stuckSending || !stuckReason.trim()}
               className="bg-red-600 hover:bg-red-700 text-white"
             >
               {stuckSending ? "Sending…" : "Yes, mark as Stuck"}

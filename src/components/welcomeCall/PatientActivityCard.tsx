@@ -11,14 +11,15 @@
  * ⚠️ Nothing is fetched until a tab is open — see `usePatientActivity` for the
  * INCIDENT_2026-08-20 rules this is built to. Collapsed, it costs nothing.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { MessageSquare, Phone, Voicemail, RefreshCw, ChevronRight, Loader2 } from "lucide-react";
+import { MessageSquare, Phone, PhoneIncoming, PhoneOutgoing, Voicemail, RefreshCw, ChevronRight, Loader2, Play } from "lucide-react";
 import { PatientContact } from "@/components/masheke/mmKit";
 import { usePatientActivity, type ActivityTab } from "@/hooks/welcomeCall/usePatientActivity";
 import SmsDeliveryNote from "@/components/shared/SmsDeliveryNote";
+import { fetchRcContentBlobUrl, fetchRecordingBlobUrl } from "@/lib/fax/ringcentralApi";
 
 const TABS: { id: ActivityTab; label: string; icon: typeof Phone }[] = [
   { id: "texts", label: "Texts", icon: MessageSquare },
@@ -56,7 +57,13 @@ export function PatientActivityCard({ phone }: { phone: string }) {
   if (!phone?.trim()) return null;
 
   return (
-    <Card className="p-4">
+    /* Same material as the form steps below it (see `FormSection`) — this box
+       sits between the banner and the call, so it changing shell was half of
+       "the rest is still in old format". */
+    <Card
+      className="p-4 rounded-2xl shadow-sm"
+      style={{ borderColor: "var(--mm-card-border)" }}
+    >
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <button
           type="button"
@@ -134,32 +141,127 @@ function Empty({ what }: { what: string }) {
 
 function Texts({ rows }: { rows?: import("@/lib/assignedPatients/messagingApi").ConversationMessage[] }) {
   if (!rows?.length) return <Empty what="texts" />;
+  /* Brandon, 2026-09-11: *"let's make the ringcentral texts pretty too, like it
+     is lower in the tool"* — i.e. read like the conversation thread, not like a
+     list of boxes. Ours = teal, right-aligned, white on the accent; theirs =
+     grey, left. Tails on the outer corner, the timestamp under the bubble
+     rather than inside it, and the day printed once when it changes. */
+  let lastDay = "";
   return (
-    <div className="space-y-2">
-      {rows.map((m) => (
-        <div
-          key={m.id}
-          className={cn(
-            "rounded-lg px-3 py-2 text-sm max-w-[85%]",
-            m.direction === "Outbound"
-              ? "ml-auto bg-[color:var(--mm-teal)]/10 border border-[color:var(--mm-teal)]/30"
-              : "bg-muted",
-          )}
-        >
-          <p className="text-[11px] font-semibold text-muted-foreground">
-            {m.direction === "Outbound" ? "Medically Modern" : "Patient"} · {when(m.time)}
-          </p>
-          <p className="whitespace-pre-wrap break-words">{m.text}</p>
-          {/* An ACCEPTED text is not a DELIVERED text (§5.5) — this thread is
-              the only surface that late verdict ever reaches, which is why the
-              texts tab reads the gateway route rather than RingCentral direct. */}
-          <SmsDeliveryNote
-            direction={m.direction}
-            messageStatus={m.messageStatus}
-            deliveryError={m.deliveryError}
-          />
-        </div>
-      ))}
+    <div className="space-y-2 pr-1">
+      {rows.map((m) => {
+        const mine = m.direction === "Outbound";
+        const day = dayOf(m.time);
+        const newDay = day !== lastDay;
+        lastDay = day;
+        return (
+          <div key={m.id}>
+            {newDay && day && (
+              <p className="text-center text-[10px] uppercase tracking-wider text-muted-foreground my-3">
+                {day}
+              </p>
+            )}
+            <div className={cn("flex flex-col", mine ? "items-end" : "items-start")}>
+              <div
+                className={cn(
+                  "max-w-[80%] px-3 py-2 text-sm leading-snug whitespace-pre-wrap break-words shadow-sm",
+                  mine
+                    ? "bg-[color:var(--mm-teal)] text-white rounded-2xl rounded-br-sm"
+                    : "bg-muted text-foreground rounded-2xl rounded-bl-sm",
+                )}
+              >
+                {m.text}
+              </div>
+              <div className={cn("mt-0.5 px-1", mine ? "text-right" : "text-left")}>
+                <span className="text-[10px] text-muted-foreground">{when(m.time)}</span>
+                {/* An ACCEPTED text is not a DELIVERED text (§5.5) — this thread
+                    is the only surface that late verdict ever reaches, which is
+                    why the texts tab reads the gateway route rather than
+                    RingCentral direct. */}
+                <SmsDeliveryNote
+                  direction={m.direction}
+                  messageStatus={m.messageStatus}
+                  deliveryError={m.deliveryError}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** "Tue 9 Sep" in ET, for the once-per-day divider. Same zone rule as `when`. */
+function dayOf(iso: string): string {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return "";
+  return t.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "America/New_York",
+  });
+}
+
+/**
+ * "Play" → fetch the bytes → an inline <audio>.
+ *
+ * Brandon, 2026-09-11: *"is there a way to listen to the calls/voicemails from
+ * the tool?"* — yes, and the plumbing already existed: `CallHistoryButton` has
+ * played call recordings since §5.16 and the Comms Hub plays voicemail audio.
+ * This just surfaces it where he asked for it.
+ *
+ * ⚠️ Fetched **on click**, never on render. The media proxy is a RingCentral
+ * request per item, and a list of twenty calls that pre-loaded twenty
+ * recordings is INCIDENT_2026-08-20's shape on a page a rep opens all day.
+ *
+ * ⚠️ A blob URL is revoked when it is replaced, so a rep working down a list
+ * does not accumulate one per item — the leak `FaxInboxPage` still has.
+ *
+ * ⚠️ **Absent audio is the NORMAL case, not an error** (§5.16): recordings need
+ * the account to record AND the `ReadCallRecording` permission, and voicemail
+ * audio needs an attachment RingCentral may not give us. No URI ⇒ no button.
+ */
+function AudioPlay({ uri, kind }: { uri: string; kind: "recording" | "voicemail" }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+
+  if (!uri) return null;
+  if (url) return <audio controls autoPlay src={url} className="mt-1.5 w-full h-9" />;
+
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setErr(null);
+          try {
+            const next =
+              kind === "recording"
+                ? await fetchRecordingBlobUrl(uri)
+                : await fetchRcContentBlobUrl(uri);
+            setUrl((prev) => {
+              if (prev) URL.revokeObjectURL(prev);
+              return next;
+            });
+          } catch (e) {
+            setErr(e instanceof Error ? e.message : "Couldn't load the audio");
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="inline-flex items-center gap-1.5 rounded-md border border-input px-2 py-1 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-60"
+      >
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+        {busy ? "Loading…" : "Listen"}
+      </button>
+      {err && <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{err}</p>}
     </div>
   );
 }
@@ -168,22 +270,31 @@ function Calls({ rows }: { rows?: import("@/lib/callHistory/callHistory").Patien
   if (!rows?.length) return <Empty what="calls" />;
   return (
     <div className="space-y-1.5">
-      {rows.map((c) => (
-        <div key={c.id} className="flex items-baseline justify-between gap-3 text-sm">
-          <span className="font-medium">
-            {c.direction === "Inbound" ? "Patient called" : "We called"}
-          </span>
-          <span className={cn("text-xs", c.connected ? "text-muted-foreground" : "text-rose-600")}>
-            {/* ⚠️ `connected` reads the LEGS, not RingCentral's `result` — a
-                claimed (forwarded) inbound call is NOT a missed call, and
-                reading the result literally flashes "Missed" at the person who
-                just took it (§5.13/§5.16). */}
-            {c.voicemail ? "voicemail" : c.connected ? "connected" : "no answer"}
-            {c.durationSec > 0 && ` · ${mmss(c.durationSec)}`}
-          </span>
-          <span className="text-xs text-muted-foreground ml-auto shrink-0">{when(c.startTime)}</span>
-        </div>
-      ))}
+      {rows.map((c) => {
+        const inbound = c.direction === "Inbound";
+        return (
+          <div key={c.id} className="rounded-lg border border-input px-2.5 py-2">
+            <div className="flex items-baseline gap-2 text-sm">
+              {inbound ? (
+                <PhoneIncoming className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground" />
+              ) : (
+                <PhoneOutgoing className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground" />
+              )}
+              <span className="font-medium">{inbound ? "Patient called" : "We called"}</span>
+              <span className={cn("text-xs", c.connected ? "text-muted-foreground" : "text-rose-600")}>
+                {/* ⚠️ `connected` reads the LEGS, not RingCentral's `result` — a
+                    claimed (forwarded) inbound call is NOT a missed call, and
+                    reading the result literally flashes "Missed" at the person
+                    who just took it (§5.13/§5.16). */}
+                {c.voicemail ? "voicemail" : c.connected ? "connected" : "no answer"}
+                {c.durationSec > 0 && ` · ${mmss(c.durationSec)}`}
+              </span>
+              <span className="text-xs text-muted-foreground ml-auto shrink-0">{when(c.startTime)}</span>
+            </div>
+            <AudioPlay uri={c.recording?.contentUri ?? ""} kind="recording" />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -212,6 +323,7 @@ function Voicemails({ rows }: { rows?: import("@/lib/fax/ringcentralApi").Voicem
               ? "Transcript available — open it in Communications."
               : "No transcript."}
           </p>
+          <AudioPlay uri={v.audioUri} kind="voicemail" />
         </div>
       ))}
     </div>

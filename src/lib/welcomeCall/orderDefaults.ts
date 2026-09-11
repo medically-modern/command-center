@@ -41,6 +41,37 @@ const chosen = (label: string) => {
   return l !== "" && l !== NOT_SERVING;
 };
 
+/**
+ * Should Qty Inf. 1 pre-fill to the single-set default?
+ *
+ * Brandon, 2026-09-11: *"I don't think the infusion set 1 defaulted to 3, like
+ * cartridges did (i think it made me select it)."* Correct — Qty Cartridge has
+ * had a fill-when-blank effect since July and the infusion slot never got one,
+ * so the only prompt was a red "please choose a quantity" after the fact.
+ *
+ * ⚠️ **Never while a second set is chosen.** A split is the one case where 3 is
+ * the wrong answer: `setTwoTransition` deliberately clears BOTH quantities when
+ * Set 2 arrives, because Qty 1's default was the whole order and leaving it
+ * would silently propose 3 + 3 = six boxes. Re-filling it here would undo that
+ * within a render.
+ *
+ * ⚠️ Fill-when-blank, so a rep who typed 2 keeps 2, and scoped to the pump
+ * section being on — a CGM-only patient must never have an infusion quantity
+ * stamped on them.
+ */
+export function shouldDefaultInfusionQty1(args: {
+  /** Is the Pump & Infusion section showing for this patient? */
+  showPump: boolean;
+  /** `patient.qtyInf1`. */
+  qtyInf1: string;
+  /** `patient.infusionSet2` label. */
+  infusionSet2: string;
+}): boolean {
+  if (!args.showPump) return false;
+  if ((args.qtyInf1 ?? "").trim() !== "") return false;
+  return !isSetChosen(args.infusionSet2);
+}
+
 export interface SetTwoChange {
   /** Field → value the caller should write. Empty when nothing changed. */
   writes: Record<string, string>;

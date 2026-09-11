@@ -66,12 +66,25 @@ export function ConfirmCheck({
   recordPumpModel?: string;
 }) {
   const id = `wc-confirm-${field}`;
+  const on = intake.confirmed[field];
   return (
+    /* Brandon, 2026-09-11: *"let's make these confirm check boxes better
+       formatted — they're so small and easy to skip"*. These two ticks GATE
+       Advance, so they should look load-bearing: their own bordered row, a
+       larger control, and a filled state you can see from across the desk
+       rather than a 16px square inline with body text.
+       ⚠️ Still a real `<label htmlFor>` wrapping a real Checkbox — the whole
+       row is the hit target and the keyboard path is unchanged. */
     <label
       htmlFor={id}
-      className={`flex items-center gap-2 cursor-pointer select-none text-sm ${className}`}
+      className={`flex items-start gap-3 cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors ${
+        on
+          ? "border-emerald-400 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+          : "border-input bg-muted/20 hover:bg-muted/40"
+      } ${className}`}
     >
       <Checkbox
+        className="h-5 w-5 mt-0.5 shrink-0"
         id={id}
         checked={intake.confirmed[field]}
         onCheckedChange={(v) => {
@@ -85,7 +98,11 @@ export function ConfirmCheck({
           onChange(next);
         }}
       />
-      <span className={intake.confirmed[field] ? "text-foreground" : "text-muted-foreground"}>
+      <span
+        className={`text-sm font-medium leading-snug ${
+          on ? "text-emerald-900 dark:text-emerald-200" : "text-foreground"
+        }`}
+      >
         {label ?? CONFIRM_LABELS[field]}
       </span>
     </label>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldDefaultPumpQty, setTwoTransition, isSetChosen } from "./orderDefaults";
+import { shouldDefaultPumpQty, setTwoTransition, isSetChosen, shouldDefaultInfusionQty1 } from "./orderDefaults";
 import { DEFAULT_INFUSION_QTY } from "./payerRules";
 
 describe("shouldDefaultPumpQty", () => {
@@ -71,5 +71,39 @@ describe("isSetChosen", () => {
 
   it("treats a real set as chosen", () => {
     expect(isSetChosen('AutoSoft XC 6 mm 23"')).toBe(true);
+  });
+});
+
+describe("shouldDefaultInfusionQty1", () => {
+  const args = (over: Partial<Parameters<typeof shouldDefaultInfusionQty1>[0]> = {}) => ({
+    showPump: true,
+    qtyInf1: "",
+    infusionSet2: "",
+    ...over,
+  });
+
+  it("fills a blank quantity while the pump section applies", () => {
+    expect(shouldDefaultInfusionQty1(args())).toBe(true);
+  });
+
+  it("leaves a quantity the rep already set", () => {
+    expect(shouldDefaultInfusionQty1(args({ qtyInf1: "2" }))).toBe(false);
+    expect(shouldDefaultInfusionQty1(args({ qtyInf1: "0" }))).toBe(false);
+  });
+
+  it("never stamps an infusion quantity on a CGM-only patient", () => {
+    expect(shouldDefaultInfusionQty1(args({ showPump: false }))).toBe(false);
+  });
+
+  /* ⚠️ The carve-out that matters. `setTwoTransition` deliberately clears BOTH
+     quantities when a second set arrives, because Qty 1's default WAS the whole
+     order — re-filling it here would undo that within a render and silently
+     propose 3 + 3 = six boxes. */
+  it("stands down while a second set is chosen", () => {
+    expect(shouldDefaultInfusionQty1(args({ infusionSet2: 'TruSteel 6 mm 23"' }))).toBe(false);
+  });
+
+  it('treats "Not Serving" as no second set', () => {
+    expect(shouldDefaultInfusionQty1(args({ infusionSet2: "Not Serving" }))).toBe(true);
   });
 });

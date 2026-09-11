@@ -97,6 +97,9 @@ export const COL = {
   requestType: "color_mm1w1978",
   doctorName: "text_mm1x46et",
   doctorNpi: "text_mm1x7d91",
+  /* Clinic Name — read so the infusion favourite can key off the practice
+   * (Brandon's Joslin rule). Display/logic only; this stage never writes it. */
+  clinicName: "dropdown_mm1xbvas",
   referralSource: "color_mm1w5wxr",
   referralReceivedDate: "date_mm1x4e1r",
   diagnosis: "color_mm1wf7rv",
@@ -155,6 +158,20 @@ export const COL = {
   infusionSetAuthEnd: "date_mm1xj3wp",
   cartridgeAuthStart: "date_mm1xp0vm",
   cartridgeAuthEnd: "date_mm1xznf9",
+
+  /* Auth UNITS (read-only) — how many the payer approved.
+   * ⚠️ These land on this board via create-item automation 7918324247, which
+   * does NOT copy them today: the Insurance board carries the numbers and 56 of
+   * 57 live Welcome Call rows are blank (checked 2026-09-11). Reading them is
+   * correct and additive; the column renders "—" until that automation is
+   * given the five pairs. Do not "fix" this by deriving a unit count here.
+   * ⚠️ Note the board's own inconsistency: Sensors is titled "Sensors Auth
+   * Unit", singular. The ID is what matters. */
+  cgmAuthUnits: "numeric_mm2w5jdp",
+  sensorsAuthUnits: "numeric_mm2wgfrb",
+  ipAuthUnits: "numeric_mm2wayp9",
+  infusionSetAuthUnits: "numeric_mm2wh4ph",
+  cartridgeAuthUnits: "numeric_mm2wcgkc",
 
   // Benefits (read-only)
   deductible: "text_mm1xkbqc",
@@ -220,6 +237,7 @@ export const READ_COLUMN_IDS = [
   COL.caregiverName, COL.caregiverAuthorized,
   COL.primaryInsurance, COL.memberId1, COL.secondaryInsurance, COL.memberId2, COL.planName, COL.orderFrequency,
   COL.serving, COL.pumpType, COL.cgmType, COL.requestType, COL.doctorName, COL.doctorNpi,
+  COL.clinicName,
   COL.referralSource, COL.referralReceivedDate,
   COL.diagnosis, COL.notes, COL.profileSendOffNotes, COL.mnWorkflowNotes, COL.insuranceNotes,
   COL.monitorQty, COL.pumpQty, COL.qtyInf1, COL.infusionSet1,
@@ -234,6 +252,8 @@ export const READ_COLUMN_IDS = [
   COL.ipAuthStart, COL.ipAuthEnd,
   COL.infusionSetAuthStart, COL.infusionSetAuthEnd,
   COL.cartridgeAuthStart, COL.cartridgeAuthEnd,
+  COL.cgmAuthUnits, COL.sensorsAuthUnits, COL.ipAuthUnits,
+  COL.infusionSetAuthUnits, COL.cartridgeAuthUnits,
   // POS is WRITTEN by this stage (mondayWrite computes it from Primary
   // Insurance + address). Reading it back lets the card show the rep what the
   // rule decided — it was write-only, so the value was invisible in the app.

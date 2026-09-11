@@ -29,6 +29,7 @@
  */
 import type { Patient } from "./workflow";
 import { phoneRejectionReason } from "@/lib/shared/phoneCell";
+import { etTodayYmd } from "@/lib/shared/monitorSale";
 
 /* ─── Vocabulary ─── */
 
@@ -110,11 +111,69 @@ export function oppositeOwner(owner: SlotOwner): SlotOwner {
   return "";
 }
 
+/* ─── Who a number belongs to, before anybody has answered ─── */
+
+/**
+ * The patient's age from the board's DOB, or `null` when we cannot read one.
+ *
+ * ⚠️ The DOB column is plain TEXT and is not written to one shape — the live
+ * board holds both `12/5/1960` and `02/24/1981` — so the parse accepts an
+ * unpadded month or day. Anything it cannot read is `null`, never a guessed
+ * age: this feeds a default that decides who we are recorded as calling.
+ *
+ * ⚠️ Compared as Y/M/D integers against an **Eastern** today, never by
+ * subtracting `Date` objects. Every date on these boards is naive Eastern wall
+ * clock and this container runs UTC (CLAUDE.md §9), so a `new Date()` diff is
+ * a day out for part of every evening — which around a birthday is the whole
+ * answer.
+ */
+export function ageFromDob(dob: string, todayYmd: string = etTodayYmd()): number | null {
+  const m = (dob ?? "").trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  const iso = (dob ?? "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  let by: number, bm: number, bd: number;
+  if (m) {
+    bm = Number(m[1]); bd = Number(m[2]); by = Number(m[3]);
+  } else if (iso) {
+    by = Number(iso[1]); bm = Number(iso[2]); bd = Number(iso[3]);
+  } else {
+    return null;
+  }
+  if (bm < 1 || bm > 12 || bd < 1 || bd > 31) return null;
+
+  const t = (todayYmd ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!t) return null;
+  const [ty, tm, td] = [Number(t[1]), Number(t[2]), Number(t[3])];
+
+  let age = ty - by;
+  if (tm < bm || (tm === bm && td < bd)) age -= 1;
+  return age < 0 || age > 130 ? null : age;
+}
+
+/** Adult at 21 — the age the reorder and HIPAA conversations assume. */
+export const ADULT_AGE = 21;
+
+/**
+ * The owner to open the primary slot on when the board has no answer yet
+ * (Brandon, 2026-09-11): *"if patient is over 21, do patient, if under 21 do
+ * caregiver"*.
+ *
+ * ⚠️ It is a DEFAULT, not a verdict — the rep sees it in the dropdown and can
+ * change it before anything is written. What it must never do is invent an
+ * answer out of nothing: **no readable DOB leaves the slot blank**, so the send
+ * gate still asks rather than recording a guess as a fact. That is the same
+ * blank-is-unknown rule `canTextFromLabel` and `networkAnswer` follow.
+ */
+export function defaultOwnerForAge(dob: string, todayYmd: string = etTodayYmd()): SlotOwner {
+  const age = ageFromDob(dob, todayYmd);
+  if (age === null) return "";
+  return age >= ADULT_AGE ? "patient" : "caregiver";
+}
+
 /* ─── Building the slots ─── */
 
 type PhoneSource = Pick<
   Patient,
-  "phone" | "alternatePhone" | "primaryContact" | "alternateContact" | "canText"
+  "phone" | "alternatePhone" | "primaryContact" | "alternateContact" | "canText" | "dob"
 >;
 
 /**
@@ -125,11 +184,16 @@ type PhoneSource = Pick<
  * only slot 1 loads with it — slot 2's is blank until somebody stars it and
  * answers, which is the correct starting state rather than a lost value.
  */
-export function slotsFromPatient(p: PhoneSource): PhoneSlot[] {
+export function slotsFromPatient(p: PhoneSource, todayYmd: string = etTodayYmd()): PhoneSlot[] {
   const slots: PhoneSlot[] = [
     {
       number: (p.phone ?? "").trim(),
-      owner: ownerFromLabel(p.primaryContact),
+      /* The board's answer always wins; the age default only fills a column
+         nobody has written yet. ⚠️ Slot 1 ONLY — the alternate number is
+         genuinely unknown until somebody says, and "the patient is an adult"
+         tells us nothing about whose second number this is. The "+ Add number"
+         path already opens a new slot on the opposite owner. */
+      owner: ownerFromLabel(p.primaryContact) || defaultOwnerForAge(p.dob, todayYmd),
       starred: true,
       canText: canTextFromLabel(p.canText),
     },

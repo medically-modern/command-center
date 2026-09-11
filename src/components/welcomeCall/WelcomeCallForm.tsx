@@ -34,17 +34,19 @@ import { InsuranceBlock, AuthBlock, OopBlock } from "@/components/welcomeCall/In
 import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
 import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
 import { etTodayYmd } from "@/lib/shared/monitorSale";
-import { shouldDefaultPumpQty, setTwoTransition, isSetChosen, subscriptionTypeState } from "@/lib/welcomeCall/orderDefaults";
+import { shouldDefaultPumpQty, shouldDefaultInfusionQty1, setTwoTransition, isSetChosen, subscriptionTypeState } from "@/lib/welcomeCall/orderDefaults";
 import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "@/lib/welcomeCall/orderFrequency";
 import { NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
 import {
   compatibleSetOptions,
   withCurrentSelection,
+  withFavouriteFirst,
+  favouriteSetLabel,
   setsInvalidatedByPump,
   infusionQtyPlan,
 } from "@/lib/welcomeCall/infusionSelection";
 import { monitorSaleVerdict } from "@/lib/shared/monitorSale";
-import { pumpConfirmLabel, pumpConfirmationStale, needsPumpConfirmation } from "@/lib/welcomeCall/sendGates";
+import { ADVANCE_INDEX, pumpConfirmLabel, pumpConfirmationStale, needsPumpConfirmation } from "@/lib/welcomeCall/sendGates";
 import { phoneSlotsFor, welcomeCallTextBlock } from "@/lib/welcomeCall/phoneSlots";
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import { ConfirmCheck } from "./CallIntakeFields";
@@ -90,6 +92,32 @@ interface Props {
    *  values; this carries a whole object. */
   onIntakeChange?: (next: CallIntake) => void;
   onSendWelcomeCallText?: () => Promise<void>;
+}
+
+/**
+ * One step of the call, in the medical-necessity bar's material.
+ *
+ * Brandon, 2026-09-11: *"let's make it pretty and match style of rest of
+ * command center tool. The top banner does that, but the rest is still in old
+ * format."* The banner was ported to `SendRequestHeaderCard`'s language in
+ * September; these eight sections were still stock shadcn cards underneath it,
+ * so the page changed material halfway down.
+ *
+ * ⚠️ Same shell as the MN bar (`rounded-2xl`, `--mm-card-border`, `shadow-sm`)
+ * but WITHOUT its 4px teal top rule. That rule marks the one banner at the top
+ * of a stage; eight of them down a page reads as eight banners and the
+ * hierarchy goes flat. The numbered teal circle in `SectionHeading` is what
+ * carries the accent here.
+ */
+function FormSection({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div
+      className={`rounded-2xl bg-card border p-6 shadow-sm ${className}`}
+      style={{ borderColor: "var(--mm-card-border)" }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function SectionHeading({ number, title }: { number: number; title: string }) {
@@ -448,13 +476,26 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
      `CompatNote` below already says so. `withCurrentSelection` then re-admits
      whatever the board actually holds, so a filter can never blank a control
      that has a value (see its comment). */
+  /* Brandon, 2026-09-11: a FAVOURITE at the top of the list — AutoSoft XC 6 mm
+     23" normally, TruSteel 6 mm 23" for Joslin patients. ⚠️ Applied AFTER the
+     compatibility filter and BEFORE `withCurrentSelection`, so it can only ever
+     reorder sets this pump can actually take, and the board's own value is
+     still re-admitted afterwards if the filter dropped it. It reorders and
+     never selects — see `withFavouriteFirst`. */
+  const favouriteSet = favouriteSetLabel(patient.clinicName);
   const infusionSet1Options = withCurrentSelection(
-    compatibleSetOptions(patient.pumpType, rawSet1Options, { exclude: patient.infusionSet2 }),
+    withFavouriteFirst(
+      compatibleSetOptions(patient.pumpType, rawSet1Options, { exclude: patient.infusionSet2 }),
+      favouriteSet,
+    ),
     rawSet1Options,
     patient.infusionSet1Index,
   );
   const infusionSet2Options = withCurrentSelection(
-    compatibleSetOptions(patient.pumpType, rawSet2Options, { exclude: patient.infusionSet1 }),
+    withFavouriteFirst(
+      compatibleSetOptions(patient.pumpType, rawSet2Options, { exclude: patient.infusionSet1 }),
+      favouriteSet,
+    ),
     rawSet2Options,
     patient.infusionSet2Index,
   );
@@ -555,6 +596,25 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, showPump, patient.qtyCartridge]);
 
+  /* Qty Inf. 1 gets the same fill-when-blank treatment (Brandon, 2026-09-11:
+     "I don't think the infusion set 1 defaulted to 3, like cartridges did").
+     The rule lives in `orderDefaults.shouldDefaultInfusionQty1` so the split
+     carve-out is testable: with a second set chosen this must NOT fire, or it
+     would undo the deliberate both-quantities-cleared state within a render
+     and silently propose six boxes. */
+  useEffect(() => {
+    if (
+      shouldDefaultInfusionQty1({
+        showPump,
+        qtyInf1: patient.qtyInf1,
+        infusionSet2: patient.infusionSet2,
+      })
+    ) {
+      onFieldChange("qtyInf1", String(DEFAULT_INFUSION_QTY));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, showPump, patient.qtyInf1, patient.infusionSet2]);
+
   // Monitor Purchase Date is DERIVED, not typed from scratch (Brandon,
   // 2026-08-13). Pushing it into local state rather than computing it at save
   // time is deliberate: the rep has to see the date that is about to be written
@@ -641,9 +701,6 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
         <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           To Fill In
         </p>
-        <p className="text-sm text-muted-foreground mt-1">
-          Complete these fields based on the welcome call information.
-        </p>
       </div>
 
       {/* ─── Sections 1 & 2: who we are talking to ───
@@ -655,7 +712,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           panel moved INSIDE the phone section: it appears when a slot is a
           caregiver's, so it has no meaning apart from the slots and asking for
           it separately invited a caregiver with no number. */}
-      <Card className="p-6">
+      <FormSection>
         <SectionHeading number={1} title="Phone Numbers" />
         <PhoneSlotsSection
           patient={patient}
@@ -663,11 +720,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           intake={intake}
           onIntakeChange={setIntake}
         />
-      </Card>
+      </FormSection>
 
       {/* ─── Section 2: CGM ─── */}
       {showCgm ? (
-        <Card className="p-6">
+        <FormSection>
           <div className="flex items-center justify-between mb-4">
             <SectionHeading number={2} title="CGM" />
             {!defaultShowCgm && (
@@ -794,7 +851,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               </div>
             )}
           </div>
-        </Card>
+        </FormSection>
       ) : (
         <Card className="p-4 border-dashed">
           <div className="flex items-center justify-between">
@@ -815,7 +872,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
 
       {/* ─── Section 3: Pump & Infusion Sets ─── */}
       {showPump ? (
-        <Card className="p-6">
+        <FormSection>
           <div className="flex items-center justify-between mb-4">
             <SectionHeading number={3} title="Pump & Infusion Sets" />
             {!defaultShowPump && (
@@ -878,9 +935,29 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             </div>
 
             <div>
-              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
-                Pump Qty
-              </label>
+              {/* Brandon, 2026-09-11: *"shorten this to a pill that says
+                  'First-time pump user' and have the pill next to the pump qty,
+                  not below it"*. Same rule as before — it shapes the CALL, not
+                  the order, and prompts rather than gating, because absent
+                  billing history is weak evidence. */}
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+                  Pump Qty
+                </label>
+                {isFirstTimePumpUser({
+                  serving: patient.servingEdited ?? patient.serving,
+                  pumpQty: patient.pumpQty,
+                  ipLastBillDate: patient.ipLastBillDate,
+                  medicarePriorPumpDate: patient.medicarePriorPumpDate,
+                }) && (
+                  <span
+                    title="No prior pump on file — set training expectations on this call."
+                    className="inline-flex items-center rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
+                  >
+                    First-time pump user
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-3 h-10">
                 <Switch
                   checked={canSellPump && patient.pumpQty === "1"}
@@ -911,19 +988,6 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   conversation. Sits here because Pump Qty is the fact it keys
                   on. Absence of billing history is weak evidence (see the rule),
                   so it prompts and never gates. */}
-              {isFirstTimePumpUser({
-                serving: patient.servingEdited ?? patient.serving,
-                pumpQty: patient.pumpQty,
-                ipLastBillDate: patient.ipLastBillDate,
-                medicarePriorPumpDate: patient.medicarePriorPumpDate,
-              }) && (
-                <div className="mt-2 flex items-start gap-1.5 rounded-md border border-violet-300 bg-violet-50 dark:bg-violet-950/30 px-2.5 py-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5 text-violet-600 shrink-0 mt-0.5" />
-                  <span className="text-xs font-medium text-violet-700 dark:text-violet-300">
-                    First-time pump user — no prior pump on file. Set training expectations on this call.
-                  </span>
-                </div>
-              )}
             </div>
 
             {/* Prior Pump Purchase Date — Original Medicare + Pump Qty 0 + pump-supplies serving only */}
@@ -1082,7 +1146,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               </div>
             </div>
           </div>
-        </Card>
+        </FormSection>
       ) : (
         <Card className="p-4 border-dashed">
           <div className="flex items-center justify-between">
@@ -1106,16 +1170,16 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           (§ callIntake.ts). Split from the cost/auth half by the mockup —
           what the payer covers is a different question from what the patient
           owes. */}
-      <Card className="p-6">
+      <FormSection>
         <SectionHeading number={4} title="Insurance" />
         <InsuranceBlock patient={patient} onFieldChange={onFieldChange} />
-      </Card>
+      </FormSection>
 
       {/* ─── Section 5: Authorizations & Cost ───
           Same story: no columns. The AUTH RESULTS themselves are read-only and
           render in the patient header above — they are the Insurance stage's
           output, not something the rep sets on the call (§5.26). */}
-      <Card className="p-6">
+      <FormSection>
         <SectionHeading number={5} title="Authorizations" />
         <AuthBlock patient={patient} />
         <div className="mt-6 border-t pt-6">
@@ -1124,10 +1188,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           </p>
           <OopBlock intake={intake} onChange={setIntake} />
         </div>
-      </Card>
+      </FormSection>
 
       {/* ─── Section 6: Subscription & Logistics ─── */}
-      <Card className="p-6">
+      <FormSection>
         <SectionHeading number={6} title="Subscription & Logistics" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {/* Subscription Type */}
@@ -1215,13 +1279,13 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           </p>
           <NextOrderDatesCard patient={patient} onFieldChange={onFieldChange} />
         </div>
-      </Card>
+      </FormSection>
 
       {/* ─── Section 7: Confirm Address ───
           Split out of Subscription & Logistics by Brandon's mockup. It is its
           own step on the call — you read the address back, then send the text —
           and it was previously buried under the supply-length controls. */}
-      <Card className="p-6">
+      <FormSection>
         <SectionHeading number={7} title="Confirm Address" />
 
         {/* Address — full width */}
@@ -1271,37 +1335,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               the address so the rep ticks it while reading it back. */}
           <ConfirmCheck intake={intake} onChange={setIntake} field="address" />
 
-          {/* Place of Service (MM-1030). The rule already ran on every send —
-              it was just invisible, because COL.pos is write-only and POS was
-              not in the read set, so nobody could see it had worked.
-              Computed from the EFFECTIVE values, matching what mondayWrite
-              will write, so it reacts as the rep corrects the address. */}
-          {(() => {
-            const primary = patient.primaryInsuranceEdited ?? patient.primaryInsurance;
-            const address = patient.addressEdited ?? patient.address;
-            const computed = expectedPos(primary, address);
-            const boardDiffers = !!patient.pos && patient.pos !== computed;
-            return (
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-                    Place of Service
-                  </span>
-                  <span className="text-sm font-semibold">{computed}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {computed === "Office"
-                      ? "— out-of-state Blue plan, billed via Anthem NY 803 BlueCard"
-                      : "— set from the primary payer and the patient's state"}
-                  </span>
-                </div>
-                {boardDiffers && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Board currently says {patient.pos} — this will be corrected on send.
-                  </p>
-                )}
-              </div>
-            );
-          })()}
+          {/* ⚠️ The Place of Service READOUT was removed (Brandon,
+              2026-09-11: it belongs to profile send-off). The RULE is
+              untouched: `mondayWrite` still computes POS from Primary
+              Insurance + the address and writes `COL.pos` on every send. This
+              only stopped showing it. */}
         </div>
 
         {/* Welcome Call Text — button below address */}
@@ -1348,7 +1386,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             <p className="text-xs font-medium text-red-600 mt-2">{textBlock}</p>
           )}
           <p className="text-xs text-muted-foreground mt-2">
-            Pushes the form data above to Monday, then flips the Welcome Call Text trigger to Send.
+            Sends patient details to confirm.
           </p>
         </div>
 
@@ -1369,73 +1407,53 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             phone={patient.phoneEdited ?? patient.phone}
           />
         </div>
-      </Card>
+      </FormSection>
 
-      {/* ─── End-of-call decision: Advance? ─── */}
-      <Card className="p-6">
+      {/* ─── End of call ─── */}
+      <FormSection>
         <SectionHeading number={8} title="End of Call" />
-        <p className="text-base text-muted-foreground mb-5">
-          Decide whether this patient advances to Order or holds here. Either
-          choice routes them back for Profile Review on the board.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            className={cn(
-              "h-auto py-4 justify-start text-left whitespace-normal border",
-              "focus-visible:ring-emerald-500 focus-visible:ring-offset-0",
-              patient.advanceDecisionIndex === 1
-                ? "bg-emerald-600 hover:bg-emerald-700 hover:text-white text-white border-emerald-700 shadow-md"
-                : "bg-emerald-50 hover:bg-emerald-600 hover:text-white hover:border-emerald-700 text-emerald-800 border-emerald-300"
-            )}
-            onClick={() => {
-              if (patient.advanceDecisionIndex === 1) {
-                onFieldChange("advanceDecision", "");
-                onFieldChange("advanceDecisionIndex" as keyof Patient, null);
-              } else {
-                onFieldChange("advanceDecision", "Advance");
-                onFieldChange("advanceDecisionIndex" as keyof Patient, 1);
-              }
-            }}
-          >
-            <div>
-              <p className="font-bold text-lg">Advance</p>
-              <p className="text-sm opacity-90 font-normal">Move forward to Order.</p>
-            </div>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className={cn(
-              "h-auto py-4 justify-start text-left whitespace-normal border",
-              "focus-visible:ring-rose-500 focus-visible:ring-offset-0",
-              patient.advanceDecisionIndex === 2
-                ? "bg-rose-600 hover:bg-rose-700 hover:text-white text-white border-rose-700 shadow-md"
-                : "bg-rose-50 hover:bg-rose-600 hover:text-white hover:border-rose-700 text-rose-800 border-rose-300"
-            )}
-            onClick={() => {
-              if (patient.advanceDecisionIndex === 2) {
-                onFieldChange("advanceDecision", "");
-                onFieldChange("advanceDecisionIndex" as keyof Patient, null);
-              } else {
-                onFieldChange("advanceDecision", "Don't Advance");
-                onFieldChange("advanceDecisionIndex" as keyof Patient, 2);
-              }
-            }}
-          >
-            <div>
-              <p className="font-bold text-lg">Don&apos;t Advance</p>
-              <p className="text-sm opacity-90 font-normal">
-                Hold this patient — do not progress to Order.
-              </p>
-            </div>
-          </Button>
-        </div>
+        {/* ⚠️ "Don't Advance" was REMOVED here (Josh, 2026-09-11: "remove don't
+            advance completely"). Do not rebuild it. It was broken in a way
+            worth remembering: BOTH buttons wrote Stage Advancer → Review
+            Profile, which is the move to Final Profile Confirmation, so the
+            button labelled "hold this patient" moved them forward.
+            The hold is the red **Stuck** button in the page header, which now
+            takes a required reason (`mondayWrite.markStuckWithReason`).
+            ⚠️ It is NOT a Propose Stuck and must not be relabelled as one —
+            this board has no ladder to propose into (see that writer). */}
+        <Button
+          type="button"
+          variant="outline"
+          className={cn(
+            "h-auto w-full sm:w-auto py-4 px-6 justify-start text-left whitespace-normal border",
+            "focus-visible:ring-emerald-500 focus-visible:ring-offset-0",
+            patient.advanceDecisionIndex === ADVANCE_INDEX
+              ? "bg-emerald-600 hover:bg-emerald-700 hover:text-white text-white border-emerald-700 shadow-md"
+              : "bg-emerald-50 hover:bg-emerald-600 hover:text-white hover:border-emerald-700 text-emerald-800 border-emerald-300",
+          )}
+          onClick={() => {
+            if (patient.advanceDecisionIndex === ADVANCE_INDEX) {
+              onFieldChange("advanceDecision", "");
+              onFieldChange("advanceDecisionIndex" as keyof Patient, null);
+            } else {
+              onFieldChange("advanceDecision", "Advance");
+              onFieldChange("advanceDecisionIndex" as keyof Patient, ADVANCE_INDEX);
+            }
+          }}
+        >
+          <div>
+            <p className="font-bold text-lg">
+              {patient.advanceDecisionIndex === ADVANCE_INDEX ? "Advancing ✓" : "Advance"}
+            </p>
+            <p className="text-sm opacity-90 font-normal">Move forward to Order.</p>
+          </div>
+        </Button>
         <p className="text-xs text-muted-foreground mt-3">
-          Required before pressing Send to Monday. Either choice sets Stage Advancer to <span className="font-semibold">Review Profile</span>.
+          Required before Send to Monday — it sets Stage Advancer to{" "}
+          <span className="font-semibold">Review Profile</span>. To hold this patient
+          instead, use <span className="font-semibold">Stuck</span> at the top of the page.
         </p>
-      </Card>
+      </FormSection>
     </div>
   );
 }

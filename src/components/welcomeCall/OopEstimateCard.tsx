@@ -1,3 +1,17 @@
+/**
+ * ⚠️⚠️ DEAD ON THE WELCOME CALL PAGE FROM 2026-09-11 — ZERO LIVE IMPORTERS.
+ *
+ * Brandon asked for the out-of-pocket row to come off the top of the page
+ * ("get rid of the next 3 rows"), so `WelcomeCallPage` no longer mounts this.
+ * The out-of-pocket STEP still exists — it is `InsuranceAuthSection.OopBlock`,
+ * inside the form's Insurance section, which is where the rep works it.
+ *
+ * Kept rather than deleted because two comments in `lib/finalConfirm/checkPack`
+ * cite it by name when explaining why the check pack does not repeat the
+ * benefits figures, and because the estimator behind it is live elsewhere.
+ * Editing THIS file changes nothing on screen — the same trap §5.11 records for
+ * `profile/StediPanel.tsx`, which carries the same banner for the same reason.
+ */
 import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import type { Patient } from "@/lib/welcomeCall/workflow";

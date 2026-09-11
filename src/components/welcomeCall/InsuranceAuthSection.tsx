@@ -22,7 +22,7 @@ import {
   type SecondaryAnswer,
   type SecondaryType,
 } from "@/lib/welcomeCall/secondaryCoverage";
-import { servedAuthKeys, summariseAuths, type AuthProduct } from "@/lib/welcomeCall/authChips";
+import { servedAuthKeys, shortDate, summariseAuths, type AuthProduct } from "@/lib/welcomeCall/authChips";
 
 const LABEL_CLS = "text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1";
 
@@ -86,7 +86,12 @@ export function InsuranceBlock({
   };
 
   return (
-    <div className="space-y-5">
+    /* Brandon, 2026-09-11: *"insurance, i think we can split into 2 columns for
+       primary and secondary, rather than 2 rows (helps save space)"*. The two
+       are independent questions, so nothing about the logic moves — only the
+       track they sit in. Stacks back to one column under `lg`, where two
+       columns of policy detail are narrower than the CIN they have to hold. */
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
       {/* Read-only. Corey: primary isn't confirmed at this stage, so there is
           deliberately no checkbox here.
           ⚠️ Brandon also asked for "date of last stedi check" as the verified-on
@@ -97,13 +102,14 @@ export function InsuranceBlock({
           which is worse than its absence (§5.26). */}
       <div>
         <p className={LABEL_CLS}>Primary — from the benefits stage</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 rounded-lg border border-input bg-muted/20 p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-4 rounded-lg border border-input bg-muted/20 p-4">
           <Read label="Primary Insurance" value={patient.primaryInsurance} />
           <Read label="Plan Name" value={patient.planName} />
           <Read label="Member ID 1" value={patient.memberId1} />
         </div>
       </div>
 
+      <div className="space-y-4">
       <div>
         <p className={LABEL_CLS}>Secondary coverage?</p>
         <div className="flex items-center gap-2 flex-wrap">
@@ -218,11 +224,21 @@ export function InsuranceBlock({
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
 
 /* ── Block B ───────────────────────────────────────────────────────────── */
+
+/** Text-only tone for a column that needs no attention — the card itself stays
+ *  neutral, so the eye lands on the exceptions (Brandon's own ordering rule). */
+const TEXT_TONE: Record<string, string> = {
+  green: "text-emerald-700 dark:text-emerald-400",
+  grey: "text-muted-foreground",
+  amber: "text-amber-700 dark:text-amber-400",
+  red: "text-rose-700 dark:text-rose-400",
+};
 
 const TONE_CLS: Record<string, string> = {
   green:
@@ -242,11 +258,11 @@ export function authProductsFor(patient: Patient): AuthProduct[] {
        whole queue for a value that isn't actionable without opening Monday
        anyway. Auth Start IS already read, so the tooltip still carries it. Add
        the ids to COL + READ_COLUMN_IDS if the hover ever needs to be more. */
-    { key: "cgm", label: "CGM", result: patient.cgmAuthResult, end: patient.cgmAuthEnd, authId: "", start: patient.cgmAuthStart },
-    { key: "sensors", label: "Sensors", result: patient.sensorsAuthResult, end: patient.sensorsAuthEnd, authId: "", start: patient.sensorsAuthStart },
-    { key: "pump", label: "Insulin Pump", result: patient.ipAuthResult, end: patient.ipAuthEnd, authId: "", start: patient.ipAuthStart },
-    { key: "infusionSet", label: "Infusion Set", result: patient.infusionSetAuthResult, end: patient.infusionSetAuthEnd, authId: "", start: patient.infusionSetAuthStart },
-    { key: "cartridge", label: "Cartridge", result: patient.cartridgeAuthResult, end: patient.cartridgeAuthEnd, authId: "", start: patient.cartridgeAuthStart },
+    { key: "cgm", label: "CGM", result: patient.cgmAuthResult, end: patient.cgmAuthEnd, authId: "", start: patient.cgmAuthStart, units: patient.cgmAuthUnits },
+    { key: "sensors", label: "Sensors", result: patient.sensorsAuthResult, end: patient.sensorsAuthEnd, authId: "", start: patient.sensorsAuthStart, units: patient.sensorsAuthUnits },
+    { key: "pump", label: "Insulin Pump", result: patient.ipAuthResult, end: patient.ipAuthEnd, authId: "", start: patient.ipAuthStart, units: patient.ipAuthUnits },
+    { key: "infusionSet", label: "Infusion Set", result: patient.infusionSetAuthResult, end: patient.infusionSetAuthEnd, authId: "", start: patient.infusionSetAuthStart, units: patient.infusionSetAuthUnits },
+    { key: "cartridge", label: "Cartridge", result: patient.cartridgeAuthResult, end: patient.cartridgeAuthEnd, authId: "", start: patient.cartridgeAuthStart, units: patient.cartridgeAuthUnits },
   ];
   const served = new Set(servedAuthKeys(serving));
   return all.filter((p) => served.has(p.key));
@@ -261,37 +277,57 @@ export function AuthBlock({ patient }: { patient: Patient }) {
 
   return (
     <div className="space-y-3">
-      {/* Brandon: "chips only appear when something isn't clear" — an all-clear
-          patient gets one sentence, not five rows a rep has to read past. */}
+      {/* Brandon, 2026-09-11: *"show the different products and the auth start
+          and end dates / units for each one — but it should fit in one row and
+          just have like 5 columns (dynamic number of columns based on products
+          serving)"*. One track per SERVED product, so a supplies-only patient
+          gets two columns and not five.
+          ⚠️ `auto-fit` with a minimum rather than a fixed count: five equal
+          tracks at phone width would each be ~70px and unreadable, so they wrap
+          instead. `servedAuthKeys` already decided how many there are. */}
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
+        {chips.map((c) => (
+          <div
+            key={c.key}
+            className={cn(
+              "rounded-lg border px-3 py-2.5",
+              c.exception ? TONE_CLS[c.tone] : "border-input bg-muted/20",
+            )}
+          >
+            <p className="text-[11px] font-bold uppercase tracking-wider truncate" title={c.label}>
+              {c.label}
+            </p>
+            <p className={cn("text-sm font-semibold mt-0.5", !c.exception && TEXT_TONE[c.tone])}>
+              {c.state}
+            </p>
+            <dl className="mt-2 space-y-0.5 text-[11px] leading-snug">
+              <AuthFact label="Start" value={shortDate(c.start)} />
+              <AuthFact label="End" value={shortDate(c.end)} />
+              {/* ⚠️ Blank on nearly every patient until automation 7918324247
+                  copies the units across from Insurance — see authChips. */}
+              <AuthFact label="Units" value={c.units} />
+            </dl>
+          </div>
+        ))}
+      </div>
+
       {allClear ? (
         <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{sentence}</p>
       ) : (
-        <>
-          <div className="flex items-center gap-2 flex-wrap">
-            {chips.map((c) => (
-              <span
-                key={c.key}
-                // Brandon: a hover can carry Auth ID + Auth Start. Kept to a
-                // title rather than a field — it is context for one chip, not a
-                // row of its own.
-                title={[c.authId && `Auth ID ${c.authId}`, c.start && `from ${c.start}`]
-                  .filter(Boolean)
-                  .join(" · ")}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold",
-                  TONE_CLS[c.tone],
-                )}
-              >
-                {c.label} {c.state}
-              </span>
-            ))}
-          </div>
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{banner}</p>
-        </>
+        <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{banner}</p>
       )}
-      <p className="text-xs text-muted-foreground">
-        Read-only — auth results are the benefits stage&apos;s output and sync from the board.
-      </p>
+    </div>
+  );
+}
+
+/** One label/value line inside an auth column. A missing value reads "—"
+ *  rather than vanishing: an absent auth date and an absent ROW look the same
+ *  otherwise, and only one of them is a problem. */
+function AuthFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-medium tabular-nums">{value?.trim() || "\u2014"}</dd>
     </div>
   );
 }
@@ -330,18 +366,31 @@ export function OopBlock({
           onChange={(e) => onChange({ ...intake, oopAmount: e.target.value })}
         />
       </div>
+      {/* Same treatment as the two gating confirmations (see `ConfirmCheck`) —
+          a row you have to notice rather than a 16px tick in a line of text. */}
       <label
         htmlFor="wc-oop-reviewed"
-        className="flex items-center gap-2 cursor-pointer select-none text-sm"
+        className={cn(
+          "flex items-start gap-3 cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors",
+          intake.confirmed.oop
+            ? "border-emerald-400 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+            : "border-input bg-muted/20 hover:bg-muted/40",
+        )}
       >
         <Checkbox
+          className="h-5 w-5 mt-0.5 shrink-0"
           id="wc-oop-reviewed"
           checked={intake.confirmed.oop}
           onCheckedChange={(v) =>
             onChange({ ...intake, confirmed: { ...intake.confirmed, oop: v === true } })
           }
         />
-        <span className={intake.confirmed.oop ? "text-foreground" : "text-muted-foreground"}>
+        <span
+          className={cn(
+            "text-sm font-medium leading-snug",
+            intake.confirmed.oop ? "text-emerald-900 dark:text-emerald-200" : "text-foreground",
+          )}
+        >
           Reviewed with patient
         </span>
       </label>

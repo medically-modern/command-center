@@ -31,6 +31,16 @@ export interface AuthProduct {
   /** For the tooltip — Brandon: "a hover can show Auth ID + Auth Start". */
   authId: string;
   start: string;
+  /**
+   * Auth Units — how many the payer approved.
+   *
+   * ⚠️ Blank on almost every live row today, and not because the read is wrong:
+   * the Insurance board holds the numbers and create-item automation 7918324247
+   * does not copy them (56 of 57 Welcome Call rows empty, checked 2026-09-11).
+   * Rendered as "—" rather than hidden, so the gap is visible rather than
+   * looking like a product that simply has no limit.
+   */
+  units: string;
 }
 
 export interface AuthChip extends AuthProduct {

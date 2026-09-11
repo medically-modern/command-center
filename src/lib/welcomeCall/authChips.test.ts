@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { authChipState, servedAuthKeys, summariseAuths, shortDate, type AuthProduct } from "./authChips";
 
 const p = (over: Partial<AuthProduct>): AuthProduct => ({
-  key: "cgm", label: "CGM", result: "Auth Valid", end: "2026-12-31", authId: "", start: "", ...over,
+  key: "cgm", label: "CGM", result: "Auth Valid", end: "2026-12-31", authId: "", start: "", units: "", ...over,
 });
 
 describe("servedAuthKeys", () => {

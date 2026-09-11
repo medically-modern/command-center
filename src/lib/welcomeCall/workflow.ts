@@ -81,6 +81,8 @@ export interface Patient {
   requestType: string;
   doctorName: string;
   doctorNpi: string;
+  /** Clinic Name — drives the infusion-set favourite. Never written here. */
+  clinicName: string;
   referralSource: string;            // NEW: tandem, patient, doctor, etc.
   referralReceivedDate: string;      // NEW: date column
   diagnosis: string;
@@ -147,6 +149,14 @@ export interface Patient {
   infusionSetAuthEnd: string;
   cartridgeAuthStart: string;
   cartridgeAuthEnd: string;
+  /** Auth UNITS per product — how many the payer approved. Read-only, and
+   *  blank on almost every row until automation 7918324247 copies them over
+   *  from Insurance (see mondayApi.COL). */
+  cgmAuthUnits: string;
+  sensorsAuthUnits: string;
+  ipAuthUnits: string;
+  infusionSetAuthUnits: string;
+  cartridgeAuthUnits: string;
   /** POS as the board currently holds it ("Office" | "Home" | ""). This stage
    *  WRITES it from Primary Insurance + address and never lets the rep set it,
    *  so this is purely so the card can show what the rule decided — and flag a
@@ -653,16 +663,22 @@ function hasZipCode(address: string): boolean {
 export function validatePatientForSend(p: Patient): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  // End-of-call decision is always required
-  if (p.advanceDecisionIndex === null) {
-    errors.push('Pick Advance or Don\'t Advance before sending');
+  /* End-of-call decision is always required — and it must be ADVANCE
+     specifically, not merely "something is set".
+     ⚠️ `!== 1` rather than `=== null` on purpose. "Don't Advance" (index 2) was
+     removed from the UI on 2026-09-11, but the column is still read off the
+     board, so a patient last touched before that can arrive carrying index 2.
+     A `=== null` check would wave them through with no button pressed, and the
+     send would then re-write the retired answer. */
+  if (p.advanceDecisionIndex !== 1) {
+    errors.push('Press Advance before sending, or use Stuck to hold this patient');
   }
 
-  // If escalated + Don't Advance (index 2), skip remaining validation — allow send
-  const isDontAdvance = p.advanceDecisionIndex === 2;
-  if (p.escalated && isDontAdvance) {
-    return { valid: errors.length === 0, errors };
-  }
+  /* ⚠️ The escalated + Don't-Advance carve-out that used to sit here — skip the
+     rest of validation and let the send through — went with the button. It is
+     not an omission: holding a patient is now the Stuck button, which writes
+     the advancer and a stamped reason directly and never runs this validation
+     at all. Nothing is stranded; the exit simply moved. */
 
   // Subscription type is required
   if (p.subscriptionTypeIndex === null) {

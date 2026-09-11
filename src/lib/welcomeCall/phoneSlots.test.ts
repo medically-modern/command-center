@@ -27,6 +27,10 @@ const source = (over: Partial<Parameters<typeof slotsFromPatient>[0]> = {}) => (
   primaryContact: "Patient",
   alternateContact: "",
   canText: "Yes",
+  // The age default only fills a BLANK Primary Contact, so every fixture that
+  // states one is unaffected by it — this keeps the type happy and the
+  // existing expectations meaningful.
+  dob: "",
   ...over,
 });
 
