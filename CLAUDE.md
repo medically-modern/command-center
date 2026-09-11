@@ -3452,6 +3452,80 @@ editor beside it — refusing one would be a control with no passing move, and t
 **No board change, no column added, no automation touched**; `COL.patientPhone` `phone_mm1x44yk` was
 already in the read set and already written by every Insurance send.
 
+
+### 5.33 The two insurance pickers read their labels from the board (Sep 2026)
+Brandon added the payer **"Health Plans Inc (PHCS)"** (label id **159**) to Monday and expected it
+in the Command Center. It wasn't: **Primary Insurance `color_mm1xg10n`** and **General Insurance
+`color_mm24ap4j`** were drawn from the hardcoded `PRIMARY_INSURANCE_INDEX` /
+`GENERAL_INSURANCE_INDEX` maps in `profile/mondayMapping.ts`, which are the pickers' option lists
+AND the write maps. Josh, 2026-09-11: *"primary and general should read from monday on load, if he
+adds on there it should automatically show up in CC."* Both columns now come from the column's own
+`settings_str`, like the four product dropdowns beside them (§5.2 / `lib/profile/boardLabels.ts`).
+
+⚠️ **THE PICKER AND THE WRITE HAVE TO MOVE TOGETHER.** Offering a label the write path cannot
+resolve is worse than not offering it: `statusWriteTask` and `mapped()` both **skip** an index they
+can't find, so the rep picks the new payer, Save goes green, and the column keeps its old value.
+Every writer of these two columns now takes a live index — `unverifiedWrite`'s `buildIntakeTasks`
+(General) and `buildVerifiedInsuranceTasks` (Primary, which had no `liveIndex` parameter at all),
+`buildAdvanceTasks`, and in `profile/mondayWrite` `buildDataTasks`, `writeBenefitsInputs` and
+**`writePatientProfile`**. That last one is the load-bearing one: it is the live pre-Stedi write
+(§5.11 — `StediPanel` is dead, the flow is inline in `ProfilePage`), and a payer it could not
+resolve was never written, so `verifyProfileWritten` then aborted the run on a General Insurance
+mismatch the rep had no way to act on. `unverifiedWrite.test.ts` pins a board-only label producing
+a task, and producing none without the live index — both verified to fail when reverted.
+
+**The hardcoded maps stay as the FALLBACK**, deliberately — a failed settings fetch degrades to
+today's list, never to an empty select on a required field or a blocked intake. ⚠️ That is the
+opposite of `shared/statusOptions.ts`, whose rule is *disable the control rather than fall back*.
+Both are right: that rule exists for columns whose indexes were RENUMBERED by a dedup, where a
+stale map writes a blank. These two have never been renumbered (every label in both maps was
+checked against the live board 2026-09-11), and a disabled payer picker stops intake dead.
+
+**Two latent bugs in `boardLabels.ts` had to be fixed first**, and both were silent:
+1. ⚠️ **The cache ignored `columnIds`** — one module-level promise, so the FIRST caller's column set
+   won for the whole session and a second call site asking for different columns got `{}` and sat
+   on its hardcoded map for ever. It is per-COLUMN now, fetching only what it is missing.
+2. ⚠️ **It sent `mondayIdentityHeaders()` alone**, i.e. no `Authorization` in direct mode — the
+   exact failure `statusOptions.ts` documents (401 → every dropdown silently on its fallback).
+   Both header sets now, as every other `gql()` in the app does.
+It also gained a **TTL** (5 min, matching `STATUS_OPTIONS_TTL_MS`) and the refresh lives in
+**`hooks/profile/useBoardLabels.ts`** — interval plus a **focus** listener, because the real
+scenario is a rep switching to Monday, seeing the new payer and switching back. A mount-only fetch
+would have made the TTL dead code for these pages, which is the trap `statusOptions.ts` calls out.
+
+⚠️ **`NON_PAYER_LABELS` is a one-entry hide-list and must stay tiny.** Reading General Insurance
+live would have put **"Stedi"** back in front of reps — it is our eligibility VENDOR, removed from
+that picker on 2026-08-13 (Katie via Josh) — so it is filtered. §5.2's standing rule is that the
+board's labels are the picker's labels ("Not Serving", Josh 2026-08-20), so an entry here needs a
+recorded decision, not a hunch that a label looks odd. **"Cash Pay" is deliberately NOT hidden**:
+nothing ever ruled it out, it was missing only because nobody added it to the hardcoded map.
+Primary Insurance hides nothing — "Stedi" is on that column too and has always been pickable there.
+
+**The visible delta is pinned by a test** (`boardLabels.test.ts`, "the picker delta from reading
+the board"), because the point of the change is ONE new payer and anything else appearing is a UI
+change nobody asked for: General Insurance gains *Cash Pay* + the new payer and loses nothing;
+Primary Insurance gains the new payer and re-spells **MagnaCare → Magnacare**, which is the board's
+own spelling — writes are by index, so the board value was already "Magnacare" and this only stops
+such a patient's `<select>` matching no option. Re-run that comparison against the live
+`settings_str` before changing either list.
+
+⚠️ **This covers Profile Send Off ONLY — every other board's payer list is still hardcoded**, and
+they are separate columns with separate indices: `samantha/hcpcRules.ts` (`PrimaryInsurance` union,
+`SUPPLY_HCPC_GROUP_BY_PAYER`, `PRIMARY_INSURANCE_OPTIONS` — which is also the READ, via
+`samantha/mondayMapping`'s `findExact`, so an unlisted label reads as `""`), and the
+`PRIMARY_INSURANCE_OPTIONS` `{index,label}` lists in `welcomeCall`/`finalConfirm`/`subscription`
+`workflow.ts`. Nothing keyed on payer TEXT changed: `payerRules` matches patterns and falls to the
+conservative cap of 3, `resolveHcpcs` returns "Evaluate", and both OOP estimators return
+`ok: false` rather than a wrong number.
+
+⚠️ **A payer also has to exist on the DOWNSTREAM boards, and "Health Plans Inc (PHCS)" does not.**
+Verified live 2026-09-11: it is on Profile Send Off (both columns), Subscription `color_mm254qxj`
+and New Order `color_mm18jhq5`, and **absent from Medical Evaluation, Insurance and Welcome Call**
+(`color_mm1x157j` on all three) **and from the Claims Board's Primary Payor `color_mm3a93ek`**
+(whose labels stop at 158). A status write to a label id a column does not have is dropped without
+erroring (§5.12/§5.20/§5.31c/§5.31d), so a payer added on Profile Send Off alone goes blank from
+Benefits onward. Adding a payer is five columns, not two.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -4415,6 +4489,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Task | Start here |
 |---|---|
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
+| A payer added on Monday isn't in the Command Center dropdown | §5.33 — Primary/General Insurance read `settings_str` live (`lib/profile/boardLabels.ts` + `hooks/profile/useBoardLabels.ts`); check it isn't in `NON_PAYER_LABELS`. If it is IN the picker but doesn't save, the write lost its live index. And a payer must be added to **five** columns — ME, Insurance and Welcome Call are the ones people forget |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
 | A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |

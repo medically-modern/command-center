@@ -28,6 +28,7 @@ import { CLINICALS_METHOD_INDEX } from "./mondayMapping";
 import type { Patient } from "./workflow";
 import { appendStampedNote } from "../shared/noteStamp";
 import { userInitials } from "../shared/auth";
+import { fetchInsuranceLabelIndex } from "./boardLabels";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
@@ -308,19 +309,13 @@ export function buildIntakeTasks(
     INSULIN_PUMP_COVERAGE_PATH_INDEX, edits.insulinPumpCoveragePath);
 
   // Insurance — General Insurance + Member ID are what the benefits check runs
-  // against, so they are the two the rep most often corrects.
-  // General Insurance predates this stage — reuse the page's existing index
-  // map rather than keeping a second copy that could drift from it.
-  if (edits.generalInsurance !== undefined) {
-    const gi = GENERAL_INSURANCE_INDEX[edits.generalInsurance.trim()];
-    if (gi !== undefined) {
-      tasks.push({
-        label: "General Insurance",
-        columnId: COL.generalInsurance,
-        fn: () => writeStatusIndex(itemId, COL.generalInsurance, gi),
-      });
-    }
-  }
+  // against, so they are the two the rep most often corrects. General Insurance
+  // reuses the send-off page's index map rather than keeping a second copy that
+  // could drift from it, and goes through `mapped` so the LIVE board index wins:
+  // the picker above it offers whatever the board has, and resolving against the
+  // hardcoded map alone meant a payer added on Monday could be picked and then
+  // silently not saved.
+  mapped("General Insurance", COL.generalInsurance, GENERAL_INSURANCE_INDEX, edits.generalInsurance);
   text("Member ID (working)", COL.memberIdWorking, edits.workingMemberId);
   status("Insurance Provided Via", COL.formInsuranceVia, "formInsuranceVia", edits.formInsuranceVia);
   text("Insurance (Other)", COL.formInsuranceOther, edits.formInsuranceOther);
@@ -495,11 +490,19 @@ export function verifiedInsuranceBlocker(edits: VerifiedEdits): IntakeWriteResul
 
 /** The verified-insurance write tasks, built but NOT run — same split, and for
  *  the same reason, as `buildIntakeTasks`. */
-export function buildVerifiedInsuranceTasks(itemId: string, edits: VerifiedEdits): WriteTask[] {
+export function buildVerifiedInsuranceTasks(
+  itemId: string,
+  edits: VerifiedEdits,
+  /** Live label → index per column, same contract as `buildIntakeTasks`: the
+   *  board wins, the hardcoded map is the fallback when the fetch failed.
+   *  Primary Insurance is drawn from the board on this page, so without it a
+   *  newly added payer is pickable and unsaveable. */
+  liveIndex: Record<string, Record<string, number>> = {},
+): WriteTask[] {
   const tasks: WriteTask[] = [];
   const status = (label: string, columnId: string, map: Record<string, number>, value?: string) => {
     if (value === undefined) return;
-    const idx = map[value.trim()];
+    const idx = liveIndex[columnId]?.[value.trim()] ?? map[value.trim()];
     if (idx === undefined) return;
     tasks.push({ label, columnId, fn: () => writeStatusIndex(itemId, columnId, idx) });
   };
@@ -524,7 +527,7 @@ export async function writeVerifiedInsurance(
 ): Promise<IntakeWriteResult> {
   const blocker = verifiedInsuranceBlocker(edits);
   if (blocker) return { ok: false, errors: [blocker] };
-  return runTasks(buildVerifiedInsuranceTasks(itemId, edits));
+  return runTasks(buildVerifiedInsuranceTasks(itemId, edits, await fetchInsuranceLabelIndex()));
 }
 
 // ── Stage exits ─────────────────────────────────────────────────────────────
@@ -646,7 +649,7 @@ export interface AdvanceInput {
 export function buildAdvanceTasks(p: Patient, opts: AdvanceInput): WriteTask[] {
   const all = [
     ...buildIntakeTasks(p.id, opts.edits, opts.liveIndex ?? {}),
-    ...buildVerifiedInsuranceTasks(p.id, opts.verified),
+    ...buildVerifiedInsuranceTasks(p.id, opts.verified, opts.liveIndex ?? {}),
     ...buildDoctorTasks(p, opts.clinicLabelId ?? null),
   ];
 

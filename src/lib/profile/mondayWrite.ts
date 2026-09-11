@@ -16,6 +16,7 @@ import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 import { stampNoteEntry } from "../shared/noteStamp";
 import type { Patient } from "./workflow";
+import { fetchInsuranceLabelIndex } from "./boardLabels";
 import {
   PRIMARY_INSURANCE_INDEX, GENERAL_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX,
   DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX, REFERRAL_TYPE_INDEX,
@@ -93,9 +94,13 @@ function statusWriteTask(
   colId: string,
   statusLabel: string,
   indexMap: Record<string, number>,
+  /** Live label → index read off the board, when the caller has it. Wins over
+   *  `indexMap`, which is only a fallback for a failed settings fetch — see
+   *  `boardLabels.INSURANCE_LABEL_COLUMN_IDS`. */
+  liveMap?: Record<string, number>,
 ): void {
   if (!statusLabel) return;
-  const idx = indexMap[statusLabel];
+  const idx = liveMap?.[statusLabel] ?? indexMap[statusLabel];
   if (idx === undefined) {
     console.warn(`No index found for status label "${statusLabel}" in column ${colId}`);
     return;
@@ -109,7 +114,11 @@ function statusWriteTask(
  * appends the advancer and verifies) and the Send-back-to-Patient-Intake path
  * (which writes best-effort then moves groups).
  */
-function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
+function buildDataTasks(
+  p: Patient,
+  clinicLabelId: number | null,
+  liveIndex: Record<string, Record<string, number>> = {},
+): WriteTask[] {
   const tasks: WriteTask[] = [];
 
   // ── Name ──
@@ -135,8 +144,8 @@ function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
   if (p.patientAddress) tasks.push({ label: "Patient Address", columnId: COL.patientAddress, value: { address: p.patientAddress, lat: p.patientAddressLat ?? 0, lng: p.patientAddressLng ?? 0 }, fn: () => writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0) });
 
   // ── Insurance ──
-  statusWriteTask(tasks, p.id, "General Insurance", COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX);
-  statusWriteTask(tasks, p.id, "Primary Insurance", COL.primaryInsurance, p.primaryInsurance, PRIMARY_INSURANCE_INDEX);
+  statusWriteTask(tasks, p.id, "General Insurance", COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX, liveIndex[COL.generalInsurance]);
+  statusWriteTask(tasks, p.id, "Primary Insurance", COL.primaryInsurance, p.primaryInsurance, PRIMARY_INSURANCE_INDEX, liveIndex[COL.primaryInsurance]);
   statusWriteTask(tasks, p.id, "Secondary Insurance", COL.secondaryInsurance, p.secondaryInsurance, SECONDARY_INSURANCE_INDEX);
   // Working Member ID — the column the Stedi service reads (text_mm4t8gbq).
   if (p.workingMemberId) tasks.push({ label: "Member ID (working)", columnId: COL.memberIdWorking, value: p.workingMemberId, fn: () => writeText(p.id, COL.memberIdWorking, p.workingMemberId) });
@@ -311,7 +320,7 @@ export async function sendPatientToMonday(
     }
   }
 
-  const tasks = buildDataTasks(p, clinicLabelId);
+  const tasks = buildDataTasks(p, clinicLabelId, await fetchInsuranceLabelIndex());
 
   // The verified half of the Insurance Plan write — see the hoist comment above.
   if (p.stediPlanName?.trim()) {
@@ -420,7 +429,8 @@ export async function writeBenefitsInputs(
   workingMemberId: string,
 ): Promise<void> {
   const jobs: Promise<unknown>[] = [];
-  const gi = GENERAL_INSURANCE_INDEX[generalInsurance];
+  const live = await fetchInsuranceLabelIndex();
+  const gi = live[COL.generalInsurance]?.[generalInsurance] ?? GENERAL_INSURANCE_INDEX[generalInsurance];
   if (generalInsurance && gi !== undefined) jobs.push(writeStatusIndex(itemId, COL.generalInsurance, gi));
   if (workingMemberId) jobs.push(writeText(itemId, COL.memberIdWorking, workingMemberId));
   await Promise.all(jobs);
@@ -462,12 +472,19 @@ export async function writeOopEstimate(
  * Member ID 1, Member ID 2 in parallel.
  */
 export async function writePatientProfile(p: Patient): Promise<void> {
+  // General Insurance is the column the Stedi service reads, and the picker
+  // that sets it offers whatever the BOARD has — so resolve against the board
+  // first. Without this a payer added on Monday resolved to no index here, the
+  // column was never written, and `verifyProfileWritten` then aborted the run
+  // on a General Insurance mismatch the rep had no way to act on.
+  const live = await fetchInsuranceLabelIndex();
+
   /** Simple status write for pre-Stedi sync (no stage advancer involved). */
   const statusPromise = (
     itemId: string, colId: string, label: string, indexMap: Record<string, number>,
   ): Promise<void> | null => {
     if (!label) return null;
-    const idx = indexMap[label];
+    const idx = live[colId]?.[label] ?? indexMap[label];
     if (idx === undefined) return null;
     return writeStatusIndex(itemId, colId, idx);
   };

@@ -482,3 +482,60 @@ describe("CGM Coverage Path label set", () => {
       .toEqual(["Insulin", "Hypo", "Not Serving", "Neither Applies"]);
   });
 });
+
+/**
+ * A payer added on Monday has to reach the WRITE, not just the dropdown.
+ *
+ * Both pickers draw their options from the board, so a payer added there is
+ * immediately selectable. Resolving it against the hardcoded map alone meant
+ * the rep picked the new payer, Save went green, and the column silently kept
+ * its old value — `mapped()` and `status()` both SKIP an index they cannot
+ * find. Josh, 2026-09-11, adding "Health Plans Inc (PHCS)" (board id 159).
+ */
+describe("a payer that is on the board but not in the hardcoded map", () => {
+  const LABEL = "Health Plans Inc (PHCS)";
+  const liveIndex = {
+    [COL.generalInsurance]: { [LABEL]: 159 },
+    [COL.primaryInsurance]: { [LABEL]: 159 },
+  };
+
+  it("writes General Insurance when the live board index is supplied", () => {
+    expect(columnsOf(buildIntakeTasks("123", { generalInsurance: LABEL }, liveIndex)))
+      .toContain(COL.generalInsurance);
+  });
+
+  it("writes Primary Insurance when the live board index is supplied", () => {
+    expect(columnsOf(buildVerifiedInsuranceTasks("123", { primaryInsurance: LABEL }, liveIndex)))
+      .toContain(COL.primaryInsurance);
+  });
+
+  it("carries into the advance transaction, so Advance to MN writes it too", () => {
+    const cols = columnsOf(buildAdvanceTasks(
+      { id: "123" } as Patient,
+      {
+        edits: { generalInsurance: LABEL },
+        verified: { primaryInsurance: LABEL },
+        liveIndex,
+      } as AdvanceInput,
+    ));
+    expect(cols).toContain(COL.generalInsurance);
+    expect(cols).toContain(COL.primaryInsurance);
+  });
+
+  it("silently writes NOTHING without it — the bug this guards", () => {
+    // Not an error, which is the whole problem: no task is pushed, the save
+    // reports success and the board keeps the old payer.
+    expect(columnsOf(buildIntakeTasks("123", { generalInsurance: LABEL })))
+      .not.toContain(COL.generalInsurance);
+    expect(columnsOf(buildVerifiedInsuranceTasks("123", { primaryInsurance: LABEL })))
+      .not.toContain(COL.primaryInsurance);
+  });
+
+  it("still writes a known payer when the settings fetch failed", () => {
+    // A Monday blip degrades to today's behaviour, never to a blocked intake.
+    expect(columnsOf(buildIntakeTasks("123", { generalInsurance: "Aetna" }, {})))
+      .toContain(COL.generalInsurance);
+    expect(columnsOf(buildVerifiedInsuranceTasks("123", { primaryInsurance: "Aetna Commercial" }, {})))
+      .toContain(COL.primaryInsurance);
+  });
+});

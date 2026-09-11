@@ -29,9 +29,11 @@ import {
   titleCaseName, titleCaseAddress, normalizeEmailCase,
 } from "@/lib/profile/workflow";
 import {
-  fetchClinicLabels, fetchItemAssets, fetchUpdates, createUpdate, GROUPS,
+  fetchClinicLabels, fetchItemAssets, fetchUpdates, createUpdate, GROUPS, COL,
   type MondayAsset, type MondayUpdate,
 } from "@/lib/profile/mondayApi";
+import { payerOptions } from "@/lib/profile/boardLabels";
+import { useBoardLabels } from "@/hooks/profile/useBoardLabels";
 import {
   sendPatientToMonday, markStuck, moveToProfileSendOff, writePatientProfile,
   verifyProfileWritten, writeOopEstimate, triggerStediRun, writeProfileNotes,
@@ -98,6 +100,8 @@ const opts = (list: string[], current: string | undefined) =>
   ));
 const GENDER_OPTS = Object.keys(GENDER_INDEX);
 const GENERAL_INS_OPTS = Object.keys(GENERAL_INSURANCE_INDEX);
+/** Module scope so the hook sees a stable array identity. */
+const GI_COLUMN = [COL.generalInsurance];
 const SECONDARY_OPTS = Object.keys(SECONDARY_INSURANCE_INDEX);
 const PRIMARY_LABELS = new Set(groupPrimaryInsuranceLabels().flatMap((g) => g.labels));
 
@@ -1241,6 +1245,19 @@ function ProfileBody(p: BodyProps) {
   // fresh. Local state (ProfileBody is keyed by patient id, so it resets per
   // patient); the rep's entry still flows to Monday via onUpdate.
   const [giInput, setGiInput] = useState("");
+
+  /**
+   * General Insurance reads its options from the BOARD, so a payer added on
+   * Monday appears here with no code edit (Josh, 2026-09-11). `GENERAL_INS_OPTS`
+   * is the fallback for a failed fetch — degrade to today's list, never to an
+   * empty select on a required field.
+   *
+   * The write half is in `mondayWrite.writePatientProfile` / `buildDataTasks`,
+   * which resolve the same live index: offering a label the write can't resolve
+   * would save nothing and still report success.
+   */
+  const { optionsFor } = useBoardLabels(GI_COLUMN);
+  const giOptions = payerOptions(COL.generalInsurance, optionsFor(COL.generalInsurance, GENERAL_INS_OPTS));
   const [midInput, setMidInput] = useState("");
 
   // ── CGM cross-sell — same auto-derivation the original ServingPanel ran ──
@@ -1375,7 +1392,7 @@ function ProfileBody(p: BodyProps) {
                   <Field label="General Insurance" required>
                     <select value={giInput} onChange={(e) => { setGiInput(e.target.value); p.onUpdate({ generalInsurance: e.target.value }); }}>
                       <option value="" disabled hidden>Select insurance…</option>
-                      {GENERAL_INS_OPTS.map((l) => <option key={l}>{l}</option>)}
+                      {giOptions.map((l) => <option key={l}>{l}</option>)}
                     </select>
                   </Field>
                   <Field label="Member ID" required>

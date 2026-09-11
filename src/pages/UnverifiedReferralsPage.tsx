@@ -127,7 +127,8 @@ import { contactTally, sidebarVisibleList } from "@/lib/profile/sidebarList";
 import { useAccessContext } from "@/components/AccessProvider";
 import { managerPeople, processorPeople } from "@/lib/people";
 import { coordinatorNoteLine, extractCoordinator } from "@/lib/profile/careCoordinator";
-import { fetchBoardLabels, type LiveLabels } from "@/lib/profile/boardLabels";
+import { INSURANCE_LABEL_COLUMN_IDS, payerOptions } from "@/lib/profile/boardLabels";
+import { useBoardLabels } from "@/hooks/profile/useBoardLabels";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 // redesign.css is the shared design system (DoctorSection's markup is scoped
@@ -222,6 +223,13 @@ const SECONDARY_INSURANCE_OPTS = sortOpts(Object.keys(SECONDARY_INSURANCE_INDEX)
 const CGM_PATH_OPTS = Object.keys(CGM_COVERAGE_PATH_INDEX);
 const IP_PATH_OPTS = Object.keys(INSULIN_PUMP_COVERAGE_PATH_INDEX);
 const GENERAL_INSURANCE_OPTS = sortOpts(Object.keys(GENERAL_INSURANCE_INDEX));
+
+/** The columns whose labels come from the board rather than from the maps
+ *  above. Module scope so the hook sees a stable array identity. */
+const LIVE_LABEL_COLUMNS = [
+  COL.cgmType, COL.pumpType, COL.cgmCoveragePath, COL.insulinPumpCoveragePath,
+  ...INSURANCE_LABEL_COLUMN_IDS,
+];
 const CGM_TYPE_OPTS = Object.keys(CGM_TYPE_INDEX);
 const PUMP_TYPE_OPTS = Object.keys(PUMP_TYPE_INDEX);
 const REFERRAL_TYPE_OPTS = Object.keys(REFERRAL_TYPE_INDEX);
@@ -1171,43 +1179,30 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   }, [selected, updateLocal]);
 
   /**
-   * §5.2 — the four product dropdowns read their options from the BOARD, so a
-   * status added or renamed on Monday appears without a code edit. The
-   * hardcoded maps stay as the fallback: a failed fetch must degrade to
-   * today's behaviour, never to an empty select.
+   * §5.2 — the four product dropdowns AND the two insurance pickers read their
+   * options from the BOARD, so a status added or renamed on Monday appears
+   * without a code edit. The hardcoded maps stay as the fallback: a failed
+   * fetch must degrade to today's behaviour, never to an empty select.
+   *
+   * The insurance pair joined this in Sep 2026 (Josh, adding the payer "Health
+   * Plans Inc (PHCS)"). `liveIndex` is what carries the same knowledge into the
+   * WRITE, and it is not optional: a picker that offers a label the write can't
+   * resolve saves nothing and still goes green.
    *
    * Everything from here to logChangedFacts is declared ABOVE save() and the
    * action handler on purpose: both name these in a dependency array, which is
    * evaluated during render, so a later `const` would throw on first render.
    */
-  const [liveLabels, setLiveLabels] = useState<Record<string, LiveLabels>>({});
-  useEffect(() => {
-    let alive = true;
-    fetchBoardLabels([COL.cgmType, COL.pumpType, COL.cgmCoveragePath, COL.insulinPumpCoveragePath])
-      .then((l) => { if (alive) setLiveLabels(l); })
-      .catch(() => { /* hardcoded fallback already in place */ });
-    return () => { alive = false; };
-  }, []);
-  /** Options for one product dropdown: live if we have them, hardcoded if not.
-   *  Either way it is the column's whole label set — the picker hides nothing. */
-  const productOptions = useCallback(
-    (columnId: string, fallback: string[]) => liveLabels[columnId]?.options ?? fallback,
-    [liveLabels],
+  const { index: liveIndex, optionsFor: productOptions } = useBoardLabels(LIVE_LABEL_COLUMNS);
+  /** The two insurance pickers: board labels minus the non-payer ones, still
+   *  sorted alphabetically so every variant of a payer sits together (Josh,
+   *  2026-08-18). The board's own order is by label position, which scatters
+   *  them. */
+  const insuranceOpts = useCallback(
+    (columnId: string, fallback: string[]) =>
+      sortOpts(payerOptions(columnId, productOptions(columnId, fallback))),
+    [productOptions],
   );
-  /**
-   * The WRITE half of the same fetch, and deliberately a different shape from
-   * `productOptions`: the full label→index map per column. The picker no longer
-   * hides anything, but these must stay two separate things regardless — the
-   * cross-sell derivation writes labels nobody picked, so a display rule that
-   * could reach this map would silently drop those writes (§5.2). Empty until
-   * the fetch lands — buildIntakeTasks falls back to the hardcoded maps for any
-   * column it doesn't find.
-   */
-  const liveIndex = useMemo(() => {
-    const out: Record<string, Record<string, number>> = {};
-    for (const [id, l] of Object.entries(liveLabels)) out[id] = l.index;
-    return out;
-  }, [liveLabels]);
 
   /**
    * The call slot the PATIENT picked on the form.
@@ -2916,7 +2911,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       label="General Insurance"
                       value={selected.generalInsurance ?? ""}
                       onChange={(v) => edit({ generalInsurance: v })}
-                      options={GENERAL_INSURANCE_OPTS}
+                      options={insuranceOpts(COL.generalInsurance, GENERAL_INSURANCE_OPTS)}
                     />
                     <EditText
                       required
@@ -3692,7 +3687,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                         label="Primary Insurance"
                         value={verified.primaryInsurance ?? ""}
                         onChange={(v) => setVerified((s) => ({ ...s, primaryInsurance: v }))}
-                        options={PRIMARY_INSURANCE_OPTS}
+                        options={insuranceOpts(COL.primaryInsurance, PRIMARY_INSURANCE_OPTS)}
                       />
                       <EditText
                         label="Member ID 1"
