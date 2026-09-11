@@ -232,3 +232,49 @@ describe("the picker delta from reading the board", () => {
       .toEqual({ appears: ["Magnacare", "Health Plans Inc (PHCS)"], disappears: ["MagnaCare"] });
   });
 });
+
+/**
+ * The invariant the WRITE depends on.
+ *
+ * A picker can only offer what `options` holds and a write can only resolve
+ * what `index` holds, and they come from the same parse of the same
+ * settings_str — so every label a rep can pick is a label the write can
+ * resolve. If these two could ever disagree, the disagreement IS the bug: the
+ * rep picks a payer, `mapped()` finds no index, the task is never pushed, and
+ * the save reports success having written nothing.
+ *
+ * Verified against the real board on 2026-09-11: writing {"index":159} to
+ * color_mm1xg10n and color_mm24ap4j lands "Health Plans Inc (PHCS)" on both.
+ */
+describe("options and index can never disagree", () => {
+  const realShape = JSON.stringify({
+    labels: {
+      "0": "Anthem / BCBS", "1": "Aetna", "14": "Stedi", "15": "Other",
+      "16": "Cash Pay", "159": "Health Plans Inc (PHCS)",
+    },
+    // Display position is NOT the write value — 159 sits at position 17. A
+    // parser that confused the two would write an index the column has no
+    // label for, which Monday drops without erroring.
+    labels_positions_v2: { "0": 1, "1": 0, "14": 14, "15": 16, "16": 15, "159": 17 },
+  });
+
+  it("resolves every offered label to an index", () => {
+    const parsed = parseSettings(realShape)!;
+    const index = toLiveIndex({ c: parsed }).c;
+    for (const label of parsed.options) {
+      expect(index[label], `no index for offered label "${label}"`).toBeTypeOf("number");
+    }
+  });
+
+  it("resolves the new payer to the board's label id, not its display position", () => {
+    const parsed = parseSettings(realShape)!;
+    expect(parsed.index["Health Plans Inc (PHCS)"]).toBe(159);
+    expect(parsed.index["Health Plans Inc (PHCS)"]).not.toBe(17);
+  });
+
+  it("still resolves a label the picker hides, so a board value already set can be re-written", () => {
+    const parsed = parseSettings(realShape)!;
+    expect(payerOptions(COL.generalInsurance, parsed.options)).not.toContain("Stedi");
+    expect(toLiveIndex({ [COL.generalInsurance]: parsed })[COL.generalInsurance].Stedi).toBe(14);
+  });
+});
