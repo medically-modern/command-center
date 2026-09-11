@@ -3518,13 +3518,50 @@ they are separate columns with separate indices: `samantha/hcpcRules.ts` (`Prima
 conservative cap of 3, `resolveHcpcs` returns "Evaluate", and both OOP estimators return
 `ok: false` rather than a wrong number.
 
-⚠️ **A payer also has to exist on the DOWNSTREAM boards, and "Health Plans Inc (PHCS)" does not.**
-Verified live 2026-09-11: it is on Profile Send Off (both columns), Subscription `color_mm254qxj`
-and New Order `color_mm18jhq5`, and **absent from Medical Evaluation, Insurance and Welcome Call**
-(`color_mm1x157j` on all three) **and from the Claims Board's Primary Payor `color_mm3a93ek`**
-(whose labels stop at 158). A status write to a label id a column does not have is dropped without
-erroring (§5.12/§5.20/§5.31c/§5.31d), so a payer added on Profile Send Off alone goes blank from
-Benefits onward. Adding a payer is five columns, not two.
+⚠️ **A payer has to exist on EVERY board it will travel to — adding it in two places is not
+adding it.** Brandon added "Health Plans Inc (PHCS)" to Profile Send Off (both columns),
+Subscription `color_mm254qxj` and New Order `color_mm18jhq5`, which left it **absent from the whole
+middle of the pipeline** — Medical Evaluation, Insurance and Welcome Call (`color_mm1x157j` on all
+three) — **and from the Claims Board's Primary Payor `color_mm3a93ek`**, which he believed was
+done. A status write to a label id a column does not have is dropped without erroring
+(§5.12/§5.20/§5.31c/§5.31d), so those patients would have gone blank from Benefits onward.
+**Completed 2026-09-11** (Josh) — the four missing columns were added with
+`change_labels_if_missing` on one item in a terminal group, then that item restored to its exact
+prior value; no patient row and no existing label was touched.
+
+⚠️⚠️ **MONDAY ASSIGNED A DIFFERENT ID ON EVERY BOARD — none of them is 159.** It takes the lowest
+free slot per column, so the id is a property of the COLUMN's history, never of the payer. Read
+back live after adding:
+
+| Board | Column | "Health Plans Inc (PHCS)" id |
+|---|---|---|
+| Profile Send Off | `color_mm1xg10n` Primary Insurance | **159** |
+| Profile Send Off | `color_mm24ap4j` General Insurance | **159** |
+| Subscription | `color_mm254qxj` | **159** |
+| New Order | `color_mm18jhq5` | **159** |
+| **Medical Evaluation** | `color_mm1x157j` | **108** |
+| **Insurance** | `color_mm1x157j` | **7** |
+| **Welcome Call** | `color_mm1x157j` | **7** |
+| **Secondary Claims** | `color_mm3a93ek` Primary Payor | **3** |
+
+That the first four all landed on 159 is a coincidence of those columns having the same free slot,
+and it is exactly what makes "the label id is 159" a tempting and wrong thing to carry between
+boards. **This is the same trap as Sub-Stage (§5.12), Intake Sub-Stage (§5.20), Order Frequency
+(§5.31c) and the phone slots (§5.31d) — now the fifth time.** Read `settings_str` back; never infer.
+⚠️ **The board HOPS are unaffected**, because the create-item automations copy status columns by
+label TEXT, not by id — which is already proven by every other payer on these boards (Medicare A&B
+is 2 on Profile Send Off, 8 on ME/Insurance/Welcome Call and 106 on Claims, and has always carried
+across). The id only matters to code that writes the column directly.
+⚠️ **Which is why `stedi-monday-integration`'s `STATUS_INDEX_MAP` for the Claims Primary Payor must
+be `3`, not 159** — that service writes the index straight in, so 159 would be dropped at HTTP 200
+with nothing in the logs.
+
+⚠️ **Still hardcoded, so the payer is NOT yet pickable on those stages' own screens**:
+`samantha/hcpcRules.ts` (`PrimaryInsurance` union · `SUPPLY_HCPC_GROUP_BY_PAYER` ·
+`PRIMARY_INSURANCE_OPTIONS`, which is also the READ via `samantha/mondayMapping`'s `findExact`, so
+an unlisted label reads as `""`) and the `PRIMARY_INSURANCE_OPTIONS` `{index,label}` lists in
+`welcomeCall`/`finalConfirm`/`subscription` `workflow.ts`. Those need the per-board ids above, not
+159. Extending the §5.33 live-label treatment to them is the better fix and is not yet done.
 
 ---
 
@@ -4489,7 +4526,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Task | Start here |
 |---|---|
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
-| A payer added on Monday isn't in the Command Center dropdown | §5.33 — Primary/General Insurance read `settings_str` live (`lib/profile/boardLabels.ts` + `hooks/profile/useBoardLabels.ts`); check it isn't in `NON_PAYER_LABELS`. If it is IN the picker but doesn't save, the write lost its live index. And a payer must be added to **five** columns — ME, Insurance and Welcome Call are the ones people forget |
+| A payer added on Monday isn't in the Command Center dropdown | §5.33 — Primary/General Insurance read `settings_str` live (`lib/profile/boardLabels.ts` + `hooks/profile/useBoardLabels.ts`); check it isn't in `NON_PAYER_LABELS`. If it is IN the picker but doesn't save, the write lost its live index. And a payer must exist on **all eight** payer columns — ME, Insurance, Welcome Call and Claims are the ones people forget. ⚠️ Monday assigns a DIFFERENT label id per board (this payer is 159/159/159/159 but **108** on ME, **7** on Insurance and Welcome Call, **3** on Claims); hops copy by label text so they are fine, but anything writing an index directly needs that board's own id |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
 | A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
