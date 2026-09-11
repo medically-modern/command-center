@@ -10,7 +10,14 @@ import type { Patient } from "@/lib/welcomeCall/workflow";
 import { sidebarVisibleList } from "@/lib/welcomeCall/sidebarList";
 import { PatientInfoCard, NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
 import { WelcomeCallForm } from "@/components/welcomeCall/WelcomeCallForm";
-import { ReviewPanel } from "@/components/welcomeCall/ReviewPanel";
+/* ⚠️ Review & Send is COMMENTED OUT, not deleted (Brandon's note, actioned by
+   Josh 2026-09-11). Restoring it is uncommenting this import and the mount
+   below — nothing else. `components/welcomeCall/ReviewPanel.tsx` stays in the
+   tree and still compiles, and it reads through the same helpers the SEND uses
+   (`phoneSlotWrites`, `frequencyState`), so it cannot go stale against the
+   write path while it sits here. Same treatment as the Escalations tab in
+   System Management (§7). */
+// import { ReviewPanel } from "@/components/welcomeCall/ReviewPanel";
 import { PatientsSidebar } from "@/components/welcomeCall/PatientsSidebar";
 import { SendToMondayButton } from "@/components/welcomeCall/SendToMondayButton";
 import { EscalateButton } from "@/components/welcomeCall/EscalateButton";
@@ -103,11 +110,13 @@ const WelcomeCallPage = () => {
      both the disabled button and the sentences under it, so a greyed-out
      control can never sit there with no stated reason — the shape reps report
      as "the app is broken".
-     ⚠️ ADVANCE ONLY. A rep who could not reach the patient and is holding
-     cannot have confirmed anything with them, so gating Don't Advance on a
-     confirmation they were never able to get would strand the patient with no
-     way to record what happened. `unmetSendRequirements` reads the decision
-     first and returns [] for everything but Advance. */
+     ⚠️ ADVANCE ONLY — `unmetSendRequirements` reads the decision first and
+     returns [] for anything that is not Advance. That mattered when there was
+     a "Don't Advance" button beside it (a rep who never reached the patient
+     cannot have confirmed anything with them), and it still matters now that
+     the hold is the Stuck button: Stuck writes directly and never runs this
+     gate, so a patient who cannot be reached is never trapped behind a
+     confirmation nobody could get. */
   const sendGaps = useMemo(
     () =>
       selected
@@ -414,7 +423,7 @@ const WelcomeCallPage = () => {
                     onSaveToMonday={(v) => sendNotesToMonday(selected.id, v)}
                     notePrefix="Welcome Call"
                   />
-                  <ReviewPanel patient={selected} />
+                  {/* <ReviewPanel patient={selected} /> */}
                   <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} onOpenForm={() => setEscalationModalOpen(true)} />
                   <SendToMondayButton
                     onSend={handleSend}
