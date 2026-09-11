@@ -634,6 +634,13 @@ function SearchView({
   stageFilter: string | null;
   onClearStageFilter: () => void;
 }) {
+  // Rows the query itself matched, and rows the same-number pass went and found
+  // afterwards under a different name (§ `sameNumberNeedles`). The 50-row cap is
+  // the FIRST lot's — the extras are few by construction and are the point of
+  // the pass — so the count line has to be told apart from `results.length` or
+  // it reports a cap it is not applying.
+  const nameResults = results.filter((p) => p.matchedBy !== "phone");
+  const sameNumberResults = results.filter((p) => p.matchedBy === "phone");
   return (
     <div className="space-y-4">
       <div className="relative">
@@ -759,40 +766,58 @@ function SearchView({
       {results.length > 0 && (
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground px-1">
-            {results.length > 50
-              ? `Showing 50 of ${results.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} results — refine your search`
-              : `${results.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} result${results.length !== 1 ? "s" : ""}`}
+            {nameResults.length > 50
+              ? `Showing 50 of ${nameResults.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} results — refine your search`
+              : `${nameResults.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} result${nameResults.length !== 1 ? "s" : ""}`}
+            {sameNumberResults.length > 0
+              ? ` · ${sameNumberResults.length} more on the same phone number`
+              : ""}
           </p>
           {/* A row with no page is not a profile — it is a note saying where the
               patient is (Josh, 2026-09-03). Profiles lead, highlighted; the
               notes follow under their own label. */}
           {(() => {
-            const shown = workableFirst(results).slice(0, 50);
+            const row = (p: SystemPatient, highlight: boolean) =>
+              rowIsWorkable(p) ? (
+                <PatientRow
+                  key={`${p.boardId}-${p.id}`}
+                  patient={p}
+                  highlight={highlight}
+                  onClick={() => onPatientClick(p)}
+                  completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
+                  onCompletedStageClick={onCompletedStageClick}
+                  onNotesClick={onNotesClick}
+                  onEscalationClick={onEscalationClick}
+                  onStageClick={onStageClick}
+                />
+              ) : (
+                <UnworkableRow key={`${p.boardId}-${p.id}`} patient={p} />
+              );
+            // The same-number rows carry a different name by definition, so
+            // they get their own heading — dropped in among the others they
+            // read as the search misfiring rather than as what it went and
+            // found.
+            const shown = workableFirst(nameResults).slice(0, 50);
             const profiles = shown.filter(rowIsWorkable);
             const notes = shown.filter((p) => !rowIsWorkable(p));
+            // Never cut by the 50 above: these are the point of the pass, and
+            // three numbers' worth of records across seven boards is bounded.
+            const sameNumber = workableFirst(sameNumberResults).slice(0, 20);
             return (
               <>
-                {profiles.map((p) => (
-                  <PatientRow
-                    key={`${p.boardId}-${p.id}`}
-                    patient={p}
-                    highlight={notes.length > 0}
-                    onClick={() => onPatientClick(p)}
-                    completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
-                    onCompletedStageClick={onCompletedStageClick}
-                    onNotesClick={onNotesClick}
-                    onEscalationClick={onEscalationClick}
-                    onStageClick={onStageClick}
-                  />
-                ))}
+                {profiles.map((p) => row(p, notes.length > 0))}
                 {notes.length > 0 && (
                   <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-1 pt-3">
                     In the system, but not on a workable page — check Monday
                   </p>
                 )}
-                {notes.map((p) => (
-                  <UnworkableRow key={`${p.boardId}-${p.id}`} patient={p} />
-                ))}
+                {notes.map((p) => row(p, false))}
+                {sameNumber.length > 0 && (
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-1 pt-3">
+                    Same phone number, filed under a different name
+                  </p>
+                )}
+                {sameNumber.map((p) => row(p, false))}
               </>
             );
           })()}

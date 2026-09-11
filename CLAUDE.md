@@ -1653,10 +1653,34 @@ rather than adding one; what distinguishes it from an analysed duplicate is that
 in the partial-leads GROUP and the Analysis column beside it is empty. Don't "fix" this with
 `create_labels_if_missing` — that defeats the test.
 
+⚠️ **THE MATCHER WAS NAME + DOB, AND A NAME IS NOT A KEY** (Josh, 2026-09-11; widened the same
+day in `automations/duplicate-patient-check.js` `samePatient` + `test/name-variant-identity.test.js`).
+`namesMatch` requires the first tokens equal (or an initial) AND the **last** tokens equal. Augustina
+Rodriguez filled in the DTC form on 2026-07-22, landed in *1. Intake*, and the check ran 21 seconds
+later against a patient who had been on Subscription since April as **Agustina Rodriguez Hernandez**
+— same number, same DOB — comparing `"augustina"` vs `"agustina"` and `"rodriguez"` vs `"hernandez"`.
+It stamped **`Already In System = No`**, and seven weeks later she was advanced into Medical Necessity
+as a brand-new patient. Nothing errored, and the DOB matched exactly the whole time. The DOB still
+gates every route; on top of the name rule a match is now also the patient's own **phone** (new
+`phoneCol` per board — the primary number only, never the Alternate Phone, which is a caregiver's and
+is legitimately shared) or a **shared surname token**, each additionally requiring `firstNamesClose`
+(equal, an initial, or one letter apart on a name of ≥5 characters).
+⚠️ **The direction of the trade is the argument, not the rule's tightness.** A false **Yes** moves the
+item into the Already In System queue, where the write-up names what it matched and a rep pushes it
+back in one click (§5.10 *Move to Profile Send Off*); a false **No** is invisible and runs a duplicate
+patient through the entire pipeline. ⚠️ Known residual: twins in one household share the number, the
+surname and the birthday, so the first name carries the whole weight — which is exactly why short
+names must match EXACTLY (Dan/Don, Ana/Ann, Jon/Jan are two people, not typos). ⚠️ `sharesSurname` is
+anchored on a LAST token: a plain "any token in common" also fires on a shared MIDDLE name. And the
+board scan now reads its columns **by id, never by position** — it asks for two, and Monday does not
+promise the order it answers in, so a positional read would compare a phone number against a DOB and
+report a confident "No".
+
 **Still not covered:** the check never searches Profile Send Off itself (its five boards are
 Medical Evaluation, Insurance, Welcome Call and the two Subscription boards), so a form twin of a
 patient sitting on the *same* board is invisible to it. That case is the SPA's own read-only
-`dtcFormFlag` (§5.10), and the two are independent.
+`dtcFormFlag` (§5.10), and the two are independent. Email and member ID still do not contribute to
+the match.
 
 
 ### 5.22 Serving ↔ order lines — Pump Qty and the Next Order Dates (Aug 2026)
@@ -3851,6 +3875,32 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   `rankLiveResults` orders what Monday returned WITHOUT dropping rows the local ranker can't score
   (`searchPatients` would). Same `searchColumnIds`, same `mapToSystemPatient`, so a row is identical
   whichever path produced it.
+  ⚠️ **A NAME QUERY THEN ASKS AGAIN BY THE NUMBER — because a patient is not the same string on
+  every board** (Josh, 2026-09-11). Augustina Rodriguez (DTC Intake · Profile Send Off · Medical
+  Evaluation) and Agustina Rodriguez Hernandez (Subscription since April · Secondary Claims) are ONE
+  patient: same phone `4062237445`, same DOB `08/28/1956`, five items, two spellings — a one-letter
+  first-name typo and a Spanish double surname recorded on some boards and not others. Rules are
+  `contains_text` **ANDed per word**, and a `contains_text` is a contiguous substring, so "Augustina"
+  is not inside "Agustina…" and "Hernandez" is not inside "Augustina Rodriguez": **no name query can
+  return both halves**, and the rep searching either one is told, accurately, about half of her.
+  So `searchPatientsLive` runs a SECOND aliased pass keyed on the phone numbers the first pass
+  returned (`sameNumberNeedles` → `phoneRulesLiteral`, the same literal the typed phone query uses),
+  merges what is new (`mergeSameNumberRows`) and marks it `matchedBy: "phone"`; the page renders
+  those under their own **"Same phone number, filed under a different name"** heading, because a row
+  carrying a name nobody typed reads as the search misfiring rather than as the record it went and
+  found. It works in both directions — either spelling finds the other.
+  ⚠️ **The cap is the whole safety property.** Above `SAME_NUMBER_MAX_PHONES` (3) distinct numbers
+  the pass is SKIPPED: "Rodriguez" returns forty rows carrying forty numbers — forty people, none of
+  them the one being looked up — and fanning out on those spends a request per board to say nothing.
+  Three or fewer means the query has already narrowed to a person. A row with a blank phone
+  contributes nothing and does **not** count against the cap, or one board returning a blank quietly
+  switches the whole pass off. ⚠️ A failed second pass is swallowed (an abort still propagates, or
+  `useLiveSearch`'s latest-wins breaks): the name answer is the answer this search gave until today,
+  so degrading to it costs the extra rows and never the search. Two round trips and ~400 complexity
+  instead of 200, only on a name query — a phone query has already found everyone on the number.
+  ⚠️ A number genuinely shared by two patients (18 of 3,140 on the live boards, §5.28) surfaces the
+  household under that heading. That is the heading's job; do not "fix" it by narrowing to one name.
+  `sameNumberSearch.test.ts` holds the five live records as its fixtures.
   **Results are FOLDERED — Active · Completed · Stuck** (`lib/systemMgmt/searchBuckets.ts` + tests,
   same day). A patient is one item per board (§6), so one name returns three to five rows — the
   finished Profile Send Off record, the finished ME record, the live Insurance record — and in a
@@ -4553,6 +4603,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Humana patient's Same-or-Similar was never asked / a product sits in Skip SoS Products | §5.32c — `benefitsDerive.sosRequiredDespiteAuth`. Auth = Required defers the check for every payer EXCEPT Humana; keyed on primary insurance (the secondary column has no Humana label). An auth-required Humana product with no entry derives `""`, which holds the stage — never `"skip"` |
 | The patient's phone is wrong and a rep can't fix it | §5.32d — editable on **Auth Outstanding only**, via `BenefitsPatientHeader`'s opt-in `onSavePhone`. The refusal fires BEFORE the write (`planPhoneWrite` skips what it can't parse, so an unchecked save is green and empty); the write goes straight to the board, never into the overlay. Not a route back to the retired Edit-profile dialog — §7 |
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
+| A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
+| A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |

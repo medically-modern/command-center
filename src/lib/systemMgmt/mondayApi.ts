@@ -341,6 +341,14 @@ export interface SystemPatient {
   id: string;
   name: string;
   phone: string;
+  /**
+   * How this row reached the results — absent means the ordinary way, by the
+   * name the rep typed. `"phone"` marks a row found by the same-number pass
+   * (`sameNumberNeedles`): it is a REAL record for a patient whose board name
+   * does not contain the query, and the UI must say so, or a row carrying an
+   * unfamiliar name reads as the search misfiring rather than as the answer.
+   */
+  matchedBy?: "phone";
   boardId: number;
   boardName: string;
   groupId: string;
@@ -713,6 +721,25 @@ export const LIVE_SEARCH_MIN_DIGITS = 3;
 export const LIVE_SEARCH_PER_BOARD = 100;
 /** Words of a name query that become rules; more than this is noise. */
 const MAX_NAME_TERMS = 4;
+/**
+ * How many DISTINCT phone numbers a name query may fan out on (§ the
+ * same-number pass below). The cap is the whole safety property: it is what
+ * stops the pass firing on a SURNAME. "Rodriguez" returns forty rows carrying
+ * forty numbers — forty different people, none of them the one being looked
+ * up — and fanning out on those spends a second request per board to add
+ * nothing. Three or fewer distinct numbers means the query has already
+ * narrowed to a person (their own records, plus at most a household member
+ * sharing the line), which is exactly when a record filed under another
+ * spelling is worth going and getting.
+ */
+export const SAME_NUMBER_MAX_PHONES = 3;
+/**
+ * Digits compared when matching a number. Ten is the number without its
+ * country code: this account stores both `4062237445` and `14062237445`
+ * (§5.29), and a `contains_text` on the last ten finds either shape where an
+ * exact match finds one.
+ */
+const PHONE_NEEDLE_DIGITS = 10;
 
 export type LiveSearchRules =
   | { kind: "phone"; digits: string }
@@ -760,12 +787,80 @@ function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
      number or the alternate, never both, so ANDing them finds nobody at all.
      Search silently returning zero rows is the failure this whole file's
      comments keep recording. */
-  if (rules.kind === "phone") {
-    const list = phoneColIdsFor(board).map((c) => rule(c, rules.digits));
-    return `{rules: [${list.join(", ")}], operator: or}`;
-  }
+  if (rules.kind === "phone") return phoneRulesLiteral(board, [rules.digits]);
   const list = rules.terms.map((t) => rule("name", t));
   return `{rules: [${list.join(", ")}], operator: and}`;
+}
+
+/**
+ * `query_params` matching ANY of these digit strings in ANY of the board's
+ * phone columns — one implementation for the typed phone query and for the
+ * same-number pass, so the two can never disagree about what "this number"
+ * means. ORed for the reason above, in both directions now: a number is in the
+ * primary column or the alternate, and a household's two records are under two
+ * different numbers.
+ */
+function phoneRulesLiteral(board: BoardDef, digits: string[]): string {
+  const rules = digits.flatMap((d) =>
+    phoneColIdsFor(board).map(
+      (c) =>
+        `{column_id: ${JSON.stringify(c)}, compare_value: [${JSON.stringify(d)}], operator: contains_text}`,
+    ),
+  );
+  return `{rules: [${rules.join(", ")}], operator: or}`;
+}
+
+/** The last ten digits of a board phone value, or "" if there aren't ten. */
+export function phoneNeedle(phone: string): string {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return digits.length >= PHONE_NEEDLE_DIGITS ? digits.slice(-PHONE_NEEDLE_DIGITS) : "";
+}
+
+/**
+ * The numbers a name answer should be looked up again under — or none at all.
+ *
+ * ⚠️ **Returning `[]` is the common case and the important one.** Above
+ * `SAME_NUMBER_MAX_PHONES` distinct numbers the query is a surname, not a
+ * lookup, and the second pass is skipped entirely rather than run on forty
+ * strangers. A row with no readable number contributes nothing and does not
+ * count against the cap — a blank phone column is not evidence of a person.
+ */
+export function sameNumberNeedles(
+  rows: Pick<SystemPatient, "phone">[],
+  max: number = SAME_NUMBER_MAX_PHONES,
+): string[] {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const needle = phoneNeedle(row.phone);
+    if (!needle) continue;
+    seen.add(needle);
+    if (seen.size > max) return [];
+  }
+  return [...seen];
+}
+
+/**
+ * Fold the same-number rows in behind the name rows, dropping every one the
+ * name pass already returned and marking the rest.
+ *
+ * ⚠️ The marker is not decoration. These rows carry a name the rep did not
+ * type — that is precisely why they were missing — so one arriving unlabelled
+ * among the others reads as the search misfiring. `matchedBy` is what lets the
+ * page put them under their own heading and say why they are there.
+ */
+export function mergeSameNumberRows(
+  named: SystemPatient[],
+  sameNumber: SystemPatient[],
+): SystemPatient[] {
+  const key = (p: SystemPatient) => `${p.boardId}:${p.id}`;
+  const seen = new Set(named.map(key));
+  const extra: SystemPatient[] = [];
+  for (const row of sameNumber) {
+    if (seen.has(key(row))) continue;
+    seen.add(key(row));
+    extra.push({ ...row, matchedBy: "phone" });
+  }
+  return extra.length ? [...named, ...extra] : named;
 }
 
 /**
@@ -786,6 +881,11 @@ function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
  * whole-board fetch, so a row is identical whichever path produced it. The
  * whole-board fetch survives for the pipeline chart and the other tabs — it
  * just no longer stands between a rep and a name.
+ *
+ * A name query then runs a SECOND pass keyed on the number the first pass
+ * found, because the same patient is filed under different names on different
+ * boards — see the block comment inside. Two round trips instead of one, ~400
+ * complexity instead of 200, and only when the query has narrowed to a person.
  */
 export async function searchPatientsLive(
   query: string,
@@ -794,10 +894,58 @@ export async function searchPatientsLive(
   const rules = liveSearchRules(query);
   if (!rules || !hasToken()) return [];
 
+  const named = await fetchLiveRows((b) => rulesLiteral(b, rules), signal);
+
+  /* ── The same-number pass ────────────────────────────────────────────
+     ⚠️ A NAME IS NOT A KEY, and on these boards it is not even stable.
+     Augustina Rodriguez (DTC Intake · Profile Send Off · Medical Evaluation)
+     and Agustina Rodriguez Hernandez (Subscription since April · Secondary
+     Claims) are ONE patient — same number, same DOB 08/28/1956 — under two
+     spellings: a one-letter first-name typo and a Spanish double surname
+     recorded on some boards and not others. `contains_text` is a contiguous
+     substring, so "Augustina" is not inside "Agustina…" and "Hernandez" is not
+     inside "Augustina Rodriguez": NO name query returns both sets, and the rep
+     searching either one is told, accurately and uselessly, about half of her.
+     Reported by Josh 2026-09-11, after she had been advanced into Medical
+     Necessity as a brand-new patient that same afternoon.
+
+     So after the name answer comes back, ask again by the NUMBER those rows
+     carry — the one field every record of hers agrees on. It runs only for a
+     name query (a phone query has already found everyone on the number) and
+     only when the answer has narrowed to a person (`sameNumberNeedles`). */
+  const needles = rules.kind === "name" ? sameNumberNeedles(named) : [];
+  let rows = named;
+  if (needles.length) {
+    try {
+      rows = mergeSameNumberRows(
+        named,
+        await fetchLiveRows((b) => phoneRulesLiteral(b, needles), signal),
+      );
+    } catch (e) {
+      /* Best effort, deliberately. The name answer IS an answer — it is the
+         whole answer this search gave until today — so a failed second pass
+         costs the extra rows and nothing else. Failing the search outright to
+         report that it could not ALSO find records nobody asked for by name
+         would be the worse trade. An abort still propagates: latest-wins in
+         `useLiveSearch` depends on it. */
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      console.error("[searchPatientsLive] same-number pass failed", e);
+    }
+  }
+
+  await patchAuthDeniedOrigins(rows);
+  return rows;
+}
+
+/** One aliased request across every board, mapped to rows. */
+async function fetchLiveRows(
+  literalFor: (board: BoardDef) => string,
+  signal?: AbortSignal,
+): Promise<SystemPatient[]> {
   const aliases = BOARDS.map(
     (b, i) => `
       b${i}: boards(ids: [${b.boardId}]) {
-        items_page(limit: ${LIVE_SEARCH_PER_BOARD}, query_params: ${rulesLiteral(b, rules)}) {
+        items_page(limit: ${LIVE_SEARCH_PER_BOARD}, query_params: ${literalFor(b)}) {
           items {
             id
             name
@@ -813,13 +961,12 @@ export async function searchPatientsLive(
     signal,
   );
 
-  const patients: SystemPatient[] = [];
+  const rows: SystemPatient[] = [];
   BOARDS.forEach((b, i) => {
     const items = data[`b${i}`]?.[0]?.items_page?.items ?? [];
-    for (const item of items) patients.push(mapToSystemPatient(item, b));
+    for (const item of items) rows.push(mapToSystemPatient(item, b));
   });
-  await patchAuthDeniedOrigins(patients);
-  return patients;
+  return rows;
 }
 
 
