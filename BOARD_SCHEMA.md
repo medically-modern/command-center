@@ -401,9 +401,9 @@
     the same rung "Manager Escalation Required"; the app accepts either wording and keys on the id.
   - `1` → Done
   - `2` → Final Escalation Required — a stuck PROPOSAL awaiting Final Decisions.
-    ⚠️ **Not on the live board as of 2026-09-14** (ids 0 and 1 only). Pending board change: add the
-    label with colour working_orange (0) so Monday assigns id 2, then read `settings_str` back. The
-    app refuses to promote a patient to Final until it exists (`assertEscalationLabelExists`).
+    Added live 2026-09-14 (colour working_orange `#fdab3d`, read back from `settings_str` — the same
+    id and colour as Medical Evaluation's). The app still checks the live label set before every
+    promotion (`assertEscalationLabelExists`); CLAUDE.md §5.34 records how the id was obtained.
 
 ### Escalation Notes
 - **ID:** `long_text_mm3jgh1y`

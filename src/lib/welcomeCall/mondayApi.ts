@@ -242,16 +242,16 @@ export const COL = {
  *   1 — "Done" → cleared
  *   2 — "Final Escalation Required" → Final Decisions (a stuck PROPOSAL)
  *
- * ⚠️ Read off the live board 2026-09-14: ids 0 and 1 exist; **id 2 does not
- * yet** — adding it is a board change (a status label on this column), and
- * `assertEscalationLabelExists` in mondayWrite refuses to promote a patient to
- * Final until the board carries it, because Monday takes a write to a label id
- * that does not exist at HTTP 200 and stores a value no reader can name (three
- * Final Profile Confirmation rows carry exactly that in Advance? today).
- * Monday assigns an API-created label's id from its COLOUR (§5.31c/§5.31d),
- * so the label must be created with colour 0 (working_orange, the id-2 colour
- * on the Medical Evaluation column) or the id read back and this table
- * corrected — never inferred.
+ * ⚠️ All three read back from the live `settings_str` on 2026-09-14: ids 0
+ * and 1 were already there; **id 2 was added that day** (CLAUDE.md §5.34 says
+ * how — Monday refuses duplicate colours and derives a NEW label's id from its
+ * colour, so it took two updates and a colour swap to land on 2). Never infer
+ * an id from this table when the column changes: read `settings_str` back and
+ * correct the table. `assertEscalationLabelExists` in mondayWrite still checks
+ * the live label set before every promotion, because Monday takes a write to
+ * a label id that does not exist at HTTP 200 and stores a value no reader can
+ * name (three Final Profile Confirmation rows carry exactly that in Advance?
+ * today) — a label deleted on the board must refuse, not silently no-op.
  */
 export const ESCALATION_INDEX = { manager: 0, done: 1, final: 2 } as const;
 

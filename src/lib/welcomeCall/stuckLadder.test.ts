@@ -105,14 +105,14 @@ describe("proposeWelcomeCallStuck", () => {
   });
 
   it("refuses a Final promotion BEFORE any write when the board has no label at id 2", async () => {
-    board.labels = [0, 1]; // the live column on 2026-09-14
+    board.labels = [0, 1]; // the live column before the label was added on 2026-09-14
     await expect(proposeWelcomeCallStuck("42", "reason", "final")).rejects.toThrow(/no "Final Escalation Required" label/);
     // Nothing reached the board — no stamp without a flip, and the option
     // cache is dropped so a retry after the board change sees the new label.
     expect(calls).toEqual(["invalidate"]);
   });
 
-  it("still allows the MANAGER rung while id 2 is missing — that label exists today", async () => {
+  it("still allows the MANAGER rung while id 2 is missing", async () => {
     board.labels = [0, 1];
     await proposeWelcomeCallStuck("42", "reason", "manager");
     expect(calls.at(-1)).toBe(`status:${COL.escalation}:${ESCALATION_INDEX.manager}`);

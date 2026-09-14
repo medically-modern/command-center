@@ -53,7 +53,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | **Profile Send Off** | `18406352652` | `profile` ("Referral Intake", relabelled from "Verified Referrals" 2026-08-19) + `unverifiedReferrals` ("Non-Referral Intake — Info Collection", §5.20) + `intakeCleanup` ("Intake — Profile Clean-Up", group `group_mm6c3rhb`, §5.20) + `inSystemReferrals` ("Already In System") — FOUR roles on one board, split by Already In System then Referral Type/Source (§5.10), and the DTC form queue split again into two sub-stages (§5.20). Its own board (groups: *Patient Intake → 1. Intake → New Form Partial/Completed → Profile Clean-Up → Already In System → Tests → Stuck → Completed*). `profile` and `inSystemReferrals` work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. The `scheduledCalls` role (**Care Coordinator**, §5.30) also reads the two DTC form groups + Profile Clean-Up here — read-only, beside ME's chase stages and Welcome Call. **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `text_mm6vevjf`** (the capped `long_text_mm27zjt2` until 2026-09-03) (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (**stage**-based — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, **DVS**, Auth Denied, Escalations, Complete, Stuck. ⚠️ The board grew a **DVS group** (`group_mm5gp2r2`, Aug 2026) but the role is still **stage**-defined: stage-DVS items linger in whichever group an automation last left them, so `useDvsPatients`/`useRoleCounts` read the STAGE board-wide and must not be "fixed" to filter on the group. |
-| **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. Since 2026-09-14 both stages run the **Propose Stuck ladder** on Escalation `color_mm1x7997` (index 0 manager · 2 final) — §5.34. ⚠️ Index 2 is a **pending board change**: the column carries ids 0 and 1 only, and the app refuses to promote to Final until the label exists. |
+| **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. Since 2026-09-14 both stages run the **Propose Stuck ladder** on Escalation `color_mm1x7997` (index 0 manager · 2 final) — §5.34. Label id 2 ("Final Escalation Required", working_orange) was **added live 2026-09-14** and read back from `settings_str`, so every reader's hardcoded 2 is right; `assertEscalationLabelExists` still checks the live label set before each promotion. |
 | **Subscription Board - Updated** | `18407459988` | `subscription` role + one source for Patient Questions. |
 | **Secondary Claims Board** | `18413019028` | Second source for Patient Questions inbox. |
 | **MM Doctor Database** | `18142847597` | NPI → doctor record + Doctor Notes (`shared/doctorDb.ts`). Separate from patient boards. |
@@ -1491,8 +1491,9 @@ or if a listed id names a working group somewhere. That check is the point.
   `escalated` (index 0) and `proposedStuck` (index 2) from it since 2026-09-14** — the rewrite §10
   asked for, §5.34 — so their sidebars, role counts and badge finally agree. Without this read an
   escalated Welcome Call patient's badge would have inherited `escalated: false` and read Active.
-  The label TEXT is read alongside the index, because those two boards' indices are inferred from
-  §10 rather than observed: `escalationRung` takes the index first (a rename can't blind it) but an
+  The label TEXT is read alongside the index, because those two boards' indices were inferred from §10 rather
+  than observed until 2026-09-14, when all three (0 · 1 · 2) were read back from the live
+  `settings_str` (§5.34) — the text fallback stays as belt and braces: `escalationRung` takes the index first (a rename can't blind it) but an
   **unrecognised** index falls through to the label instead of reading Active. ⚠️ Monday assigns a
   status index when the label is *created* and takes the lowest free slot, **not display order** —
   §5.12's Sub-Stage `Doctor Appointment` landed on **0** while that column's siblings start at 8 —
@@ -3743,21 +3744,27 @@ Escalation `color_mm1x7997` — the same id lineage as Medical Evaluation — **
 Required", and the code accepts either text), **1** = Done, **2** = Final Escalation Required (a
 stuck PROPOSAL awaiting Final Decisions).
 
-> ⚠️ **Index 2 does NOT exist on the board yet (checked live 2026-09-14: ids 0 and 1 only).** The
-> session that built this was not permitted to change the shared board, so the label is a
-> **pending board change**. Add a status label **"Final Escalation Required"** to `color_mm1x7997`
-> on board `18410804557` with colour **working_orange (0)** — Monday assigns an API-created label's
-> id from its COLOUR (§5.31c/§5.31d), and 0 is the colour ME's id-2 label carries — then **read
-> `settings_str` back**. If the id that comes back is not 2, correct `ESCALATION_INDEX.final` and
-> the readers in the keep-in-agreement list below (they hardcode 2 the way the ME readers do).
-> Until it lands, **the first rung works and the second refuses**:
-> `mondayWrite.assertEscalationLabelExists` checks the live label set BEFORE any write and throws
-> *"has no 'Final Escalation Required' label (id 2) yet — nothing was written"*. That guard is not
-> optional: Monday takes a write to a non-existent label id at HTTP 200 (three Final Profile
-> Confirmation rows carry `{"index":5}` in Advance? today, a value no label names), so an unguarded
-> promotion would have stamped its reason into Notes and then flipped nothing — a proposal that
-> looks made and reaches nobody. Optional, cosmetic: rename id 0 to "Manager Escalation Required"
-> to match the other two boards; every reader keys on the index.
+> ✅ **Label id 2 was ADDED LIVE the same day (2026-09-14, on Josh's go-ahead) and read back from
+> `settings_str`:** id 0 "Escalation Required" (stuck_red) · id 1 "Done" (done_green) · **id 2
+> "Final Escalation Required" (working_orange)** — the same three ids and colours as Medical
+> Evaluation, so every reader's hardcoded 2 is right and nothing in the keep-in-agreement list
+> below needed correcting.
+> ⚠️ **How the id was obtained matters, because the obvious route is refused.** `update_column`
+> rejects two labels sharing a colour (*"Colors should be unique"*), and Monday derives a NEW
+> label's id from its colour (§5.31c/§5.31d) — so stuck_red, the one colour that maps to id 2,
+> was already on id 0, and asking for working_orange (id 0's slot under that rule) had an untested
+> outcome. It took two atomic updates: (1) move id 0 to working_orange and add the new label as
+> stuck_red, which lands on id 2 under every rule Monday could apply (colour → 2, lowest free
+> slot → 2, max+1 → 2); (2) swap the two colours back, existing labels being addressed by id. For
+> the seconds in between id 0 was orange, and no row carried it (29 + 32 rows scanned, none
+> escalated). **Read `settings_str` back after ANY label change on this column — never infer.**
+> `mondayWrite.assertEscalationLabelExists` **stays**: it checks the live label set BEFORE any
+> write and throws *"has no 'Final Escalation Required' label (id 2) — nothing was written"*, so a
+> label deleted or deactivated on the board later is a refusal with a reason rather than a
+> proposal that looks made and reaches nobody (Monday takes a write to a non-existent label id at
+> HTTP 200 — three Final Profile Confirmation rows carry `{"index":5}` in Advance? today, a value
+> no label names). Still optional and cosmetic, not done: renaming id 0 to "Manager Escalation
+> Required" to match the other two boards; every reader keys on the index.
 
 **The writers — `lib/welcomeCall/mondayWrite.ts`**, stamps shared from `lib/masheke/proposedStuck`
 so Oversight's `__proposedReason__` reads them with no special-casing:
@@ -3818,8 +3825,8 @@ rows scanned live on 2026-09-14 — not one carried an Escalation value.
 1. **Label ids** — `welcomeCall/mondayApi.ts` `ESCALATION_INDEX` (the writers) ⇄ the hardcoded
    `index: [0]` / `[2]` in `oversightApi.ts` CHART_FILTERS, `escalationDetail.ts` SPLIT_BOARDS,
    `systemMgmt/mondayApi.ts`, `useRoleCounts.ts` `WC_*_INDEX`, both baseline generators,
-   `careCoordinator/workflow.ts`. All assume 2 = final; verify against `settings_str` when the label
-   is added.
+   `careCoordinator/workflow.ts`. All key on 2 = final, verified against `settings_str` on 2026-09-14 when the label was added;
+   re-verify after any change to the column's labels.
 2. **Queue rules** — `welcomeCall/sidebarList.ts` · `finalConfirm/sidebarList.ts` ·
    `useRoleCounts.ts` · `scripts/snapshot-baseline.mjs` · `services/baseline-cron/index.mjs` ·
    `oversightApi.ts` (`welcome-call` / `profile-review` filters).
@@ -4764,9 +4771,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   branch, so the sidebar and the burndown disagreed, the escalated filter was permanently empty,
   there were no Oversight charts and nothing could clear the flag.) Both stages now read the
   column by index, never write it from the send, run the Propose Stuck ladder, and have Manager
-  Intervention / Final Decisions charts. ⚠️ **One piece is still open and is a board change:** the
-  column has no index-2 label yet, so a promotion to Final is refused with a message until
-  "Final Escalation Required" is added (how: §5.34). The first rung works today.
+  Intervention / Final Decisions charts. The board half landed the same day: label id 2
+  "Final Escalation Required" was added to `color_mm1x7997` and read back (§5.34 records how —
+  a two-step colour swap, because Monday refuses duplicate colours and derives a new label's id
+  from its colour), so both rungs work. The live-label guard stays.
 - **Subscription's Escalate button never persists anything** (same audit). The mapping hardcodes
   `escalated: false`, `COL.authEscalation` (`color_mm2n237s`) is defined but **never written by
   `mondayWrite`**, and `toggleEscalate` only touches the local overlay — the button reverts on
@@ -4889,7 +4897,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Search row opens the wrong screen, or a different one from Oversight | §7 — `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` is the one rule; it must send the same `?mv=` / `manager` / `escalated` params `OversightTab.handlePatientClick` sends |
 | The Communications tab's composer or profile spinner is off screen | §7 — the host tab needs `h-screen overflow-hidden`, not `min-h-screen`: `min-h-0` cannot bound a parent with no definite height, so a long conversation list grows the document to ~48,000px. ⚠️ Reproducing it needs a REAL list — a couple of conversations fit inside 100vh and the two layouts are pixel-identical |
 | The Escalations tab is missing from System Management | §7 — commented out 2026-09-10 with its header count chip, not deleted; `?tab=escalations` falls through to Search on purpose. Uncomment the `TabBtn` and the `EscalationView` block in `SystemMgmtPage.tsx`. Escalations are worked in Oversight's manager columns meanwhile |
-| A Welcome Call rep's Propose Stuck says the board has no "Final Escalation Required" label / a manager can't escalate to Final | §5.34 — the Escalation column `color_mm1x7997` on board `18410804557` still has ids 0 and 1 only. Add the status label **"Final Escalation Required"** with colour **working_orange (0)** so Monday assigns id **2**, read `settings_str` back, and if it is not 2 correct `welcomeCall/mondayApi` `ESCALATION_INDEX.final` + every reader listed in §5.34's keep-in-agreement. The first rung (Manager Intervention, id 0) works today |
+| A Welcome Call rep's Propose Stuck says the board has no "Final Escalation Required" label / a manager can't escalate to Final | §5.34 — that label EXISTS since 2026-09-14 (id **2**, working_orange, read back from `settings_str`), so `assertEscalationLabelExists` firing means it was deleted or deactivated on the board since, or the 5-minute label cache is stale right after a board change (the guard drops the cache on a miss, so a retry re-reads). Check `color_mm1x7997`'s `settings_str` on board `18410804557`; if the id is no longer 2, correct `welcomeCall/mondayApi` `ESCALATION_INDEX.final` + every reader listed in §5.34's keep-in-agreement — never by inference. Re-adding it needs the two-step colour swap §5.34 records (Monday refuses duplicate colours and derives a new label's id from its colour) |
 | An escalated Welcome Call / Final Confirm patient is in no Oversight column, or the sidebar and burndown disagree | §5.34 — `escalated` is read off the board (index 0) since 2026-09-14 and `proposedStuck` is index 2; both leave the rep's list and count (`welcomeCall`/`finalConfirm` `sidebarList`, `useRoleCounts`, both baselines) and land in the Welcome Call section's Manager Intervention / Final Decisions charts. A patient in NO column fails `columnExclusivity.test.ts` |
 | The Welcome Call Text shows "Queued" but the patient never got a second text | §5.34 / the 2026-09-14 audit — the trigger fires on a status CHANGE, so re-pressing Send onto a column already at "Send" is a no-op. Press the Queued button once to reset it on the board (`mondayWrite.resetWelcomeCallText`), then Send |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |

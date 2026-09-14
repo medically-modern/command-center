@@ -596,12 +596,13 @@ function isFinalLabel(text: string): boolean {
  * ⚠️ Monday takes a write to a label id that does not exist at HTTP 200 —
  * either dropping it or storing a value no reader can name (three Final
  * Profile Confirmation rows carry `{"index":5}` in Advance? today, 2026-09-14).
- * The Escalation column carried ids 0 and 1 only when this shipped; id 2 is a
- * board change (CLAUDE.md §5.34). Until it lands, a promotion to Final would
- * have written its reason into Notes and then flipped nothing — a proposal
- * that looks made and reaches nobody. So the label is checked FIRST, before
- * any write, against the live `settings_str`, and a miss invalidates the
- * 5-minute cache so a retry right after the board change sees the new label.
+ * The Escalation column carried ids 0 and 1 only when this shipped; id 2 was
+ * added the same day (CLAUDE.md §5.34). The guard stays, because a label can
+ * be deleted or deactivated on the board at any time: without it a promotion
+ * to Final would write its reason into Notes and then flip nothing — a
+ * proposal that looks made and reaches nobody. So the label is checked FIRST,
+ * before any write, against the live `settings_str`, and a miss invalidates
+ * the 5-minute cache so a retry right after a board change sees the new label.
  */
 export async function assertEscalationLabelExists(level: StuckLevel): Promise<void> {
   const options = await fetchStatusOptions(BOARD_ID, [COL.escalation]);
@@ -609,8 +610,8 @@ export async function assertEscalationLabelExists(level: StuckLevel): Promise<vo
   if ((options[COL.escalation] ?? []).some((o) => o.index === wanted)) return;
   invalidateStatusOptions();
   throw new Error(
-    `The Welcome Call board's Escalation column has no "${ESCALATION_LABEL[level]}" label (id ${wanted}) yet — ` +
-      `nothing was written. Add that label to the column on Monday, then try again.`,
+    `The Welcome Call board's Escalation column has no "${ESCALATION_LABEL[level]}" label (id ${wanted}) — ` +
+      `nothing was written. Add that label back to the column on Monday, then try again.`,
   );
 }
 

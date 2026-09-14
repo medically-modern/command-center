@@ -1508,13 +1508,23 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             on his instruction: it pointed at a button that is now right here.
             ⚠️ The header button STAYS. Josh, same day: *"add a second stuck
             button option down there … both stuck buttons have same
-            behavior"* — two triggers for one dialog, not two controls. */}
-        <div className="flex flex-col sm:flex-row gap-3">
+            behavior"* — two triggers for one dialog, not two controls.
+            ⚠️ EQUAL and EDGE-TO-EDGE (Josh, later the same day: *"make the
+            advance and propose stuck equal sizes that extend from side of
+            screen to side of screen — big buttons"*). A two-column GRID, not
+            `flex-1`: flex would still size each cell to its label, so the
+            longer Propose Stuck copy made that button the wider one, and a
+            grid row also stretches both cells to the taller button so a
+            two-line subtitle on one side cannot leave the other short. No
+            `sm:w-auto` on either — that is what let them shrink to content.
+            Stacked one-up below `sm`, where two half-width buttons would be
+            too narrow for their subtitles. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Button
             type="button"
             variant="outline"
             className={cn(
-              "h-auto w-full sm:w-auto py-4 px-6 justify-start text-left whitespace-normal border",
+              "h-auto w-full py-7 px-8 justify-center text-center whitespace-normal border rounded-2xl",
               "focus-visible:ring-emerald-500 focus-visible:ring-offset-0",
               /* ⚠️ Resting state is a TRANSLUCENT green, not `emerald-50`
                  (Josh: *"like a light / more transparent green before it's
@@ -1536,10 +1546,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             }}
           >
             <div>
-              <p className="font-bold text-lg">
+              <p className="font-bold text-2xl">
                 {patient.advanceDecisionIndex === ADVANCE_INDEX ? "Advancing ✓" : "Advance"}
               </p>
-              <p className="text-sm opacity-90 font-normal">Move forward to Order.</p>
+              <p className="text-base opacity-90 font-normal">Move forward to Order.</p>
             </div>
           </Button>
 
@@ -1555,17 +1565,17 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               type="button"
               variant="outline"
               className={cn(
-                "h-auto w-full sm:w-auto py-4 px-6 justify-start text-left whitespace-normal border",
+                "h-auto w-full py-7 px-8 justify-center text-center whitespace-normal border rounded-2xl",
                 "focus-visible:ring-rose-500 focus-visible:ring-offset-0",
                 "bg-rose-500/10 hover:bg-rose-600 hover:text-white hover:border-rose-700 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800",
               )}
               onClick={onProposeStuck}
             >
-              <div className="flex items-start gap-2">
-                <Flag className="h-5 w-5 shrink-0 mt-0.5" />
+              <div className="flex items-center justify-center gap-3">
+                <Flag className="h-6 w-6 shrink-0" />
                 <div>
-                  <p className="font-bold text-lg">Propose Stuck</p>
-                  <p className="text-sm opacity-90 font-normal">Ask a manager to hold this patient.</p>
+                  <p className="font-bold text-2xl">Propose Stuck</p>
+                  <p className="text-base opacity-90 font-normal">Ask a manager to hold this patient.</p>
                 </div>
               </div>
             </Button>
