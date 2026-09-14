@@ -10,9 +10,13 @@
  *     while that tab is on a call);
  *   · registering / line full / error                          → not
  *     connected, with the reason.
+ *
+ * Beside it, a MUTE for the ringtone (Josh, 2026-09-14). Per browser, so it
+ * silences the tab that actually rings whichever tab it is pressed in; cards
+ * and Answer are untouched — this is the speaker, not the assignment.
  */
 import { useEffect, useState } from "react";
-import { Loader2, PhoneCall, PhoneOff } from "lucide-react";
+import { Loader2, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
 import { useAccessContext } from "@/components/AccessProvider";
 import { useSoftphone } from "@/hooks/softphone/useSoftphone";
 import { canAnswerCalls } from "@/lib/accessStore";
@@ -93,6 +97,18 @@ export default function CallConnectionBadge({ className }: { className?: string 
         )}
       />
       <span className="truncate">{label}</span>
+      <button
+        onClick={() => phone.setRingMuted(!phone.ringMuted)}
+        title={phone.ringMuted ? "Ringtone muted in this browser — click to unmute" : "Mute the ringtone in this browser"}
+        aria-label={phone.ringMuted ? "Unmute ringtone" : "Mute ringtone"}
+        aria-pressed={phone.ringMuted}
+        className={cn(
+          "ml-0.5 rounded-full p-0.5 hover:bg-white/10",
+          phone.ringMuted && "text-amber-200",
+        )}
+      >
+        {phone.ringMuted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+      </button>
       {elsewhere && (
         <button
           onClick={phone.takeOver}

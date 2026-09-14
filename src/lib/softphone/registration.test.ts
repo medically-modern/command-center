@@ -8,8 +8,10 @@ import {
   describeRegistrationFailure,
   instanceIdFor,
   readCachedSipInfo,
+  readMuted,
   retryDelayMs,
   writeCachedSipInfo,
+  writeMuted,
   type StorageLike,
 } from "./registration";
 
@@ -137,5 +139,29 @@ describe("sipInfo cache", () => {
     writeCachedSipInfo(s, "a@medicallymodern.com", SIP, 1_000);
     clearCachedSipInfo(s);
     expect(readCachedSipInfo(s, "a@medicallymodern.com", 1_001)).toBeNull();
+  });
+});
+
+describe("ringtone mute", () => {
+  it("is OFF by default — a silent ring is a missed call", () => {
+    const s = memStorage();
+    expect(readMuted(s)).toBe(false);
+    writeMuted(s, true);
+    expect(readMuted(s)).toBe(true);
+    writeMuted(s, false);
+    expect(readMuted(s)).toBe(false);
+  });
+  it("reads unmuted when storage is unavailable", () => {
+    const broken: StorageLike = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+      removeItem: () => {},
+    };
+    expect(readMuted(broken)).toBe(false);
+    expect(() => writeMuted(broken, true)).not.toThrow();
   });
 });

@@ -67,6 +67,9 @@ export interface PhoneSnapshot {
    */
   enabled: boolean;
   registration: RegistrationStatus;
+  /** The ringtone is muted in this browser (cards still show). Per browser,
+   *  read locally by every tab — like `enabled`, it never waits on the leader. */
+  ringMuted: boolean;
   /** Why registration is not up, in a sentence a rep can act on. */
   registrationError: string | null;
   /** The last thing that failed on a call action (dial, answer); dismissable. */

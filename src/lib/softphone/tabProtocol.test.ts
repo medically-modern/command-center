@@ -5,6 +5,7 @@ import type { PhoneSnapshot } from "./types";
 const snap: PhoneSnapshot = {
   leader: true,
   enabled: true,
+  ringMuted: false,
   registration: "registered",
   registrationError: null,
   lastError: null,
@@ -39,6 +40,11 @@ describe("followerView", () => {
   });
   it("reads the assignment locally, never waiting on the leader for it", () => {
     expect(followerView(snap, false).enabled).toBe(false);
+  });
+  it("carries this browser's own mute, never the leader's copy of it", () => {
+    expect(followerView(snap, true, true).ringMuted).toBe(true);
+    expect(followerView(null, true, true).ringMuted).toBe(true);
+    expect(followerView(snap, true).ringMuted).toBe(false);
   });
   it("is an honest placeholder before any leader has spoken", () => {
     expect(followerView(null, true).registration).toBe("registering");

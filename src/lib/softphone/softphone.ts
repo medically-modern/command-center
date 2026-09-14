@@ -54,13 +54,16 @@ import type { SipInfo } from "ringcentral-web-phone/types";
 import { getIdToken, getUser, isAuthed, onAuthChange } from "@/lib/shared/auth";
 import { mmPhoneNumber } from "@/lib/fax/ringcentralApi";
 import {
+  MUTE_KEY,
   classifyRegistrationError,
   clearCachedSipInfo,
   describeRegistrationFailure,
   instanceIdFor,
   readCachedSipInfo,
+  readMuted,
   retryDelayMs,
   writeCachedSipInfo,
+  writeMuted,
 } from "./registration";
 import { CHANNEL_NAME, LOCK_NAME, followerView, isTabMessage, type TabCommand, type TabMessage } from "./tabProtocol";
 import { Ringtone } from "./ringtone";
@@ -142,6 +145,9 @@ class Softphone {
   private channel: BroadcastChannel | null = null;
   /** This person is an assigned call answerer (set by the host from access.json). */
   private enabled = false;
+  /** Ringtone muted in this browser (localStorage, shared by every tab of it).
+   *  Distinct from `active.call.muted`, which is the microphone on a live call. */
+  private ringMuted = readMuted(storage() ?? NO_STORAGE);
 
   // Leader-side phone state
   private wp: WebPhone | null = null;
@@ -160,7 +166,7 @@ class Softphone {
   private readonly instanceId = instanceIdFor(storage() ?? NO_STORAGE, mintUuid);
 
   constructor() {
-    this.snapshot = followerView(null, false);
+    this.snapshot = followerView(null, false, this.ringMuted);
   }
 
   /* ── store contract (useSyncExternalStore) ────────────────────────────── */
@@ -181,6 +187,11 @@ class Softphone {
       this.channel = new BroadcastChannel(CHANNEL_NAME);
       this.channel.onmessage = (ev: MessageEvent) => this.handleMessage(ev.data);
     }
+    // A mute flipped in ANOTHER tab of this browser reaches the leader — the
+    // tab that is actually making the sound — through the storage event.
+    window.addEventListener("storage", (e) => {
+      if (e.key === MUTE_KEY || e.key === null) this.onRingMuteChanged(readMuted(storage() ?? NO_STORAGE));
+    });
     window.addEventListener("online", () => void this.recover());
     window.addEventListener("pagehide", () => this.shutdown());
     onAuthChange(() => this.reconcile());
@@ -218,6 +229,20 @@ class Softphone {
       .request(LOCK_NAME, { mode: "exclusive", steal: true }, () => new Promise<void>(() => this.becomeLeader()))
       .catch((e: unknown) => this.onLockLost(e));
   };
+
+  /** Silence the ringtone in this browser. Cards still show and Answer still
+   *  works — this is the speaker, not the assignment. */
+  setRingMuted = (on: boolean): void => {
+    writeMuted(storage() ?? NO_STORAGE, on);
+    this.onRingMuteChanged(on);
+  };
+
+  private onRingMuteChanged(on: boolean): void {
+    if (on === this.ringMuted) return;
+    this.ringMuted = on;
+    if (this.isLeader) this.syncRingtone();
+    this.publish();
+  }
 
   dismissError = (): void => {
     if (!this.isLeader) return this.post({ type: "cmd", cmd: "dismissError" });
@@ -678,7 +703,7 @@ class Softphone {
 
   private syncRingtone(): void {
     const ringing = [...this.rings.keys()].some((id) => !this.ignored.has(id));
-    if (ringing && !this.active) this.ringtone.start();
+    if (ringing && !this.active && !this.ringMuted) this.ringtone.start();
     else this.ringtone.stop();
   }
 
@@ -689,6 +714,7 @@ class Softphone {
       this.snapshot = {
         leader: true,
         enabled: this.enabled,
+        ringMuted: this.ringMuted,
         registration: this.registration,
         registrationError: this.registrationError,
         lastError: this.lastError,
@@ -697,7 +723,7 @@ class Softphone {
       };
       this.post({ type: "state", from: this.tabId, state: this.snapshot });
     } else {
-      this.snapshot = followerView(this.leaderState, this.enabled);
+      this.snapshot = followerView(this.leaderState, this.enabled, this.ringMuted);
     }
     for (const fn of this.listeners) fn();
   }

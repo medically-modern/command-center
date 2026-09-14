@@ -109,6 +109,13 @@ describe("only assigned answerers are rung — and a tab can take the phone over
     expect(runtime).toMatch(/takeOver = \(\): void => \{\s*if \(this\.isLeader\) return;\s*if \(this\.snapshot\.call\) return;/);
   });
 
+  it("the ringtone honours the per-browser mute, and the badge exposes it", () => {
+    const runtime = codeOnly(read("src/lib/softphone/softphone.ts"));
+    expect(runtime).toMatch(/ringing && !this\.active && !this\.ringMuted\) this\.ringtone\.start\(\)/);
+    const badge = codeOnly(read("src/components/inboundCalls/CallConnectionBadge.tsx"));
+    expect(badge).toMatch(/phone\.setRingMuted\(!phone\.ringMuted\)/);
+  });
+
   it("both home pages carry the connection badge", () => {
     for (const f of ["src/pages/Index.tsx", "src/pages/ProcessorView.tsx"]) {
       expect(codeOnly(read(f))).toMatch(/<CallConnectionBadge/);

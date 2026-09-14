@@ -1106,9 +1106,17 @@ toggle there.
 - ⚠️ **`session.answer()` is not awaited for status.** It resolves on an RC "AlreadyProcessed"
   message that may never come; the `answered` event is the signal and the promise is watched for
   rejection only (a blocked microphone).
-- The ringtone is Web Audio (`ringtone.ts`, no asset); a page that has seen no user gesture stays
-  silent and the card still shows. The SDK does not reconnect on its own: `watchSocket` re-`start()`s
-  on the WebSocket's `close` and on `online`, and re-INVITEs an answered call after a network change.
+- The ringtone is Web Audio (`ringtone.ts`, no asset) — a soft rising chime, C5 · E5 · G5 with a
+  long decay, every ~3s; the first cut was the 440 + 480 Hz ringback pair and was too harsh for an
+  office (Josh, same day: *"a friendlier ringtone"*). It plays in the LEADER tab only, and only for
+  the SIP leg — an assigned person whose browser is not registered gets the card with no sound. A
+  page that has seen no user gesture stays silent and the card still shows. **Mute** is the
+  speaker icon on the home-page badge: per browser (`MUTE_KEY` in localStorage, `readMuted` /
+  `writeMuted`), so pressing it in any tab silences the tab that rings, via the `storage` event;
+  cards and Answer are untouched. ⚠️ It is `ringMuted` / `setRingMuted`, deliberately distinct from
+  `call.muted`, which is the MICROPHONE on a live call. The SDK does not reconnect on its own:
+  `watchSocket` re-`start()`s on the WebSocket's `close` and on `online`, and re-INVITEs an
+  answered call after a network change.
 - One `<CallOverlay>` for the whole app, mounted by `IncomingCallHost` (an answered inbound call
   needs it on every page); `useWebPhone` is now a thin view over the same store, so the
   Communications Hub dials through the browser's one registration instead of spending a second slot.

@@ -29,6 +29,8 @@ import type { SipInfo } from "ringcentral-web-phone/types";
  *  all is NOT stored here: that is assigned by a manager in access.json.) */
 export const INSTANCE_ID_KEY = "mm-softphone-instance";
 export const SIP_INFO_KEY = "mm-softphone-sip";
+/** The ringtone mute — per BROWSER too: it is about the speaker on this desk. */
+export const MUTE_KEY = "mm-softphone-muted";
 
 /**
  * How long a provisioned `sipInfo` is reused before asking the gateway again.
@@ -133,6 +135,27 @@ export function instanceIdFor(storage: StorageLike, mint: () => string): string 
     }
   }
   return id;
+}
+
+/* ── ringtone mute ─────────────────────────────────────────────────────── */
+
+/** Is the ringtone muted in this browser? Cards still show; only the sound
+ *  stops. Off by default — a silent ring is a missed call. */
+export function readMuted(storage: StorageLike): boolean {
+  try {
+    return storage.getItem(MUTE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeMuted(storage: StorageLike, on: boolean): void {
+  try {
+    if (on) storage.setItem(MUTE_KEY, "1");
+    else storage.removeItem(MUTE_KEY);
+  } catch {
+    /* storage disabled */
+  }
 }
 
 /* ── sipInfo cache ─────────────────────────────────────────────────────── */

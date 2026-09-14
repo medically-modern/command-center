@@ -26,6 +26,7 @@ export function useSoftphone() {
     hangup: softphone.hangup,
     toggleMute: softphone.toggleMute,
     setEnabled: softphone.setEnabled,
+    setRingMuted: softphone.setRingMuted,
     takeOver: softphone.takeOver,
     dismissError: softphone.dismissError,
   };

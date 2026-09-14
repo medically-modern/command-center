@@ -73,11 +73,12 @@ export function isTabMessage(x: unknown): x is TabMessage {
  * way), "off" otherwise. `enabled` is each tab's own reading of access.json,
  * so it never waits on the leader.
  */
-export function followerView(leaderState: PhoneSnapshot | null, enabled: boolean): PhoneSnapshot {
-  if (leaderState) return { ...leaderState, leader: false, enabled };
+export function followerView(leaderState: PhoneSnapshot | null, enabled: boolean, ringMuted = false): PhoneSnapshot {
+  if (leaderState) return { ...leaderState, leader: false, enabled, ringMuted };
   return {
     leader: false,
     enabled,
+    ringMuted,
     registration: enabled ? "registering" : "off",
     registrationError: null,
     lastError: null,
