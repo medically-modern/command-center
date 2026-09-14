@@ -39,7 +39,6 @@ import {
 import { toast } from "sonner";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
-import CallOverlay from "@/components/assignedPatients/CallOverlay";
 import RingPreferencesDialog from "@/components/inboundCalls/RingPreferencesDialog";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
 import TextInbox from "@/components/commsHub/TextInbox";
@@ -891,14 +890,9 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
 
       <RingPreferencesDialog open={ringSettings} onOpenChange={setRingSettings} />
 
-      {activeCall && (
-        <CallOverlay
-          call={activeCall}
-          name={dossier.dossier?.name || ""}
-          onHangup={() => void hangup()}
-          onToggleMute={() => toggleMute()}
-        />
-      )}
+      {/* The live-call overlay is mounted app-wide by IncomingCallHost — an
+          answered inbound call needs it on every page, and two overlays for one
+          call is worse than none (§5.13b). */}
     </div>
   );
 }

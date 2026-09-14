@@ -3,6 +3,7 @@ import { DailyBurndown } from "@/components/dashboard/DailyBurndown";
 import type { ProcessorProfile } from "@/lib/accessStore";
 import { orderedRoleIds } from "@/lib/roleView";
 import { ThemePickerButton } from "@/components/ThemePicker";
+import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
 import { Stethoscope } from "lucide-react";
 
 /** Stripped, no-sidebar view for a processor: only their assigned role bars. */
@@ -15,10 +16,12 @@ export default function ProcessorView({ profile, email }: { profile: ProcessorPr
         <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
           <Stethoscope className="w-5 h-5" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-base font-bold tracking-tight">Command Center</h1>
           <p className="text-[11px] text-white/60 truncate">{profile.name || email}</p>
         </div>
+        {/* Renders only for assigned call answerers (§5.13b). */}
+        <CallConnectionBadge className="shrink-0" />
       </header>
 
       <main className="p-6 sm:p-8">

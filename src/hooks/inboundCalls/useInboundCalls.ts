@@ -36,7 +36,12 @@ export interface RingingCall extends InboundCall {
   patient: PatientRef | null;
 }
 
-export function useInboundCalls() {
+/**
+ * @param enabled Only the manager-assigned call answerers (accessStore
+ *   `callAnswerers`, §5.13b) hold a stream; everyone else opens nothing and
+ *   sees nothing — which also keeps the gateway's subscriber count honest.
+ */
+export function useInboundCalls(enabled = true) {
   const [calls, setCalls] = useState<RingingCall[]>([]);
   const [prefs, setPrefs] = useState<RingPrefs | null>(null);
   const [connected, setConnected] = useState(false);
@@ -68,7 +73,7 @@ export function useInboundCalls() {
   );
 
   useEffect(() => {
-    if (!inboundCallsConfigured() || !authed) return;
+    if (!inboundCallsConfigured() || !authed || !enabled) return;
     let stopped = false;
     const timerMap = timers.current;
 
@@ -151,7 +156,7 @@ export function useInboundCalls() {
       for (const t of timerMap.values()) clearTimeout(t);
       timerMap.clear();
     };
-  }, [authed, scheduleClear]);
+  }, [authed, enabled, scheduleClear]);
 
   /**
    * Take a call. Resolves to the number RingCentral is ringing, so the UI can

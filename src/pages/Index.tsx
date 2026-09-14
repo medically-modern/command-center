@@ -6,6 +6,7 @@ import { ThemePickerButton } from "@/components/ThemePicker";
 import { cn } from "@/lib/utils";
 import { Shield, LayoutDashboard, Stethoscope, KeyRound } from "lucide-react";
 import { processorPeople, type Person } from "@/lib/people";
+import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
 
 const Index = () => {
   /**
@@ -48,9 +49,11 @@ const Index = () => {
           <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
             <Stethoscope className="w-5 h-5" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <h1 className="text-base font-bold tracking-tight">Command Center</h1>
             <p className="text-[11px] text-white/60">Medically Modern</p>
+            {/* Renders only for assigned call answerers (§5.13b). */}
+            <CallConnectionBadge className="mt-1.5 max-w-full" />
           </div>
         </header>
 

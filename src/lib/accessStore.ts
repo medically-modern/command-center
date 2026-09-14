@@ -53,16 +53,73 @@ export interface ProcessorProfile {
 export interface AccessConfig {
   managers: string[];
   processors: Record<string, ProcessorProfile>;
+  /**
+   * Who answers the main line IN THE BROWSER (§5.13b) — and, since 2026-09-14,
+   * the only people who are shown an incoming call at all. Assigned by a
+   * manager, never self-service, and capped at MAX_CALL_ANSWERERS because
+   * every browser here registers as the SAME RingCentral extension, which
+   * allows five devices. Managers and processors alike; a manager is not
+   * exempt from the cap.
+   */
+  callAnswerers: string[];
 }
+
+/**
+ * RingCentral's per-extension SIP registration limit. A sixth device is
+ * refused with `603 Too Many Contacts`. Five people is the most that can be
+ * promised a ring; each browser a person opens takes a slot of its own, so the
+ * admin page says so beside the count.
+ */
+export const MAX_CALL_ANSWERERS = 5;
 export type Access =
   | { type: "manager" }
   | { type: "processor"; profile: ProcessorProfile }
   | { type: "none" };
 
-export const EMPTY_ACCESS: AccessConfig = { managers: [], processors: {} };
+export const EMPTY_ACCESS: AccessConfig = { managers: [], processors: {}, callAnswerers: [] };
 
 function norm(e: string): string {
   return (e || "").trim().toLowerCase();
+}
+
+/** Is this person set up to answer (and be shown) incoming calls? */
+export function canAnswerCalls(email: string, cfg: AccessConfig): boolean {
+  const e = norm(email);
+  return !!e && (cfg.callAnswerers || []).some((a) => norm(a) === e);
+}
+
+/**
+ * The config with `email` added to / removed from the call answerers — or
+ * `null` when adding would exceed the cap. Pure, so the cap is testable; the
+ * hook's setter and the admin page both go through it, and RingCentral's own
+ * refusal (§5.13b) stays the backstop for the cases this cannot see, such as
+ * one person opening the app on three machines.
+ */
+export function withCallAnswerer(cfg: AccessConfig, email: string, on: boolean): AccessConfig | null {
+  const e = norm(email);
+  if (!e) return cfg;
+  const cur = (cfg.callAnswerers || []).map(norm);
+  const has = cur.includes(e);
+  if (on === has) return cfg;
+  if (on) {
+    if (cur.length >= MAX_CALL_ANSWERERS) return null;
+    return { ...cfg, callAnswerers: [...cur, e] };
+  }
+  return { ...cfg, callAnswerers: cur.filter((a) => a !== e) };
+}
+
+/** The config with every trace of `email` removed — manager flag, processor
+ *  profile AND the call-answerer slot, so removing a person frees their slot. */
+export function configWithoutEmail(cfg: AccessConfig, email: string): AccessConfig {
+  const e = norm(email);
+  const processors = { ...cfg.processors };
+  const pk = Object.keys(processors).find((k) => norm(k) === e);
+  if (pk) delete processors[pk];
+  return {
+    managers: cfg.managers.filter((m) => norm(m) !== e),
+    processors,
+    callAnswerers: (cfg.callAnswerers || []).filter((a) => norm(a) !== e),
+  };
 }
 
 /** Bootstrap window: until at least one MANAGER exists, everyone is treated as
@@ -97,7 +154,13 @@ async function fetchAccess(): Promise<{ data: AccessConfig; sha: string | null }
   cachedSha = json.sha;
   const parsed = JSON.parse(atob(json.content));
   return {
-    data: { managers: parsed.managers ?? [], processors: parsed.processors ?? {} },
+    data: {
+      managers: parsed.managers ?? [],
+      processors: parsed.processors ?? {},
+      // Absent on a file written before 2026-09-14 (and on prod until its own
+      // admin sets one): nobody is assigned, nobody is rung. Never inferred.
+      callAnswerers: Array.isArray(parsed.callAnswerers) ? parsed.callAnswerers : [],
+    },
     sha: json.sha,
   };
 }
@@ -186,14 +249,20 @@ export function useAccess() {
   }, [mutate]);
 
   const removeEmail = useCallback((email: string) => {
-    const e = norm(email);
-    mutate((prev) => {
-      const processors = { ...prev.processors };
-      const pk = Object.keys(processors).find((k) => norm(k) === e);
-      if (pk) delete processors[pk];
-      return { managers: prev.managers.filter((m) => norm(m) !== e), processors };
-    });
+    mutate((prev) => configWithoutEmail(prev, email));
   }, [mutate]);
+
+  /**
+   * Give (or take back) a person's browser-answering slot. Returns false —
+   * and writes nothing — when the five are already taken. Checked against the
+   * config on screen for the answer, and again against the latest state on
+   * write, so two managers editing at once cannot land a sixth between them.
+   */
+  const setCallAnswerer = useCallback((email: string, on: boolean): boolean => {
+    if (!withCallAnswerer(config, email, on)) return false;
+    mutate((prev) => withCallAnswerer(prev, email, on) ?? prev);
+    return true;
+  }, [mutate, config]);
 
   /** Add a processor profile WITHOUT removing a manager flag — supports dual. */
   const addProcessor = useCallback((email: string, name: string) => {
@@ -291,5 +360,6 @@ export function useAccess() {
     toggleProcessorRole,
     setRoleFilter,
     setRoleOrder,
+    setCallAnswerer,
   };
 }

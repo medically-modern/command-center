@@ -16,6 +16,8 @@ interface AccessCtxValue {
   toggleProcessorRole: (email: string, roleId: string) => void;
   setRoleFilter: (email: string, roleId: string, filter: RoleFilter) => void;
   setRoleOrder: (email: string, roleId: string, order: number | null) => void;
+  /** False when the five browser-answering slots are already taken. */
+  setCallAnswerer: (email: string, on: boolean) => boolean;
 }
 
 const Ctx = createContext<AccessCtxValue | null>(null);
@@ -51,6 +53,7 @@ export default function AccessProvider({ children }: { children: React.ReactNode
     toggleProcessorRole: acc.toggleProcessorRole,
     setRoleFilter: acc.setRoleFilter,
     setRoleOrder: acc.setRoleOrder,
+    setCallAnswerer: acc.setCallAnswerer,
   });
 
   if (!authRequired()) {

@@ -13,6 +13,9 @@
  * Deliberately silent while healthy. A permanent green "connected" badge is
  * noise nobody reads, and the thing worth interrupting someone about is the
  * failure.
+ *
+ * Positioned by its host (IncomingCallHost stacks it with SoftphoneStatus in
+ * the bottom-left corner), not by itself.
  */
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -33,7 +36,7 @@ export default function CallStreamStatus({ connected, error }: Props) {
       role="status"
       aria-live="polite"
       className={cn(
-        "fixed bottom-4 left-4 z-[60] flex items-center gap-2 rounded-lg border px-3 py-2 shadow-lg text-sm",
+        "flex items-center gap-2 rounded-lg border px-3 py-2 shadow-lg text-sm",
         dead
           ? "border-destructive/40 bg-destructive/10 text-destructive"
           : "border-amber-500/40 bg-amber-500/10 text-amber-700",

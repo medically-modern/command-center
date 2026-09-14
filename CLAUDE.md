@@ -836,10 +836,14 @@ learns about an incoming call. It doesn't have to be:
 - **Signal** — **one** server-side webhook subscription on the gateway, fanned out over **SSE**.
   No SIP, no registration, no cap: ten browsers cost what one does.
 - **Audio** — stays on RingCentral, on the claimer's **own** number, reached by **forwarding** the
-  ringing call to them.
+  ringing call to them. **Or, from 2026-09-14, in the browser itself** for the up-to-five people a
+  manager has assigned (§5.13b); "Take it" is the fallback for everyone else.
 
-⚠️ **Don't "simplify" this by having the browser register for inbound SIP.** That is the design
-that hits the 5-registration cap, and it fails by silently dropping the 6th tab, not by erroring.
+⚠️ **The browser now DOES register for inbound SIP — but once per BROWSER, only for the five
+people a manager assigns, and with a stable instance id (§5.13b).** The trap this paragraph used to
+warn about is still real and is now the cap that shapes §5.13b: register per TAB, or let anyone
+opt in, and the sixth registration is refused with `603 Too Many Contacts` while the first five
+carry on — the failure is a browser that never rings, not an error.
 
 **Claiming, not notifying.** RingCentral's **Forward Call Party** works on a party in
 `Setup`/`Proceeding` — i.e. while the phone is still ringing — so "Take it" doesn't ask anyone to go
@@ -1017,6 +1021,141 @@ Railway variable).
 > 'Validation-Token: x' -i` must echo the header — before assuming it's the value.
 > **`POST /calls/resubscribe`** (authenticated) forces a reconcile, so iterating on RC console
 > settings costs neither a gateway redeploy nor the hourly wait.
+
+### 5.13b Browser answering — Route B (Sep 2026), and the Route A plan
+Josh, 2026-09-14: *"why is ring central making us answer phone calls on our personal phones in
+command center? … i just want to answer in the browser … we want to get off of the rc app and only
+on command center with the same functionality."* It was never RingCentral; it was §5.13's design,
+and the reason for that design is one fact about the account, **verified that day from the
+extension call log** (through the gateway's `/rc/` proxy, `view=Detailed`, structure only):
+
+- **The whole team is ONE RingCentral user: extension 2, "Katie Tyler", id `63007214012`, on
+  account `63001249012`.** It is the user `RC_JWT` belongs to, the extension every
+  `/account/~/extension/~/` call means, and the one every inbound call on the main line
+  (`+1 347 503 7148`) is delivered to: **250 of 250** inbound records in 30 days had
+  `to.extensionId` = that id. No call queue, no other extension, ever. Eight distinct devices
+  ANSWERED as it over the month (the RingCentral app signed in as that user on several machines),
+  about two ringing per call. **98 answered · 78 voicemail · 64 missed · 10 blocked — 57% of
+  inbound calls reached nobody.** Zero "Take it" forward legs in the same window.
+- **RingCentral allows FIVE SIP registrations per extension** and refuses the sixth with
+  `SIP/2.0 603 Too Many Contacts`; instances that share an `instanceId` deliver inbound only to the
+  most recently registered one (the `ringcentral-web-phone` README, "instanceId Behavior"). That
+  afternoon **23 browsers** were attached to the gateway's SSE. Twenty-three browsers cannot be
+  one extension, which is why §5.13 popped a card and forwarded the call to a cell.
+- **Josh's own instinct was right** — *"everyone signs in with different google accounts but i
+  believe everything is routed through one jwt token on cc"*. Google identity is per person;
+  RingCentral identity is one shared user.
+
+**What Route B is** (`src/lib/softphone/`, `hooks/softphone/useSoftphone.ts`,
+`components/inboundCalls/{IncomingCallHost,CallConnectionBadge,SoftphoneStatus}.tsx`): the browser
+registers on that same shared extension for real, so a call **rings in the page and "Answer"
+answers it**, audio and all — under rules that keep it inside the five:
+
+1. **Who may answer is ASSIGNED, never self-service** (Josh, same day: *"id rather assign people
+   … 3 users get answer in browser privileges and others do not even get notified"*).
+   `access.json` gained **`callAnswerers: string[]`**, edited on `/access` ("Answer calls in the
+   browser", `N of 5`), capped at **`MAX_CALL_ANSWERERS = 5`** by `withCallAnswerer` (returns `null`
+   for a sixth; the checkbox is disabled and a toast says why). **Nobody else gets ANYTHING** — not
+   the SSE stream, not the cards, not the registration: `IncomingCallHost` gates the whole feature
+   on `canAnswerCalls(email, config)` and passes `enabled` to `useInboundCalls`, so a non-answerer
+   also stops counting as a gateway subscriber. The one thing that renders for everybody is the
+   overlay for a call THEY placed from the Communications Hub. ⚠️ `removeEmail` frees the slot too
+   (`configWithoutEmail`); managers are not exempt from the cap. Two layers block a sixth: the
+   admin page, and RingCentral itself for what the page cannot see — one person opening the app on
+   three machines takes three slots.
+2. **ONE registration per BROWSER, never per tab** — `tabProtocol.ts`. Web Locks
+   (`navigator.locks`, `mm-softphone-leader`) elect a LEADER tab that owns the SIP registration;
+   the other tabs mirror its snapshot over a `BroadcastChannel` and relay Answer / Hang up / Mute /
+   Dial to it (audio plays in the leader tab — sound is sound). A closing tab releases the lock and
+   the next waiting tab registers. ⚠️ Without this every tab would share one `instanceId` and, since
+   each re-REGISTERs every ~57s, "most recently registered" would rotate and the ring would land in
+   a random tab.
+3. **A tab can TAKE OVER** (`softphone.takeOver`): it requests the lock with `steal: true`, the old
+   leader's request rejects with `AbortError` and it demotes itself (releases its registration,
+   re-queues). Refused while the leader is on a call. This is what the home-page badge offers.
+4. **A stable per-browser `instanceId`** (`localStorage`, `instanceIdFor`) and a **cached
+   `sipInfo`** (7 days, per signed-in email). Every `sip-provision` call creates a NEW device record
+   on the RingCentral side — the old provision-per-page-load grew nine in a month — and the SDK
+   README says to reuse it.
+5. **`full` is a STATE, not an error** (`classifyRegistrationError` → `retryDelayMs`): matched on
+   the SIP status `603`, shown to the rep, retried every minute (a closed browser's slot frees in
+   ~2 min). `auth` drops the cached sipInfo; `network` backs off 2s→60s.
+
+**The home-page badge** (`CallConnectionBadge`, on `Index` and `ProcessorView`, Josh: *"a connected
+logo on the main page if they're connected for incoming calls on that tab"*): renders only for
+assigned answerers; green *"Connected — calls ring in this tab"* when THIS tab holds the
+registration; amber *"Calls ring in another tab"* with **Use this tab** (takeover) when another
+tab does; amber *"Connecting…"*; red *"the line is full"* / *"Not connected"* with the reason.
+`SoftphoneStatus` (bottom-left, beside `CallStreamStatus`) says the same on every page, silent
+while healthy. The ring settings dialog reports the status read-only — the assignment is not a
+toggle there.
+
+**Rules that are correctness, not style — all pinned by `softphoneRules.test.ts`:**
+- ⚠️ **NEVER decline or send-to-voicemail a ringing call from the browser.** Dismissing a card is
+  LOCAL (`ignore`). Every registered device rings at once, and a device that declines can shorten
+  the window in which a colleague — or the gateway's "Take it", which only works while the party is
+  in Setup/Proceeding (§5.13) — can take the call. The scan fails the build on `.decline(` or
+  `.toVoicemail(` anywhere in `src/`. (`WebPhone.dispose()` declines its own ringing sessions; it is
+  only ever called on tab close, sign-out, un-assignment and takeover.)
+- ⚠️ **`autoAnswer: false`.** The SDK's default answers any INVITE carrying `Alert-Info: Auto
+  Answer` (RingCentral intercom) with no click.
+- ⚠️ **Session listeners go on via the WebPhone's `inboundCall` / `outboundCall` events, never
+  after `await wp.call()`** — that promise resolves only once the call is answered or failed, by
+  which time `ringing` and `answered` have already fired. The previous `useWebPhone` had exactly
+  this bug: it attached after the await, so its overlay never left "Setting up…".
+- ⚠️ **`session.answer()` is not awaited for status.** It resolves on an RC "AlreadyProcessed"
+  message that may never come; the `answered` event is the signal and the promise is watched for
+  rejection only (a blocked microphone).
+- The ringtone is Web Audio (`ringtone.ts`, no asset); a page that has seen no user gesture stays
+  silent and the card still shows. The SDK does not reconnect on its own: `watchSocket` re-`start()`s
+  on the WebSocket's `close` and on `online`, and re-INVITEs an answered call after a network change.
+- One `<CallOverlay>` for the whole app, mounted by `IncomingCallHost` (an answered inbound call
+  needs it on every page); `useWebPhone` is now a thin view over the same store, so the
+  Communications Hub dials through the browser's one registration instead of spending a second slot.
+  `ringMerge.ts` joins the gateway's SSE card and the SIP leg on the telephony session id (or the
+  caller's digits) into ONE card: Answer when the leg is here, Take it otherwise, both when both.
+
+**Keep-in-agreement:** `MAX_CALL_ANSWERERS` (accessStore) is the cap the admin page renders and the
+same five RingCentral enforces — change neither alone. `PhoneSnapshot.enabled` ⇐ `canAnswerCalls`
+via `IncomingCallHost` → `softphone.setEnabled`; the badge and the dialog read the same snapshot.
+
+**Known limits, deliberately:** five people, one machine each, and the RingCentral app signed in as
+Katie Tyler counts against the same five while anyone still uses it. Followers hear the audio in the
+leader tab. A takeover mid-registration is a few seconds of "connecting". `?manager=1` and the
+ring-mode prefs (`all` / `list` / `off`) still apply on top, for the assigned five only.
+
+#### Route A — everyone, the growing team (NOT built; the recommended path)
+Route B cannot pass five, and a team past five answerers needs what the RingCentral app has
+underneath: **a RingCentral user per person**. Recommended sequence, in this order:
+
+1. **RingCentral admin (Josh).** One RingCentral user with a **Digital Line** for each person who
+   answers — the WebRTC guide requires a Digital Line on the extension the browser logs in through,
+   so this is a paid seat each. **Keep the main number on extension 2**: texting (`RC_SMS_FROM` must
+   be a number on the JWT's extension), faxing, the account-level webhook, the call log, the SMS
+   archive and the patient directory all hang off it and need no change. Then point extension 2's
+   **call handling at a Call Queue** whose members are those users, ring-all-at-once (or at the
+   users directly, simultaneous) — decide with RingCentral support which their plan allows. Allow
+   each user to present the company number as caller ID (the softphone passes it explicitly).
+2. **RingCentral app record.** Enable the **authorization-code flow** (redirect URI on the gateway,
+   e.g. `/rc/user/callback`) beside the JWT flow, or create a second app for it. Scopes: `VoipCalling`,
+   `ReadAccounts`; `CallControl` stays on the JWT app.
+3. **Gateway** — new `rcUserAuth.mjs`: `GET /rc/user/connect` (redirect to RingCentral),
+   `GET /rc/user/callback` (code → tokens, refresh token **encrypted at rest** on the messaging pool,
+   keyed by the Google email — the same identity everything else uses), `GET /rc/user/status`,
+   `GET /rc/user/sip-provision` (provision with THAT user's token). The JWT keeps every
+   account-level job. Pure rules beside it as `callRules`/`rcAllowlist` are, tested.
+4. **SPA** — one change in `softphone.ts`: `provision()` calls the per-user route. Leader election,
+   `ringMerge`, the cards, the badge, the overlay and the never-decline rule all stay; the cap
+   becomes RingCentral's five per USER, i.e. tabs, not people. A one-time "Connect RingCentral"
+   button on the home page next to the badge; `IncomingCallHost`'s gate becomes "has connected"
+   instead of `callAnswerers`, and the admin section retires. Answer/Reject is all the SDK allows on
+   a queue leg — which is all we use.
+5. **Verify before cutover.** One user on a sandbox first. Re-check `pickInboundParty`: a queue
+   session carries one party per rung extension, and the card must still key on the CALLER's session,
+   not per party; confirm whether the Forward API ("Take it") still works on a queue leg, and drop
+   Take it if not. Then the RingCentral app can be retired.
+Cost is the seats; code is a few days. Everything in Route B was built so that step 4 is a swap,
+not a rewrite.
 
 ### 5.14 Monitor Purchase Date — the CGM twin of Prior Pump Purchase Date (Aug 2026)
 Medicare needs an obtained-date on file to bill CGM sensors (A4239) against a patient-owned
@@ -4627,6 +4766,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Audit a write that "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
 | "What was the gateway doing at 4:46 last Thursday?" | `GET /audit/requests.json?key=…&hours=…&path=/rc&failed=1` (Postgres `request_log`, §8). NOT Railway logs — they cap at 500 lines ≈ 13 minutes |
 | "A call never reached me" / "taking it gave an error" | §5.13 — `GET /calls/history?hours=…&last4=…` (Postgres `call_events` + `call_claims`), NOT Railway logs: those cap at 500 lines ≈ 13 minutes. A `410` from `/calls/claim` is RingCentral saying the party is already gone — the caller hung up or somebody else picked up — never a throttle, which surfaces as `502` |
+| A rep can't answer a call in the browser / the home badge says "Not connected" | §5.13b — first: are they in `callAnswerers` on `/access` (max 5)? Not assigned ⇒ no cards, no stream, no badge, by design. Assigned but red ⇒ read the badge's reason: "line is full" is RingCentral's five (another browser, or the RingCentral app signed in as Katie Tyler, holds a slot; it retries every minute), anything else is in `registrationError`. Amber "another tab" ⇒ **Use this tab** |
+| The team is past five answerers / "get off the RC app for everyone" | §5.13b **Route A** — a RingCentral user per person, the main number kept on extension 2 and its call handling pointed at a queue, per-user auth-code sign-in on the gateway, `provision()` swapped. Not built |
+| A card shows "Take it" where it used to show — or should show — "Answer" | §5.13b — `ringMerge.ts`: Answer needs the SIP leg in THIS browser's leader tab; no leg means not registered (badge) or the INVITE never arrived. Take it still forwards to the cell either way |
 | A manager sees no contact icons on a sidebar row | §5.28 — the gate is **`?mv=`**, so they must have clicked in from Oversight; then check the patient's phone is in that queue's read set (`listColumns.test.ts` for Patient Intake) |
 | A contact icon says the wrong thing | §5.28 — `lib/contactState/contactState.ts`. Most recent wins per lane; a claimed inbound call is NOT a missed call (`callConnected` reads the legs) |
 | An inbound fax doesn't match a doctor / their patients are missing | §5.28 — `lib/commsHub/faxDirectory.ts` joins the patient boards, `dossierApi.fetchDoctorDbByFax` the 2,290-office Doctor Database. The Doctor Fax column is an EMAIL column holding `<digits>@rcfax.com`, so the join strips the address first — that half was **audited clean 2026-09-02**, so re-run the audit before blaming it; the usual cause is an office sending from a line we don't have on file |
