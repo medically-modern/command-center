@@ -409,7 +409,7 @@ const WelcomeCallPage = () => {
                       out-of-pocket step lives in the form's Insurance section
                       as `OopBlock`; the component is still in the tree and
                       still used by nothing else here. */}
-                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
+                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} onStuck={() => setStuckOpen(true)} />
                   {/* Order dates moved INTO Subscription & Logistics (form
                       section 7) on 2026-09-09 — Brandon: "under the cards, in
                       this section", not at the end of the call. */}

@@ -39,6 +39,7 @@ import {
   GmailScopeMissingError,
   type EmailThreadSummary, type EmailThreadMessage,
 } from "@/lib/shared/emailThreads";
+import { formatPhone } from "@/lib/profile/workflow";
 
 type Tab = "text" | "email";
 
@@ -321,7 +322,16 @@ export function IntakeMessages({
     <section className="sect">
       <div className="sect-title">
         Messages
-        <span className="rt sugg-note">{tab === "text" ? tel : addr}</span>
+        {/* ⚠️ Josh, 2026-09-14: *"for messages, let's just have like 'Phone
+            Number: xxx-xxx-xxxx' instead of 'xxxxxxxxxx'"*. It rendered the raw
+            board value, which on most rows is ten unbroken digits.
+            `formatPhone` is the app's house shape — the same one the phone
+            slots two sections up and every placeholder use. A number too short
+            or long to format falls back to the raw value rather than vanishing:
+            an unformattable number is still the number we will text. */}
+        <span className="rt sugg-note">
+          {tab === "text" ? (tel ? `Phone Number: ${formatPhone(tel) || tel}` : "") : addr}
+        </span>
       </div>
 
       <div className="pills" style={{ marginBottom: 12 }}>
@@ -408,7 +418,7 @@ export function IntakeMessages({
               <div className="note-add">
                 <textarea
                   value={text}
-                  placeholder={`Text ${tel}…`}
+                  placeholder={`Text ${formatPhone(tel) || tel}…`}
                   onChange={(e) => setText(e.target.value)}
                 />
                 <button

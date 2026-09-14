@@ -150,33 +150,42 @@ function CaregiverPanel({
       <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
         Caregiver
       </p>
-      {/* Two boxes, ONE column — written as "Jane Doe (daughter)". */}
-      <Input
-        className="h-9"
-        placeholder="Name"
-        value={caregiver.name}
-        onChange={(e) => onCaregiver({ name: e.target.value })}
-      />
-      <Input
-        className="h-9"
-        placeholder="Relationship (daughter, spouse…)"
-        value={caregiver.relationship}
-        onChange={(e) => onCaregiver({ relationship: e.target.value })}
-      />
-      {/* No phone and no email here on purpose — Brandon: "the caretaker's
+      {/* ⚠️ ONE ROW, not three stacked (Josh, 2026-09-14: *"caregiver/
+          relationship, can we fit on one line and make boxes less wide; same
+          with authorization - same line"*). Part of that day's standing theme
+          — *"let's try to use up less vertical space where it's easy to"*.
+          The two boxes share the track and the consent tick rides beside them;
+          `flex-wrap` lets the tick drop under them rather than squeezing the
+          inputs to nothing on a narrow viewport, which is the one width where
+          one line costs more than it saves.
+          No phone and no email here on purpose — Brandon: "the caretaker's
           number lives in a slot, and there's no email column". */}
-      <label
-        htmlFor="wc-caregiver-auth"
-        className="flex items-start gap-2 cursor-pointer select-none text-xs pt-0.5"
-      >
-        <Checkbox id="wc-caregiver-auth" className="mt-0.5"
-          checked={caregiver.authorized}
-          onCheckedChange={(v) => onCaregiver({ authorized: v === true })}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="h-9 flex-1 min-w-[6.5rem]"
+          placeholder="Name"
+          value={caregiver.name}
+          onChange={(e) => onCaregiver({ name: e.target.value })}
         />
-        <span className={caregiver.authorized ? "text-foreground" : "text-muted-foreground"}>
-          Authorized to discuss the account (verbal HIPAA consent)
-        </span>
-      </label>
+        <Input
+          className="h-9 flex-1 min-w-[6.5rem]"
+          placeholder="Relationship"
+          value={caregiver.relationship}
+          onChange={(e) => onCaregiver({ relationship: e.target.value })}
+        />
+        <label
+          htmlFor="wc-caregiver-auth"
+          className="flex items-center gap-2 cursor-pointer select-none text-xs h-9 shrink-0"
+        >
+          <Checkbox id="wc-caregiver-auth"
+            checked={caregiver.authorized}
+            onCheckedChange={(v) => onCaregiver({ authorized: v === true })}
+          />
+          <span className={caregiver.authorized ? "text-foreground" : "text-muted-foreground"}>
+            Authorized to discuss (verbal HIPAA consent)
+          </span>
+        </label>
+      </div>
     </div>
   );
 }
@@ -242,7 +251,7 @@ function SlotRow({
           className={cn(
             "flex-1 grid grid-cols-1 gap-3",
             caregiver
-              ? "sm:grid-cols-[minmax(0,1fr)_180px] lg:grid-cols-[minmax(0,1fr)_180px_minmax(0,1.1fr)]"
+              ? "sm:grid-cols-[minmax(0,1fr)_180px] lg:grid-cols-[minmax(0,1fr)_180px_minmax(0,1.7fr)]"
               : "sm:grid-cols-[minmax(0,1fr)_180px]",
           )}
         >

@@ -82,7 +82,15 @@ export function SendToMondayButton({ onSend, disabled, validationErrors = [] }: 
     <div className="flex flex-col items-center gap-2 pt-2">
       {button}
       {hasValidationErrors && disabled && (
-        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 max-w-md text-center">
+        /* ⚠️ `max-w-3xl` and LEFT aligned, not `max-w-md text-center` (Josh,
+           2026-09-14: *"let's stretch the required before sending box wider so
+           things fit on one line"*). At 28rem and centred, every requirement
+           wrapped mid-sentence into a ragged two- or three-line block — and
+           these are the sentences that tell a rep why the Send button is
+           greyed out, which is the one thing they must be able to read at a
+           glance. The box still centres on the page; only its contents left-
+           align, so the bullets start on a common edge. */
+        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 w-full max-w-3xl text-left">
           <p className="font-semibold text-xs text-red-700 dark:text-red-400 mb-1">Required before sending:</p>
           <ul className="text-xs text-red-600 dark:text-red-400 space-y-0.5">
             {validationErrors.map((err, i) => (

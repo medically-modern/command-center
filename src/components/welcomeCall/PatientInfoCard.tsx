@@ -3,7 +3,7 @@ import { SERVING_OPTIONS, formatDateMDY, isCrossSell, effectiveNextOrder } from 
 import { isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { CallScheduledChip } from "@/components/welcomeCall/CallScheduledChip";
 import { servedOrderLines } from "@/lib/shared/servingLines";
-import { resolveLastBill } from "@/lib/shared/lastBillDate";
+import { formatLastBill, resolveLastBill } from "@/lib/shared/lastBillDate";
 import { Input } from "@/components/ui/input";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -396,19 +396,27 @@ export function NextOrderDatesCard({
     <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(230px,1fr))]">
       {rows.map((r) => (
         <div key={r.key} className="space-y-2">
-          <div className="flex items-baseline justify-between gap-2">
+          {/* ⚠️ `gap-2`, NOT `justify-between` (Josh, 2026-09-14: *"'last bill
+              2024-01-01' should be in normal format we use (MM/DD/YYYY) and be
+              more to the left, not all the way to the right — and let's make
+              it: 'Last Bill Date: MM/DD/YYYY'"*). Pushed apart, the product
+              name and its date sat at opposite edges of a 230px track.
+              ⚠️ `formatLastBill` is STRING SURGERY on the board's naive-ET
+              value. Never `new Date(...)` here — it renders the day before in
+              any non-ET runtime, and a wrong date reads as authoritative
+              (CLAUDE.md §9). The date itself still comes from `resolveLastBill`,
+              so what a rep reads is what `computeNextOrder` defaults from. */}
+          <div className="flex items-baseline gap-2 flex-wrap">
             <p className="text-sm font-semibold">{r.label}</p>
             <p
               className="text-[11px] text-muted-foreground tabular-nums"
               title={
                 r.key === "supplies"
-                  ? `Infusion set ${infusionSetLastBill || "—"} · Cartridge ${cartridgeLastBill || "—"}`
+                  ? `Infusion set ${formatLastBill(infusionSetLastBill) || "—"} · Cartridge ${formatLastBill(cartridgeLastBill) || "—"}`
                   : undefined
               }
             >
-              {/* The last bill date keeps its place beside the line it belongs
-                  to — it is the input the next order date is computed from. */}
-              last bill {r.lastBill || "—"}
+              Last Bill Date: {formatLastBill(r.lastBill) || "—"}
             </p>
           </div>
           <SmartNextOrderField

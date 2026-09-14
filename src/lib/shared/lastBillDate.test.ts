@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { resolveLastBill, resolveLastBillDates } from "./lastBillDate";
+import { resolveLastBill, resolveLastBillDates, formatLastBill } from "./lastBillDate";
 
 describe("resolveLastBill", () => {
   it("uses the SoS column when the legacy one is blank — the reported bug", () => {
@@ -90,5 +90,28 @@ describe("resolveLastBillDates", () => {
     const resolved = resolveLastBillDates(pairs);
     expect(resolved.length).toBeGreaterThan(legacyOnly.length);
     for (const d of legacyOnly) expect(resolved).toContain(d);
+  });
+});
+
+describe("formatLastBill", () => {
+  it("renders the board's naive-ET string as MM/DD/YYYY", () => {
+    expect(formatLastBill("2024-01-01")).toBe("01/01/2024");
+    expect(formatLastBill("2026-12-31")).toBe("12/31/2026");
+  });
+
+  /* ⚠️ The whole reason this is string surgery. A Date built from a naive
+     board value in a non-ET runtime lands on the previous day, and the result
+     reads as a real date rather than as a bug (CLAUDE.md §9). This test would
+     fail on a `new Date(...).toLocaleDateString()` implementation under the
+     UTC container CI runs in. */
+  it("never shifts the day", () => {
+    expect(formatLastBill("2024-03-01")).toBe("03/01/2024");
+    expect(formatLastBill("2024-01-01T00:00:00Z")).toBe("01/01/2024");
+  });
+
+  it("returns '' for anything that is not a leading YYYY-MM-DD", () => {
+    expect(formatLastBill("")).toBe("");
+    expect(formatLastBill("   ")).toBe("");
+    expect(formatLastBill("01/01/2024")).toBe("");
   });
 });

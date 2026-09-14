@@ -82,3 +82,25 @@ export function resolveLastBillDates(
 ): string[] {
   return pairs.map(({ sos, legacy }) => resolveLastBill(sos, legacy)).filter(Boolean);
 }
+
+/**
+ * `2024-01-01` → `01/01/2024`, for display only.
+ *
+ * Josh, 2026-09-14: *"'last bill 2024-01-01' should be in normal format we use
+ * (MM/DD/YYYY)"*.
+ *
+ * ⚠️ **String surgery, never `new Date(...)`.** Monday's date columns are
+ * timezone-naive ET and the browser (and the CI container) are not, so parsing
+ * one into a Date and formatting it back renders the day BEFORE for anyone west
+ * of ET — CLAUDE.md §9's standing trap, and a wrong date here reads as
+ * authoritative rather than as a bug. `authChips.shortDate` exists for the same
+ * reason; this is its zero-padded four-digit sibling, which is the form the
+ * rest of the app shows a rep.
+ *
+ * Anything that is not a leading `YYYY-MM-DD` comes back "" — the caller
+ * decides what an absent date looks like.
+ */
+export function formatLastBill(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((ymd ?? "").trim());
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : "";
+}

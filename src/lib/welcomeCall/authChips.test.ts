@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { authChipState, servedAuthKeys, summariseAuths, shortDate, type AuthProduct } from "./authChips";
+import { authChipState, servedAuthKeys, summariseAuths, shortDate, type AuthProduct, chipStateLabel } from "./authChips";
 
 const p = (over: Partial<AuthProduct>): AuthProduct => ({
   key: "cgm", label: "CGM", result: "Auth Valid", end: "2026-12-31", authId: "", start: "", units: "", ...over,
@@ -84,5 +84,31 @@ describe("summariseAuths", () => {
 
   it("says nothing at all when nothing is served", () => {
     expect(summariseAuths([]).chips).toEqual([]);
+  });
+});
+
+describe("chipStateLabel", () => {
+  it("Title Cases the state for the box (Josh, 2026-09-14)", () => {
+    expect(chipStateLabel("not required")).toBe("Not Required");
+    expect(chipStateLabel("not started")).toBe("Not Started");
+    expect(chipStateLabel("pending")).toBe("Pending");
+    expect(chipStateLabel("denied")).toBe("Denied");
+    expect(chipStateLabel("thru 12/31/26")).toBe("Thru 12/31/26");
+    expect(chipStateLabel("valid")).toBe("Valid");
+  });
+
+  /* ⚠️ The reason the casing lives here and not in `authChipState`:
+     `summariseAuths` drops the raw state into a sentence, where Title Case
+     would read "Sensors auth Pending — the order can't ship". The boxes were
+     what Josh asked about. */
+  it("leaves the banner sentence's lowercase alone", () => {
+    const s = summariseAuths([
+      { key: "sensors", label: "Sensors", result: "Submitted", end: "", authId: "", start: "", units: "" },
+    ]);
+    expect(s.banner).toContain("auth pending");
+  });
+
+  it("is safe on an empty state", () => {
+    expect(chipStateLabel("")).toBe("");
   });
 });

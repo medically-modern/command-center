@@ -22,7 +22,13 @@ import {
   type SecondaryAnswer,
   type SecondaryType,
 } from "@/lib/welcomeCall/secondaryCoverage";
-import { servedAuthKeys, shortDate, summariseAuths, type AuthProduct } from "@/lib/welcomeCall/authChips";
+import {
+  chipStateLabel,
+  servedAuthKeys,
+  shortDate,
+  summariseAuths,
+  type AuthProduct,
+} from "@/lib/welcomeCall/authChips";
 
 const LABEL_CLS = "text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1";
 
@@ -91,7 +97,13 @@ export function InsuranceBlock({
        are independent questions, so nothing about the logic moves — only the
        track they sit in. Stacks back to one column under `lg`, where two
        columns of policy detail are narrower than the CIN they have to hold. */
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+    /* ⚠️ NOT `items-start` (Josh, 2026-09-14: *"let's make member id2 box end
+       at same height as primary box - like when ny medicaid is selected"*). The
+       two columns stretch to the row height and each card is `flex-1`, so the
+       primary card's bottom edge and the secondary panel's bottom edge land on
+       the same line whatever either one holds. With `items-start` the secondary
+       panel was only as tall as its contents and stopped short. */
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       {/* Read-only. Corey: primary isn't confirmed at this stage, so there is
           deliberately no checkbox here.
           ⚠️ Brandon also asked for "date of last stedi check" as the verified-on
@@ -100,16 +112,16 @@ export function InsuranceBlock({
           start, and "Run Stedi Eligibility" is a trigger, not a timestamp). A
           date rendered here would be a confidence signal backed by nothing,
           which is worse than its absence (§5.26). */}
-      <div>
+      <div className="flex flex-col">
         <p className={LABEL_CLS}>Primary — from the benefits stage</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-4 rounded-lg border border-input bg-muted/20 p-4">
+        <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-4 content-start rounded-lg border border-input bg-muted/20 p-4">
           <Read label="Primary Insurance" value={patient.primaryInsurance} />
           <Read label="Plan Name" value={patient.planName} />
           <Read label="Member ID 1" value={patient.memberId1} />
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
       <div>
         <p className={LABEL_CLS}>Secondary coverage?</p>
         <div className="flex items-center gap-2 flex-wrap">
@@ -158,7 +170,7 @@ export function InsuranceBlock({
       </div>
 
       {state.answer === "yes" && (
-        <div className="space-y-4 rounded-lg border border-input bg-muted/20 p-4">
+        <div className="flex-1 space-y-4 rounded-lg border border-input bg-muted/20 p-4">
           <div>
             <p className={LABEL_CLS}>Type</p>
             <div className="flex items-center gap-2 flex-wrap">
@@ -180,22 +192,34 @@ export function InsuranceBlock({
             </div>
           </div>
 
-          {/* Medicare Supplement is a TAG ONLY — claims cross over from
-              Medicare, so asking for an ID wastes a question on the call. */}
-          {state.type === "Medicare Supplement" && (
-            <p className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">
-              No details needed — tagging it as a Medicare supplement is the whole job.
-            </p>
-          )}
-
-          {(state.type === "NY Medicaid" || state.type === "Other") && (
+          {/* ⚠️ Medicare Supplement SHOWS this field from 2026-09-14 (Josh:
+              *"if medicare supplement is chosen - member id 2 should populate as
+              an optional"*). It used to render nothing here but a green *"no
+              details needed"* line, on the reasoning that claims cross over from
+              Medicare so the ID is never needed — which is still true, and is why
+              it is OPTIONAL rather than required. `secondaryMissing` already
+              returns [] for this type, so nothing gates on it; a rep who has the
+              number simply has somewhere to put it. `mondayWrite` writes Member
+              ID 2 on any string, so no write-path change was needed. */}
+          {state.type && (
             <div>
               <label className={LABEL_CLS}>
                 Member ID 2 {state.type === "NY Medicaid" && "(CIN)"}
+                {state.type === "Medicare Supplement" && (
+                  <span className="normal-case tracking-normal font-normal">
+                    — optional, claims cross over from Medicare
+                  </span>
+                )}
               </label>
               <Input
                 value={memberId2}
-                placeholder={state.type === "NY Medicaid" ? "AB12345C" : "Member ID"}
+                placeholder={
+                  state.type === "NY Medicaid"
+                    ? "AB12345C"
+                    : state.type === "Medicare Supplement"
+                      ? "Member ID, if they have it"
+                      : "Member ID"
+                }
                 onChange={(e) => onFieldChange("memberId2Edited", e.target.value)}
               />
             </div>
@@ -294,13 +318,18 @@ export function AuthBlock({ patient }: { patient: Patient }) {
               c.exception ? TONE_CLS[c.tone] : "border-input bg-muted/20",
             )}
           >
-            <p className="text-[11px] font-bold uppercase tracking-wider truncate" title={c.label}>
+            {/* ⚠️ Josh, 2026-09-14: *"a lot of the text is unnecessarily small
+                - like look at insurance box - let's have authorization box match
+                that font size and format"*. Same ramp as `Read` above — a
+                `text-xs` uppercase label over a `text-base font-semibold` value
+                — rather than the 11px this card used throughout. */}
+            <p className="text-xs font-semibold uppercase tracking-wider truncate" title={c.label}>
               {c.label}
             </p>
-            <p className={cn("text-sm font-semibold mt-0.5", !c.exception && TEXT_TONE[c.tone])}>
-              {c.state}
+            <p className={cn("text-base font-semibold mt-0.5", !c.exception && TEXT_TONE[c.tone])}>
+              {chipStateLabel(c.state)}
             </p>
-            <dl className="mt-2 space-y-0.5 text-[11px] leading-snug">
+            <dl className="mt-2 space-y-1 text-sm leading-snug">
               <AuthFact label="Start" value={shortDate(c.start)} />
               <AuthFact label="End" value={shortDate(c.end)} />
               {/* ⚠️ Blank on nearly every patient until automation 7918324247
@@ -325,9 +354,15 @@ export function AuthBlock({ patient }: { patient: Patient }) {
  *  otherwise, and only one of them is a problem. */
 function AuthFact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium tabular-nums">{value?.trim() || "\u2014"}</dd>
+    /* ⚠️ `gap-1.5`, NOT `justify-between` (Josh, 2026-09-14: *"info of
+       start / end / units - make closer to the label - not one on far left and
+       one on far right"*). Pushed apart, a two-word label and a six-character
+       date sat at opposite edges of the card and the eye had to travel. */
+    <div className="flex items-baseline gap-1.5">
+      <dt className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="font-semibold tabular-nums">{value?.trim() || "\u2014"}</dd>
     </div>
   );
 }
@@ -358,42 +393,48 @@ export function OopBlock({
           note says the Monday columns for them "should be added" and they do not
           exist yet. That keeps a rep's answer durable today and means the only
           change when the columns land is where it is written. */}
-      <div>
-        <label className={LABEL_CLS}>Confirmed amount from calculator</label>
-        <Input
-          placeholder="e.g. $42.50, or $0 with Medicaid"
-          value={intake.oopAmount}
-          onChange={(e) => onChange({ ...intake, oopAmount: e.target.value })}
-        />
-      </div>
-      {/* Same treatment as the two gating confirmations (see `ConfirmCheck`) —
-          a row you have to notice rather than a 16px tick in a line of text. */}
-      <label
-        htmlFor="wc-oop-reviewed"
-        className={cn(
-          "flex items-start gap-3 cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors",
-          intake.confirmed.oop
-            ? "border-emerald-400 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
-            : "border-input bg-muted/20 hover:bg-muted/40",
-        )}
-      >
-        <Checkbox
-          className="h-5 w-5 mt-0.5 shrink-0"
-          id="wc-oop-reviewed"
-          checked={intake.confirmed.oop}
-          onCheckedChange={(v) =>
-            onChange({ ...intake, confirmed: { ...intake.confirmed, oop: v === true } })
-          }
-        />
-        <span
+      {/* Josh, 2026-09-14: *"let's make confirmed amount from calculator and
+          reviewed with patient on same line"*. `sm:items-end` so the tick box
+          and the input sit on the same baseline; the tick keeps its own width
+          rather than stretching, so the amount field gets the space. */}
+      <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+        <div className="flex-1 min-w-0">
+          <label className={LABEL_CLS}>Confirmed amount from calculator</label>
+          <Input
+            placeholder="e.g. $42.50, or $0 with Medicaid"
+            value={intake.oopAmount}
+            onChange={(e) => onChange({ ...intake, oopAmount: e.target.value })}
+          />
+        </div>
+        {/* Same treatment as the two gating confirmations (see `ConfirmCheck`) —
+            a row you have to notice rather than a 16px tick in a line of text. */}
+        <label
+          htmlFor="wc-oop-reviewed"
           className={cn(
-            "text-sm font-medium leading-snug",
-            intake.confirmed.oop ? "text-emerald-900 dark:text-emerald-200" : "text-foreground",
+            "flex items-center gap-3 shrink-0 h-10 cursor-pointer select-none rounded-lg border px-3 transition-colors",
+            intake.confirmed.oop
+              ? "border-emerald-400 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+              : "border-input bg-muted/20 hover:bg-muted/40",
           )}
         >
-          Reviewed with patient
-        </span>
-      </label>
+          <Checkbox
+            className="h-5 w-5 shrink-0"
+            id="wc-oop-reviewed"
+            checked={intake.confirmed.oop}
+            onCheckedChange={(v) =>
+              onChange({ ...intake, confirmed: { ...intake.confirmed, oop: v === true } })
+            }
+          />
+          <span
+            className={cn(
+              "text-sm font-medium leading-snug whitespace-nowrap",
+              intake.confirmed.oop ? "text-emerald-900 dark:text-emerald-200" : "text-foreground",
+            )}
+          >
+            Reviewed with patient
+          </span>
+        </label>
+      </div>
     </div>
   );
 }

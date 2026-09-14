@@ -78,7 +78,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { AddressAutocomplete, type AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
-import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff, AlertTriangle, Lightbulb } from "lucide-react";
+import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff, AlertTriangle, Lightbulb, OctagonX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CardinalAddressNote } from "@/components/shared/CardinalAddressNote";
 import { cardinalAddressNote } from "@/lib/shared/cardinalAddress";
@@ -92,6 +92,18 @@ interface Props {
    *  values; this carries a whole object. */
   onIntakeChange?: (next: CallIntake) => void;
   onSendWelcomeCallText?: () => Promise<void>;
+  /**
+   * Opens the Stuck reason dialog — the SAME dialog the header button opens
+   * (Josh, 2026-09-14: *"add a second stuck button option down there … both
+   * stuck buttons have same behavior"*).
+   *
+   * ⚠️ The page owns the dialog and the reason state, so this is a second
+   * TRIGGER for one control, not a second control. Nothing here writes, and
+   * Stuck deliberately stays immediate rather than becoming a toggle like
+   * Advance — `markStuckWithReason` writes directly, takes a required reason
+   * and never runs the send gate, and that is the point of it.
+   */
+  onStuck?: () => void;
 }
 
 /**
@@ -304,7 +316,7 @@ function CapNote({ qty, cap, payerLabel }: { qty: number; cap: number; payerLabe
   );
 }
 
-export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSendWelcomeCallText }: Props) {
+export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSendWelcomeCallText, onStuck }: Props) {
   // The no-column payload. Falls back to a blank one so a patient mapped before
   // this field existed (or a test fixture) still renders.
   const intake = patient.callIntake ?? emptyIntake();
@@ -893,24 +905,46 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-1">
                 Pump Type
               </label>
-              <Select
-                value={patient.pumpTypeIndex !== null ? String(patient.pumpTypeIndex) : ""}
-                onValueChange={(value) => {
-                  const option = PUMP_TYPE_OPTIONS.find((o) => String(o.index) === value);
-                  handleSelectChange("pumpType", option?.label || "", option?.index ?? null);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select pump type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PUMP_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.index} value={String(opt.index)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* ⚠️ The confirmation sits BESIDE the select, not under it (Josh,
+                  2026-09-14: *"pump type confirmed with patient - put on same
+                  line as pump type - let's try to use up less vertical space
+                  where it's easy to"*). It keeps its own bordered-row styling
+                  — Brandon asked for that in 2026-09-11 because the tick GATES
+                  Advance and *"they're so small and easy to skip"* — so this
+                  moves it, it does not shrink it back to an inline 16px box. */}
+              <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <Select
+                    value={patient.pumpTypeIndex !== null ? String(patient.pumpTypeIndex) : ""}
+                    onValueChange={(value) => {
+                      const option = PUMP_TYPE_OPTIONS.find((o) => String(o.index) === value);
+                      handleSelectChange("pumpType", option?.label || "", option?.index ?? null);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select pump type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PUMP_TYPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.index} value={String(opt.index)}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {needsPumpConfirmation(effectiveServing) && (
+                  <div className="flex-1 min-w-0">
+                    <ConfirmCheck
+                      intake={intake}
+                      onChange={setIntake}
+                      field="pump"
+                      label={pumpConfirmLabel(patient.pumpType)}
+                      recordPumpModel={patient.pumpType}
+                    />
+                  </div>
+                )}
+              </div>
               {/* No board column — rides out in the notes block on send.
                   ⚠️ Hidden when the serving sells no pump DEVICE (Brandon:
                   "hide it and don't require it when Insulin Pump isn't in
@@ -922,16 +956,6 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   and are not being sold is the §5.22 conflation in checkbox
                   form. `unmetSendRequirements` scopes itself the same way, so
                   the checkbox and the send gate cannot disagree. */}
-              {needsPumpConfirmation(effectiveServing) && (
-                <ConfirmCheck
-                  intake={intake}
-                  onChange={setIntake}
-                  field="pump"
-                  className="mt-2"
-                  label={pumpConfirmLabel(patient.pumpType)}
-                  recordPumpModel={patient.pumpType}
-                />
-              )}
             </div>
 
             <div>
@@ -1012,98 +1036,142 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             )}
           </div>
 
-          {/* Infusion Set pairs */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* ⚠️ ONE ROW — Set Type, its Quantity, and the Cartridge quantity
+              (Josh, 2026-09-14: *"set type, quantity, cartridges, quantity -
+              let's make this all one line - don't need such wide boxes"*). Two
+              things moved: each set card's Type and Quantity were STACKED and
+              now sit side by side with a narrow Qty, and Cartridges came up out
+              of the separate grid it had below to join this one.
+              ⚠️ Set 2 is absent from his list because it renders empty on
+              almost every patient. It keeps its own card and wraps to a second
+              line under 1280px, where three cards of controls stop being
+              readable — the notes under each control need the width more than
+              the row needs to stay unbroken.
+              ⚠️ Every note (compat, stock, cap, the missing-quantity error)
+              hangs UNDER the row at full card width rather than under the
+              control it belongs to: a cap warning squeezed into a 96px column
+              is a sentence nobody reads. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {/* Infusion Set 1 group */}
-            <div className="rounded-lg border border-input bg-muted/20 p-4 space-y-4">
+            <div className="rounded-lg border border-input bg-muted/20 p-4 space-y-3">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Infusion Set 1
               </p>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Set Type</label>
-                <InfusionSetCombobox
-                  options={infusionSet1Options}
-                  disabled={infusionDisabled}
-                  value={patient.infusionSet1Index}
-                  onSelect={(label, index) =>
-                    handleSelectChange("infusionSet1", label, index)
-                  }
-                  placeholder="Search infusion sets..."
-                />
-                {infusionHint && (
-                  <p className="mt-1 text-[11px] text-muted-foreground">{infusionHint}</p>
-                )}
-                {isInfusionSelling(patient.infusionSet1Index) && (
-                  <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet1} />
-                )}
-                {isInfusionSelling(patient.infusionSet1Index) && stock.index && (
-                  <StockNote
-                    verdict={stockVerdict(patient.infusionSet1, stock.index, stockToday)}
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <label className="text-xs text-muted-foreground block mb-1">Set Type</label>
+                  <InfusionSetCombobox
+                    options={infusionSet1Options}
+                    disabled={infusionDisabled}
+                    value={patient.infusionSet1Index}
+                    onSelect={(label, index) =>
+                      handleSelectChange("infusionSet1", label, index)
+                    }
+                    placeholder="Search infusion sets..."
                   />
-                )}
+                </div>
+                <div className="w-24 shrink-0">
+                  <label className="text-xs text-muted-foreground block mb-1">Qty</label>
+                  <QtySelect
+                    value={patient.qtyInf1}
+                    onChange={(val) => onFieldChange("qtyInf1", val)}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
-                <QtySelect
-                  value={patient.qtyInf1}
-                  onChange={(val) => onFieldChange("qtyInf1", val)}
+              {infusionHint && (
+                <p className="text-[11px] text-muted-foreground">{infusionHint}</p>
+              )}
+              {isInfusionSelling(patient.infusionSet1Index) && (
+                <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet1} />
+              )}
+              {isInfusionSelling(patient.infusionSet1Index) && stock.index && (
+                <StockNote
+                  verdict={stockVerdict(patient.infusionSet1, stock.index, stockToday)}
                 />
-                {isInfusionSelling(patient.infusionSet1Index) && (
-                  <CapNote qty={Number(patient.qtyInf1) || 0} cap={infusionCap.cap} payerLabel={infusionCap.payerLabel} />
+              )}
+              {isInfusionSelling(patient.infusionSet1Index) && (
+                <CapNote qty={Number(patient.qtyInf1) || 0} cap={infusionCap.cap} payerLabel={infusionCap.payerLabel} />
+              )}
+              {isInfusionSelling(patient.infusionSet1Index) &&
+                (!patient.qtyInf1 || patient.qtyInf1 === "0") && (
+                  <p className="text-xs font-medium text-red-600">
+                    Infusion set selected — please choose a quantity.
+                  </p>
                 )}
-                {isInfusionSelling(patient.infusionSet1Index) &&
-                  (!patient.qtyInf1 || patient.qtyInf1 === "0") && (
-                    <p className="mt-2 text-xs font-medium text-red-600">
-                      Infusion set selected — please choose a quantity.
-                    </p>
-                  )}
-              </div>
             </div>
 
             {/* Infusion Set 2 group */}
-            <div className="rounded-lg border border-input bg-muted/20 p-4 space-y-4">
+            <div className="rounded-lg border border-input bg-muted/20 p-4 space-y-3">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Infusion Set 2
               </p>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Set Type</label>
-                <InfusionSetCombobox
-                  options={infusionSet2Options}
-                  disabled={infusionDisabled}
-                  value={patient.infusionSet2Index}
-                  onSelect={(label, index) =>
-                    handleSelectChange("infusionSet2", label, index)
-                  }
-                  placeholder="Search infusion sets..."
-                />
-                {infusionHint && (
-                  <p className="mt-1 text-[11px] text-muted-foreground">{infusionHint}</p>
-                )}
-                {isInfusionSelling(patient.infusionSet2Index) && (
-                  <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet2} />
-                )}
-                {isInfusionSelling(patient.infusionSet2Index) && stock.index && (
-                  <StockNote
-                    verdict={stockVerdict(patient.infusionSet2, stock.index, stockToday)}
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <label className="text-xs text-muted-foreground block mb-1">Set Type</label>
+                  <InfusionSetCombobox
+                    options={infusionSet2Options}
+                    disabled={infusionDisabled}
+                    value={patient.infusionSet2Index}
+                    onSelect={(label, index) =>
+                      handleSelectChange("infusionSet2", label, index)
+                    }
+                    placeholder="Search infusion sets..."
                   />
-                )}
+                </div>
+                <div className="w-24 shrink-0">
+                  <label className="text-xs text-muted-foreground block mb-1">Qty</label>
+                  <QtySelect
+                    value={patient.qtyInf2}
+                    onChange={(val) => onFieldChange("qtyInf2", val)}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
-                <QtySelect
-                  value={patient.qtyInf2}
-                  onChange={(val) => onFieldChange("qtyInf2", val)}
+              {infusionHint && (
+                <p className="text-[11px] text-muted-foreground">{infusionHint}</p>
+              )}
+              {isInfusionSelling(patient.infusionSet2Index) && (
+                <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet2} />
+              )}
+              {isInfusionSelling(patient.infusionSet2Index) && stock.index && (
+                <StockNote
+                  verdict={stockVerdict(patient.infusionSet2, stock.index, stockToday)}
                 />
-                {isInfusionSelling(patient.infusionSet2Index) && (
-                  <CapNote qty={Number(patient.qtyInf2) || 0} cap={infusionCap.cap} payerLabel={infusionCap.payerLabel} />
+              )}
+              {isInfusionSelling(patient.infusionSet2Index) && (
+                <CapNote qty={Number(patient.qtyInf2) || 0} cap={infusionCap.cap} payerLabel={infusionCap.payerLabel} />
+              )}
+              {isInfusionSelling(patient.infusionSet2Index) &&
+                (!patient.qtyInf2 || patient.qtyInf2 === "0") && (
+                  <p className="text-xs font-medium text-red-600">
+                    Infusion set selected — please choose a quantity.
+                  </p>
                 )}
-                {isInfusionSelling(patient.infusionSet2Index) &&
-                  (!patient.qtyInf2 || patient.qtyInf2 === "0") && (
-                    <p className="mt-2 text-xs font-medium text-red-600">
-                      Infusion set selected — please choose a quantity.
-                    </p>
-                  )}
+            </div>
+
+            {/* Cartridges — lifted out of its own `lg:grid-cols-2` block below,
+                where it sat alone on a half-width row of its own. */}
+            <div className="rounded-lg border border-input bg-muted/20 p-4 space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Cartridges
+              </p>
+              <div className="flex items-start gap-3">
+                <div className="w-24 shrink-0">
+                  <label className="text-xs text-muted-foreground block mb-1">Qty</label>
+                  <QtySelect
+                    value={patient.qtyCartridge}
+                    onChange={(val) => onFieldChange("qtyCartridge", val)}
+                  />
+                </div>
               </div>
+              {/* Brandon, 2026-09-09: the payer cap covers "the infusion sets
+                  and cartridges". It has always been rendered on the two set
+                  quantities and never here, so a rep could put 9 cartridges on
+                  a payer that pays for 3 with nothing on screen saying so. */}
+              <CapNote
+                qty={Number(patient.qtyCartridge) || 0}
+                cap={infusionCap.cap}
+                payerLabel={infusionCap.payerLabel}
+              />
             </div>
           </div>
 
@@ -1121,31 +1189,6 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               {qtyPlan.error ?? qtyPlan.warning}
             </p>
           )}
-
-          {/* Cartridges */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-5">
-            <div className="rounded-lg border border-input bg-muted/20 p-4 space-y-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Cartridges
-              </p>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
-                <QtySelect
-                  value={patient.qtyCartridge}
-                  onChange={(val) => onFieldChange("qtyCartridge", val)}
-                />
-                {/* Brandon, 2026-09-09: the payer cap covers "the infusion sets
-                    and cartridges". It has always been rendered on the two set
-                    quantities and never here, so a rep could put 9 cartridges on
-                    a payer that pays for 3 with nothing on screen saying so. */}
-                <CapNote
-                  qty={Number(patient.qtyCartridge) || 0}
-                  cap={infusionCap.cap}
-                  payerLabel={infusionCap.payerLabel}
-                />
-              </div>
-            </div>
-          </div>
         </FormSection>
       ) : (
         <Card className="p-4 border-dashed">
@@ -1331,10 +1374,6 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               <p className="text-xs text-amber-600 mt-1">Address will be updated on sync</p>
             )}
           </div>
-          {/* No board column — rides out in the notes block on send. Placed with
-              the address so the rep ticks it while reading it back. */}
-          <ConfirmCheck intake={intake} onChange={setIntake} field="address" />
-
           {/* ⚠️ The Place of Service READOUT was removed (Brandon,
               2026-09-11: it belongs to profile send-off). The RULE is
               untouched: `mondayWrite` still computes POS from Primary
@@ -1342,8 +1381,17 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               only stopped showing it. */}
         </div>
 
-        {/* Welcome Call Text — button below address */}
-        <div className="mt-6">
+        {/* Welcome Call Text — button below address, with the address
+            confirmation beside it (Josh, 2026-09-14: *"let's make address
+            confirmed with patient to the right of the send welcome call
+            text"*). It used to sit under the address field, on the reasoning
+            that a rep ticks it while reading the address back — which is the
+            same moment they send the text, so the two belong on one row.
+            ⚠️ Still the same `ConfirmCheck` writing the same intake field: it
+            gates Advance and rides out in the notes block, and nothing about
+            that moved with it. */}
+        <div className="mt-6 flex flex-col sm:flex-row sm:items-start gap-3">
+          <div className="shrink-0">
           <Button
             variant={patient.welcomeCallTextIndex !== null ? "secondary" : "default"}
             disabled={sendingWelcomeText || (patient.welcomeCallTextIndex === null && textBlock !== null)}
@@ -1388,6 +1436,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           <p className="text-xs text-muted-foreground mt-2">
             Sends patient details to confirm.
           </p>
+          </div>
+          <div className="flex-1 min-w-0">
+            <ConfirmCheck intake={intake} onChange={setIntake} field="address" />
+          </div>
         </div>
 
         {/* The same Messages block Info Collection uses — the patient's text and
@@ -1421,38 +1473,76 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             takes a required reason (`mondayWrite.markStuckWithReason`).
             ⚠️ It is NOT a Propose Stuck and must not be relabelled as one —
             this board has no ladder to propose into (see that writer). */}
-        <Button
-          type="button"
-          variant="outline"
-          className={cn(
-            "h-auto w-full sm:w-auto py-4 px-6 justify-start text-left whitespace-normal border",
-            "focus-visible:ring-emerald-500 focus-visible:ring-offset-0",
-            patient.advanceDecisionIndex === ADVANCE_INDEX
-              ? "bg-emerald-600 hover:bg-emerald-700 hover:text-white text-white border-emerald-700 shadow-md"
-              : "bg-emerald-50 hover:bg-emerald-600 hover:text-white hover:border-emerald-700 text-emerald-800 border-emerald-300",
+        {/* ⚠️ Advance and Stuck sit SIDE BY SIDE from 2026-09-14 (Josh: *"let's
+            bring a stuck button down next to Advance too"*), and the paragraph
+            that used to sit under Advance — *"… to hold this patient instead,
+            use Stuck at the top of the page"* — was deleted with it, on his
+            instruction: it pointed at a button that is now right here.
+            ⚠️ The header Stuck button STAYS. Josh, same day: *"add a second
+            stuck button option down there … both stuck buttons have same
+            behavior"* — two triggers for one dialog, not two controls. */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(
+              "h-auto w-full sm:w-auto py-4 px-6 justify-start text-left whitespace-normal border",
+              "focus-visible:ring-emerald-500 focus-visible:ring-offset-0",
+              /* ⚠️ Resting state is a TRANSLUCENT green, not `emerald-50`
+                 (Josh: *"like a light / more transparent green before it's
+                 pressed, then a darker green when it's pressed"*). A `/10`
+                 tint over the card also survives dark mode, where a fixed
+                 `emerald-50` is a near-white slab. */
+              patient.advanceDecisionIndex === ADVANCE_INDEX
+                ? "bg-emerald-600 hover:bg-emerald-700 hover:text-white text-white border-emerald-700 shadow-md"
+                : "bg-emerald-500/10 hover:bg-emerald-600 hover:text-white hover:border-emerald-700 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800",
+            )}
+            onClick={() => {
+              if (patient.advanceDecisionIndex === ADVANCE_INDEX) {
+                onFieldChange("advanceDecision", "");
+                onFieldChange("advanceDecisionIndex" as keyof Patient, null);
+              } else {
+                onFieldChange("advanceDecision", "Advance");
+                onFieldChange("advanceDecisionIndex" as keyof Patient, ADVANCE_INDEX);
+              }
+            }}
+          >
+            <div>
+              <p className="font-bold text-lg">
+                {patient.advanceDecisionIndex === ADVANCE_INDEX ? "Advancing ✓" : "Advance"}
+              </p>
+              <p className="text-sm opacity-90 font-normal">Move forward to Order.</p>
+            </div>
+          </Button>
+
+          {/* ⚠️ NOT a toggle, unlike Advance beside it. Clicking opens the
+              page's Stuck dialog, which takes a REQUIRED reason and writes
+              immediately — it never waits for Send to Monday. Josh, 2026-09-14:
+              *"it should still open the form for stuck … no behaviour change"*.
+              So the light-to-dark treatment here is resting-vs-HOVER, not
+              unselected-vs-selected: there is no selected state to show. */}
+          {onStuck && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!onStuck}
+              className={cn(
+                "h-auto w-full sm:w-auto py-4 px-6 justify-start text-left whitespace-normal border",
+                "focus-visible:ring-red-500 focus-visible:ring-offset-0",
+                "bg-red-500/10 hover:bg-red-600 hover:text-white hover:border-red-700 text-red-800 dark:text-red-300 border-red-300 dark:border-red-800",
+              )}
+              onClick={onStuck}
+            >
+              <div className="flex items-start gap-2">
+                <OctagonX className="h-5 w-5 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-lg">Stuck</p>
+                  <p className="text-sm opacity-90 font-normal">Hold this patient here.</p>
+                </div>
+              </div>
+            </Button>
           )}
-          onClick={() => {
-            if (patient.advanceDecisionIndex === ADVANCE_INDEX) {
-              onFieldChange("advanceDecision", "");
-              onFieldChange("advanceDecisionIndex" as keyof Patient, null);
-            } else {
-              onFieldChange("advanceDecision", "Advance");
-              onFieldChange("advanceDecisionIndex" as keyof Patient, ADVANCE_INDEX);
-            }
-          }}
-        >
-          <div>
-            <p className="font-bold text-lg">
-              {patient.advanceDecisionIndex === ADVANCE_INDEX ? "Advancing ✓" : "Advance"}
-            </p>
-            <p className="text-sm opacity-90 font-normal">Move forward to Order.</p>
-          </div>
-        </Button>
-        <p className="text-xs text-muted-foreground mt-3">
-          Required before Send to Monday — it sets Stage Advancer to{" "}
-          <span className="font-semibold">Review Profile</span>. To hold this patient
-          instead, use <span className="font-semibold">Stuck</span> at the top of the page.
-        </p>
+        </div>
       </FormSection>
     </div>
   );

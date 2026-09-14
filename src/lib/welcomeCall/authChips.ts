@@ -104,6 +104,20 @@ export function authChipState(result: string, end: string): { tone: AuthTone; st
   return { tone: "amber", state: "not started" };
 }
 
+/**
+ * The chip state as the BOX shows it — Title Case (Josh, 2026-09-14: *"can we
+ * make it 'Not Required' instead of 'not required' in authorization boxes"*).
+ *
+ * ⚠️ Applied at the RENDER site, not inside `authChipState`, because
+ * `summariseAuths` drops the same string into a SENTENCE — *"Sensors auth
+ * pending — the order can't ship until it's approved"*. Title-casing at the
+ * source would read "auth Pending" mid-sentence. The boxes were what Josh
+ * asked about; the banner keeps its lowercase.
+ */
+export function chipStateLabel(state: string): string {
+  return (state ?? "").replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
 /** Exceptions first, then board order — "so the problem is the first thing the
  *  eye hits" (Brandon). Red before amber, since a denial is the worse news. */
 const TONE_RANK: Record<AuthTone, number> = { red: 0, amber: 1, green: 2, grey: 3 };
