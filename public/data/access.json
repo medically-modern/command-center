@@ -111,7 +111,5 @@
       "roles": []
     }
   },
-  "callAnswerers": [
-    "josh@medicallymodern.com"
-  ]
+  "callAnswerers": []
 }
