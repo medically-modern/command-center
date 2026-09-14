@@ -1,34 +1,50 @@
 /**
- * Care Coordinator — "My Patients". The pure rules behind the three-column
+ * Care Coordinator — "My Patients". The pure rules behind the two-column
  * dashboard the `scheduledCalls` role renders (CLAUDE.md §5.30).
  *
- * ⚠️ READ-ONLY OVER EXISTING COLUMNS. This module invents no board state: every
- * bucket below is derived from columns the stage pages already read, and the
- * page writes nothing to Monday except through the stage pages it links to.
- * Josh, 2026-09-08: "without changing ANY of the data and how we have it in
- * monday". A rule here that needs a new column is the wrong rule.
+ * Rewritten 2026-09-14 to Brandon's notes ("Notes for masani dashboard
+ * (9/14/26)"). The shape is now ONE model on both columns:
  *
- * Three populations, three sets of rules, deliberately kept apart because each
- * stage already has its own definition of "due" (the §5.8 counting contract):
+ *     Today   → Scheduled · Unscheduled
+ *     Future  → Scheduled · Unscheduled
  *
- *   - Intake        — Profile Send Off's DTC form groups. Who to CALL: a booked
- *                     Calendly call, or a form drop-off whose automated nudges
- *                     have finished. Ordered callbacks first, then longest-waiting.
- *   - Chase         — Medical Evaluation's Confirm Receipt + Chase Clinicals
- *                     stages, by Next Action Date, most overdue first — the
- *                     SAME due rule `useRoleCounts` applies (blank NAD = due,
- *                     future NAD = waiting, escalation 2 = gone, 0 = manager's).
- *   - Welcome Call  — the Welcome Call group, `Follow Up = "Done"` as the snooze
- *                     and `Escalation Required` as the manager flag, exactly as
- *                     `useRoleCounts` and `welcomeCall/sidebarList` read them.
+ * SCHEDULED is a booked call. On intake that is the Calendly mirror on the
+ * patient's Profile Send Off row (§5.15); on Welcome Call it is Calendly
+ * itself, read through the gateway and joined by email (§5.31e), because the
+ * Welcome Call board has no booking column. Today vs Future is the booking's
+ * Eastern day.
+ *
+ * UNSCHEDULED is everybody else the coordinator can call. Today vs Future is
+ * the FOLLOW-UP DATE: an attempt pushes it forward (one calendar day, exactly
+ * as the Welcome Call +1 does — `followUp.ts`), the patient sits in Future
+ * until the date arrives and then comes back to Today on their own. Nothing
+ * ages out; nothing needs clearing.
+ *
+ * ⚠️ On Patient Intake this reads ONLY the Follow Up DATE column
+ * (`date_mm3874an`). The Follow Up STATUS beside it is the flag every intake
+ * list uses to decide who is active, and writing it is the one-way door Josh
+ * removed on 2026-08-13 (§5.10). The intake attempt writer never touches the
+ * status — `followUp.test.ts` scans for it — so the intake page, its role
+ * count and both baselines are exactly as they were; only this dashboard reads
+ * the date. On Welcome Call the stage page's own snooze (Follow Up = Done +
+ * date) is read as-is; that page still hides a Done patient until cleared
+ * while this one wakes them on the date (a known, documented mismatch — Josh
+ * chose "dashboard only", 2026-09-14).
+ *
+ * Escalated patients are COUNTED here and listed nowhere: Brandon — "this user
+ * should not see this — but they should go to a manager view". They are in
+ * Oversight's Manager Intervention / Final Decisions columns (§7, §5.34).
  *
  * Everything takes `today` / `now` as arguments so the tests can walk a day
- * without touching the clock. Monday's dates are naive Eastern (§9); `created_at`
- * is a real UTC instant and is the one value compared as a timestamp.
+ * without touching the clock. Monday's dates are naive Eastern (§9);
+ * `created_at` is a real UTC instant and is the one value compared as a
+ * timestamp.
  */
 import { parseAttemptValue } from "@/lib/masheke/attemptLog";
 import { isCrossSell, isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { minutesOfDay, type ScheduledCall } from "@/lib/scheduledCalls/workflow";
+import type { WelcomeCallBooking } from "@/lib/welcomeCall/calendlyBooking";
+import { etPartsOf } from "./scheduleEntries";
 
 /* ── Constants that ARE the spec ────────────────────────────── */
 
@@ -40,14 +56,6 @@ import { minutesOfDay, type ScheduledCall } from "@/lib/scheduledCalls/workflow"
  */
 export const READY_AFTER_HOURS = 48;
 
-/**
- * The stop rule. Five outbound attempts and the patient leaves the calling
- * list for the "exhausted" shelf — still visible, no longer ordered as work.
- * Read off the existing Attempt Counter (`numeric_mm5ze82q`), which every
- * intake attempt already bumps; nothing new is written to reach it.
- */
-export const MAX_INTAKE_ATTEMPTS = 5;
-
 /** Profile Send Off's Intake Escalation labels (mirrors masheke's index model). */
 const INTAKE_ESCALATED_LABELS = new Set(["Manager Escalation Required", "Final Escalation Required"]);
 
@@ -56,7 +64,7 @@ const INTAKE_ESCALATED_LABELS = new Set(["Manager Escalation Required", "Final E
  *  ESCALATION_INDEX), with the label texts as a belt-and-braces fallback for
  *  a row read without its raw value. Index 0 = with a manager (the board's
  *  own label still reads "Escalation Required"); index 2 = a stuck proposal
- *  awaiting Final Decisions — counted, never listed, like the chase column. */
+ *  awaiting Final Decisions — counted, never listed. */
 const WC_ESCALATION_MANAGER = 0;
 const WC_ESCALATION_FINAL = 2;
 const WC_ESCALATED_LABELS = new Set(["Escalation Required", "Manager Escalation Required"]);
@@ -68,6 +76,9 @@ const ME_ESCALATION_FINAL = 2;
 
 export const CHASE_STAGES = ["Confirm Receipt", "Chase Clinicals"] as const;
 export type ChaseStage = (typeof CHASE_STAGES)[number];
+
+/** The intake form's automated nudges are exactly two (§5.24). */
+export const MAX_AUTO_TEXTS = 2;
 
 /* ── Records — the slim shapes the reads produce ─────────────── */
 
@@ -97,11 +108,18 @@ export interface IntakeLead {
   referralSource: string;
   alreadyInSystem: string;
   followUp: string;
+  /** Follow Up Date `date_mm3874an` — the ONLY snooze this dashboard reads on
+   *  intake. Pushed by a logged attempt; read by nothing else on the board. */
   followUpDate: string;
   dupCheckResult: string;
   state: string;
   generalInsurance: string;
   calendlyEventUri: string;
+  /** What the PATIENT typed on the form — never the verified doctor (§5.20). */
+  providedDoctorName: string;
+  providedClinicPhone: string;
+  ipCoveragePath: string;
+  cgmCoveragePath: string;
 }
 
 export interface ChaseItem {
@@ -135,8 +153,7 @@ export interface WelcomeCallItem {
   groupId: string;
   createdAt: string;
   phone: string;
-  /** The join between a Calendly welcome-call booking and this chart — the
-   *  schedule grid's "Open". Nothing else on this page reads it. */
+  /** The join between a Calendly welcome-call booking and this chart. */
   email: string;
   escalation: string;
   /** Raw Escalation index (0 manager · 1 done · 2 proposed stuck). Optional
@@ -153,6 +170,15 @@ export interface WelcomeCallItem {
   doctorName: string;
   primaryInsurance: string;
   referralReceivedDate: string;
+  referralSource: string;
+  ipCoveragePath: string;
+  cgmCoveragePath: string;
+  doctorPhone: string;
+  clinicName: string;
+  clinicAddress: string;
+  /** Welcome Call Text trigger `color_mm1xtqvv` — "Send" once pressed. The
+   *  board has no text counter, so this is the one board fact about texts. */
+  welcomeCallText: string;
 }
 
 /* ── Small shared helpers ────────────────────────────────────── */
@@ -214,6 +240,23 @@ export function createdDayEt(iso: string): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date(t));
+}
+
+/**
+ * "Days since intake" for the card — Brandon: "don't need hours, can just put
+ * <1 day". Whole ET days since the row was created.
+ */
+export function formatDaysSince(createdAt: string, today: string): string {
+  const d = daysInPipeline("", createdAt, today);
+  if (d === null) return "—";
+  if (d < 1) return "<1 day";
+  return d === 1 ? "1 day" : `${d} days`;
+}
+
+/** `MM/DD` from YYYY-MM-DD, without letting a UTC parse shift the day. */
+export function shortMonthDay(ymdStr: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymdStr ?? "");
+  return m ? `${m[2]}/${m[3]}` : ymdStr || "—";
 }
 
 /* ── Due labels (chase) ──────────────────────────────────────── */
@@ -289,6 +332,112 @@ export function latestAttempt(item: Pick<ChaseItem, "subStage" | "confirmAttempt
   return null;
 }
 
+/* ── The shared Today / Future model ─────────────────────────── */
+
+export type Horizon = "today" | "future";
+
+export type ScheduledWhen = "today-upcoming" | "today-now" | "today-passed" | "later";
+
+/** A booked call on either column. */
+export interface ScheduledEntry<T> {
+  item: T;
+  /** YYYY-MM-DD (ET). */
+  date: string;
+  /** HH:mm:ss, or "" when only a day is known. */
+  time: string;
+  /** Minutes from now to the call; negative once it has started. Null when the
+   *  booking is on another day or carries no time. */
+  minutesUntil: number | null;
+  when: ScheduledWhen;
+  /** The Calendly booking behind a Welcome Call entry — carries the
+   *  reschedule link. Intake entries have the monday mirror instead. */
+  booking?: WelcomeCallBooking;
+}
+
+/** A patient to ring, on either column. */
+export interface UnscheduledEntry<T> {
+  item: T;
+  attempts: number;
+  /** YYYY-MM-DD, or "" when nothing has pushed them. */
+  followUpDate: string;
+  /** Days the follow-up date is already past. 0 when due today or undated. */
+  overdueDays: number;
+  waitingMs: number;
+}
+
+export interface ColumnBuckets<T> {
+  scheduledToday: ScheduledEntry<T>[];
+  scheduledFuture: ScheduledEntry<T>[];
+  unscheduledToday: UnscheduledEntry<T>[];
+  unscheduledFuture: UnscheduledEntry<T>[];
+  /** Escalated — a manager's. Counted for the footer, never listed. */
+  withManager: number;
+}
+
+export interface BucketContext {
+  /** YYYY-MM-DD, ET. */
+  today: string;
+  /** Minutes past ET midnight. */
+  nowMinutes: number;
+  /** Epoch ms. */
+  nowMs: number;
+}
+
+const NOW_BEFORE_MIN = 5;
+const NOW_AFTER_MIN = 10;
+
+/** Where a booking sits relative to now. Shared by both columns. */
+export function classifyBooking(
+  date: string, time: string, ctx: Pick<BucketContext, "today" | "nowMinutes">,
+): { when: ScheduledWhen; minutesUntil: number | null } {
+  if (date !== ctx.today) return { when: "later", minutesUntil: null };
+  const at = time ? minutesOfDay(time) : null;
+  if (at === null) return { when: "today-upcoming", minutesUntil: null };
+  const minutesUntil = at - ctx.nowMinutes;
+  const when: ScheduledWhen =
+    ctx.nowMinutes < at - NOW_BEFORE_MIN ? "today-upcoming"
+    : ctx.nowMinutes <= at + NOW_AFTER_MIN ? "today-now"
+    : "today-passed";
+  return { when, minutesUntil };
+}
+
+/**
+ * Which grouping a follow-up date puts the patient in.
+ *
+ * A date in the future ⇒ Future; today, past, or NO date ⇒ Today. Blank is
+ * Today on purpose: nothing will bring a dateless patient back on its own, so
+ * the only honest place for them is the list somebody is working (§7's
+ * nothing-is-invisible rule).
+ */
+export function followUpHorizon(followUpDate: string, today: string): { horizon: Horizon; overdueDays: number } {
+  const d = ymd(followUpDate);
+  if (!d) return { horizon: "today", overdueDays: 0 };
+  const diff = daysBetween(d, today); // positive ⇒ the date is past
+  if (diff === null) return { horizon: "today", overdueDays: 0 };
+  if (diff < 0) return { horizon: "future", overdueDays: 0 };
+  return { horizon: "today", overdueDays: diff };
+}
+
+function byBookingTime<T>(a: ScheduledEntry<T>, b: ScheduledEntry<T>, name: (t: T) => string): number {
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+  // Within today, a passed call goes after the ones still to make.
+  const pa = a.when === "today-passed" ? 1 : 0;
+  const pb = b.when === "today-passed" ? 1 : 0;
+  if (pa !== pb) return pa - pb;
+  const ta = a.time ? minutesOfDay(a.time) : null;
+  const tb = b.time ? minutesOfDay(b.time) : null;
+  if (ta === null && tb === null) return name(a.item).localeCompare(name(b.item));
+  if (ta === null) return 1;
+  if (tb === null) return -1;
+  return ta - tb || name(a.item).localeCompare(name(b.item));
+}
+
+/** The scheduled call "up next" — first of today's still to make. Its card
+ *  is shaded darker. Null when every call today has passed. */
+export function nextUp<T>(scheduledToday: ScheduledEntry<T>[]): ScheduledEntry<T> | null {
+  return scheduledToday.find((e) => e.when !== "today-passed") ?? null;
+}
+
 /* ── Intake ──────────────────────────────────────────────────── */
 
 export interface Booking {
@@ -328,88 +477,63 @@ export type IntakeExclusion =
   | "nurturing"     // inside the 48-hour automated window
   | "cleanUp";      // unbooked patient already in Profile Clean-Up — not a call
 
-export interface ScheduledLead {
-  lead: IntakeLead;
-  booking: Booking;
-  /** Minutes from now to the call; negative once it has started. Null when the
-   *  booking is on another day or carries no time. */
-  minutesUntil: number | null;
-  /** upcoming today · happening now · passed today · another day. */
-  when: "today-upcoming" | "today-now" | "today-passed" | "later";
-}
-
-export interface ReadyLead {
-  lead: IntakeLead;
-  waitingMs: number;
-  attempts: number;
-}
-
-export interface IntakeBuckets {
-  /** Booked calls, today and onward, in time order. Passed-today calls sink to
-   *  the end of today's block rather than vanishing — a call the coordinator
-   *  missed is still hers to make. */
-  scheduled: ScheduledLead[];
-  /** Form drop-offs whose nudges have run, no booking, under the attempt cap.
-   *  Longest-waiting first. */
-  ready: ReadyLead[];
-  /** Hit the attempt cap. Kept visible, ordered most-recently-created first. */
-  exhausted: ReadyLead[];
-  /** Escalated to a manager (either rung). Not the coordinator's work. */
-  withManager: IntakeLead[];
+export interface IntakeBuckets extends ColumnBuckets<IntakeLead> {
   /** Why the rest of the groups' rows are not on this screen. Counts only. */
   excluded: Record<IntakeExclusion, number>;
 }
 
-export interface IntakeContext {
-  /** YYYY-MM-DD, ET. */
-  today: string;
-  /** Minutes past ET midnight. */
-  nowMinutes: number;
-  /** Epoch ms. */
-  nowMs: number;
-  /** The two DTC form groups — a READY lead must still be in one of them. */
+export interface IntakeContext extends BucketContext {
+  /** The two DTC form groups — an UNSCHEDULED lead must still be in one. */
   formGroupIds: readonly string[];
 }
 
-const NOW_BEFORE_MIN = 5;
-const NOW_AFTER_MIN = 10;
+/** Automated nudges actually sent — the form's 30-minute and 24-hour texts,
+ *  clamped as the backend clamps them (§5.24). */
+export function autoTexts(lead: Pick<IntakeLead, "dropOffAttempt">): number {
+  return Math.min(toCount(lead.dropOffAttempt), MAX_AUTO_TEXTS);
+}
+
+/** "Completed" / "Partial" from the GROUP the form left the row in — not the
+ *  Drop-off Step, which deliberately keeps saying where the PATIENT stopped
+ *  even after a rep finishes the form by phone (§5.24). Null off the form
+ *  groups (a booked patient already in Clean-Up). */
+export function formCompletion(
+  lead: Pick<IntakeLead, "groupId">,
+  groups: { partial: string; completed: string },
+): "Completed" | "Partial" | null {
+  if (lead.groupId === groups.completed) return "Completed";
+  if (lead.groupId === groups.partial) return "Partial";
+  return null;
+}
 
 /**
- * Sort the intake population into what the left column shows.
+ * Sort the intake population into the column's four lists.
  *
- * The order of checks is the rule. A booking wins over everything but an
- * escalation (a booked call is a promise to the patient, whatever else the row
- * says); after that the exclusions are checked cheapest-fact-first so the count
- * a row lands in is the FIRST reason it isn't a call, not an arbitrary one.
+ * The order of checks is the rule. An escalation wins over everything (a
+ * manager's, listed nowhere here); then a booking wins over every exclusion
+ * (a booked call is a promise to the patient, whatever else the row says);
+ * after that the exclusions are checked cheapest-fact-first so the count a row
+ * lands in is the FIRST reason it isn't a call, not an arbitrary one.
  */
 export function intakeBuckets(leads: IntakeLead[], ctx: IntakeContext): IntakeBuckets {
-  const scheduled: ScheduledLead[] = [];
-  const ready: ReadyLead[] = [];
-  const exhausted: ReadyLead[] = [];
-  const withManager: IntakeLead[] = [];
+  const scheduledToday: ScheduledEntry<IntakeLead>[] = [];
+  const scheduledFuture: ScheduledEntry<IntakeLead>[] = [];
+  const unscheduledToday: UnscheduledEntry<IntakeLead>[] = [];
+  const unscheduledFuture: UnscheduledEntry<IntakeLead>[] = [];
+  let withManager = 0;
   const excluded: Record<IntakeExclusion, number> = {
     imported: 0, callDone: 0, sendNow: 0, nurturing: 0, cleanUp: 0,
   };
   const readyAfterMs = READY_AFTER_HOURS * 3_600_000;
 
   for (const lead of leads) {
-    if (isIntakeEscalated(lead)) { withManager.push(lead); continue; }
+    if (isIntakeEscalated(lead)) { withManager++; continue; }
 
     const booking = liveBooking(lead);
     if (booking && booking.date >= ctx.today) {
-      const at = booking.time ? minutesOfDay(booking.time) : null;
-      let when: ScheduledLead["when"] = "later";
-      let minutesUntil: number | null = null;
-      if (booking.date === ctx.today) {
-        if (at === null) when = "today-upcoming";
-        else {
-          minutesUntil = at - ctx.nowMinutes;
-          when = ctx.nowMinutes < at - NOW_BEFORE_MIN ? "today-upcoming"
-            : ctx.nowMinutes <= at + NOW_AFTER_MIN ? "today-now"
-            : "today-passed";
-        }
-      }
-      scheduled.push({ lead, booking, minutesUntil, when });
+      const { when, minutesUntil } = classifyBooking(booking.date, booking.time, ctx);
+      const entry: ScheduledEntry<IntakeLead> = { item: lead, date: booking.date, time: booking.time, when, minutesUntil };
+      (booking.date === ctx.today ? scheduledToday : scheduledFuture).push(entry);
       continue;
     }
 
@@ -424,37 +548,34 @@ export function intakeBuckets(leads: IntakeLead[], ctx: IntakeContext): IntakeBu
 
     const waited = waitingMs(lead.createdAt, ctx.nowMs);
     const attempts = toCount(lead.attemptCounter);
-    if (attempts >= MAX_INTAKE_ATTEMPTS) { exhausted.push({ lead, waitingMs: waited, attempts }); continue; }
-    if (waited < readyAfterMs) { excluded.nurturing++; continue; }
-    ready.push({ lead, waitingMs: waited, attempts });
+    // The automated window only applies before anybody has rung them — a
+    // patient a rep already called is already being worked.
+    if (attempts === 0 && waited < readyAfterMs) { excluded.nurturing++; continue; }
+
+    const { horizon, overdueDays } = followUpHorizon(lead.followUpDate, ctx.today);
+    const entry: UnscheduledEntry<IntakeLead> = {
+      item: lead, attempts, followUpDate: ymd(lead.followUpDate), overdueDays, waitingMs: waited,
+    };
+    (horizon === "today" ? unscheduledToday : unscheduledFuture).push(entry);
   }
 
-  scheduled.sort((a, b) => {
-    if (a.booking.date !== b.booking.date) return a.booking.date < b.booking.date ? -1 : 1;
-    // Within today, a passed call goes after the ones still to make.
-    const pa = a.when === "today-passed" ? 1 : 0;
-    const pb = b.when === "today-passed" ? 1 : 0;
-    if (pa !== pb) return pa - pb;
-    const ta = a.booking.time ? minutesOfDay(a.booking.time) : null;
-    const tb = b.booking.time ? minutesOfDay(b.booking.time) : null;
-    if (ta === null && tb === null) return a.lead.name.localeCompare(b.lead.name);
-    if (ta === null) return 1;
-    if (tb === null) return -1;
-    return ta - tb || a.lead.name.localeCompare(b.lead.name);
-  });
-  // Longest-waiting first — Corey's header text for this column, verbatim.
-  ready.sort((a, b) => b.waitingMs - a.waitingMs || a.lead.name.localeCompare(b.lead.name));
-  exhausted.sort((a, b) => a.waitingMs - b.waitingMs || a.lead.name.localeCompare(b.lead.name));
+  const name = (l: IntakeLead) => l.name;
+  scheduledToday.sort((a, b) => byBookingTime(a, b, name));
+  scheduledFuture.sort((a, b) => byBookingTime(a, b, name));
+  // Today: most overdue first, then longest-waiting — the header's own rule.
+  unscheduledToday.sort((a, b) =>
+    b.overdueDays - a.overdueDays || b.waitingMs - a.waitingMs || a.item.name.localeCompare(b.item.name));
+  // Future: soonest date first.
+  unscheduledFuture.sort((a, b) =>
+    (a.followUpDate < b.followUpDate ? -1 : a.followUpDate > b.followUpDate ? 1 : 0) ||
+    b.waitingMs - a.waitingMs || a.item.name.localeCompare(b.item.name));
 
-  return { scheduled, ready, exhausted, withManager, excluded };
+  return { scheduledToday, scheduledFuture, unscheduledToday, unscheduledFuture, withManager, excluded };
 }
 
-/** How many ready leads nobody has rung yet. The column's alert pill. */
-export function uncalledCount(ready: ReadyLead[]): number {
-  return ready.filter((r) => r.attempts === 0).length;
-}
-
-/* ── Chase (Confirm Receipt + Chase Clinicals) ───────────────── */
+/* ── Chase (Confirm Receipt + Chase Clinicals) — kept for the day the column
+ *    comes back; not rendered since 2026-09-10 and not part of the 2026-09-14
+ *    redesign. ──────────────────────────────────────────────── */
 
 export interface ChaseEntry {
   item: ChaseItem;
@@ -479,8 +600,8 @@ export function isChaseStage(subStage: string): subStage is ChaseStage {
 }
 
 /**
- * The middle column. Mirrors `useRoleCounts`' Medical Evaluation rule for the
- * two stages, then splits "not due" into its two honest reasons.
+ * Mirrors `useRoleCounts`' Medical Evaluation rule for the two stages, then
+ * splits "not due" into its two honest reasons.
  */
 export function chaseBuckets(items: ChaseItem[], today: string): ChaseBuckets {
   const due: ChaseEntry[] = [];
@@ -519,23 +640,14 @@ export function overdueCount(due: ChaseEntry[]): number {
 
 /* ── Welcome Call ────────────────────────────────────────────── */
 
-export interface WelcomeCallEntry {
-  item: WelcomeCallItem;
+export interface WelcomeCallFlags {
   firstTimePump: boolean;
   crossSell: boolean;
-  attempts: number;
 }
 
-export interface WelcomeCallBuckets {
-  /** Not snoozed, not escalated. Oldest arrival first. */
-  callNow: WelcomeCallEntry[];
-  /** Follow Up = "Done" — asleep, with a date when one was set. Soonest first,
-   *  dateless last. */
-  followUpLater: WelcomeCallEntry[];
-  /** Escalation index 0 — the manager's (Manager Intervention). */
-  withManager: WelcomeCallEntry[];
+export interface WelcomeCallBuckets extends ColumnBuckets<WelcomeCallItem> {
   /** Escalation index 2 — proposed stuck, awaiting a Final Decision in
-   *  Oversight. Counted for the footer, never listed (the chase column's rule). */
+   *  Oversight. Counted for the footer, never listed. */
   proposedStuck: number;
 }
 
@@ -549,72 +661,114 @@ export function isWelcomeCallProposedStuck(item: Pick<WelcomeCallItem, "escalati
   return (item.escalation ?? "").trim() === WC_PROPOSED_STUCK_LABEL;
 }
 
-export function welcomeCallBuckets(items: WelcomeCallItem[]): WelcomeCallBuckets {
-  const callNow: WelcomeCallEntry[] = [];
-  const followUpLater: WelcomeCallEntry[] = [];
-  const withManager: WelcomeCallEntry[] = [];
+export function welcomeCallFlags(item: WelcomeCallItem): WelcomeCallFlags {
+  return { firstTimePump: isFirstTimePumpUser(item), crossSell: isCrossSell(item) };
+}
+
+/** The one board fact about texts on this board: 1 once the Welcome Call
+ *  Text trigger has been pressed, else 0 (Josh, 2026-09-14). */
+export function welcomeCallTexts(item: Pick<WelcomeCallItem, "welcomeCallText">): number {
+  return (item.welcomeCallText ?? "").trim() ? 1 : 0;
+}
+
+/**
+ * Welcome-call bookings by invitee email, from the gateway's Calendly window
+ * (§5.31e). `null` for an address with nothing booked. A patient whose
+ * address is not in the map is treated as unbooked — so the caller must
+ * only pass a map from a SUCCESSFUL read, and say so on screen otherwise
+ * (a failed read is not "nobody is booked").
+ */
+export type WelcomeBookingMap = ReadonlyMap<string, WelcomeCallBooking | null>;
+
+const emailKey = (e: string) => (e ?? "").trim().toLowerCase();
+
+export function welcomeCallBuckets(
+  items: WelcomeCallItem[],
+  ctx: BucketContext,
+  bookings: WelcomeBookingMap = new Map(),
+): WelcomeCallBuckets {
+  const scheduledToday: ScheduledEntry<WelcomeCallItem>[] = [];
+  const scheduledFuture: ScheduledEntry<WelcomeCallItem>[] = [];
+  const unscheduledToday: UnscheduledEntry<WelcomeCallItem>[] = [];
+  const unscheduledFuture: UnscheduledEntry<WelcomeCallItem>[] = [];
+  let withManager = 0;
   let proposedStuck = 0;
 
   for (const item of items) {
-    const entry: WelcomeCallEntry = {
-      item,
-      firstTimePump: isFirstTimePumpUser(item),
-      crossSell: isCrossSell(item),
-      attempts: toCount(item.callAttempts),
-    };
     if (isWelcomeCallProposedStuck(item)) { proposedStuck++; continue; }
-    if (isWelcomeCallEscalated(item)) { withManager.push(entry); continue; }
-    if ((item.followUp ?? "").trim() === "Done") { followUpLater.push(entry); continue; }
-    callNow.push(entry);
+    if (isWelcomeCallEscalated(item)) { withManager++; continue; }
+
+    const booking = bookings.get(emailKey(item.email)) ?? null;
+    if (booking) {
+      // Calendly gives a real UTC instant; the grid and the lists are naive
+      // Eastern, so convert ONCE here (§5.15's inversion — see scheduleEntries).
+      const { date, time } = etPartsOf(booking.startTime);
+      if (date && date >= ctx.today) {
+        const { when, minutesUntil } = classifyBooking(date, time, ctx);
+        const entry: ScheduledEntry<WelcomeCallItem> = { item, date, time, when, minutesUntil, booking };
+        (date === ctx.today ? scheduledToday : scheduledFuture).push(entry);
+        continue;
+      }
+    }
+
+    const snoozed = (item.followUp ?? "").trim() === "Done";
+    const { horizon, overdueDays } = followUpHorizon(snoozed ? item.followUpDate : "", ctx.today);
+    const entry: UnscheduledEntry<WelcomeCallItem> = {
+      item, attempts: toCount(item.callAttempts),
+      followUpDate: snoozed ? ymd(item.followUpDate) : "",
+      overdueDays, waitingMs: waitingMs(item.createdAt, ctx.nowMs),
+    };
+    (horizon === "today" ? unscheduledToday : unscheduledFuture).push(entry);
   }
 
-  const byCreated = (a: WelcomeCallEntry, b: WelcomeCallEntry) =>
+  const name = (w: WelcomeCallItem) => w.name;
+  scheduledToday.sort((a, b) => byBookingTime(a, b, name));
+  scheduledFuture.sort((a, b) => byBookingTime(a, b, name));
+  // Oldest arrival first, overdue snoozes ahead of the rest.
+  const byCreated = (a: UnscheduledEntry<WelcomeCallItem>, b: UnscheduledEntry<WelcomeCallItem>) =>
     (Date.parse(a.item.createdAt) || 0) - (Date.parse(b.item.createdAt) || 0) ||
     a.item.name.localeCompare(b.item.name);
-  callNow.sort(byCreated);
-  withManager.sort(byCreated);
-  followUpLater.sort((a, b) => {
-    const da = ymd(a.item.followUpDate);
-    const db = ymd(b.item.followUpDate);
-    if (!da && !db) return byCreated(a, b);
-    if (!da) return 1;
-    if (!db) return -1;
-    return da < db ? -1 : da > db ? 1 : byCreated(a, b);
-  });
+  unscheduledToday.sort((a, b) => b.overdueDays - a.overdueDays || byCreated(a, b));
+  unscheduledFuture.sort((a, b) =>
+    (a.followUpDate < b.followUpDate ? -1 : a.followUpDate > b.followUpDate ? 1 : 0) || byCreated(a, b));
 
-  return { callNow, followUpLater, withManager, proposedStuck };
+  return { scheduledToday, scheduledFuture, unscheduledToday, unscheduledFuture, withManager, proposedStuck };
 }
 
 /* ── The header ──────────────────────────────────────────────── */
 
-export interface Summary {
+export interface ColumnSummary {
+  today: { scheduled: number; unscheduled: number };
+  future: { scheduled: number; unscheduled: number };
+  /** Everything the coordinator can pick up in this column, both horizons. */
   total: number;
-  intake: number;
-  chase: number;
-  welcome: number;
+  /** Unscheduled patients whose follow-up date has already passed. */
   overdue: number;
-  escalated: number;
 }
 
-/**
- * The chips across the top. "Total in pipeline" is the work the coordinator
- * can pick up — booked or ready intake calls, every un-escalated chase patient
- * (due or snoozed), every un-escalated Welcome Call patient. Escalated
- * patients are counted separately: they are on screen, but they are a
- * manager's to move.
- */
-export function summarize(intake: IntakeBuckets, chase: ChaseBuckets, welcome: WelcomeCallBuckets): Summary {
-  const intakeN = intake.scheduled.length + intake.ready.length;
-  const chaseN = chase.due.length + chase.upcoming.length + chase.awaitingVisit.length;
-  const welcomeN = welcome.callNow.length + welcome.followUpLater.length;
+export function columnSummary<T>(b: ColumnBuckets<T>): ColumnSummary {
+  const overdue = b.unscheduledToday.filter((e) => e.overdueDays > 0).length;
   return {
-    total: intakeN + chaseN + welcomeN,
-    intake: intakeN,
-    chase: chaseN,
-    welcome: welcomeN,
-    overdue: overdueCount(chase.due),
-    escalated: intake.withManager.length + chase.withManager.length + welcome.withManager.length,
+    today: { scheduled: b.scheduledToday.length, unscheduled: b.unscheduledToday.length },
+    future: { scheduled: b.scheduledFuture.length, unscheduled: b.unscheduledFuture.length },
+    total: b.scheduledToday.length + b.scheduledFuture.length + b.unscheduledToday.length + b.unscheduledFuture.length,
+    overdue,
   };
+}
+
+export interface Summary {
+  total: number;
+  intake: ColumnSummary;
+  welcome: ColumnSummary;
+  overdue: number;
+}
+
+/** The overview across the top. Escalated patients are not in it — they are
+ *  a manager's, and this screen says so in each column's footer. */
+export function summarize(intake: IntakeBuckets, welcome: WelcomeCallBuckets): Summary {
+  const i = columnSummary(intake);
+  const w = columnSummary(welcome);
+  return { total: i.total + w.total, intake: i, welcome: w, overdue: i.overdue + w.overdue };
 }
 
 /* ── The schedule grid's input ───────────────────────────────── */

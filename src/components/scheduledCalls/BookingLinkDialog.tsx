@@ -22,7 +22,9 @@ import { isOptedOut } from "@/lib/assignedPatients/optOut";
 import { sendViaWorker, SendValidationError } from "@/lib/shared/sendViaWorker";
 // The prefill is what lets the booking find its way back to the patient's row —
 // see the module for why the mirror can't work without it.
-import { bookingLinkFor } from "@/lib/scheduledCalls/bookingLink";
+import {
+  bookingLinkFor, bookingMessage, BOOKING_KIND_LABEL, BOOKING_URLS, type BookingKind,
+} from "@/lib/scheduledCalls/bookingLink";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,22 +36,19 @@ import { cn } from "@/lib/utils";
  * means the rep cannot do the thing they opened this dialog to do.
  */
 const SCHEDULING_ENDPOINT = "https://dtc-mm-form-api-production.up.railway.app/api/intake/scheduling";
-const FALLBACK_URL = "https://calendly.com/records-medicallymodern/medically-modern-intake-call";
 
 type Mode = "text" | "email";
 
 const digits = (s: string) => s.replace(/\D/g, "");
 
-function defaultMessage(url: string, name: string): string {
-  const hi = name.trim() ? `Hi ${name.trim().split(/\s+/)[0]}, ` : "Hi, ";
-  return `${hi}it's Medically Modern. Pick a time for a quick 10-minute call and we'll walk you through your options: ${url}`;
-}
-
 export default function BookingLinkDialog({
-  open, onOpenChange, patientName, phone, email,
+  open, onOpenChange, patientName, phone, email, defaultKind = "intake",
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /** Which call the dropdown opens on. The Care Coordinator's Welcome Call
+   *  cards pass "welcome"; everything else is the intake call, as before. */
+  defaultKind?: BookingKind;
   /** Optional prefill. The Care Coordinator header opens this with no patient in hand and
    *  passes nothing, so it behaves exactly as before. Patient Intake opens it
    *  from a record already on screen — making the rep retype the name and
@@ -58,7 +57,11 @@ export default function BookingLinkDialog({
   phone?: string;
   email?: string;
 }) {
-  const [url, setUrl] = useState(FALLBACK_URL);
+  const [kind, setKind] = useState<BookingKind>(defaultKind);
+  /** The intake link as the form backend reports it; the welcome link has no
+   *  such source and is the constant (bookingLink.ts says why). */
+  const [intakeUrl, setIntakeUrl] = useState(BOOKING_URLS.intake);
+  const url = kind === "intake" ? intakeUrl : BOOKING_URLS.welcome;
   const [mode, setMode] = useState<Mode>("text");
   const [name, setName] = useState("");
   /** One recipient PER CHANNEL, so flipping Text ↔ Email never wipes what's
@@ -67,7 +70,7 @@ export default function BookingLinkDialog({
   const [recipients, setRecipients] = useState<{ text: string; email: string }>({ text: "", email: "" });
   const to = recipients[mode];
   const setTo = (v: string) => setRecipients((r) => ({ ...r, [mode]: v }));
-  const [body, setBody] = useState(defaultMessage(FALLBACK_URL, ""));
+  const [body, setBody] = useState(bookingMessage(defaultKind, BOOKING_URLS[defaultKind], ""));
   const [touched, setTouched] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -75,7 +78,7 @@ export default function BookingLinkDialog({
     if (!open) return;
     fetch(SCHEDULING_ENDPOINT)
       .then((r) => r.json())
-      .then((d) => { if (d?.enabled && d.url) setUrl(d.url); })
+      .then((d) => { if (d?.enabled && d.url) setIntakeUrl(d.url); })
       .catch(() => { /* fallback already in state */ });
   }, [open]);
 
@@ -93,6 +96,7 @@ export default function BookingLinkDialog({
     const p = digits(phone ?? "");
     const e = (email ?? "").trim();
     setName(patientName ?? "");
+    setKind(defaultKind);
     setTouched(false);
     // BOTH channels seed, whatever mode opens — the toggle then just switches
     // between two already-filled boxes.
@@ -123,12 +127,12 @@ export default function BookingLinkDialog({
   // after that it is theirs, and rewriting what somebody typed is worse than a
   // slightly stale opener.
   useEffect(() => {
-    if (!touched) setBody(defaultMessage(link, name));
-  }, [link, name, touched]);
+    if (!touched) setBody(bookingMessage(kind, link, name));
+  }, [kind, link, name, touched]);
 
   const reset = () => {
     setName(""); setRecipients({ text: "", email: "" }); setTouched(false);
-    setBody(defaultMessage(link, ""));
+    setBody(bookingMessage(kind, link, ""));
   };
 
   async function send() {
@@ -165,7 +169,7 @@ export default function BookingLinkDialog({
         await sendViaWorker({
           recipients: [dest],
           cc: [],
-          subject: "Book your call with Medically Modern",
+          subject: kind === "welcome" ? "Book your welcome call with Medically Modern" : "Book your call with Medically Modern",
           body,
           files: [],
         });
@@ -192,6 +196,19 @@ export default function BookingLinkDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Which call — the link in the message swaps with it (Brandon, 2026-09-14). */}
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium">Which call</span>
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as BookingKind)}
+              className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm"
+            >
+              {(Object.keys(BOOKING_KIND_LABEL) as BookingKind[]).map((k) => (
+                <option key={k} value={k}>{BOOKING_KIND_LABEL[k]}</option>
+              ))}
+            </select>
+          </label>
           <div className="flex gap-2">
             {(["text", "email"] as Mode[]).map((m) => (
               <button

@@ -4,6 +4,8 @@ import {
   etDateString,
   indexByEmail,
   looksLikeEmail,
+  lookupMany,
+  MAX_LOOKUP_EMAILS,
   normalizeEmail,
   pickBooking,
   windowDates,
@@ -152,5 +154,27 @@ describe("pickBooking", () => {
   it("is null when there is nothing", () => {
     expect(pickBooking([], now)).toBeNull();
     expect(pickBooking(undefined, now)).toBeNull();
+  });
+});
+
+describe("lookupMany — the dashboard's batch (§5.30)", () => {
+  const idx = indexByEmail([
+    booking(),
+    booking({ email: "two@example.com", startTime: "2026-09-13T15:00:00Z", endTime: "2026-09-13T15:10:00Z" }),
+  ]);
+  const now = "2026-09-10T12:00:00Z";
+
+  it("answers every real address once, null for nothing booked, and skips non-addresses", () => {
+    const out = lookupMany(idx, ["NejwaNegash@gmail.com ", "two@example.com", "nobody@example.com", "", "not an email", "two@example.com"], now);
+    expect(Object.keys(out)).toEqual(["nejwanegash@gmail.com", "two@example.com", "nobody@example.com"]);
+    expect(out["nejwanegash@gmail.com"].startTime).toBe("2026-09-12T18:00:00.000000Z");
+    expect(out["two@example.com"].startTime).toBe("2026-09-13T15:00:00Z");
+    expect(out["nobody@example.com"]).toBeNull();
+  });
+
+  it("caps the answer and tolerates a non-array", () => {
+    const many = Array.from({ length: MAX_LOOKUP_EMAILS + 5 }, (_, i) => `p${i}@example.com`);
+    expect(Object.keys(lookupMany(idx, many, now)).length).toBe(MAX_LOOKUP_EMAILS);
+    expect(lookupMany(idx, undefined, now)).toEqual({});
   });
 });

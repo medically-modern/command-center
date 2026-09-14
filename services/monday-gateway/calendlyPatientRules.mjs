@@ -139,3 +139,28 @@ export function pickBooking(bookings, nowIso = new Date().toISOString()) {
   const live = list.find((b) => String(b.endTime || b.startTime) >= now);
   return live ?? list[list.length - 1];
 }
+
+/**
+ * Many patients at once — the Care Coordinator dashboard's read (§5.30).
+ *
+ * One answer per DISTINCT normalised address, `null` for an address with
+ * nothing booked in the window. Addresses that do not look like one are
+ * skipped rather than answered: "we have no address" and "nothing booked" are
+ * different facts and the caller only ever passes real ones. Capped so a
+ * caller cannot turn one request into an unbounded map — the dashboard's
+ * biggest list is a few hundred rows.
+ */
+export const MAX_LOOKUP_EMAILS = 500;
+
+export function lookupMany(byEmail, emails, nowIso = new Date().toISOString(), cap = MAX_LOOKUP_EMAILS) {
+  const out = {};
+  let n = 0;
+  for (const raw of Array.isArray(emails) ? emails : []) {
+    const key = normalizeEmail(raw);
+    if (!looksLikeEmail(key) || key in out) continue;
+    if (n >= cap) break;
+    out[key] = pickBooking(byEmail.get(key) ?? [], nowIso);
+    n += 1;
+  }
+  return out;
+}

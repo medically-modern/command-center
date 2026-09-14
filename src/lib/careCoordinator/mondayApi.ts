@@ -135,6 +135,9 @@ function statusIndex(item: RawItem, id: string): number | null {
  */
 export const INTAKE_GROUP_IDS: readonly string[] = [SCHED_GROUPS.partial, SCHED_GROUPS.completed, SCHED_GROUPS.profileCleanUp];
 export const INTAKE_FORM_GROUP_IDS: readonly string[] = [PROFILE_GROUPS.newFormPartial, PROFILE_GROUPS.newFormCompleted];
+/** The two form groups BY NAME — the card's Completed / Partial pill reads the
+ *  group, not the Drop-off Step (`workflow.formCompletion` says why). */
+export const INTAKE_FORM_GROUPS = { partial: PROFILE_GROUPS.newFormPartial, completed: PROFILE_GROUPS.newFormCompleted } as const;
 
 /**
  * ⚠️ NO NOTES COLUMN HERE. The Partial Leads group is ~1,700 rows and Profile
@@ -151,6 +154,11 @@ const INTAKE_COLS: string[] = [
   PROFILE_COL.referralType, PROFILE_COL.referralSource, PROFILE_COL.alreadyInSystem,
   PROFILE_COL.followUp, PROFILE_COL.followUpDate, PROFILE_COL.dupCheckResult,
   PROFILE_COL.formState, PROFILE_COL.generalInsurance,
+  // The card's Doctor / Clinic lines and its pills (Brandon, 2026-09-14) — the
+  // PROVIDED columns, i.e. what the patient typed on the form, never the
+  // verified doctor (§5.20).
+  PROFILE_COL.formProvidedDoctorName, PROFILE_COL.formProvidedClinicPhone,
+  PROFILE_COL.insulinPumpCoveragePath, PROFILE_COL.cgmCoveragePath,
   // Needed to hand the schedule grid a full `ScheduledCall` (BookingLinkDialog
   // reads the event URI) without a second read of the same groups.
   SCHED_COL.calendlyEventUri,
@@ -184,6 +192,10 @@ function toIntakeLead(item: RawItem): IntakeLead {
     state: text(item, PROFILE_COL.formState),
     generalInsurance: text(item, PROFILE_COL.generalInsurance),
     calendlyEventUri: text(item, SCHED_COL.calendlyEventUri),
+    providedDoctorName: text(item, PROFILE_COL.formProvidedDoctorName),
+    providedClinicPhone: text(item, PROFILE_COL.formProvidedClinicPhone),
+    ipCoveragePath: text(item, PROFILE_COL.insulinPumpCoveragePath),
+    cgmCoveragePath: text(item, PROFILE_COL.cgmCoveragePath),
   };
 }
 
@@ -264,6 +276,11 @@ const WC_COLS: string[] = [
   WC_COL.followUp, WC_COL.followUpDate, WC_COL.serving, WC_COL.requestType, WC_COL.pumpQty,
   WC_COL.ipLastBillDate, WC_COL.medicarePriorPumpDate, WC_COL.callAttempts, WC_COL.doctorName,
   WC_COL.primaryInsurance, WC_COL.referralReceivedDate,
+  // The card's pills, Doctor / Clinic lines and the text count (Brandon,
+  // 2026-09-14). ⚠️ The two coverage-path ids are THIS board's, not Profile
+  // Send Off's — verified live against the 156-column board the same day.
+  WC_COL.referralSource, WC_COL.insulinPumpCoveragePath, WC_COL.cgmCoveragePath,
+  WC_COL.doctorPhone, WC_COL.clinicName, WC_COL.clinicAddress, WC_COL.welcomeCallText,
 ];
 
 function toWelcomeCallItem(item: RawItem): WelcomeCallItem {
@@ -287,6 +304,13 @@ function toWelcomeCallItem(item: RawItem): WelcomeCallItem {
     doctorName: text(item, WC_COL.doctorName),
     primaryInsurance: text(item, WC_COL.primaryInsurance),
     referralReceivedDate: text(item, WC_COL.referralReceivedDate),
+    referralSource: text(item, WC_COL.referralSource),
+    ipCoveragePath: text(item, WC_COL.insulinPumpCoveragePath),
+    cgmCoveragePath: text(item, WC_COL.cgmCoveragePath),
+    doctorPhone: text(item, WC_COL.doctorPhone),
+    clinicName: text(item, WC_COL.clinicName),
+    clinicAddress: text(item, WC_COL.clinicAddress),
+    welcomeCallText: text(item, WC_COL.welcomeCallText),
   };
 }
 

@@ -95,6 +95,54 @@ export async function fetchWelcomeCallBooking(email: string): Promise<BookingLoo
   }
 }
 
+export interface BookingsLookup {
+  /** False when we could not CHECK — the map is then empty and MUST NOT be
+   *  read as "nobody is booked". */
+  ok: boolean;
+  /** Normalised email → booking, or null for nothing booked in the window. */
+  bookings: Map<string, WelcomeCallBooking | null>;
+  error: string | null;
+  through: string | null;
+}
+
+/**
+ * Many patients' welcome calls in ONE request — the Care Coordinator
+ * dashboard's read (§5.30). `POST /calendly/patients` answers every address
+ * from the gateway's shared window index, so a column of forty patients costs
+ * one round trip and no extra Calendly reads. Blank addresses are dropped
+ * before sending: they can never be answered.
+ */
+export async function fetchWelcomeCallBookings(emails: string[]): Promise<BookingsLookup> {
+  const empty = new Map<string, WelcomeCallBooking | null>();
+  if (!welcomeCallBookingAvailable()) {
+    return { ok: false, bookings: empty, error: "No gateway is configured in this build.", through: null };
+  }
+  const list = Array.from(new Set(emails.map((e) => (e ?? "").trim().toLowerCase()).filter((e) => e.includes("@"))));
+  if (!list.length) return { ok: true, bookings: empty, error: null, through: null };
+
+  try {
+    const res = await fetch(`${MONDAY_GATEWAY_BASE}/calendly/patients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...mondayIdentityHeaders() },
+      body: JSON.stringify({ emails: list }),
+    });
+    const json = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      bookings?: Record<string, WelcomeCallBooking | null>;
+      through?: string;
+      error?: string;
+    } | null;
+    if (!res.ok || !json?.ok) {
+      return { ok: false, bookings: empty, error: json?.error || `Calendly lookup failed (HTTP ${res.status}).`, through: null };
+    }
+    const map = new Map<string, WelcomeCallBooking | null>();
+    for (const [k, v] of Object.entries(json.bookings ?? {})) map.set(k, v ?? null);
+    return { ok: true, bookings: map, error: null, through: json.through ?? null };
+  } catch (e) {
+    return { ok: false, bookings: empty, error: e instanceof Error ? e.message : String(e), through: null };
+  }
+}
+
 /* ─── Rendering the time ─── */
 
 /** Eastern `YYYY-MM-DD` for a real UTC instant. */

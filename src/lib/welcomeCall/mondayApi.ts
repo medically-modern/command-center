@@ -100,6 +100,16 @@ export const COL = {
   /* Clinic Name — read so the infusion favourite can key off the practice
    * (Brandon's Joslin rule). Display/logic only; this stage never writes it. */
   clinicName: "dropdown_mm1xbvas",
+  /** Doctor Phone `phone_mm1xz8c0` · Clinic Address `location_mm1xjnfv` · the
+   *  two coverage paths — read by the Care Coordinator dashboard (§5.30).
+   *  NOT in this stage's own READ set below; add them there if the Welcome
+   *  Call page ever needs them. ⚠️ The coverage-path ids differ from Profile
+   *  Send Off's (`color_mm1w5xn1` / `color_mm1w7e5q`) — same board, same
+   *  label text, different column id (the §5.33 per-board-id rule). */
+  doctorPhone: "phone_mm1xz8c0",
+  clinicAddress: "location_mm1xjnfv",
+  insulinPumpCoveragePath: "color_mm2xtn41",
+  cgmCoveragePath: "color_mm2wsam4",
   referralSource: "color_mm1w5wxr",
   referralReceivedDate: "date_mm1x4e1r",
   diagnosis: "color_mm1wf7rv",

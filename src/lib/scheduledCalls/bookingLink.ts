@@ -62,3 +62,37 @@ export function bookingLinkFor(
   const withPrefill = `${head}${sep}${params.join("&")}`;
   return fragment ? `${withPrefill}#${fragment}` : withPrefill;
 }
+
+/* ── Which call ───────────────────────────────────────────────── */
+
+/** Intake call or welcome call — two Calendly event types on the same account
+ *  (§5.30b). The dialog's dropdown (Brandon, 2026-09-14) picks one. */
+export type BookingKind = "intake" | "welcome";
+
+/**
+ * The two scheduling links.
+ *
+ * Intake is read live from the form backend's `/api/intake/scheduling` and
+ * this is its fallback. Welcome has NO service exposing it — dtc-mm-form
+ * resolves the welcome event type but hands back only its API URI, which a
+ * person cannot open (§5.31e) — so this constant IS the source. Josh pasted it
+ * from the Calendly console 2026-09-14; verified to answer HTTP 200 the same
+ * day. If the event type is ever recreated, this string is what changes.
+ */
+export const BOOKING_URLS: Record<BookingKind, string> = {
+  intake: "https://calendly.com/records-medicallymodern/medically-modern-intake-call",
+  welcome: "https://calendly.com/records-medicallymodern/welcome-call",
+};
+
+export const BOOKING_KIND_LABEL: Record<BookingKind, string> = {
+  intake: "Intake call",
+  welcome: "Welcome call",
+};
+
+/** The message a rep sends — the link swaps with the kind. */
+export function bookingMessage(kind: BookingKind, url: string, name: string): string {
+  const hi = name.trim() ? `Hi ${name.trim().split(/\s+/)[0]}, ` : "Hi, ";
+  return kind === "welcome"
+    ? `${hi}it's Medically Modern. Pick a time for your 10-minute welcome call and we'll get everything set up: ${url}`
+    : `${hi}it's Medically Modern. Pick a time for a quick 10-minute call and we'll walk you through your options: ${url}`;
+}

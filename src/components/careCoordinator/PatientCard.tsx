@@ -1,65 +1,49 @@
 /**
- * One patient on the Care Coordinator dashboard.
+ * One patient on the Care Coordinator dashboard — Brandon's 2026-09-14 box.
  *
- * A shell with slots — name, a right-hand "when", a sub line, a chip row, a
- * body, and a footer — plus the two things every card shares: the stage's
- * Call · Text · Calls trio (`PatientContact`, the same buttons every stage
- * header carries, so texting and call history behave identically here) and an
- * on-demand Notes drawer.
+ *   ┃ Name                                          [when]
+ *   ┃ Doctor: … · Clinic: …
+ *   ┃ [pill] [pill] [pill]                     📞 2   💬 1
+ *   ┃ ──────────────────────────────────────────────────
+ *   ┃ Call · Text · Call Log      notes · Open   [Booking Link]
+ *
+ * The left edge is ONE of two colours: Medically Modern green once a call
+ * has been attempted, gray until then. No status badge, no sub line beyond
+ * Doctor / Clinic, every pill neutral gray and hidden when blank. The next
+ * scheduled call's box is shaded darker.
+ *
+ * Kept from the previous card, though not in Brandon's list: "See notes" and
+ * "Open". Open is how the coordinator reaches the stage page where the
+ * attempt is LOGGED (the dashboard itself still writes nothing), and the
+ * notes drawer is the running case history a caller reads before dialling.
+ * Both are quiet text links so the row stays uncrowded.
  *
  * ⚠️ Notes are fetched when OPENED, one item at a time (`fetchItemNotes`). The
  * column reads deliberately carry no notes column — see mondayApi.ts.
- *
- * Nothing on the card writes to Monday. "Open" hands the patient to the stage
- * page, whose own write path does the work.
  */
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ChevronUp, ExternalLink, NotebookPen } from "lucide-react";
+import { CalendarPlus, ChevronDown, ChevronUp, ExternalLink, MessageSquare, NotebookPen, Phone } from "lucide-react";
 
 import { PatientContact } from "@/components/masheke/mmKit";
 import { fetchItemNotes } from "@/lib/careCoordinator/mondayApi";
 import { cn } from "@/lib/utils";
 
-export type Tone = "neutral" | "info" | "good" | "warn" | "bad" | "muted";
-
-const CHIP_TONE: Record<Tone, string> = {
-  neutral: "border-border bg-background text-foreground",
-  info: "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100",
-  good: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100",
-  warn: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100",
-  bad: "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100",
-  muted: "border-border bg-muted text-muted-foreground",
-};
-
-export function Chip({ tone = "neutral", children, title }: { tone?: Tone; children: ReactNode; title?: string }) {
+/** A gray pill. Blank values never reach here — the caller filters them. */
+export function Pill({ children, title }: { children: ReactNode; title?: string }) {
   return (
     <span
       title={title}
-      className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-tight whitespace-nowrap", CHIP_TONE[tone])}
+      className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium leading-tight text-foreground whitespace-nowrap"
     >
       {children}
     </span>
   );
 }
 
-/** The card's right-hand "when" — a time, a wait, an overdue count. */
-export function When({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
-  const colour: Record<Tone, string> = {
-    neutral: "text-foreground",
-    info: "text-sky-700 dark:text-sky-300",
-    good: "text-emerald-700 dark:text-emerald-300",
-    warn: "text-amber-700 dark:text-amber-300",
-    bad: "text-rose-700 dark:text-rose-300",
-    muted: "text-muted-foreground",
-  };
-  return <span className={cn("shrink-0 text-sm font-semibold tabular-nums", colour[tone])}>{children}</span>;
-}
-
 /**
  * The notes drawer's state lives in the card so the toggle can sit on the
- * footer row while the panel renders FULL WIDTH beneath it — inline in the row
- * it squeezed against the Open link and, on the narrower columns, drew under it.
+ * footer row while the panel renders FULL WIDTH beneath it.
  */
 function useNotesDrawer(itemId: string, columnId: string) {
   const [open, setOpen] = useState(false);
@@ -84,21 +68,6 @@ function useNotesDrawer(itemId: string, columnId: string) {
   return { open, notes, loading, error, toggle };
 }
 
-function NotesToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent"
-    >
-      <NotebookPen className="h-3.5 w-3.5" aria-hidden />
-      {open ? "Hide notes" : "See notes"}
-      {open ? <ChevronUp className="h-3 w-3" aria-hidden /> : <ChevronDown className="h-3 w-3" aria-hidden />}
-    </button>
-  );
-}
-
 function NotesPanel({ label, notes, loading, error }: { label: string; notes: string | null; loading: boolean; error: string | null }) {
   return (
     <div className="rounded-md border bg-muted/40 p-2.5 text-xs">
@@ -115,68 +84,92 @@ function NotesPanel({ label, notes, loading, error }: { label: string; notes: st
 }
 
 export function PatientCard({
-  name, when, sub, badge, chips, body, phone, notes, openHref, openLabel, tone = "neutral", extraActions,
+  name, attempted, nextUp = false, doctor, clinic, when, pills, attempts, texts,
+  phone, notes, openHref, openLabel, onBookingLink,
 }: {
   name: string;
-  when?: ReactNode;
-  sub?: ReactNode;
-  /** The Profile Status badge, or nothing. */
-  badge?: ReactNode;
-  chips?: ReactNode;
-  body?: ReactNode;
+  /** Has anybody rung them yet? Green edge when true, gray when false. */
+  attempted: boolean;
+  /** The scheduled call up next — the one box shaded darker. */
+  nextUp?: boolean;
+  doctor?: string;
+  clinic?: string;
+  /** The right-hand time or "N days". */
+  when: ReactNode;
+  /** Already filtered of blanks. */
+  pills: string[];
+  attempts: number;
+  texts: number;
   phone: string;
   /** Which notes column this patient's running history lives in. */
   notes: { itemId: string; columnId: string; label: string };
   /** Deep link into the stage page that WORKS this patient. */
   openHref: string;
   openLabel: string;
-  /** Left-edge accent. */
-  tone?: Tone;
-  extraActions?: ReactNode;
+  onBookingLink: () => void;
 }) {
-  const edge: Record<Tone, string> = {
-    neutral: "border-l-border",
-    info: "border-l-sky-400",
-    good: "border-l-emerald-400",
-    warn: "border-l-amber-400",
-    bad: "border-l-rose-400",
-    muted: "border-l-border",
-  };
   const drawer = useNotesDrawer(notes.itemId, notes.columnId);
+  const doctorLine = [doctor?.trim() && `Doctor: ${doctor.trim()}`, clinic?.trim() && `Clinic: ${clinic.trim()}`]
+    .filter(Boolean).join(" · ");
   return (
-    <article className={cn("rounded-xl border border-l-4 bg-card p-3 shadow-sm", edge[tone])}>
+    <article
+      className={cn(
+        "rounded-xl border border-l-4 p-3 shadow-sm",
+        attempted ? "border-l-[color:var(--mm-green)]" : "border-l-slate-300 dark:border-l-slate-600",
+        nextUp ? "bg-slate-200/80 dark:bg-slate-800/70" : "bg-card",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="truncate text-[15px] font-semibold leading-tight">{name}</h4>
-            {badge}
-          </div>
-          {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
+          <h4 className="truncate text-[15px] font-semibold leading-tight">{name}</h4>
+          {doctorLine && <div className="mt-0.5 text-xs text-muted-foreground">{doctorLine}</div>}
         </div>
         {when}
       </div>
 
-      {chips && <div className="mt-2 flex flex-wrap gap-1.5">{chips}</div>}
-      {body && <div className="mt-2 text-xs leading-relaxed">{body}</div>}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {pills.map((p, i) => <Pill key={`${i}:${p}`}>{p}</Pill>)}
+        <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-muted-foreground tabular-nums">
+          <span className="inline-flex items-center gap-1" title="Call attempts">
+            <Phone className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">Call attempts</span>
+            {attempts}
+          </span>
+          <span className="inline-flex items-center gap-1" title="Automated texts">
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">Texts</span>
+            {texts}
+          </span>
+        </span>
+      </div>
 
-      {/* Two rows on purpose: the Call · Text · Calls trio (plus any extra
-          action) on the first, notes and Open on the second. One flex row let
-          the two collide in the narrower columns. */}
       <div className="mt-3 space-y-2 border-t pt-2.5">
         <div className="flex flex-wrap items-center gap-2">
-          <PatientContact phone={phone} />
-          {extraActions}
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <NotesToggle open={drawer.open} onToggle={() => void drawer.toggle()} />
-          <Link
-            to={openHref}
-            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent"
-            title={openLabel}
-          >
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-            Open
-          </Link>
+          <PatientContact phone={phone} textTone="green" callHistoryLabel="Call Log" callHistoryIcon="list" />
+          <span className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void drawer.toggle()}
+              aria-expanded={drawer.open}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <NotebookPen className="h-3.5 w-3.5" aria-hidden />
+              {drawer.open ? "Hide notes" : "See notes"}
+              {drawer.open ? <ChevronUp className="h-3 w-3" aria-hidden /> : <ChevronDown className="h-3 w-3" aria-hidden />}
+            </button>
+            <Link to={openHref} title={openLabel} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              Open
+            </Link>
+            <button
+              type="button"
+              onClick={onBookingLink}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+            >
+              <CalendarPlus className="h-3.5 w-3.5" aria-hidden />
+              Booking Link
+            </button>
+          </span>
         </div>
         {drawer.open && <NotesPanel label={notes.label} notes={drawer.notes} loading={drawer.loading} error={drawer.error} />}
       </div>

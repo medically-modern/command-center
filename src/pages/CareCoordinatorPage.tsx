@@ -1,28 +1,38 @@
 /**
  * Care Coordinator — "My Patients" (the `scheduledCalls` role, renamed 2026-09-08).
  *
- * One person's view of everything a patient needs a phone call for, across the
- * three stages where that happens: the DTC intake queue, Confirm Receipt +
- * Chase Clinicals, and the Welcome Call — with the day's booked intake calls
- * on a grid underneath (the old Scheduled Calls page, whole). CLAUDE.md §5.30.
+ * Rebuilt 2026-09-14 to Brandon's "Notes for masani dashboard (9/14/26)",
+ * kept word for word where the board allowed it. CLAUDE.md §5.30.
  *
- * Confirm Receipt + Chase Clinicals is currently HIDDEN behind
- * `SHOW_CHASE_COLUMN` (Josh, 2026-09-10) — see that flag for what moves with
- * it. The page renders two columns until it comes back.
+ * The page, top to bottom:
+ *   1. Header — the summary as an overview, not pills: total, Patient Intake,
+ *      Welcome Call, overdue.
+ *   2. The day strip — every booked call laid out by time across the screen,
+ *      one day at a time, intake and welcome in their two colours.
+ *   3. Two gray columns, Patient Intake and Welcome Call. Each has the same
+ *      model: Today / Future (default Today), and inside each Scheduled /
+ *      Unscheduled sections with totals.
  *
- * ⚠️ READ-ONLY. Three slim board reads, no writes (lib/careCoordinator/
- * mondayApi.ts). Every button that changes anything — Text, a booking link,
- * "Open" — is either the shared texting component or a hand-off to the stage
- * page whose verified write path already exists. No Monday column, group or
- * automation was added or changed to build this; every rule on this screen is
- * derived from columns the stage pages already read.
+ * ⚠️ STILL READ-ONLY. Two slim board reads plus one gateway request for the
+ * welcome-call bookings (lib/careCoordinator/mondayApi.ts, useWelcomeCallBookings).
+ * Every button that changes anything — Text, a booking link, "Open" — is either
+ * the shared texting component or a hand-off to the stage page whose verified
+ * write path already exists. The follow-up push Brandon asked for lives on the
+ * STAGE pages' attempt loggers (Josh, 2026-09-14): Patient Intake's "Log call
+ * attempt" and Welcome Call's +1 both write the date this page reads.
  *
- * ⚠️ ONE COORDINATOR, NO ASSIGNMENT. Josh, 2026-09-08: "care coordinator is one
- * woman right now … leave [scaling] out for today". The role bar IS the
- * assignment (`access.json` gives her the `scheduledCalls` role); nothing here
- * routes a patient to a person, and every queue stays workable from its own
- * page by anyone — the §5.13 model. If a second coordinator arrives, this is a
- * FILTER over the same lists, never routing.
+ * ⚠️ ONE COORDINATOR, NO ASSIGNMENT (Josh, 2026-09-08). The role bar IS the
+ * assignment; nothing here routes a patient to a person. If a second
+ * coordinator arrives, this is a FILTER over the same lists, never routing.
+ *
+ * Escalated patients render nowhere here — "this user should not see this" —
+ * and are counted in each column's footer; they are worked from Oversight's
+ * manager columns (§7, §5.34).
+ *
+ * Confirm Receipt + Chase Clinicals is NOT on this page. It was hidden behind
+ * a flag on 2026-09-10 and is not part of the 2026-09-14 design; its rules
+ * (`chaseBuckets`) and read (`fetchChaseItems`) survive in the lib for the day
+ * somebody wants a third column, but there is no flag to flip any more.
  *
  * The role's COUNT is unchanged: the bar still reads "booked calls still ahead
  * today" (`useRoleCounts` + both baseline generators, §5.8/§5.15). Changing it
@@ -30,7 +40,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, HeartHandshake, Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, HeartHandshake, Plus, RefreshCw } from "lucide-react";
 
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { useAccessContext } from "@/components/AccessProvider";
@@ -38,51 +48,31 @@ import { getUser } from "@/lib/shared/auth";
 import { hasMondayAuth } from "@/lib/shared/mondayEndpoint";
 import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
+import type { BookingKind } from "@/lib/scheduledCalls/bookingLink";
 import { etToday } from "@/lib/masheke/etDate";
 import { nowMinutesEt, type ScheduledCall } from "@/lib/scheduledCalls/workflow";
 import { cn } from "@/lib/utils";
 
 import { useBoardPoll } from "@/hooks/careCoordinator/useBoardPoll";
+import { useWelcomeCallBookings } from "@/hooks/careCoordinator/useWelcomeCallBookings";
+import { fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUP_IDS } from "@/lib/careCoordinator/mondayApi";
 import {
-  fetchChaseItems, fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUP_IDS,
-} from "@/lib/careCoordinator/mondayApi";
-import {
-  chaseBuckets, intakeBuckets, overdueCount, summarize, toScheduledCall, uncalledCount, welcomeCallBuckets,
-  MAX_INTAKE_ATTEMPTS, READY_AFTER_HOURS, type ChaseItem, type IntakeLead,
+  intakeBuckets, nextUp, summarize, toScheduledCall, welcomeCallBuckets, READY_AFTER_HOURS,
+  type Horizon, type IntakeLead, type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
 import { PipelineColumn, Section } from "@/components/careCoordinator/PipelineColumn";
-import { ChaseCard, IntakeReadyCard, IntakeScheduledCard, WelcomeCard } from "@/components/careCoordinator/cards";
+import {
+  IntakeScheduledCard, IntakeUnscheduledCard, WelcomeScheduledCard, WelcomeUnscheduledCard,
+} from "@/components/careCoordinator/cards";
 import { ScheduleGrid } from "@/components/careCoordinator/ScheduleGrid";
 
-/** Board polls. The intake read is the ~1,700-row Partial Leads group at ~20
+/** Board polls. The intake read is the ~1,700-row Partial Leads group at ~25
  *  columns — the same order of cost as the intake sidebar's own list read
  *  (§5.25), on the same cadence the old Scheduled Calls page used. */
 const POLL_MS = 60_000;
 
-/**
- * Confirm Receipt + Chase Clinicals is hidden for now (Josh, 2026-09-10) so the
- * two columns the coordinator actually works get the width. Flip to `true` to
- * bring it back — nothing else has to change with it.
- *
- * ⚠️ The flag governs the READ, the chips and the column TOGETHER, and that is
- * the point. Hiding the column while still counting the stage would put a
- * number in "Total in pipeline" that nothing on the page explains — the §7
- * complaint in reverse. Because the hidden read yields `[]`, `chaseBuckets`
- * comes back empty and `summarize` drops the stage from Total, overdue and
- * at-escalation on its own; there is no second place to keep in step.
- *
- * Nobody is stranded by this: the stage keeps its own pages, its role bar and
- * its Oversight row. This screen just stops mirroring it.
- */
-const SHOW_CHASE_COLUMN: boolean = false;
-
-/** ⚠️ Module-level, not an inline arrow — `useBoardPoll`'s effect re-arms on a
- *  fetcher that changes identity every render (INCIDENT_2026-08-20 rule 2). */
-const noChaseItems = async (): Promise<ChaseItem[]> => [];
-const chaseFetcher = SHOW_CHASE_COLUMN ? fetchChaseItems : noChaseItems;
-
-/** "Now" for the cards — ticks so "Starts in 8m" and the waits stay honest
- *  between polls without a reload. */
+/** "Now" for the cards — ticks so the day strip's now-line and "up next" stay
+ *  honest between polls without a reload. */
 function useNow(): { nowMinutes: number; nowMs: number } {
   const [now, setNow] = useState(() => ({ nowMinutes: nowMinutesEt(), nowMs: Date.now() }));
   useEffect(() => {
@@ -94,6 +84,11 @@ function useNow(): { nowMinutes: number; nowMs: number } {
 
 const fmtN = (n: number) => n.toLocaleString();
 
+/** What the booking-link dialog was opened FOR. */
+type LinkTarget =
+  | { kind: BookingKind; name?: string; phone?: string; email?: string }
+  | null;
+
 export default function CareCoordinatorPage() {
   const navigate = useNavigate();
   const { goBack } = useBackNavigation();
@@ -101,58 +96,67 @@ export default function CareCoordinatorPage() {
   const { nowMinutes, nowMs } = useNow();
   const today = etToday();
 
-  // ⚠️ The third argument is the key the remembered row total is stored under,
-  // and it is what lets the bar show a PERCENTAGE rather than a bare count —
-  // Monday reports no total, so the denominator is what the last complete run
-  // returned (lib/careCoordinator/loadProgress.ts). Stable strings; changing one
-  // costs a coordinator their first percentage after deploy and nothing else.
+  // The third argument is the key the remembered row total is stored under
+  // (lib/careCoordinator/loadProgress.ts). Stable strings.
   const intake = useBoardPoll(fetchIntakeLeads, POLL_MS, "intake");
-  const chase = useBoardPoll(chaseFetcher, POLL_MS, "chase");
   const welcome = useBoardPoll(fetchWelcomeCallItems, POLL_MS, "welcome");
 
+  /** Every Welcome Call patient's booking, one gateway request (§5.31e). */
+  const welcomeEmails = useMemo(() => (welcome.data ?? []).map((w) => w.email), [welcome.data]);
+  const bookings = useWelcomeCallBookings(welcomeEmails);
+
+  const ctx = useMemo(() => ({ today, nowMinutes, nowMs }), [today, nowMinutes, nowMs]);
   const intakeB = useMemo(
-    () => intakeBuckets(intake.data ?? [], { today, nowMinutes, nowMs, formGroupIds: INTAKE_FORM_GROUP_IDS }),
-    [intake.data, today, nowMinutes, nowMs],
+    () => intakeBuckets(intake.data ?? [], { ...ctx, formGroupIds: INTAKE_FORM_GROUP_IDS }),
+    [intake.data, ctx],
   );
-  const chaseB = useMemo(() => chaseBuckets(chase.data ?? [], today), [chase.data, today]);
-  const welcomeB = useMemo(() => welcomeCallBuckets(welcome.data ?? []), [welcome.data]);
-  const summary = useMemo(() => summarize(intakeB, chaseB, welcomeB), [intakeB, chaseB, welcomeB]);
+  const welcomeB = useMemo(
+    () => welcomeCallBuckets(welcome.data ?? [], ctx, bookings.byEmail),
+    [welcome.data, ctx, bookings.byEmail],
+  );
+  const summary = useMemo(() => summarize(intakeB, welcomeB), [intakeB, welcomeB]);
   const scheduleCalls = useMemo<ScheduledCall[]>(() => (intake.data ?? []).map(toScheduledCall), [intake.data]);
 
-  /** Booking-link dialog: `null` closed, `"cold"` with no patient, or a lead. */
-  const [linkFor, setLinkFor] = useState<IntakeLead | "cold" | null>(null);
-  const openBookingLink = useCallback((lead: IntakeLead) => setLinkFor(lead), []);
+  /** Today / Future per column. Default Today, always (Brandon). */
+  const [intakeHorizon, setIntakeHorizon] = useState<Horizon>("today");
+  const [welcomeHorizon, setWelcomeHorizon] = useState<Horizon>("today");
 
-  /** The grid hands back a ready route — it knows which board a block belongs
-   *  to (intake vs welcome call), and blocks it can't identify never call this. */
+  /** Booking-link dialog. */
+  const [link, setLink] = useState<LinkTarget>(null);
+  const linkForIntake = useCallback((lead: IntakeLead) =>
+    setLink({ kind: "intake", name: lead.name, phone: lead.phone, email: lead.email }), []);
+  const linkForWelcome = useCallback((item: WelcomeCallItem) =>
+    setLink({ kind: "welcome", name: item.name, phone: item.phone, email: item.email }), []);
+
+  /** The strip hands back a ready route — it knows which board a block belongs to. */
   const openFromGrid = useCallback((href: string) => navigate(href), [navigate]);
 
   /** Email → Welcome Call item, so a Calendly welcome-call booking can link to
-   *  the patient's chart. Read from the column's own fetch — no extra query. */
+   *  the patient's chart on the strip. Read from the column's own fetch. */
   const welcomeItems = useMemo(
     () => (welcome.data ?? []).map((w) => ({ id: w.id, email: w.email })),
     [welcome.data],
   );
 
-  const refreshAll = () => { intake.refetch(); chase.refetch(); welcome.refetch(); };
-  const anyLoading = intake.loading || chase.loading || welcome.loading;
+  const refreshAll = () => { intake.refetch(); welcome.refetch(); bookings.refetch(); };
+  const anyLoading = intake.loading || welcome.loading;
 
   const user = getUser();
   const who = access.type === "processor" ? access.profile.name || user?.name || user?.email : user?.name || user?.email;
 
-  const uncalled = uncalledCount(intakeB.ready);
-  const overdue = overdueCount(chaseB.due);
-  const wcUncalled = welcomeB.callNow.filter((e) => e.attempts === 0).length;
   const ex = intakeB.excluded;
+  const intakeNextUp = nextUp(intakeB.scheduledToday);
+  const welcomeNextUp = nextUp(welcomeB.scheduledToday);
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
       <BookingLinkDialog
-        open={linkFor !== null}
-        onOpenChange={(v) => { if (!v) setLinkFor(null); }}
-        patientName={linkFor && linkFor !== "cold" ? linkFor.name : undefined}
-        phone={linkFor && linkFor !== "cold" ? linkFor.phone : undefined}
-        email={linkFor && linkFor !== "cold" ? linkFor.email : undefined}
+        open={link !== null}
+        onOpenChange={(v) => { if (!v) setLink(null); }}
+        defaultKind={link?.kind ?? "intake"}
+        patientName={link?.name}
+        phone={link?.phone}
+        email={link?.email}
       />
 
       <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
@@ -168,9 +172,18 @@ export default function CareCoordinatorPage() {
             <h1 className="text-2xl font-bold leading-tight">My Patients</h1>
             {who && <p className="truncate text-xs opacity-70">{who}</p>}
           </div>
+
+          {/* The summary — an overview, not pills (Brandon, 2026-09-14). */}
+          <dl className="ml-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:ml-8 sm:grid-cols-4" aria-label="Summary">
+            <Stat label="Total in pipeline" value={summary.total} strong />
+            <Stat label="Patient Intake" value={summary.intake.total} />
+            <Stat label="Welcome Call" value={summary.welcome.total} />
+            <Stat label="Overdue" value={summary.overdue} warn={summary.overdue > 0} />
+          </dl>
+
           <div className="ml-auto flex items-center gap-1.5">
             <button
-              onClick={() => setLinkFor("cold")}
+              onClick={() => setLink({ kind: "intake" })}
               title="Send someone a Calendly booking link"
               className="flex items-center gap-1 rounded-md bg-sky-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
             >
@@ -186,24 +199,6 @@ export default function CareCoordinatorPage() {
             </button>
           </div>
         </div>
-
-        {/* Summary chips — the top row of the mockup. */}
-        <div className="px-3 sm:px-6 pb-4 flex flex-wrap items-center gap-2 text-xs">
-          <Stat label="Total in pipeline" value={summary.total} strong />
-          <Stat label="Patient Intake" value={summary.intake} />
-          {SHOW_CHASE_COLUMN && <Stat label="Confirm / Chase" value={summary.chase} />}
-          <Stat label="Welcome Call" value={summary.welcome} />
-          <span
-            className={cn(
-              "rounded-md border px-2.5 py-1 font-medium",
-              summary.overdue + summary.escalated > 0
-                ? "border-rose-300/60 bg-rose-500/15 text-rose-100"
-                : "border-white/15 bg-white/5 text-white/70",
-            )}
-          >
-            {summary.overdue} overdue · {summary.escalated} at escalation
-          </span>
-        </div>
       </header>
 
       <main className="mx-auto max-w-[1600px] px-3 sm:px-6 py-5 space-y-5">
@@ -214,104 +209,10 @@ export default function CareCoordinatorPage() {
         )}
         <div className="space-y-2">
           <StaleDataNotice error={intake.error} scope="The Patient Intake column" onRetry={intake.refetch} />
-          {SHOW_CHASE_COLUMN && (
-            <StaleDataNotice error={chase.error} scope="The Confirm Receipt / Chase Clinicals column" onRetry={chase.refetch} />
-          )}
           <StaleDataNotice error={welcome.error} scope="The Welcome Call column" onRetry={welcome.refetch} />
         </div>
 
-        {/* Two columns share the width the three used to, so each card gets
-            roughly half the page instead of a third. */}
-        <div className={cn("grid grid-cols-1 gap-4", SHOW_CHASE_COLUMN ? "xl:grid-cols-3" : "lg:grid-cols-2")}>
-          {/* ── Patient Intake ─────────────────────────────────── */}
-          <PipelineColumn
-            tint="sky"
-            title="Patient Intake"
-            subtitle="Callbacks first, then longest-waiting"
-            count={summary.intake}
-            progress={intake.progress}
-            alert={uncalled ? `${uncalled} not yet called` : null}
-            alertTone="warn"
-            footer={
-              <IntakeFooter
-                imported={ex.imported} nurturing={ex.nurturing} sendNow={ex.sendNow}
-                callDone={ex.callDone} cleanUp={ex.cleanUp} proposedStuck={0}
-              />
-            }
-          >
-            {intake.loading && <Skeleton />}
-            {!intake.loading && summary.intake === 0 && intakeB.exhausted.length === 0 && intakeB.withManager.length === 0 && (
-              <Empty>Nobody to call right now. Booked calls and form drop-offs older than {READY_AFTER_HOURS} hours land here.</Empty>
-            )}
-            <Section title="Scheduled" count={intakeB.scheduled.length} hint="booked Calendly calls, today and onward">
-              {intakeB.scheduled.map((e) => <IntakeScheduledCard key={e.lead.id} entry={e} today={today} onBookingLink={openBookingLink} />)}
-            </Section>
-            <Section title="Unscheduled" count={intakeB.ready.length} hint={`form drop-offs past the ${READY_AFTER_HOURS}h automated window`}>
-              {intakeB.ready.map((e) => <IntakeReadyCard key={e.lead.id} entry={e} today={today} onBookingLink={openBookingLink} />)}
-            </Section>
-            <Section title={`Exhausted · ${MAX_INTAKE_ATTEMPTS} attempts`} count={intakeB.exhausted.length} defaultOpen={false} hint="stop rule — no longer ordered as work">
-              {intakeB.exhausted.map((e) => <IntakeReadyCard key={e.lead.id} entry={e} today={today} exhausted onBookingLink={openBookingLink} />)}
-            </Section>
-            <Section title="With a manager" count={intakeB.withManager.length} defaultOpen={false} hint="escalated — not yours to move">
-              {intakeB.withManager.map((lead) => (
-                <IntakeReadyCard key={lead.id} entry={{ lead, waitingMs: Math.max(0, nowMs - (Date.parse(lead.createdAt) || nowMs)), attempts: Number(lead.attemptCounter) || 0 }} today={today} onBookingLink={openBookingLink} />
-              ))}
-            </Section>
-          </PipelineColumn>
-
-          {/* ── Confirm Receipt + Chase Clinicals (hidden — see the flag) ── */}
-          {SHOW_CHASE_COLUMN && (
-            <PipelineColumn
-              tint="amber"
-              title="Confirm Receipt + Chase Clinicals"
-              subtitle="Cadence-driven · most overdue first"
-              count={summary.chase}
-              progress={chase.progress}
-              alert={overdue ? `${overdue} overdue` : null}
-              footer={chaseB.proposedStuck > 0 ? <>Not shown: {chaseB.proposedStuck} proposed stuck — awaiting a Final Decision in Oversight.</> : undefined}
-            >
-              {chase.loading && <Skeleton />}
-              {!chase.loading && summary.chase === 0 && chaseB.withManager.length === 0 && <Empty>Nothing in Confirm Receipt or Chase Clinicals.</Empty>}
-              <Section title="Due" count={chaseB.due.length} hint="Next Action Date today or earlier">
-                {chaseB.due.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
-              </Section>
-              <Section title="Waiting" count={chaseB.upcoming.length} defaultOpen={false} hint="snoozed to a future Next Action Date">
-                {chaseB.upcoming.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
-              </Section>
-              <Section title="Awaiting a provider visit" count={chaseB.awaitingVisit.length} defaultOpen={false} hint="booked appointment still ahead">
-                {chaseB.awaitingVisit.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
-              </Section>
-              <Section title="With a manager" count={chaseB.withManager.length} defaultOpen={false} hint="escalated — Manager Intervention">
-                {chaseB.withManager.map((e) => <ChaseCard key={e.item.id} entry={e} today={today} />)}
-              </Section>
-            </PipelineColumn>
-          )}
-
-          {/* ── Welcome Call ───────────────────────────────────── */}
-          <PipelineColumn
-            tint="teal"
-            title="Welcome Call"
-            subtitle="Live calls · pump & CGM flags"
-            count={summary.welcome}
-            progress={welcome.progress}
-            alert={wcUncalled ? `${wcUncalled} not yet called` : null}
-            alertTone="warn"
-            footer={welcomeB.proposedStuck > 0 ? <>Not shown: {welcomeB.proposedStuck} proposed stuck — awaiting a Final Decision in Oversight.</> : undefined}
-          >
-            {welcome.loading && <Skeleton />}
-            {!welcome.loading && summary.welcome === 0 && welcomeB.withManager.length === 0 && <Empty>Nothing in the Welcome Call queue.</Empty>}
-            <Section title="Call now" count={welcomeB.callNow.length} hint="oldest arrival first">
-              {welcomeB.callNow.map((e) => <WelcomeCard key={e.item.id} entry={e} today={today} />)}
-            </Section>
-            <Section title="Follow up later" count={welcomeB.followUpLater.length} defaultOpen={false} hint="marked Follow Up on the Welcome Call page">
-              {welcomeB.followUpLater.map((e) => <WelcomeCard key={e.item.id} entry={e} today={today} snoozed />)}
-            </Section>
-            <Section title="With a manager" count={welcomeB.withManager.length} defaultOpen={false} hint="escalated">
-              {welcomeB.withManager.map((e) => <WelcomeCard key={e.item.id} entry={e} today={today} />)}
-            </Section>
-          </PipelineColumn>
-        </div>
-
+        {/* The day strip comes FIRST — above the lists (Brandon). */}
         <ScheduleGrid
           calls={scheduleCalls}
           welcomeItems={welcomeItems}
@@ -319,16 +220,142 @@ export default function CareCoordinatorPage() {
           onOpen={openFromGrid}
           remindersOn={access.type === "processor" && access.profile.roles.includes("scheduledCalls")}
         />
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {/* ── Patient Intake ─────────────────────────────────── */}
+          <PipelineColumn
+            title="Patient Intake"
+            accent="intake"
+            summary={summary.intake}
+            horizon={intakeHorizon}
+            onHorizon={setIntakeHorizon}
+            progress={intake.progress}
+            footer={
+              <IntakeFooter
+                imported={ex.imported} nurturing={ex.nurturing} sendNow={ex.sendNow}
+                callDone={ex.callDone} cleanUp={ex.cleanUp} withManager={intakeB.withManager}
+              />
+            }
+          >
+            {intake.loading && <Skeleton />}
+            {!intake.loading && (
+              <ColumnLists
+                horizon={intakeHorizon}
+                scheduledToday={intakeB.scheduledToday.map((e) => (
+                  <IntakeScheduledCard key={e.item.id} entry={e} nextUp={e === intakeNextUp} onBookingLink={linkForIntake} />
+                ))}
+                scheduledFuture={intakeB.scheduledFuture.map((e) => (
+                  <IntakeScheduledCard key={e.item.id} entry={e} nextUp={false} onBookingLink={linkForIntake} />
+                ))}
+                unscheduled={(intakeHorizon === "today" ? intakeB.unscheduledToday : intakeB.unscheduledFuture).map((e) => (
+                  <IntakeUnscheduledCard key={e.item.id} entry={e} today={today} onBookingLink={linkForIntake} />
+                ))}
+              />
+            )}
+          </PipelineColumn>
+
+          {/* ── Welcome Call ───────────────────────────────────── */}
+          <PipelineColumn
+            title="Welcome Call"
+            accent="welcome"
+            summary={summary.welcome}
+            horizon={welcomeHorizon}
+            onHorizon={setWelcomeHorizon}
+            progress={welcome.progress}
+            notice={
+              // ⚠️ A failed Calendly read is not "nobody is booked". Every
+              // patient falls to Unscheduled while this shows, so it has to.
+              (bookings.error || !bookings.available) ? (
+                <p role="status" className="mb-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                  <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span>
+                    {bookings.available
+                      ? `Couldn't check Calendly for welcome-call bookings, so Scheduled may be incomplete. ${bookings.error}`
+                      : "Welcome-call bookings need the gateway, which isn't configured in this build — Scheduled can't be filled."}
+                  </span>
+                </p>
+              ) : null
+            }
+            footer={
+              <WelcomeFooter withManager={welcomeB.withManager} proposedStuck={welcomeB.proposedStuck} />
+            }
+          >
+            {welcome.loading && <Skeleton />}
+            {!welcome.loading && (
+              <ColumnLists
+                horizon={welcomeHorizon}
+                scheduledToday={welcomeB.scheduledToday.map((e) => (
+                  <WelcomeScheduledCard key={e.item.id} entry={e} nextUp={e === welcomeNextUp} onBookingLink={linkForWelcome} />
+                ))}
+                scheduledFuture={welcomeB.scheduledFuture.map((e) => (
+                  <WelcomeScheduledCard key={e.item.id} entry={e} nextUp={false} onBookingLink={linkForWelcome} />
+                ))}
+                unscheduled={(welcomeHorizon === "today" ? welcomeB.unscheduledToday : welcomeB.unscheduledFuture).map((e) => (
+                  <WelcomeUnscheduledCard key={e.item.id} entry={e} today={today} onBookingLink={linkForWelcome} />
+                ))}
+              />
+            )}
+          </PipelineColumn>
+        </div>
       </main>
     </div>
   );
 }
 
-function Stat({ label, value, strong = false }: { label: string; value: number; strong?: boolean }) {
+/**
+ * The two sections of a column under one horizon.
+ *
+ * Scheduled carries its own switch — "today only" vs "tomorrow+ too" (Brandon)
+ * — which only means something while the column is on Today; on Future the
+ * section is the future bookings and the switch is not drawn.
+ */
+function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled }: {
+  horizon: Horizon;
+  scheduledToday: React.ReactElement[];
+  scheduledFuture: React.ReactElement[];
+  unscheduled: React.ReactElement[];
+}) {
+  const [withUpcoming, setWithUpcoming] = useState(false);
+  const scheduled = horizon === "future"
+    ? scheduledFuture
+    : withUpcoming ? [...scheduledToday, ...scheduledFuture] : scheduledToday;
   return (
-    <span className={cn("rounded-md border px-2.5 py-1", strong ? "border-white/30 bg-white/10 font-semibold" : "border-white/15 bg-white/5")}>
-      {label} <span className="ml-1 tabular-nums font-bold">{fmtN(value)}</span>
-    </span>
+    <>
+      <Section
+        title="Scheduled"
+        count={scheduled.length}
+        tone="scheduled"
+        extra={horizon === "today" ? (
+          <div className="flex rounded-md border bg-background p-0.5 text-[11px]" role="group" aria-label="Scheduled — which days">
+            {([false, true] as const).map((v) => (
+              <button
+                key={String(v)}
+                type="button"
+                onClick={() => setWithUpcoming(v)}
+                aria-pressed={withUpcoming === v}
+                className={cn("rounded px-2 py-0.5 font-medium", withUpcoming === v ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent")}
+              >
+                {v ? "Tomorrow+ too" : "Today only"}
+              </button>
+            ))}
+          </div>
+        ) : undefined}
+      >
+        {scheduled}
+      </Section>
+      <Section title="Unscheduled" count={unscheduled.length} tone="unscheduled">
+        {unscheduled}
+      </Section>
+    </>
+  );
+}
+
+function Stat({ label, value, strong = false, warn = false }: { label: string; value: number; strong?: boolean; warn?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <dt className="truncate text-[10px] uppercase tracking-[0.15em] opacity-70">{label}</dt>
+      <dd className={cn("text-xl font-bold leading-tight tabular-nums", strong && "text-2xl", warn && "text-rose-200")}>{fmtN(value)}</dd>
+    </div>
   );
 }
 
@@ -340,24 +367,30 @@ function Skeleton() {
   );
 }
 
-function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">{children}</div>;
-}
-
 /**
  * The honest small print. Every row in the form groups that is NOT on this
  * screen is counted here with its reason — a state that matches no view is
  * invisible app-wide (§7), and this column filters harder than any queue does.
+ * The escalated ones are here too, with where to find them.
  */
-function IntakeFooter({ imported, nurturing, sendNow, callDone, cleanUp }: {
-  imported: number; nurturing: number; sendNow: number; callDone: number; cleanUp: number; proposedStuck: number;
+function IntakeFooter({ imported, nurturing, sendNow, callDone, cleanUp, withManager }: {
+  imported: number; nurturing: number; sendNow: number; callDone: number; cleanUp: number; withManager: number;
 }) {
   const parts: string[] = [];
+  if (withManager) parts.push(`${withManager} with a manager — see Oversight`);
   if (imported) parts.push(`${fmtN(imported)} imported/referral rows that never touched the web form — worked from Info Collection`);
   if (nurturing) parts.push(`${nurturing} inside the ${READY_AFTER_HOURS}-hour automated text/email window`);
   if (sendNow) parts.push(`${sendNow} completed form${sendNow === 1 ? "" : "s"} that chose "Send request now" — advance from Info Collection`);
   if (callDone) parts.push(`${callDone} with the intake call already marked complete`);
   if (cleanUp) parts.push(`${cleanUp} unbooked in Profile Clean-Up`);
+  if (!parts.length) return null;
+  return <>Not shown: {parts.join(" · ")}.</>;
+}
+
+function WelcomeFooter({ withManager, proposedStuck }: { withManager: number; proposedStuck: number }) {
+  const parts: string[] = [];
+  if (withManager) parts.push(`${withManager} with a manager — see Oversight`);
+  if (proposedStuck) parts.push(`${proposedStuck} proposed stuck — awaiting a Final Decision in Oversight`);
   if (!parts.length) return null;
   return <>Not shown: {parts.join(" · ")}.</>;
 }

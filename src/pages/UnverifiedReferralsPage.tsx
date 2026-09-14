@@ -37,6 +37,8 @@ import { Button } from "@/components/ui/button";
 // History-first Back, same as every other stage page — returns a manager to
 // their Oversight drill-down rather than a hardcoded home route (§9).
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { defaultFollowUpDate, isValidFollowUpDate } from "@/lib/careCoordinator/followUp";
+import { etToday } from "@/lib/masheke/etDate";
 
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { GROUPS, LIST_COLUMN_IDS, fetchClinicLabels, clearFileColumn } from "@/lib/profile/mondayApi";
@@ -1341,6 +1343,9 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
      the box armed against the next one. */
   const [attemptOpen, setAttemptOpen] = useState(false);
   const [attemptNote, setAttemptNote] = useState("");
+  /** The follow-up the attempt pushes — next calendar day by default, the
+   *  same amount Welcome Call's +1 writes, editable (Brandon, 2026-09-14). */
+  const [attemptFollowUp, setAttemptFollowUp] = useState(() => defaultFollowUpDate(etToday()));
   const [stuckOpen, setStuckOpen] = useState(false);
   useEffect(() => {
     setAttemptOpen(false);
@@ -2014,21 +2019,25 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   }, [selected, refDraft]);
 
   /**
-   * Log a contact attempt: bump the Attempt Counter, append the note. That is
-   * the whole action (Josh, 2026-08-13).
+   * Log a contact attempt: bump the Attempt Counter, push the Follow Up DATE,
+   * append the note.
    *
-   * ⚠️ There is NO snooze on this stage, and adding one back needs a
-   * next-action mechanism first. It used to write Follow Up
-   * (`color_mm3822qq`) + Follow Up Date (`date_mm3874an`), and Follow Up is
-   * the flag EVERY list on this board uses to decide who is active — while
-   * the date was read by nothing at all. So one unanswered call removed the
-   * patient from the sidebar, the role bar and the burndown permanently, and
-   * the toast told the rep they'd be back on a named day. The patient stays
-   * in the queue now; the attempt count is what says how hard we've tried.
+   * ⚠️ The DATE, never the Follow Up STATUS. This stage's snooze was removed
+   * on 2026-08-13 because writing the status (`color_mm3822qq`) took the
+   * patient out of every list on this board for good (§5.10). The date column
+   * (`date_mm3874an`) is read by nothing on the intake page, the role count or
+   * the baselines — only the Care Coordinator dashboard reads it, to move the
+   * patient between Today and Future (§5.30). So the patient still stays in
+   * THIS queue; the toast says so.
    */
-  const logAttempt = useCallback(async (note: string): Promise<boolean> => {
+  const logAttempt = useCallback(async (note: string, followUpDate: string): Promise<boolean> => {
     if (!selected) return false;
     const body = note.trim();
+    const today = etToday();
+    if (!isValidFollowUpDate(followUpDate, today)) {
+      toast.error("Pick a follow-up date", { description: "Today or later." });
+      return false;
+    }
     // A note is REQUIRED on every attempt (Katie, 2026-08-13) — the same rule
     // Doctor Appointments enforces in `canLogAttempt`. The counter alone
     // records THAT someone called, never what was said, so a note-less attempt
@@ -2042,7 +2051,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     }
     setSaving(true);
     try {
-      const next = await logContactAttempt(selected.id, selected.attemptCounter);
+      const next = await logContactAttempt(selected.id, selected.attemptCounter, followUpDate);
       // Stamped into the Call Log — the one free-text field that carries to
       // Medical Necessity, and the only record of what was actually said. The
       // counter alone says somebody called.
@@ -2052,7 +2061,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
       edit({ attemptCounter: String(next) });
       if (noted.ok) {
         toast.success(`Attempt ${next} logged`, {
-          description: `${selected.name || "The patient"} stays in your queue.`,
+          description: `${selected.name || "The patient"} stays in your queue; the Care Coordinator sees them again on ${followUpDate}.`,
         });
       } else {
         // The counter moved and the note didn't, so the attempt now exists with
@@ -3610,6 +3619,21 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       Required. The attempt counter records that someone called; this is the only
                       record of what came of it.
                     </p>
+                    <label className="block text-sm font-medium" htmlFor="attempt-follow-up">
+                      Follow up on
+                    </label>
+                    <input
+                      id="attempt-follow-up"
+                      type="date"
+                      min={etToday()}
+                      className="w-full rounded-md border border-input bg-background p-2 text-sm"
+                      value={attemptFollowUp}
+                      onChange={(e) => setAttemptFollowUp(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Defaults to tomorrow, the same push the Welcome Call +1 makes. They stay in this
+                      queue; the Care Coordinator dashboard lists them again on that day.
+                    </p>
                   </div>
                   {/* shadcn Buttons, NOT the page's `.btn` classes: this
                       dialog portals to document.body, outside `.pf-root`,
@@ -3621,10 +3645,14 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     </Button>
                     <Button
                       className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
-                      disabled={saving || !attemptNote.trim()}
+                      disabled={saving || !attemptNote.trim() || !attemptFollowUp}
                       onClick={() => {
-                        void logAttempt(attemptNote).then((ok) => {
-                          if (ok) { setAttemptNote(""); setAttemptOpen(false); }
+                        void logAttempt(attemptNote, attemptFollowUp).then((ok) => {
+                          if (ok) {
+                            setAttemptNote("");
+                            setAttemptFollowUp(defaultFollowUpDate(etToday()));
+                            setAttemptOpen(false);
+                          }
                         });
                       }}
                     >

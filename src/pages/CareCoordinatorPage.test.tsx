@@ -1,15 +1,16 @@
 /**
- * The Care Coordinator page composes three reads into three columns and a
- * grid. This renders it against fixture data so a broken import, a hook that
+ * The Care Coordinator page composes two reads into two columns and a day
+ * strip. This renders it against fixture data so a broken import, a hook that
  * throws, or a card that can't render its entry fails HERE rather than on the
  * coordinator's screen. The rules themselves are tested in
- * lib/careCoordinator/workflow.test.ts; this checks they reach the DOM.
+ * lib/careCoordinator/workflow.test.ts; this checks they reach the DOM in
+ * Brandon's 2026-09-14 shape.
  */
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-import type { ChaseItem, IntakeLead, WelcomeCallItem } from "@/lib/careCoordinator/workflow";
+import type { IntakeLead, WelcomeCallItem } from "@/lib/careCoordinator/workflow";
 import { etToday } from "@/lib/masheke/etDate";
 
 const NOW = Date.now();
@@ -27,14 +28,8 @@ const intake = (over: Partial<IntakeLead>): IntakeLead => ({
   requestType: "CGM", pumpNeed: "", reasonForInquiry: "Denied by insurance", proceedPreference: "Wants a call first",
   scheduledCallTime: "", bookingStatus: "", intakeCallComplete: "", intakeEscalation: "", referralType: "Patient",
   referralSource: "Patient", alreadyInSystem: "", followUp: "", followUpDate: "", dupCheckResult: "", state: "NY",
-  generalInsurance: "Anthem", calendlyEventUri: "", ...over,
-});
-const chase = (over: Partial<ChaseItem>): ChaseItem => ({
-  id: "c", name: "Chaser", groupId: "group_mm1xf2jb", createdAt: hoursAgo(24 * 7), phone: "3475550102",
-  subStage: "Chase Clinicals", nextActionDate: TODAY, escalationIndex: 1, escalation: "Done", mnAttempts: "Attempt 2",
-  clinicalsMethod: "Fax", doctorName: "Dr. Ahuja", clinicName: "Endocrinology", requestSentAt: shiftYmd(TODAY, -7),
-  appointmentDate: "", dateOfIntake: shiftYmd(TODAY, -7), confirmAttempts: ["", "", ""],
-  chaseAttempts: ["9/3/26, 9:00 AM · left vm —MT", "", ""], receiptConfirmedName: "", requestType: "CGM", serving: "CGM",
+  generalInsurance: "Anthem", calendlyEventUri: "",
+  providedDoctorName: "Dr. Okafor", providedClinicPhone: "5555550100", ipCoveragePath: "", cgmCoveragePath: "Insulin",
   ...over,
 });
 const wc = (over: Partial<WelcomeCallItem>): WelcomeCallItem => ({
@@ -42,7 +37,9 @@ const wc = (over: Partial<WelcomeCallItem>): WelcomeCallItem => ({
   email: "welcomer@example.com",
   escalation: "", followUp: "", followUpDate: "", serving: "Insulin Pump", requestType: "Insulin Pump", pumpQty: "1",
   ipLastBillDate: "", medicarePriorPumpDate: "", callAttempts: "", doctorName: "Dr. Kaminski",
-  primaryInsurance: "Medicare A&B", referralReceivedDate: shiftYmd(TODAY, -3), ...over,
+  primaryInsurance: "Medicare A&B", referralReceivedDate: shiftYmd(TODAY, -3),
+  referralSource: "Tandem", ipCoveragePath: "OOW Pump", cgmCoveragePath: "", doctorPhone: "", clinicName: "",
+  clinicAddress: "1 Main St, Albany, NY 12207", welcomeCallText: "Send", ...over,
 });
 
 const fetchItemNotes = vi.fn(async () => "[Sep 3, 2026, 11:07 AM] Patient Intake: Call attempt 1 — left a vm —MT");
@@ -50,23 +47,21 @@ const fetchItemNotes = vi.fn(async () => "[Sep 3, 2026, 11:07 AM] Patient Intake
 vi.mock("@/lib/careCoordinator/mondayApi", () => ({
   INTAKE_GROUP_IDS: ["group_mm5z87zt", "group_mm5zgeak", "group_mm6c3rhb"],
   INTAKE_FORM_GROUP_IDS: ["group_mm5z87zt", "group_mm5zgeak"],
+  INTAKE_FORM_GROUPS: { partial: "group_mm5z87zt", completed: "group_mm5zgeak" },
   NOTES_COLUMN: { intake: "text_mm389fs", chase: "text_mm6vevjf", welcome: "text_mm6vqq2k" },
   fetchIntakeLeads: async () => [
-    intake({ id: "booked", name: "Marcus Delaney", scheduledCallTime: `${shiftYmd(TODAY, 1)} 10:30`, bookingStatus: "Scheduled" }),
-    intake({ id: "ready", name: "Eleanor Boyd", createdAt: hoursAgo(38 + 24) }),
+    intake({ id: "booked", name: "Marcus Delaney", scheduledCallTime: `${TODAY} 23:59`, bookingStatus: "Scheduled" }),
+    intake({ id: "booked-later", name: "Priya Natarajan", scheduledCallTime: `${shiftYmd(TODAY, 2)} 10:30`, bookingStatus: "Scheduled" }),
+    intake({ id: "ready", name: "Eleanor Boyd", createdAt: hoursAgo(38 + 24), groupId: "group_mm5zgeak" }),
+    intake({ id: "pushed", name: "Theo Marsh", attemptCounter: "1", followUpDate: shiftYmd(TODAY, 1) }),
     intake({ id: "import", name: "Hubert Baldwin", dropOffStep: "", referralType: "Doctor", referralSource: "SNJ [2.0]", attemptCounter: "1" }),
     intake({ id: "fresh", name: "Josen Man", createdAt: hoursAgo(3) }),
-    intake({ id: "capped", name: "Tyrell Jackson", attemptCounter: "5" }),
-  ],
-  fetchChaseItems: async () => [
-    chase({ id: "overdue", name: "Rosa Villalobos", subStage: "Confirm Receipt", nextActionDate: shiftYmd(TODAY, -2), mnAttempts: "Attempt 3", clinicalsMethod: "" }),
-    chase({ id: "later", name: "Walter Kinney", nextActionDate: shiftYmd(TODAY, 4) }),
-    chase({ id: "mgr", name: "Henry Osei", escalationIndex: 0, escalation: "Manager Escalation Required" }),
-    chase({ id: "ps", name: "Proposed Stuck", escalationIndex: 2 }),
+    intake({ id: "mgr", name: "Escalated Person", intakeEscalation: "Manager Escalation Required" }),
   ],
   fetchWelcomeCallItems: async () => [
     wc({ id: "now", name: "Amara Nwosu" }),
     wc({ id: "snz", name: "Gerald Pham", followUp: "Done", followUpDate: shiftYmd(TODAY, 3) }),
+    wc({ id: "esc", name: "Manager Case", escalation: "Escalation Required", escalationIndex: 0 }),
   ],
   fetchItemNotes: (...a: unknown[]) => fetchItemNotes(...(a as [])),
 }));
@@ -89,71 +84,121 @@ function mount() {
 }
 
 describe("CareCoordinatorPage", () => {
-  it("renders the header, the two visible columns and the grid", async () => {
+  it("renders the overview, the strip above the columns, and Today by default", async () => {
     mount();
     expect(screen.getByRole("heading", { level: 1, name: "My Patients" })).toBeInTheDocument();
     expect(screen.getByText("Dana Whitfield")).toBeInTheDocument();
 
-    // Intake: booked, ready, exhausted, and the honest small print.
     const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
+    // Big title, no subtitle.
+    expect(within(intakeCol).getByRole("heading", { level: 3 })).toHaveTextContent("Patient Intake");
+    expect(within(intakeCol).queryByText(/Callbacks first/)).toBeNull();
+
+    // Today: the booked call and one unscheduled; the pushed one is in Future.
     expect(await within(intakeCol).findByText("Marcus Delaney")).toBeInTheDocument();
     expect(within(intakeCol).getByText("Eleanor Boyd")).toBeInTheDocument();
-    expect(within(intakeCol).getByText(/1 not yet called/)).toBeInTheDocument();
-    // Josen Man (3h old) is inside the automated window; Hubert Baldwin never touched the form.
+    expect(within(intakeCol).queryByText("Theo Marsh")).toBeNull();
+    expect(within(intakeCol).queryByText("Priya Natarajan")).toBeNull();
+    // Josen Man (3h old) is inside the automated window; Hubert Baldwin never touched the form;
+    // the escalated one is a manager's — all three counted in the small print, none listed.
     expect(within(intakeCol).queryByText("Josen Man")).toBeNull();
     expect(within(intakeCol).queryByText("Hubert Baldwin")).toBeNull();
+    expect(within(intakeCol).queryByText("Escalated Person")).toBeNull();
+    expect(within(intakeCol).getByText(/1 with a manager — see Oversight/)).toBeInTheDocument();
     expect(within(intakeCol).getByText(/1 imported\/referral rows/)).toBeInTheDocument();
-    expect(within(intakeCol).getByText(/1 inside the 48-hour/)).toBeInTheDocument();
-    // The exhausted shelf exists, closed.
-    expect(within(intakeCol).getByRole("button", { name: /Exhausted · 5 attempts/ })).toHaveAttribute("aria-expanded", "false");
+    // No "With a manager" or "Exhausted" sections anywhere.
+    expect(screen.queryByRole("button", { name: /With a manager/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Exhausted/ })).toBeNull();
 
-    // Chase is hidden (SHOW_CHASE_COLUMN, 2026-09-10): no column, no chip, and
-    // — the half that actually matters — none of its patients counted anywhere.
-    // A hidden stage still counted would put a number in "Total in pipeline"
-    // that nothing on the page explains.
-    expect(screen.queryByRole("region", { name: "Confirm Receipt + Chase Clinicals" })).toBeNull();
-    expect(screen.queryByText("Confirm / Chase")).toBeNull();
-    expect(screen.queryByText("Rosa Villalobos")).toBeNull();
-    expect(screen.queryByText(/proposed stuck/)).toBeNull();
+    // The header's Today / Future groupings carry the four numbers.
+    const groupings = within(intakeCol).getByRole("group", { name: /Patient Intake — Today or Future/ });
+    const [todayBtn, futureBtn] = within(groupings).getAllByRole("button");
+    expect(todayBtn).toHaveAttribute("aria-pressed", "true");
+    expect(todayBtn).toHaveTextContent(/Scheduled: 1/);
+    expect(todayBtn).toHaveTextContent(/Unscheduled: 1/);
+    expect(futureBtn).toHaveTextContent(/Scheduled: 1/);
+    expect(futureBtn).toHaveTextContent(/Unscheduled: 1/);
 
-    // Welcome Call: the ops flag and the snoozed shelf.
+    // Welcome Call: Amara is Today, Gerald is Future, the escalated one is counted only.
     const wcCol = screen.getByRole("region", { name: "Welcome Call" });
     expect(await within(wcCol).findByText("Amara Nwosu")).toBeInTheDocument();
-    expect(within(wcCol).getByText("1st-time pump")).toBeInTheDocument();
-    expect(within(wcCol).queryByText("Gerald Pham")).toBeNull(); // Follow up later, collapsed
+    expect(within(wcCol).queryByText("Gerald Pham")).toBeNull();
+    expect(within(wcCol).queryByText("Manager Case")).toBeNull();
+    expect(within(wcCol).getByText(/1 with a manager — see Oversight/)).toBeInTheDocument();
+    // No gateway in this build: the column must SAY Scheduled can't be filled.
+    expect(within(wcCol).getByRole("status")).toHaveTextContent(/need the gateway/);
 
-    // Header chips: 2 intake (booked + ready) + 2 welcome (now + snoozed). The
-    // chase read is stubbed out with the column, so its overdue patient and its
-    // escalated one drop out of both counters too.
-    expect(screen.getByText("Total in pipeline").parentElement).toHaveTextContent("4");
-    expect(screen.getByText(/0 overdue · 0 at escalation/)).toBeInTheDocument();
+    // Overview: 4 intake (booked today + booked later + ready + pushed) + 2 welcome.
+    const summary = screen.getByLabelText("Summary");
+    expect(summary).toHaveTextContent(/Total in pipeline\s*6/);
+    expect(summary).toHaveTextContent(/Patient Intake\s*4/);
+    expect(summary).toHaveTextContent(/Welcome Call\s*2/);
 
-    // The grid is the old Scheduled Calls page, whole.
-    expect(screen.getByRole("region", { name: "My schedule" })).toBeInTheDocument();
+    // The strip sits ABOVE the columns in the document.
+    const strip = screen.getByRole("region", { name: "My schedule" });
+    expect(strip.compareDocumentPosition(intakeCol) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // The load bars are GONE once the reads resolved. One left on screen is
-    // indistinguishable from a column that never finished loading.
+    // The load bars are GONE once the reads resolved.
     expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
   });
 
-  it("offers the schedule-source toggle, and only consults Calendly when it's showing", async () => {
+  it("switching a column to Future shows its future lists, and the Scheduled switch adds tomorrow+", async () => {
     mount();
-    const grid = await screen.findByRole("region", { name: "My schedule" });
-    const toggle = within(grid).getByRole("group", { name: /Which calls to show/ });
-    expect(within(toggle).getAllByRole("button").map((b) => b.textContent))
-      .toEqual(["All calls", "Intake", "Welcome"]);
+    const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
+    await within(intakeCol).findByText("Marcus Delaney");
 
-    // Defaults to showing both, so a welcome-call read is wanted. There is no
-    // gateway in this build, so the grid must SAY the welcome half is missing
-    // rather than render an empty day as "nothing booked".
-    expect(within(grid).getByRole("status")).toHaveTextContent(/Welcome-call bookings need the gateway/);
-    expect(within(grid).getByRole("button", { name: /Refresh welcome-call bookings/ })).toBeInTheDocument();
+    // "Tomorrow+ too" on the Scheduled section brings the later booking in.
+    fireEvent.click(within(intakeCol).getByRole("button", { name: "Tomorrow+ too" }));
+    expect(within(intakeCol).getByText("Priya Natarajan")).toBeInTheDocument();
+    expect(within(intakeCol).getByText("Marcus Delaney")).toBeInTheDocument();
 
-    // Switching to intake-only stops asking, so the notice and the Calendly
-    // refresh both go away — nothing is missing from an intake-only view.
-    fireEvent.click(within(toggle).getByRole("button", { name: "Intake" }));
-    expect(within(grid).queryByRole("status")).toBeNull();
-    expect(within(grid).queryByRole("button", { name: /Refresh welcome-call bookings/ })).toBeNull();
+    // Future: the later booking and the pushed lead; today's are gone.
+    const groupings = within(intakeCol).getByRole("group", { name: /Patient Intake — Today or Future/ });
+    fireEvent.click(within(groupings).getAllByRole("button")[1]);
+    expect(within(intakeCol).getByText("Priya Natarajan")).toBeInTheDocument();
+    expect(within(intakeCol).getByText("Theo Marsh")).toBeInTheDocument();
+    expect(within(intakeCol).queryByText("Marcus Delaney")).toBeNull();
+    expect(within(intakeCol).queryByText("Eleanor Boyd")).toBeNull();
+    // The today/tomorrow+ switch is meaningless on Future and is not drawn.
+    expect(within(intakeCol).queryByRole("button", { name: "Tomorrow+ too" })).toBeNull();
+  });
+
+  it("the card carries Brandon's content and nothing else", async () => {
+    mount();
+    const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
+    const name = await within(intakeCol).findByText("Eleanor Boyd");
+    const card = name.closest("article")!;
+    // Doctor / Clinic from the PROVIDED columns.
+    expect(card).toHaveTextContent("Doctor: Dr. Okafor · Clinic: 5555550100");
+    // Pills: Completed (group) · Request Type · General Insurance · CGM path (IP path blank, hidden).
+    const pillText = Array.from(card.querySelectorAll("span.rounded-full")).map((e) => e.textContent);
+    expect(pillText).toEqual(["Completed", "CGM", "Anthem", "Insulin"]);
+    // Days since intake, no hours, no "waiting".
+    expect(card).toHaveTextContent(/2 days/);
+    expect(card).not.toHaveTextContent(/waiting/);
+    // Counts, buttons.
+    expect(within(card).getByTitle("Call attempts")).toHaveTextContent("0");
+    expect(within(card).getByTitle("Automated texts")).toHaveTextContent("2");
+    expect(within(card).getByRole("button", { name: /Call Log/ })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: /Booking Link/ })).toBeInTheDocument();
+    expect(within(card).queryByText("Active")).toBeNull();
+    expect(within(card).queryByText(/Web form/)).toBeNull();
+    // Open still links to the stage page that logs the attempt.
+    expect(within(card).getByRole("link", { name: /Open/ })).toHaveAttribute("href", "/unverified-referrals?patientId=ready&from=care-coordinator");
+
+    // A scheduled card shows the time; the booked one is "up next" (darker).
+    const booked = within(intakeCol).getByText("Marcus Delaney").closest("article")!;
+    expect(booked).toHaveTextContent("11:59 PM");
+    expect(booked.className).toMatch(/bg-slate-200/);
+    expect(card.className).not.toMatch(/bg-slate-200/);
+
+    // Welcome Call card: Referral Source pill, Primary Insurance in the insurance slot, text 0/1.
+    const wcCol = screen.getByRole("region", { name: "Welcome Call" });
+    const wcCard = (await within(wcCol).findByText("Amara Nwosu")).closest("article")!;
+    const wcPills = Array.from(wcCard.querySelectorAll("span.rounded-full")).map((e) => e.textContent);
+    expect(wcPills).toEqual(["Insulin Pump", "Medicare A&B", "OOW Pump", "Tandem"]);
+    expect(wcCard).toHaveTextContent("Doctor: Dr. Kaminski · Clinic: 1 Main St, Albany, NY 12207");
+    expect(within(wcCard).getByTitle("Automated texts")).toHaveTextContent("1");
   });
 
   it("fetches a patient's notes only when the drawer is opened", async () => {
@@ -168,17 +213,13 @@ describe("CareCoordinatorPage", () => {
     expect(fetchItemNotes.mock.calls[0]).toEqual(["booked", "text_mm389fs"]);
   });
 
-  it("opens a collapsed section on click and links Open to the stage page", async () => {
+  it("opens the booking-link dialog on the right call for each column", async () => {
     mount();
     const wcCol = await screen.findByRole("region", { name: "Welcome Call" });
-    await within(wcCol).findByText("Amara Nwosu");
-    // "Follow up later" is closed by default — Gerald Pham is behind it.
-    expect(within(wcCol).queryByText("Gerald Pham")).toBeNull();
-    fireEvent.click(within(wcCol).getByRole("button", { name: /Follow up later/ }));
-    expect(await within(wcCol).findByText("Gerald Pham")).toBeInTheDocument();
-
-    const hrefs = within(wcCol).getAllByRole("link", { name: /Open/ }).map((a) => a.getAttribute("href"));
-    expect(hrefs).toContain("/welcome-call?patientId=now&from=care-coordinator");
-    expect(hrefs).toContain("/welcome-call?patientId=snz&from=care-coordinator");
+    const wcCard = (await within(wcCol).findByText("Amara Nwosu")).closest("article")!;
+    fireEvent.click(within(wcCard).getByRole("button", { name: /Booking Link/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("combobox")).toHaveValue("welcome");
+    expect((within(dialog).getByRole("textbox", { name: /Message/ }) as HTMLTextAreaElement).value).toContain("records-medicallymodern/welcome-call");
   });
 });

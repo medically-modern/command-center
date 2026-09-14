@@ -30,6 +30,8 @@ import {
   etDateString,
   indexByEmail,
   looksLikeEmail,
+  lookupMany,
+  MAX_LOOKUP_EMAILS,
   normalizeEmail,
   pickBooking,
   windowDates,
@@ -171,6 +173,45 @@ export function registerCalendlyPatient({ app }) {
         booking,
         // So the caller can say what was actually looked at rather than implying
         // "ever" — a booking past this date is outside the window, not absent.
+        from: entry.from,
+        through: entry.through,
+      });
+    } catch (e) {
+      res.status(502).json({ ok: false, error: e?.message || String(e) });
+    }
+  });
+
+  /**
+   * Many patients in one request — the Care Coordinator dashboard (§5.30).
+   *
+   * Same index, same auth, one round trip for a whole column instead of one
+   * per card: the index is built once and shared, so answering 40 addresses
+   * costs the same as answering one. Body `{ emails: string[] }`; answer
+   * `{ ok, bookings: { [email]: booking | null }, from, through }`.
+   *
+   * ⚠️ A partial window still answers as an ERROR here, exactly as the single
+   * lookup does — a column that reads "nobody is booked" because Calendly
+   * blipped is the wrong answer a coordinator acts on.
+   */
+  app.post("/calendly/patients", async (req, res) => {
+    const who = await verifyGoogleIdentity(req.headers["x-mm-auth"]);
+    if (!who?.email) return res.status(401).json({ ok: false, error: "Sign in required" });
+
+    const emails = req.body?.emails;
+    if (!Array.isArray(emails)) {
+      return res.status(400).json({ ok: false, error: "emails[] is required" });
+    }
+    if (emails.length > MAX_LOOKUP_EMAILS) {
+      return res.status(400).json({ ok: false, error: `at most ${MAX_LOOKUP_EMAILS} emails per request` });
+    }
+
+    try {
+      const built = await currentIndex();
+      if (!built.ok) return res.status(502).json({ ok: false, error: built.error });
+      const { entry } = built;
+      res.json({
+        ok: true,
+        bookings: lookupMany(entry.byEmail, emails),
         from: entry.from,
         through: entry.through,
       });

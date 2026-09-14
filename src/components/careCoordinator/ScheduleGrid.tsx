@@ -1,25 +1,26 @@
 /**
- * "My Schedule" — the day grid of booked calls.
+ * The day strip — booked calls laid out HORIZONTALLY by time.
  *
- * Originally the whole of the Scheduled Calls page, moved here 2026-09-08 when
- * that role became the Care Coordinator dashboard. Eastern times, a red
- * now-line, passed calls greyed, a call inside the reminder lead amber,
- * prev/today/next paging, bookings without a time listed underneath.
+ * Brandon, 2026-09-14: "move the calendar above the lists; it should be
+ * horizontal by time, not vertical (time is on the x-axis, and only shows one
+ * day at a time) — so the height should be very small and it stretches across
+ * the screen. Each event should only have the patient name and should be
+ * shaded either of the two colors to match the 2 sections (Intake vs. Welcome
+ * call)."
  *
- * From 2026-09-10 it shows TWO kinds of booking, behind a toggle:
- *
+ * Two kinds of booking, always both:
  *  · **Intake calls** come from the monday mirror the dtc-mm-form backend keeps
- *    on Profile Send Off, handed down by the page from its own column read — so
- *    this makes no monday call of its own, exactly as before.
+ *    on Profile Send Off, handed down by the page from its own column read —
+ *    no monday call of its own.
  *  · **Welcome calls** come from Calendly through the gateway, because they
  *    have no mirror anywhere: the Welcome Call board has no booking column and
  *    nothing copies the intake one across the board hop (CLAUDE.md §5.15,
- *    §5.26). They are fetched only while the toggle is showing them.
+ *    §5.26). One read per day viewed, cached, never polled (`useCalendlyDay`).
  *
  * The ten-minute warning still lives in `ScheduledCallHost`, app-wide, and is
  * still INTAKE-ONLY — it reads the monday mirror, which has no welcome-call
- * rows in it. The footnote below says so rather than implying a reminder this
- * page cannot deliver (§5.15: "fix the copy, not the gate").
+ * rows in it. The footnote says so rather than implying a reminder this page
+ * cannot deliver (§5.15: "fix the copy, not the gate").
  */
 import { useMemo, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
@@ -29,30 +30,27 @@ import {
   type ScheduledCall,
 } from "@/lib/scheduledCalls/workflow";
 import {
-  emailIndex, entriesFor, intakeEntry, welcomeEntry,
-  type ScheduleEntry, type ScheduleSource,
+  emailIndex, intakeEntry, welcomeEntry, type ScheduleEntry,
 } from "@/lib/careCoordinator/scheduleEntries";
 import { useCalendlyDay } from "@/hooks/careCoordinator/useCalendlyDay";
 import { etToday, addCalendarDaysIso } from "@/lib/masheke/etDate";
 import { cn } from "@/lib/utils";
+import { COLUMN_ACCENT } from "./PipelineColumn";
+import { laneFor } from "@/lib/careCoordinator/lanes";
 
-/** The grid's vertical extent. Bookings outside it still render, clamped. */
+/** The strip's horizontal extent. Bookings outside it still render, clamped. */
 const DAY_START_HOUR = 7;
 const DAY_END_HOUR = 20;
-const PX_PER_MIN = 1.4;
 const ASSUMED_DURATION_MIN = 10;
+/** A block is never narrower than this, so a name is readable at any width. */
+const MIN_BLOCK_PCT = 7;
+const LANE_PX = 30;
 
 function hourLabel(h: number): string {
   const suffix = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12} ${suffix}`;
+  return `${h12}${suffix}`;
 }
-
-const SOURCES: { id: ScheduleSource; label: string }[] = [
-  { id: "both", label: "All calls" },
-  { id: "intake", label: "Intake" },
-  { id: "welcome", label: "Welcome" },
-];
 
 export function ScheduleGrid({
   calls, welcomeItems, nowMinutes, onOpen, remindersOn,
@@ -76,12 +74,9 @@ export function ScheduleGrid({
 }) {
   const today = etToday();
   const [viewDate, setViewDate] = useState(today);
-  const [source, setSource] = useState<ScheduleSource>("both");
   const isToday = viewDate === today;
 
-  // Only asks Calendly while welcome calls are actually on screen.
-  const wantWelcome = source !== "intake";
-  const day = useCalendlyDay(viewDate, wantWelcome);
+  const day = useCalendlyDay(viewDate, true);
 
   const intakeEntries = useMemo(() => calls.map(intakeEntry), [calls]);
   const byEmail = useMemo(() => emailIndex(welcomeItems), [welcomeItems]);
@@ -89,77 +84,57 @@ export function ScheduleGrid({
     () => day.bookings.map((b) => welcomeEntry(b, (e) => byEmail.get((e || "").trim().toLowerCase()) ?? null)),
     [day.bookings, byEmail],
   );
-
-  const entries = useMemo(
-    () => entriesFor(source, intakeEntries, welcomeEntries),
-    [source, intakeEntries, welcomeEntries],
-  );
+  const entries = useMemo<ScheduleEntry[]>(() => [...intakeEntries, ...welcomeEntries], [intakeEntries, welcomeEntries]);
 
   const todays = useMemo(() => callsOn(entries, viewDate), [entries, viewDate]);
   // On any day but today, "now" is meaningless — anchor to the start of the
   // day so nothing is greyed out as passed and the count reads as the total.
   const view = useMemo(() => dayView(todays, isToday ? nowMinutes : 0), [todays, nowMinutes, isToday]);
 
-  const gridHeight = (DAY_END_HOUR - DAY_START_HOUR) * 60 * PX_PER_MIN;
-  const topFor = (mins: number) => (mins - DAY_START_HOUR * 60) * PX_PER_MIN;
-  const nowTop = topFor(nowMinutes);
-  const nowVisible = nowMinutes >= DAY_START_HOUR * 60 && nowMinutes <= DAY_END_HOUR * 60;
+  const startMin = DAY_START_HOUR * 60;
+  const spanMin = (DAY_END_HOUR - DAY_START_HOUR) * 60;
+  const pctFor = (mins: number) => Math.min(100, Math.max(0, ((mins - startMin) / spanMin) * 100));
 
+  const timed = useMemo(() => laneFor(
+    todays.flatMap((c) => {
+      const at = minutesOfDay(c.callTime);
+      return at === null ? [] : [{ c, start: at, end: at + ASSUMED_DURATION_MIN }];
+    }),
+  ), [todays]);
+  const lanes = Math.max(1, ...timed.map((b) => b.lane + 1));
   const untimed = todays.filter((c) => minutesOfDay(c.callTime) === null);
+  const nowVisible = isToday && nowMinutes >= startMin && nowMinutes <= startMin + spanMin;
+
   /** A failed Calendly read must never render as a quiet day. */
-  const welcomeProblem = wantWelcome && (day.error || !day.available);
+  const welcomeProblem = day.error || !day.available;
 
   return (
-    <section className="rounded-xl border bg-card p-4 sm:p-5" aria-label="My schedule">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight">My Schedule</h2>
+    <section className="rounded-xl border bg-card px-4 py-3" aria-label="My schedule">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <h2 className="text-base font-semibold tracking-tight">Schedule</h2>
           <p className="text-xs text-muted-foreground">
-            {new Date(`${viewDate}T12:00:00`).toLocaleDateString(undefined, {
-              weekday: "long", month: "short", day: "numeric",
-            })}
+            {new Date(`${viewDate}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
             {" · "}
             {isToday
-              ? `${view.remaining} of ${view.total} booked call${view.total === 1 ? "" : "s"} still ahead`
+              ? `${view.remaining} of ${view.total} still ahead`
               : `${view.total} booked call${view.total === 1 ? "" : "s"}`}
-            {!isToday && <span className="ml-1">(not today)</span>}
           </p>
+          <span className="flex items-center gap-3 text-[11px] text-muted-foreground" aria-hidden>
+            <span className="inline-flex items-center gap-1"><i className={cn("inline-block h-2.5 w-2.5 rounded-sm", COLUMN_ACCENT.intake.dot)} />Intake</span>
+            <span className="inline-flex items-center gap-1"><i className={cn("inline-block h-2.5 w-2.5 rounded-sm", COLUMN_ACCENT.welcome.dot)} />Welcome call</span>
+          </span>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* Which bookings to show. Calendly is only asked while "Welcome" or
-              "All calls" is selected. */}
-          <div className="flex rounded-md border p-0.5" role="group" aria-label="Which calls to show">
-            {SOURCES.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setSource(s.id)}
-                aria-pressed={source === s.id}
-                className={cn(
-                  "rounded px-2.5 py-1 text-xs font-medium transition",
-                  source === s.id ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent",
-                )}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-          {wantWelcome && (
-            <button
-              onClick={day.refetch}
-              aria-label="Refresh welcome-call bookings"
-              title="Refresh welcome-call bookings from Calendly"
-              className="rounded-md border p-1.5 hover:bg-accent"
-            >
-              {day.loading
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <RefreshCw className="h-4 w-4" />}
-            </button>
-          )}
+        <div className="flex items-center gap-1.5">
           <button
-            aria-label="Previous day"
-            onClick={() => setViewDate((d) => addCalendarDaysIso(d, -1))}
+            onClick={day.refetch}
+            aria-label="Refresh welcome-call bookings"
+            title="Refresh welcome-call bookings from Calendly"
             className="rounded-md border p-1.5 hover:bg-accent"
           >
+            {day.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </button>
+          <button aria-label="Previous day" onClick={() => setViewDate((d) => addCalendarDaysIso(d, -1))} className="rounded-md border p-1.5 hover:bg-accent">
             <ChevronLeft className="h-4 w-4" />
           </button>
           <button
@@ -169,22 +144,18 @@ export function ScheduleGrid({
           >
             Today
           </button>
-          <button
-            aria-label="Next day"
-            onClick={() => setViewDate((d) => addCalendarDaysIso(d, 1))}
-            className="rounded-md border p-1.5 hover:bg-accent"
-          >
+          <button aria-label="Next day" onClick={() => setViewDate((d) => addCalendarDaysIso(d, 1))} className="rounded-md border p-1.5 hover:bg-accent">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      {/* ⚠️ Said out loud, because the alternative is an empty grid that reads
+      {/* ⚠️ Said out loud, because the alternative is an empty strip that reads
           as "nothing booked" on a day that may be full. */}
       {welcomeProblem && (
         <p
           role="status"
-          className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+          className="mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
         >
           <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>
@@ -195,99 +166,78 @@ export function ScheduleGrid({
         </p>
       )}
 
-      {!view.total && (
-        <div className="mt-4 rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          {day.loading && wantWelcome
-            ? "Loading…"
-            : isToday ? "No calls booked for today." : "No calls booked for this day."}
+      {/* The strip: hour ticks along the top, blocks in lanes beneath. */}
+      <div className="relative mt-2 overflow-hidden rounded-lg border bg-background">
+        <div className="relative h-5 border-b bg-muted/40">
+          {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => {
+            const h = DAY_START_HOUR + i;
+            return (
+              <span
+                key={h}
+                className="absolute top-0 -translate-x-1/2 text-[10px] leading-5 tabular-nums text-muted-foreground"
+                style={{ left: `${pctFor(h * 60)}%` }}
+              >
+                {hourLabel(h)}
+              </span>
+            );
+          })}
         </div>
-      )}
-
-      {view.total > 0 && (
-        <div className="relative mt-4 rounded-lg border bg-background">
-          <div className="relative" style={{ height: gridHeight }}>
-            {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => {
-              const h = DAY_START_HOUR + i;
-              return (
-                <div key={h} className="absolute left-0 right-0 flex items-start" style={{ top: topFor(h * 60) }}>
-                  <span className="w-16 shrink-0 -translate-y-1.5 pr-2 text-right text-[11px] tabular-nums text-muted-foreground">
-                    {hourLabel(h)}
-                  </span>
-                  <div className="h-px flex-1 bg-border" />
-                </div>
-              );
-            })}
-
-            {isToday && nowVisible && (
-              <div className="pointer-events-none absolute left-16 right-0 z-20" style={{ top: nowTop }}>
-                <div className="relative h-px bg-red-500">
-                  <span className="absolute -left-1 -top-[3px] h-[7px] w-[7px] rounded-full bg-red-500" />
-                </div>
-              </div>
-            )}
-
-            {todays.map((c) => {
-              const at = minutesOfDay(c.callTime);
-              if (at === null) return null;
-              const past = isToday && at + ASSUMED_DURATION_MIN < nowMinutes;
-              const soon = isToday && dueForReminder(c, nowMinutes);
-              const welcome = c.kind === "welcome";
-              return (
-                <BlockShell
-                  key={c.key}
-                  href={c.href}
-                  onOpen={onOpen}
-                  title={`${displayTime(c.callTime)} · ${c.name}${welcome ? " · welcome call" : ""}`}
-                  className={cn(
-                    past
-                      ? "border-muted bg-muted/50 text-muted-foreground"
-                      : soon
-                        ? "border-amber-400 bg-amber-50 dark:bg-amber-950/40"
-                        : welcome
-                          ? "border-teal-300 bg-teal-50 dark:border-teal-800 dark:bg-teal-950/40"
-                          : "border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/40",
-                  )}
-                  style={{ top: topFor(at), minHeight: Math.max(ASSUMED_DURATION_MIN * PX_PER_MIN, 34) }}
-                >
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xs font-semibold tabular-nums">{displayTime(c.callTime)}</span>
-                    <span className="truncate text-sm font-medium">{c.name}</span>
-                    {/* Only when both kinds are on screen — a badge on every row
-                        of a single-kind view is noise. */}
-                    {source === "both" && (
-                      <span className={cn(
-                        "shrink-0 rounded px-1 text-[10px] font-bold uppercase tracking-wide",
-                        welcome ? "bg-teal-600/15 text-teal-800 dark:text-teal-200" : "bg-sky-600/15 text-sky-800 dark:text-sky-200",
-                      )}>
-                        {welcome ? "Welcome" : "Intake"}
-                      </span>
-                    )}
-                  </div>
-                  <div className="truncate text-[11px] text-muted-foreground">{c.detail}</div>
-                </BlockShell>
-              );
-            })}
-          </div>
+        <div className="relative" style={{ height: lanes * LANE_PX + 6 }}>
+          {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => (
+            <div key={i} className="absolute inset-y-0 w-px bg-border/70" style={{ left: `${pctFor((DAY_START_HOUR + i) * 60)}%` }} aria-hidden />
+          ))}
+          {nowVisible && (
+            <div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-red-500" style={{ left: `${pctFor(nowMinutes)}%` }} aria-hidden>
+              <span className="absolute -left-[3px] -top-[3px] h-[7px] w-[7px] rounded-full bg-red-500" />
+            </div>
+          )}
+          {timed.map(({ c, start, lane }) => {
+            const past = isToday && start + ASSUMED_DURATION_MIN < nowMinutes;
+            const soon = isToday && dueForReminder(c, nowMinutes);
+            const welcome = c.kind === "welcome";
+            const left = pctFor(start);
+            const width = Math.max(MIN_BLOCK_PCT, (ASSUMED_DURATION_MIN / spanMin) * 100);
+            return (
+              <Block
+                key={c.key}
+                href={c.href}
+                onOpen={onOpen}
+                title={`${displayTime(c.callTime)} · ${c.name} · ${welcome ? "welcome call" : "intake call"}`}
+                className={cn(
+                  "absolute z-10 truncate rounded-md border px-2 text-xs font-medium leading-6",
+                  welcome ? COLUMN_ACCENT.welcome.block : COLUMN_ACCENT.intake.block,
+                  past && "opacity-50",
+                  soon && "ring-2 ring-amber-400",
+                )}
+                style={{ left: `min(${left}%, ${100 - width}%)`, width: `${width}%`, top: 3 + lane * LANE_PX }}
+              >
+                {c.name}
+              </Block>
+            );
+          })}
+          {!view.total && (
+            <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+              {day.loading ? "Loading…" : isToday ? "No calls booked for today." : "No calls booked for this day."}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {untimed.length > 0 && (
-        <div className="mt-4 rounded-lg border p-3">
-          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Booked this day, no time on file
-          </div>
+        <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <span>Booked this day, no time on file:</span>
           {untimed.map((c) => (
-            <BlockShell key={c.key} href={c.href} onOpen={onOpen} className="block w-full rounded px-2 py-1.5 text-left text-sm">
+            <Block key={c.key} href={c.href} onOpen={onOpen} className={cn("rounded px-1.5 py-0.5 text-xs font-medium", c.kind === "welcome" ? COLUMN_ACCENT.welcome.block : COLUMN_ACCENT.intake.block)}>
               {c.name}
-            </BlockShell>
+            </Block>
           ))}
-        </div>
+        </p>
       )}
 
-      <p className="mt-3 text-xs text-muted-foreground">
+      <p className="mt-2 text-[11px] text-muted-foreground">
         Times are Eastern.{" "}
         {remindersOn
-          ? `You'll get a reminder ${REMINDER_LEAD_MIN} minutes before each booked INTAKE call, wherever you are in the app.`
+          ? `You'll get a reminder ${REMINDER_LEAD_MIN} minutes before each booked intake call, wherever you are in the app.`
           : `The ${REMINDER_LEAD_MIN}-minute reminder before each intake call goes to the person who holds this role.`}
         {" "}Welcome calls are read live from Calendly and don't raise a reminder.
       </p>
@@ -303,7 +253,7 @@ export function ScheduleGrid({
  * guessed patient) is the failure this avoids. It still renders: the
  * coordinator needs to see the call is happening.
  */
-function BlockShell({
+function Block({
   href, onOpen, className, style, title, children,
 }: {
   href: string | null;
@@ -313,13 +263,11 @@ function BlockShell({
   title?: string;
   children: React.ReactNode;
 }) {
-  const shared = "absolute left-16 right-2 z-10 overflow-hidden rounded-md border px-2.5 py-1.5 text-left";
-  const positioned = style !== undefined;
   if (!href) {
     return (
       <div
         title={title ? `${title} — not on the Welcome Call queue, so there's no chart to open` : undefined}
-        className={cn(positioned && shared, positioned && "cursor-default", className)}
+        className={cn("cursor-default", className)}
         style={style}
       >
         {children}
@@ -328,14 +276,10 @@ function BlockShell({
   }
   return (
     <button
+      type="button"
       onClick={() => onOpen(href)}
       title={title}
-      className={cn(
-        positioned && shared,
-        "transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500",
-        !positioned && "hover:bg-accent",
-        className,
-      )}
+      className={cn("text-left transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500", className)}
       style={style}
     >
       {children}

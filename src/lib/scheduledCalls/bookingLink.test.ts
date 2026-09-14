@@ -2,7 +2,7 @@
 // onto the patient's Monday row — the webhook joins on the invitee's EMAIL and
 // nothing else. Run: npx vitest run src/lib/scheduledCalls/bookingLink.test.ts
 import { describe, it, expect } from "vitest";
-import { bookingLinkFor } from "./bookingLink";
+import { bookingLinkFor, bookingMessage, BOOKING_URLS } from "./bookingLink";
 
 const URL_ = "https://calendly.com/records-medicallymodern/medically-modern-intake-call";
 
@@ -50,5 +50,22 @@ describe("bookingLinkFor", () => {
   it("encodes a + address rather than letting it read as a space", () => {
     expect(bookingLinkFor(URL_, { email: "jane+mm@example.com" }))
       .toBe(`${URL_}?email=jane%2Bmm%40example.com`);
+  });
+});
+
+describe("the two calls (Brandon, 2026-09-14)", () => {
+  it("the welcome link is the Calendly console's, verified live 2026-09-14", () => {
+    expect(BOOKING_URLS.welcome).toBe("https://calendly.com/records-medicallymodern/welcome-call");
+    expect(BOOKING_URLS.intake).toBe("https://calendly.com/records-medicallymodern/medically-modern-intake-call");
+  });
+  it("the message carries the chosen link and names the call", () => {
+    const w = bookingMessage("welcome", BOOKING_URLS.welcome, "Jane Doe");
+    expect(w).toMatch(/^Hi Jane, /);
+    expect(w).toContain("welcome call");
+    expect(w).toContain(BOOKING_URLS.welcome);
+    const i = bookingMessage("intake", BOOKING_URLS.intake, "");
+    expect(i).toMatch(/^Hi, /);
+    expect(i).toContain(BOOKING_URLS.intake);
+    expect(i).not.toContain("welcome");
   });
 });

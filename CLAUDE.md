@@ -569,6 +569,14 @@ toast promised them back on a named day. (The column's index 1 is **"Done"** on 
 not the "Follow Up" the old code's comment claimed — its labels are *Working on it · Done ·
 Stuck* — so the row also read as a finished patient.) `IntakeEdits` no longer carries the two
 fields at all, and `unverifiedWrite.test.ts` asserts neither column can be written.
+> **2026-09-14 — the DATE column is written again, the STATUS still is not.** Brandon's Care
+> Coordinator notes push a follow-up on every logged attempt, so `logContactAttempt` writes
+> **Follow Up Date `date_mm3874an`** (next calendar day, editable in the dialog). Nothing on this
+> page, `useRoleCounts` or either baseline reads it — only the Care Coordinator dashboard does,
+> to move the patient between Today and Future (§5.30) — so the four places below are unchanged
+> and the patient still stays in this queue. **Follow Up `color_mm3822qq` stays unwritten**;
+> `careCoordinator/followUp.test.ts` scans `unverifiedWrite.ts` for it.
+
 Four places implement "this queue ignores Follow Up" and must stay in agreement (§5.8):
 1. **Sidebar** — `sidebarSections(patients, { ignoreFollowUp: true })`, passed by the page as
    `PatientsSidebar ignoreFollowUp`. ⚠️ It must IGNORE the column, not hide the section: the
@@ -3229,6 +3237,68 @@ Files: `services/monday-gateway/calendlyPatient.mjs` + `calendlyPatientRules.mjs
 is a one-line addition if wanted.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
+
+> ✅ **REWRITTEN 2026-09-14 to Brandon's "Notes for masani dashboard (9/14/26)"** — read this
+> block first; the paragraphs below it describe the 2026-09-08 build and stand only where they
+> are not contradicted here (the board facts, the load bar, the read-only posture, the role
+> count). Files are the same: `pages/CareCoordinatorPage.tsx`, `lib/careCoordinator/{workflow,
+> mondayApi,followUp}.ts`, `components/careCoordinator/{PipelineColumn,PatientCard,cards,
+> ScheduleGrid}.tsx`, `hooks/careCoordinator/useWelcomeCallBookings.ts`.
+>
+> **One model on both columns — Today / Future, each with Scheduled / Unscheduled**
+> (`workflow.ColumnBuckets`). Scheduled is a booked call: on intake the Calendly mirror on the
+> row (§5.15); on Welcome Call **Calendly itself**, joined by email through the gateway's new
+> **`POST /calendly/patients`** batch route (`calendlyPatient.mjs` + `lookupMany`) — one request
+> per column load off the same window index the §5.31e chip uses. Today vs Future is the
+> booking's Eastern day. Unscheduled is everybody else the coordinator can ring; Today vs Future
+> is the **follow-up date** (`followUpHorizon`): a date in the future ⇒ Future, today/past/**blank**
+> ⇒ Today (blank is Today on purpose — nothing else ever brings a dateless patient back, §7).
+> The banner's two groupings ARE the toggle (default Today); the Scheduled section has its own
+> "Today only / Tomorrow+ too" switch on top. Sections auto-expand on scroll.
+>
+> ⚠️ **The follow-up push is on the STAGE pages, not here** (Josh, 2026-09-14: the dashboard
+> stays read-only). Patient Intake's *Log call attempt* now writes **Follow Up Date
+> `date_mm3874an`** — next calendar day by default, editable — through
+> `unverifiedWrite.logContactAttempt`; Welcome Call's +1 already did. Both take the date from
+> **`lib/careCoordinator/followUp.ts`** so they cannot drift. ⚠️ **THE DATE ONLY, NEVER THE
+> INTAKE FOLLOW UP STATUS `color_mm3822qq`** — that status is the one-way door §5.10 records, and
+> nothing on the intake page, the role count or either baseline reads the date, so the intake
+> page is exactly as it was. `followUp.test.ts` scans the writer. ⚠️ "Exactly how Welcome Call
+> does it" is the **next CALENDAR day** (a Friday attempt comes due Saturday) — Brandon believed
+> it was one business day; it never was, and copying it exactly means copying that. ⚠️ On
+> Welcome Call this dashboard wakes a `Follow Up = Done` patient on the date while the stage
+> page's own sidebar and the role bar still hide them until cleared — a known mismatch Josh
+> chose over touching the counting contract ("dashboard only", 2026-09-14).
+>
+> **What Brandon deleted, deleted:** the escalation sections (escalated patients are COUNTED
+> in each column's footer and worked from Oversight's manager columns, §7/§5.34), "Follow up
+> later", the exhausted shelf and the 5-attempt cap (the cadence is the stop rule now; the
+> count still shows), the Active badge, the "Web form · step · reason" sub line, every old
+> pill, the stage tints (both columns gray), the section hints and column subtitles. **What
+> the card shows:** left edge green (`--mm-green`) once attempted, gray until then; the next
+> scheduled call darker gray; Doctor / Clinic from the **Provided** form columns on intake
+> (verified Doctor Name + Clinic Address on Welcome Call, which has no Provided columns); pills
+> = Completed|Partial (intake unscheduled only, from the GROUP) · Request Type · General
+> Insurance (**Primary Insurance on Welcome Call — that board has no General Insurance column**,
+> Josh 2026-09-14) · Insulin Pump Coverage Path · CGM Coverage Path (**both exist on Welcome
+> Call as `color_mm2xtn41` / `color_mm2wsam4`, different ids from Profile Send Off's**, verified
+> live 30/31 and 31/31 filled) · Referral Source (Welcome Call only); phone + text icons with
+> counts (intake: Attempt Counter · Drop-off Attempt clamped to 2; Welcome Call: Call Attempts ·
+> **0/1 from the Welcome Call Text trigger**, the board's only text fact); time `x:xx` today or
+> `MM/DD x:xx`; "N days" / "<1 day" since intake. Buttons: Call · Text (light green) · **Call
+> Log** (list icon — `PatientContact` `callHistoryLabel`/`callHistoryIcon`, this page only) ·
+> quiet *See notes* / *Open* (Open is how the attempt gets logged, so it stays) · **Booking Link**
+> (light blue, every card). The booking dialog gained an **Intake call / Welcome call dropdown**;
+> the welcome URL is `bookingLink.BOOKING_URLS.welcome`, pasted from the Calendly console (no
+> service exposes it — dtc-mm-form hands back only the API URI, §5.31e).
+>
+> **The day strip** (`ScheduleGrid`, now ABOVE the columns) is horizontal: time on the x axis
+> 7 AM–8 PM, one day with prev/today/next, name-only blocks packed into lanes (`laneFor`,
+> tested), intake in sky and welcome in teal — the same dot beside each column title.
+> **Confirm Receipt + Chase Clinicals is off the page entirely** (no flag); `chaseBuckets` and
+> `fetchChaseItems` survive in the lib for a future third column. The header summary is an
+> overview (total · Patient Intake · Welcome Call · overdue = unscheduled with a past follow-up
+> date), not pills; escalations left it with the sections.
 The `scheduledCalls` role **became the Care Coordinator dashboard** (Josh, 2026-09-08, from Corey's
 Phase 3 mockup): label "Care Coordinator", route **`/care-coordinator`** (the old `/scheduled-calls`
 redirects, query preserved), page `pages/CareCoordinatorPage.tsx`. ⚠️ **The id stays `scheduledCalls`**
@@ -4890,6 +4960,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The Welcome Call "Call scheduled" chip is missing or says it couldn't check | §5.31e — the chip needs the patient's **Email** on the board; that is the only join Calendly gives us. "Couldn't check" means the window read failed (a partial window is deliberately never reported as "not booked") — check `GET /calendly/patient/health` on the gateway, then `/api/calendly/health` on dtc-mm-form. No chip at all means no booking in the window, which is the normal case |
 | A welcome call isn't on the schedule grid / a booking has no "Open" | §5.30b — the grid reads Calendly through the gateway, not monday. Check `GET /calendly/day` on the gateway, then `/api/calendly/health` on dtc-mm-form (it reports the welcome event type and whether the day route is enabled). No "Open" means the invitee's email is on no **Welcome Call group** row — the same single join the intake mirror uses; the block is meant to render without a link |
 | A welcome-call booking overwrote a patient's intake booking | §5.30b — fixed 2026-09-10. The webhook is USER-scope and now filters on `scheduled_event.event_type`; if it recurs, check `calendly.kindOfEventType` can still resolve BOTH event types (`/api/calendly/health`) — an unresolvable one falls back to mirroring, deliberately |
+| A patient is in the wrong Today / Future grouping on the Care Coordinator dashboard | §5.30 — `workflow.followUpHorizon` (unscheduled: the follow-up DATE; blank = Today) and `classifyBooking` (scheduled: the booking's ET day). Intake's date is written by *Log call attempt*, Welcome Call's by +1 — both through `lib/careCoordinator/followUp.ts`. A Welcome Call patient in "Scheduled" with no booking on the board is right: welcome calls live in Calendly only, read through `POST /calendly/patients` |
+| The Care Coordinator's Welcome Call column says it couldn't check Calendly | §5.30 — `useWelcomeCallBookings` → gateway `POST /calendly/patients`; check `GET /calendly/patient/health`, then dtc-mm-form's `/api/calendly/health`. While it shows, every patient falls to Unscheduled and the notice is the only thing saying so — never read that as "nobody is booked" |
 | Patient Intake takes ages to load / the load bar reads wrong | §5.30 — it is 1,754 rows in four sequential Monday pages and that is inherent; the bar is `lib/careCoordinator/loadProgress.ts`. A bar with no percentage is CORRECT on a first-ever visit (Monday reports no total, so the denominator is remembered from the last complete run); one stuck at 99% means the fetch has not resolved, not that the maths is off |
 | The Care Coordinator dashboard shows a patient it shouldn't, or hides one it should | §5.30 — `lib/careCoordinator/workflow.ts` (`intakeBuckets` / `chaseBuckets` / `welcomeCallBuckets`, tested). Read the column's footer first: every excluded row is counted there with its reason. The page never writes, so nothing here can have moved a patient |
 | Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |

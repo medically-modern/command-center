@@ -2,21 +2,18 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Phone, Plus, Loader2 } from "lucide-react";
 import { sendCallAttemptsToMonday, sendFollowUpToMonday } from "@/lib/welcomeCall/mondayWrite";
+import { defaultFollowUpDate } from "@/lib/careCoordinator/followUp";
+import { etToday } from "@/lib/masheke/etDate";
 import { toast } from "sonner";
 
-/** Get tomorrow's date in YYYY-MM-DD using Eastern Time. */
+/**
+ * The follow-up an attempt writes: the NEXT CALENDAR DAY in Eastern time.
+ * One helper for this button and Patient Intake's attempt logger, so the two
+ * stages push the same amount (Brandon, 2026-09-14 — "do exactly how it's
+ * being done for welcome call"). No weekend clamp, as this button never had.
+ */
 function getTomorrow(): string {
-  const now = new Date();
-  // Use ET so all users see the same "tomorrow"
-  const etStr = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-  const [y, m, d] = etStr.split("-").map(Number);
-  const tomorrow = new Date(y, m - 1, d + 1);
-  return tomorrow.toISOString().slice(0, 10);
+  return defaultFollowUpDate(etToday());
 }
 
 interface Props {

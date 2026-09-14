@@ -21,6 +21,7 @@ import {
   PhoneMissed,
   PhoneOutgoing,
   Play,
+  List,
   RefreshCw,
   Voicemail,
 } from "lucide-react";
@@ -70,7 +71,15 @@ function CallIcon({ call }: { call: PatientCall }) {
   );
 }
 
-export function CallHistoryButton({ phone, display }: { phone?: string; display?: string }) {
+export function CallHistoryButton({ phone, display, label = "Calls", icon }: {
+  phone?: string;
+  display?: string;
+  /** The trigger's text and icon. The Care Coordinator dashboard passes
+   *  "Call Log" + a list icon (Brandon, 2026-09-14); everywhere else keeps
+   *  "Calls" and the phone. */
+  label?: string;
+  icon?: "list";
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -134,7 +143,7 @@ export function CallHistoryButton({ phone, display }: { phone?: string; display?
           className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-[color:var(--mm-teal)] transition-colors hover:bg-muted/40"
           style={{ boxShadow: "inset 0 0 0 1px var(--mm-card-border)" }}
         >
-          <Phone className="h-3.5 w-3.5 shrink-0" /> Calls
+          {icon === "list" ? <List className="h-3.5 w-3.5 shrink-0" /> : <Phone className="h-3.5 w-3.5 shrink-0" />} {label}
         </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg p-0 gap-0 flex flex-col max-h-[80vh]">

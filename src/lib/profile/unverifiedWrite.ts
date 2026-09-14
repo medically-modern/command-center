@@ -21,7 +21,7 @@
 import {
   COL, GROUPS, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
   writePhone, writeEmail, writeLocation, writeDropdownIds, writeDropdownLabels,
-  readColumnTexts, moveItemToGroup, clearStatusColumn,
+  readColumnTexts, moveItemToGroup, clearStatusColumn, writeDate,
 } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { CLINICALS_METHOD_INDEX } from "./mondayMapping";
@@ -444,12 +444,32 @@ export function writeIntakeEdits(
   return runTasks(buildIntakeTasks(itemId, edits, liveIndex));
 }
 
-/** Bump the unified attempt counter. Automated email/text, autodialer and
- *  manual rep calls all roll into this one number (HANDOFF §10). */
-export async function logContactAttempt(itemId: string, current: string | number): Promise<number> {
+/**
+ * Bump the unified attempt counter. Automated email/text, autodialer and
+ * manual rep calls all roll into this one number (HANDOFF §10).
+ *
+ * From 2026-09-14 an attempt also pushes the **Follow Up DATE**
+ * (`date_mm3874an`) — Brandon: "whenever an attempt is made for unscheduled,
+ * push the follow-up date … exactly how it's being done for welcome call".
+ * The Care Coordinator dashboard reads that date to move the patient from
+ * Today to Future and back (§5.30).
+ *
+ * ⚠️ THE DATE ONLY — NEVER THE FOLLOW UP STATUS (`color_mm3822qq`). The status
+ * is the flag every intake list, the role count and both baselines use to
+ * decide who is active, and writing it is the one-way door Josh removed on
+ * 2026-08-13 (§5.10). Nothing on this board reads the date except the
+ * dashboard, so writing it changes nothing for the intake page itself.
+ * `careCoordinator/followUp.test.ts` scans this file for the status.
+ */
+export async function logContactAttempt(
+  itemId: string, current: string | number, followUpDate?: string,
+): Promise<number> {
   const n = typeof current === "number" ? current : parseInt(String(current || "0"), 10);
   const next = (Number.isFinite(n) ? n : 0) + 1;
   await writeNumber(itemId, COL.attemptCounter, String(next));
+  if (followUpDate && /^\d{4}-\d{2}-\d{2}$/.test(followUpDate)) {
+    await writeDate(itemId, COL.followUpDate, followUpDate);
+  }
   return next;
 }
 

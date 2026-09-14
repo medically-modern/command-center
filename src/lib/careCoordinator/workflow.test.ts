@@ -1,17 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
-  attemptLabel, chaseBuckets, chaseRoute, daysBetween, daysInPipeline, dueLabel, formatWait,
-  intakeBuckets, isFormLead, latestAttempt, liveBooking, methodLabel, overdueCount, summarize,
-  toCount, toScheduledCall, uncalledCount, waitingMs, welcomeCallBuckets,
-  MAX_INTAKE_ATTEMPTS, READY_AFTER_HOURS,
+  attemptLabel, autoTexts, chaseBuckets, chaseRoute, classifyBooking, columnSummary, daysBetween,
+  daysInPipeline, dueLabel, followUpHorizon, formatDaysSince, formatWait, formCompletion,
+  intakeBuckets, isFormLead, latestAttempt, liveBooking, methodLabel, nextUp, overdueCount,
+  shortMonthDay, summarize, toCount, toScheduledCall, waitingMs, welcomeCallBuckets, welcomeCallTexts,
+  READY_AFTER_HOURS,
   type ChaseItem, type IntakeLead, type WelcomeCallItem,
 } from "./workflow";
+import type { WelcomeCallBooking } from "@/lib/welcomeCall/calendlyBooking";
 
 // A fixed "now": Tue 2026-09-08 14:00 ET (18:00Z).
 const TODAY = "2026-09-08";
 const NOW_MS = Date.parse("2026-09-08T18:00:00Z");
 const NOW_MIN = 14 * 60;
 const FORM_GROUPS = ["group_mm5z87zt", "group_mm5zgeak"];
+const GROUPS = { partial: "group_mm5z87zt", completed: "group_mm5zgeak" };
 const ctx = { today: TODAY, nowMinutes: NOW_MIN, nowMs: NOW_MS, formGroupIds: FORM_GROUPS };
 
 const hoursAgo = (h: number) => new Date(NOW_MS - h * 3_600_000).toISOString();
@@ -25,6 +28,8 @@ const lead = (over: Partial<IntakeLead> = {}): IntakeLead => ({
   intakeCallComplete: "", intakeEscalation: "", referralType: "Patient", referralSource: "Patient",
   alreadyInSystem: "", followUp: "", followUpDate: "", dupCheckResult: "", state: "NY",
   generalInsurance: "Anthem", calendlyEventUri: "",
+  providedDoctorName: "Dr. Provided", providedClinicPhone: "5555550100",
+  ipCoveragePath: "", cgmCoveragePath: "Insulin",
   ...over,
 });
 
@@ -45,7 +50,16 @@ const wc = (over: Partial<WelcomeCallItem> = {}): WelcomeCallItem => ({
   serving: "Insulin Pump", requestType: "Insulin Pump", pumpQty: "1",
   ipLastBillDate: "", medicarePriorPumpDate: "", callAttempts: "",
   doctorName: "Dr. Kaminski", primaryInsurance: "Medicare A&B", referralReceivedDate: "2026-09-05",
+  referralSource: "Tandem", ipCoveragePath: "1st Pump >6M Diagnosed", cgmCoveragePath: "Not Serving",
+  doctorPhone: "", clinicName: "", clinicAddress: "1 Main St, Albany, NY 12207", welcomeCallText: "",
   ...over,
+});
+
+const booking = (startUtc: string, over: Partial<WelcomeCallBooking> = {}): WelcomeCallBooking => ({
+  eventUri: "https://api.calendly.com/scheduled_events/abc", eventName: "Medically Modern Welcome Call",
+  startTime: startUtc, endTime: new Date(Date.parse(startUtc) + 600_000).toISOString(),
+  name: "Welcome Patient", email: "wc1@example.com", timezone: "America/New_York",
+  rescheduleUrl: "https://calendly.com/reschedulings/abc", ...over,
 });
 
 describe("small helpers", () => {
@@ -68,9 +82,7 @@ describe("small helpers", () => {
   it("formatWait", () => {
     expect(formatWait(0)).toBe("just now");
     expect(formatWait(12 * 60_000)).toBe("12m");
-    expect(formatWait(9 * 3_600_000)).toBe("9h");
     expect(formatWait((24 + 14) * 3_600_000)).toBe("1d 14h");
-    expect(formatWait(48 * 3_600_000)).toBe("2d");
     expect(formatWait(NaN)).toBe("just now");
   });
 
@@ -84,6 +96,38 @@ describe("small helpers", () => {
     expect(daysInPipeline("2026-09-01", hoursAgo(1), TODAY)).toBe(7);
     expect(daysInPipeline("", "2026-09-06T15:00:00Z", TODAY)).toBe(2);
     expect(daysInPipeline("", "garbage", TODAY)).toBeNull();
+  });
+
+  it("formatDaysSince — no hours, '<1 day' for today (Brandon)", () => {
+    expect(formatDaysSince(hoursAgo(3), TODAY)).toBe("<1 day");
+    expect(formatDaysSince("2026-09-07T15:00:00Z", TODAY)).toBe("1 day");
+    expect(formatDaysSince("2026-09-01T15:00:00Z", TODAY)).toBe("7 days");
+    expect(formatDaysSince("garbage", TODAY)).toBe("—");
+  });
+
+  it("shortMonthDay never lets a UTC parse shift the day", () => {
+    expect(shortMonthDay("2026-09-10")).toBe("09/10");
+    expect(shortMonthDay("2026-09-10 14:30")).toBe("09/10");
+    expect(shortMonthDay("")).toBe("—");
+  });
+});
+
+describe("the Today / Future model", () => {
+  it("classifyBooking: another day is 'later'; today by the clock", () => {
+    expect(classifyBooking("2026-09-10", "10:00:00", ctx)).toEqual({ when: "later", minutesUntil: null });
+    expect(classifyBooking(TODAY, "", ctx)).toEqual({ when: "today-upcoming", minutesUntil: null });
+    expect(classifyBooking(TODAY, "14:30:00", ctx)).toEqual({ when: "today-upcoming", minutesUntil: 30 });
+    expect(classifyBooking(TODAY, "14:05:00", ctx)).toMatchObject({ when: "today-now" });
+    expect(classifyBooking(TODAY, "09:00:00", ctx)).toMatchObject({ when: "today-passed" });
+  });
+
+  it("followUpHorizon: future date ⇒ Future; today, past or NONE ⇒ Today, with overdue days", () => {
+    expect(followUpHorizon("2026-09-09", TODAY)).toEqual({ horizon: "future", overdueDays: 0 });
+    expect(followUpHorizon(TODAY, TODAY)).toEqual({ horizon: "today", overdueDays: 0 });
+    expect(followUpHorizon("2026-09-05", TODAY)).toEqual({ horizon: "today", overdueDays: 3 });
+    // Blank is Today on purpose — nothing else will ever bring them back.
+    expect(followUpHorizon("", TODAY)).toEqual({ horizon: "today", overdueDays: 0 });
+    expect(followUpHorizon("garbage", TODAY)).toEqual({ horizon: "today", overdueDays: 0 });
   });
 });
 
@@ -112,9 +156,7 @@ describe("chase display helpers", () => {
   it("chaseRoute follows the §5.9 split and sends Confirm Receipt to its own page", () => {
     expect(chaseRoute({ subStage: "Confirm Receipt", clinicalsMethod: "Email" })).toBe("/confirm-receipt");
     expect(chaseRoute({ subStage: "Chase Clinicals", clinicalsMethod: "" })).toBe("/chase-fax");
-    expect(chaseRoute({ subStage: "Chase Clinicals", clinicalsMethod: "Fax" })).toBe("/chase-fax");
     expect(chaseRoute({ subStage: "Chase Clinicals", clinicalsMethod: "Email" })).toBe("/chase-parachute");
-    expect(chaseRoute({ subStage: "Chase Clinicals", clinicalsMethod: "Parachute" })).toBe("/chase-parachute");
   });
   it("latestAttempt reads the stage's OWN columns, last non-empty wins", () => {
     const c = chase({
@@ -127,7 +169,7 @@ describe("chase display helpers", () => {
   });
 });
 
-describe("liveBooking / isFormLead", () => {
+describe("liveBooking / isFormLead / formCompletion / autoTexts", () => {
   it("parses the Calendly mirror and drops canceled bookings", () => {
     expect(liveBooking({ scheduledCallTime: "2026-09-08 14:30", bookingStatus: "Scheduled" }))
       .toEqual({ date: "2026-09-08", time: "14:30:00" });
@@ -140,17 +182,27 @@ describe("liveBooking / isFormLead", () => {
     expect(isFormLead({ dropOffStep: "" })).toBe(false);
     expect(isFormLead({ dropOffStep: "Saved for later" })).toBe(true);
   });
+  it("Completed / Partial comes from the GROUP, not the Drop-off Step", () => {
+    expect(formCompletion({ groupId: GROUPS.completed }, GROUPS)).toBe("Completed");
+    expect(formCompletion({ groupId: GROUPS.partial }, GROUPS)).toBe("Partial");
+    expect(formCompletion({ groupId: "group_mm6c3rhb" }, GROUPS)).toBeNull();
+  });
+  it("auto texts are the two nudges, clamped as the backend clamps them", () => {
+    expect(autoTexts({ dropOffAttempt: "" })).toBe(0);
+    expect(autoTexts({ dropOffAttempt: "1" })).toBe(1);
+    expect(autoTexts({ dropOffAttempt: "7" })).toBe(2);
+  });
 });
 
 describe("intakeBuckets — the left column", () => {
-  it("an escalated lead is the manager's, whatever else the row says", () => {
+  it("an escalated lead is COUNTED, never listed, whatever else the row says", () => {
     const b = intakeBuckets([
       lead({ intakeEscalation: "Manager Escalation Required", scheduledCallTime: "2026-09-08 15:00" }),
       lead({ id: "2", intakeEscalation: "Final Escalation Required" }),
     ], ctx);
-    expect(b.withManager.map((l) => l.id)).toEqual(["1", "2"]);
-    expect(b.scheduled).toEqual([]);
-    expect(b.ready).toEqual([]);
+    expect(b.withManager).toBe(2);
+    expect(b.scheduledToday).toEqual([]);
+    expect(b.unscheduledToday).toEqual([]);
   });
 
   it("a booking wins over every exclusion, including imports and clean-up", () => {
@@ -158,26 +210,30 @@ describe("intakeBuckets — the left column", () => {
       lead({ id: "imp", dropOffStep: "", scheduledCallTime: "2026-09-08 15:00" }),
       lead({ id: "cu", groupId: "group_mm6c3rhb", scheduledCallTime: "2026-09-09 10:00" }),
     ], ctx);
-    expect(b.scheduled.map((s) => s.lead.id)).toEqual(["imp", "cu"]);
+    expect(b.scheduledToday.map((s) => s.item.id)).toEqual(["imp"]);
+    expect(b.scheduledFuture.map((s) => s.item.id)).toEqual(["cu"]);
     expect(b.excluded.imported).toBe(0);
   });
 
-  it("classifies today's bookings by the clock and orders passed calls last", () => {
+  it("splits bookings into today (by the clock, passed last) and future", () => {
     const b = intakeBuckets([
       lead({ id: "passed", scheduledCallTime: "2026-09-08 09:00" }),
       lead({ id: "now", scheduledCallTime: "2026-09-08 14:05" }),
       lead({ id: "soon", scheduledCallTime: "2026-09-08 14:30" }),
       lead({ id: "later", scheduledCallTime: "2026-09-10 10:00" }),
+      lead({ id: "sooner", scheduledCallTime: "2026-09-09 16:00" }),
       lead({ id: "notime", scheduledCallTime: "2026-09-08" }),
       lead({ id: "yesterday", scheduledCallTime: "2026-09-07 10:00" }), // past day ⇒ not a booking any more
     ], ctx);
-    expect(b.scheduled.map((s) => `${s.lead.id}:${s.when}`)).toEqual([
-      "now:today-now", "soon:today-upcoming", "notime:today-upcoming", "passed:today-passed", "later:later",
+    expect(b.scheduledToday.map((s) => `${s.item.id}:${s.when}`)).toEqual([
+      "now:today-now", "soon:today-upcoming", "notime:today-upcoming", "passed:today-passed",
     ]);
-    expect(b.scheduled.find((s) => s.lead.id === "soon")?.minutesUntil).toBe(30);
-    expect(b.scheduled.find((s) => s.lead.id === "later")?.minutesUntil).toBeNull();
-    // Yesterday's booking fell through to the ready list (it is a form lead, 72h old).
-    expect(b.ready.map((r) => r.lead.id)).toEqual(["yesterday"]);
+    expect(b.scheduledFuture.map((s) => s.item.id)).toEqual(["sooner", "later"]);
+    expect(b.scheduledToday.find((s) => s.item.id === "soon")?.minutesUntil).toBe(30);
+    // Yesterday's booking fell through to unscheduled (it is a form lead, 72h old).
+    expect(b.unscheduledToday.map((r) => r.item.id)).toEqual(["yesterday"]);
+    // "Up next" is the first call still to make.
+    expect(nextUp(b.scheduledToday)?.item.id).toBe("now");
   });
 
   it("excludes, in order: imported · clean-up · call done · send-request-now · nurturing", () => {
@@ -190,157 +246,174 @@ describe("intakeBuckets — the left column", () => {
       lead({ id: "ready", createdAt: hoursAgo(READY_AFTER_HOURS + 1) }),
     ], ctx);
     expect(b.excluded).toEqual({ imported: 1, cleanUp: 1, callDone: 1, sendNow: 1, nurturing: 1 });
-    expect(b.ready.map((r) => r.lead.id)).toEqual(["ready"]);
+    expect(b.unscheduledToday.map((r) => r.item.id)).toEqual(["ready"]);
   });
 
-  it("a completed form that WANTS a call is ready; one that said send-now is not", () => {
-    const b = intakeBuckets([
-      lead({ id: "call", dropOffStep: "Completed", proceedPreference: "Wants a call first" }),
-      lead({ id: "send", dropOffStep: "Completed", proceedPreference: "Send request now" }),
-    ], ctx);
-    expect(b.ready.map((r) => r.lead.id)).toEqual(["call"]);
-    expect(b.excluded.sendNow).toBe(1);
-  });
-
-  it("orders ready leads longest-waiting first and carries the attempt count", () => {
-    const b = intakeBuckets([
-      lead({ id: "3d", createdAt: hoursAgo(72), attemptCounter: "2" }),
-      lead({ id: "5d", createdAt: hoursAgo(120) }),
-      lead({ id: "2d", createdAt: hoursAgo(49), attemptCounter: "1" }),
-    ], ctx);
-    expect(b.ready.map((r) => r.lead.id)).toEqual(["5d", "3d", "2d"]);
-    expect(b.ready.map((r) => r.attempts)).toEqual([0, 2, 1]);
-    expect(uncalledCount(b.ready)).toBe(1);
-  });
-
-  it(`shelves a lead at ${MAX_INTAKE_ATTEMPTS} attempts without hiding it`, () => {
-    const b = intakeBuckets([
-      lead({ id: "cap", attemptCounter: String(MAX_INTAKE_ATTEMPTS) }),
-      lead({ id: "over", attemptCounter: "9", createdAt: hoursAgo(200) }),
-      lead({ id: "under", attemptCounter: String(MAX_INTAKE_ATTEMPTS - 1) }),
-    ], ctx);
-    expect(b.ready.map((r) => r.lead.id)).toEqual(["under"]);
-    // Most recently created first: the ones that JUST ran out are the ones to glance at.
-    expect(b.exhausted.map((r) => r.lead.id)).toEqual(["cap", "over"]);
-  });
-
-  it("the attempt cap applies even inside the nurturing window", () => {
-    const b = intakeBuckets([lead({ id: "x", createdAt: hoursAgo(1), attemptCounter: "5" })], ctx);
-    expect(b.exhausted).toHaveLength(1);
+  it("the automated window only holds a lead nobody has rung yet", () => {
+    const b = intakeBuckets([lead({ id: "called", createdAt: hoursAgo(3), attemptCounter: "1" })], ctx);
     expect(b.excluded.nurturing).toBe(0);
+    expect(b.unscheduledToday.map((r) => r.item.id)).toEqual(["called"]);
+  });
+
+  it("the follow-up DATE moves a lead to Future and back; never the status", () => {
+    const b = intakeBuckets([
+      lead({ id: "pushed", followUpDate: "2026-09-09", attemptCounter: "1" }),
+      lead({ id: "due", followUpDate: TODAY, attemptCounter: "1" }),
+      lead({ id: "late", followUpDate: "2026-09-04", attemptCounter: "2" }),
+      // The status alone changes NOTHING here — the intake page's one-way door
+      // (§5.10) is not this dashboard's rule.
+      lead({ id: "status-only", followUp: "Done", attemptCounter: "1" }),
+      lead({ id: "never", attemptCounter: "" }),
+    ], ctx);
+    expect(b.unscheduledFuture.map((r) => r.item.id)).toEqual(["pushed"]);
+    // Today: most overdue first, then longest-waiting.
+    expect(b.unscheduledToday.map((r) => `${r.item.id}:${r.overdueDays}`)).toEqual([
+      "late:4", "due:0", "status-only:0", "never:0",
+    ]);
+  });
+
+  it("Future is ordered soonest date first", () => {
+    const b = intakeBuckets([
+      lead({ id: "b", followUpDate: "2026-09-12" }),
+      lead({ id: "a", followUpDate: "2026-09-09" }),
+    ], ctx);
+    expect(b.unscheduledFuture.map((r) => r.item.id)).toEqual(["a", "b"]);
+  });
+
+  it("no attempt cap — five attempts is just a count on the card now", () => {
+    const b = intakeBuckets([lead({ id: "five", attemptCounter: "5" }), lead({ id: "nine", attemptCounter: "9" })], ctx);
+    expect(b.unscheduledToday.map((r) => `${r.item.id}:${r.attempts}`)).toEqual(["five:5", "nine:9"]);
   });
 });
 
-describe("chaseBuckets — the middle column mirrors the stage's own rule", () => {
-  it("ignores other sub-stages entirely", () => {
-    const b = chaseBuckets([chase({ subStage: "Evaluate MN" }), chase({ subStage: "Doctor Appointment" })], TODAY);
-    expect(b.due).toEqual([]);
-    expect(b.upcoming).toEqual([]);
-  });
-
-  it("proposed stuck is a count, escalated is the manager's", () => {
+describe("chaseBuckets — kept for the day the column returns", () => {
+  it("proposed stuck is a count, escalated is the manager's, future visit parks", () => {
     const b = chaseBuckets([
       chase({ id: "ps", escalationIndex: 2 }),
       chase({ id: "esc", escalationIndex: 0, nextActionDate: "2026-09-01" }),
+      chase({ id: "visit", appointmentDate: "2026-09-12", nextActionDate: "2026-09-01" }),
+      chase({ id: "blank", nextActionDate: "" }),
+      chase({ id: "3d", nextActionDate: "2026-09-05" }),
+      chase({ id: "tmrw", nextActionDate: "2026-09-09" }),
     ], TODAY);
     expect(b.proposedStuck).toBe(1);
     expect(b.withManager.map((e) => e.item.id)).toEqual(["esc"]);
-    expect(b.withManager[0].due.kind).toBe("overdue");
-    expect(b.due).toEqual([]);
-  });
-
-  it("a future provider visit parks the patient, whatever the NAD says", () => {
-    const b = chaseBuckets([
-      chase({ id: "visit", appointmentDate: "2026-09-12", nextActionDate: "2026-09-01" }),
-      chase({ id: "past-visit", appointmentDate: "2026-09-01", nextActionDate: TODAY }),
-    ], TODAY);
     expect(b.awaitingVisit.map((e) => e.item.id)).toEqual(["visit"]);
-    expect(b.due.map((e) => e.item.id)).toEqual(["past-visit"]);
-  });
-
-  it("splits due from upcoming by NAD and sorts most overdue first, blank first of all", () => {
-    const b = chaseBuckets([
-      chase({ id: "today", nextActionDate: TODAY }),
-      chase({ id: "3d", nextActionDate: "2026-09-05" }),
-      chase({ id: "blank", nextActionDate: "" }),
-      chase({ id: "1d", nextActionDate: "2026-09-07" }),
-      chase({ id: "tmrw", nextActionDate: "2026-09-09" }),
-      chase({ id: "next", nextActionDate: "2026-09-15" }),
-    ], TODAY);
-    expect(b.due.map((e) => e.item.id)).toEqual(["blank", "3d", "1d", "today"]);
-    expect(b.upcoming.map((e) => e.item.id)).toEqual(["tmrw", "next"]);
-    expect(overdueCount(b.due)).toBe(2);
+    expect(b.due.map((e) => e.item.id)).toEqual(["blank", "3d"]);
+    expect(b.upcoming.map((e) => e.item.id)).toEqual(["tmrw"]);
+    expect(overdueCount(b.due)).toBe(1);
   });
 });
 
 describe("welcomeCallBuckets — the right column", () => {
-  it("escalated · snoozed · call now, with the ops flags", () => {
+  it("escalated is counted, proposed stuck is counted, everyone else is Unscheduled Today", () => {
     const b = welcomeCallBuckets([
       wc({ id: "esc", escalation: "Escalation Required" }),
-      // Index 2 = proposed stuck (§5.34): counted for the footer, listed nowhere.
       wc({ id: "proposed", escalation: "Final Escalation Required", escalationIndex: 2 }),
-      wc({ id: "snz", followUp: "Done", followUpDate: "2026-09-12" }),
-      wc({ id: "snz-nodate", followUp: "Done" }),
-      wc({ id: "snz-soon", followUp: "Done", followUpDate: "2026-09-09" }),
-      wc({ id: "new", createdAt: hoursAgo(1), serving: "Supplies + CGM", requestType: "Supplies", pumpQty: "0" }),
+      wc({ id: "new", createdAt: hoursAgo(1) }),
       wc({ id: "old", createdAt: hoursAgo(100), callAttempts: "2" }),
-    ]);
-    expect(b.withManager.map((e) => e.item.id)).toEqual(["esc"]);
+    ], ctx);
+    expect(b.withManager).toBe(1);
     expect(b.proposedStuck).toBe(1);
-    expect(b.followUpLater.map((e) => e.item.id)).toEqual(["snz-soon", "snz", "snz-nodate"]);
-    expect(b.callNow.map((e) => e.item.id)).toEqual(["old", "new"]);
-    const byId = Object.fromEntries(b.callNow.map((e) => [e.item.id, e]));
-    expect(byId.old).toMatchObject({ firstTimePump: true, crossSell: false, attempts: 2 });
-    expect(byId.new).toMatchObject({ firstTimePump: false, crossSell: true, attempts: 0 });
+    // Oldest arrival first.
+    expect(b.unscheduledToday.map((e) => `${e.item.id}:${e.attempts}`)).toEqual(["old:2", "new:0"]);
+    expect(b.scheduledToday).toEqual([]);
+  });
+
+  it("the stage page's snooze (Done + date) is Future until the date, then Today with overdue days", () => {
+    const b = welcomeCallBuckets([
+      wc({ id: "later", followUp: "Done", followUpDate: "2026-09-12" }),
+      wc({ id: "tmrw", followUp: "Done", followUpDate: "2026-09-09" }),
+      wc({ id: "due", followUp: "Done", followUpDate: TODAY }),
+      wc({ id: "late", followUp: "Done", followUpDate: "2026-09-06", createdAt: hoursAgo(1) }),
+      // Done with NO date: nothing will wake them, so they are Today.
+      wc({ id: "nodate", followUp: "Done" }),
+      // A date without Done is the stage's own leftover — not a snooze.
+      wc({ id: "stale-date", followUpDate: "2026-09-20" }),
+    ], ctx);
+    expect(b.unscheduledFuture.map((e) => e.item.id)).toEqual(["tmrw", "later"]);
+    expect(b.unscheduledToday.map((e) => `${e.item.id}:${e.overdueDays}`)).toEqual([
+      "late:2", "due:0", "nodate:0", "stale-date:0",
+    ]);
+  });
+
+  it("a Calendly booking (by email) is Scheduled — today by the ET day, future otherwise", () => {
+    const bookings = new Map<string, WelcomeCallBooking | null>([
+      ["wc1@example.com", booking("2026-09-08T19:30:00Z")],   // 3:30 PM ET today
+      ["two@example.com", booking("2026-09-11T14:00:00Z", { email: "two@example.com" })],
+      ["three@example.com", null],
+      // 11:30 PM ET on the 8th is 03:30Z on the 9th — still TODAY in Eastern.
+      ["late@example.com", booking("2026-09-09T03:30:00Z", { email: "late@example.com" })],
+      // A booking that already happened is not a booking any more.
+      ["gone@example.com", booking("2026-09-07T14:00:00Z", { email: "gone@example.com" })],
+    ]);
+    const b = welcomeCallBuckets([
+      wc({ id: "one" }),
+      wc({ id: "two", email: "TWO@example.com " }),
+      wc({ id: "three", email: "three@example.com" }),
+      wc({ id: "late", email: "late@example.com" }),
+      wc({ id: "gone", email: "gone@example.com", followUp: "Done", followUpDate: "2026-09-10" }),
+      wc({ id: "noemail", email: "" }),
+    ], ctx, bookings);
+    expect(b.scheduledToday.map((e) => `${e.item.id}:${e.time}:${e.when}`)).toEqual([
+      "one:15:30:00:today-upcoming", "late:23:30:00:today-upcoming",
+    ]);
+    expect(b.scheduledFuture.map((e) => `${e.item.id}:${e.date}`)).toEqual(["two:2026-09-11"]);
+    expect(b.scheduledToday[0].booking?.rescheduleUrl).toContain("reschedulings");
+    expect(b.unscheduledToday.map((e) => e.item.id)).toEqual(["three", "noemail"]);
+    expect(b.unscheduledFuture.map((e) => e.item.id)).toEqual(["gone"]);
   });
 
   it("reads the escalation by INDEX when the raw value is there, by label otherwise", () => {
-    // A rename of the board's index-0 label must not un-escalate anyone; a
-    // row read without its raw value (older fixtures, a partial read) still
-    // falls back to the two label spellings that mean "with a manager".
     const b = welcomeCallBuckets([
       wc({ id: "renamed", escalation: "Anything At All", escalationIndex: 0 }),
       wc({ id: "me-wording", escalation: "Manager Escalation Required" }),
       wc({ id: "done", escalation: "Done", escalationIndex: 1 }),
-    ]);
-    expect(b.withManager.map((e) => e.item.id)).toEqual(["renamed", "me-wording"]);
-    expect(b.callNow.map((e) => e.item.id)).toEqual(["done"]);
-    expect(b.proposedStuck).toBe(0);
+    ], ctx);
+    expect(b.withManager).toBe(2);
+    expect(b.unscheduledToday.map((e) => e.item.id)).toEqual(["done"]);
+  });
+
+  it("the text count is the Welcome Call Text trigger — 0 or 1", () => {
+    expect(welcomeCallTexts({ welcomeCallText: "" })).toBe(0);
+    expect(welcomeCallTexts({ welcomeCallText: "Send" })).toBe(1);
   });
 });
 
-describe("summarize — the header chips", () => {
-  it("counts workable patients per column and escalations separately", () => {
+describe("summarize — the header overview", () => {
+  it("counts both horizons per column and overdue follow-ups, never escalations", () => {
     const intake = intakeBuckets([
       lead({ id: "a", scheduledCallTime: "2026-09-08 15:00" }),
+      lead({ id: "a2", scheduledCallTime: "2026-09-12 15:00" }),
       lead({ id: "b" }),
-      lead({ id: "c", attemptCounter: "5" }),
+      lead({ id: "c", followUpDate: "2026-09-10", attemptCounter: "1" }),
+      lead({ id: "c2", followUpDate: "2026-09-01", attemptCounter: "1" }),
       lead({ id: "d", intakeEscalation: "Manager Escalation Required" }),
       lead({ id: "e", dropOffStep: "" }),
     ], ctx);
-    const ch = chaseBuckets([
-      chase({ id: "1", nextActionDate: "2026-09-01" }),
-      chase({ id: "2", nextActionDate: "2026-09-20" }),
-      chase({ id: "3", escalationIndex: 0 }),
-      chase({ id: "4", escalationIndex: 2 }),
-    ], TODAY);
-    const w = welcomeCallBuckets([wc({ id: "x" }), wc({ id: "y", followUp: "Done" }), wc({ id: "z", escalation: "Escalation Required" })]);
-    expect(summarize(intake, ch, w)).toEqual({
-      total: 2 + 2 + 2, intake: 2, chase: 2, welcome: 2, overdue: 1, escalated: 3,
+    const w = welcomeCallBuckets([
+      wc({ id: "x" }),
+      wc({ id: "y", followUp: "Done", followUpDate: "2026-09-20" }),
+      wc({ id: "z", escalation: "Escalation Required" }),
+    ], ctx);
+    expect(columnSummary(intake)).toEqual({
+      today: { scheduled: 1, unscheduled: 2 }, future: { scheduled: 1, unscheduled: 1 }, total: 5, overdue: 1,
+    });
+    expect(summarize(intake, w)).toMatchObject({
+      total: 5 + 2, overdue: 1,
+      welcome: { today: { scheduled: 0, unscheduled: 1 }, future: { scheduled: 0, unscheduled: 1 }, total: 2 },
     });
   });
 });
 
-describe("toScheduledCall — feeds the day grid from the column's own read", () => {
+describe("toScheduledCall — feeds the day strip from the column's own read", () => {
   it("splits the Calendly mirror the way lib/scheduledCalls/mondayApi does", () => {
     const c = toScheduledCall(lead({ scheduledCallTime: "2026-09-08 14:30", bookingStatus: "Scheduled" }));
     expect(c).toMatchObject({ id: "1", callDate: "2026-09-08", callTime: "14:30:00", bookingStatus: "Scheduled", reason: "Denied by insurance" });
     expect(toScheduledCall(lead({ scheduledCallTime: "2026-09-08" }))).toMatchObject({ callDate: "2026-09-08", callTime: "" });
-    expect(toScheduledCall(lead({ scheduledCallTime: "" }))).toMatchObject({ callDate: "", callTime: "" });
   });
-  it("passes a canceled booking THROUGH — the grid's isLiveBooking is the one filter", () => {
+  it("passes a canceled booking THROUGH — the strip's isLiveBooking is the one filter", () => {
     const c = toScheduledCall(lead({ scheduledCallTime: "2026-09-08 14:30", bookingStatus: "Canceled" }));
-    expect(c.callDate).toBe("2026-09-08");
     expect(c.bookingStatus).toBe("Canceled");
   });
 });

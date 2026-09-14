@@ -563,8 +563,15 @@ export function DaysInStagePill({ value }: { value?: string }) {
  *  Uses tel:/sms: so the rep's device handles it. */
 export function PatientContact({
   phone, textPrefill, textOpen, onTextOpenChange, onTextSent, hideCallHistory,
+  textTone, callHistoryLabel, callHistoryIcon,
 }: {
   phone?: string;
+  /** Care Coordinator only (Brandon, 2026-09-14): a light-green Text button,
+   *  and the Calls pop-up relabelled "Call Log" behind a list icon. Every other
+   *  header keeps the defaults — the change is display-only and scoped. */
+  textTone?: "green";
+  callHistoryLabel?: string;
+  callHistoryIcon?: "list";
   /** Drop the "Calls" pop-up button.
    *
    *  Only Welcome Call passes this: its RingCentral activity box has a Calls
@@ -603,8 +610,9 @@ export function PatientContact({
         openSignal={textOpen}
         onOpenChange={onTextOpenChange}
         onSent={onTextSent}
+        tone={textTone}
       />
-      {!hideCallHistory && <CallHistoryButton phone={tel} display={display} />}
+      {!hideCallHistory && <CallHistoryButton phone={tel} display={display} label={callHistoryLabel} icon={callHistoryIcon} />}
     </span>
   );
 }
@@ -613,10 +621,12 @@ export function PatientContact({
  *  scrollable pop-up, with a reply box at the bottom. Sending refreshes the
  *  thread so the new message shows immediately. */
 function TextCompose({
-  tel, display, prefill, openSignal, onOpenChange, onSent,
+  tel, display, prefill, openSignal, onOpenChange, onSent, tone,
 }: {
   tel: string; display: string;
   prefill?: string;
+  /** "green" — the Care Coordinator's light-green Text button. */
+  tone?: "green";
   openSignal?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Called with the sent body after RingCentral accepts it. Patient Intake
@@ -761,7 +771,12 @@ function TextCompose({
       <DialogTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-[color:var(--mm-teal)] transition-colors hover:bg-muted/40"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors",
+            tone === "green"
+              ? "bg-[color:var(--mm-green-12)] text-[color:var(--mm-teal)] hover:bg-[color:var(--mm-mint)]"
+              : "text-[color:var(--mm-teal)] hover:bg-muted/40",
+          )}
           style={{ boxShadow: "inset 0 0 0 1px var(--mm-card-border)" }}
         >
           <MessageSquare className="h-3.5 w-3.5 shrink-0" /> Text
