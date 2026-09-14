@@ -11,12 +11,11 @@ export interface Patient {
    *  GROUP, not a column (lib/shared/profileStatus.ts). */
   groupId?: string;
   /** Escalation status INDEX, read straight off the board — 0 manager, 1 done,
-   *  2 final. ⚠️ Separate from `escalated`, which this stage hardcodes to false
-   *  (CLAUDE.md §10). Profile Status is the only consumer; nothing about the
-   *  stage's broken write path changes because this is read. */
+   *  2 final (welcomeCall/mondayApi ESCALATION_INDEX, the same column). The two
+   *  flags below are derived from it. */
   escalationIndex?: number | null;
-  /** Escalation label TEXT, read alongside the index. Same §10 caveat as
-   *  `escalationIndex`: read-only, Profile Status is the only consumer. */
+  /** Escalation label TEXT, read alongside the index; `StageActionBar` hands it
+   *  to `proposeStuckLevel` so a second proposal promotes to Final. */
   escalation?: string;
 
   // Demographics
@@ -194,7 +193,12 @@ export interface Patient {
   phoneEdited: string | null;
 
   // Escalation
+  /** Escalation index 0 — with a manager. Read off the board since 2026-09-14
+   *  (§10: hardcoded false before). Never written by the send any more; the
+   *  ladder writers in welcomeCall/mondayWrite own the column. */
   escalated: boolean;
+  /** Escalation index 2 — a stuck proposal awaiting Final Decisions. */
+  proposedStuck: boolean;
 
   // Transient session flag — true after Split Order has been run on this
   // profile. Used to flip the Split button into a "Split created" state.

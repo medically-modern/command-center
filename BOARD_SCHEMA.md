@@ -396,9 +396,20 @@
 ### Escalation
 - **ID:** `color_mm1x7997`
 - **Type:** `status`
-- **Values:**
-  - `0` → Escalation Required
+- **Values (label ids — what `{"index": N}` writes; CLAUDE.md §5.34):**
+  - `0` → Escalation Required — the manager rung (Manager Intervention). Medical Evaluation calls
+    the same rung "Manager Escalation Required"; the app accepts either wording and keys on the id.
   - `1` → Done
+  - `2` → Final Escalation Required — a stuck PROPOSAL awaiting Final Decisions.
+    ⚠️ **Not on the live board as of 2026-09-14** (ids 0 and 1 only). Pending board change: add the
+    label with colour working_orange (0) so Monday assigns id 2, then read `settings_str` back. The
+    app refuses to promote a patient to Final until it exists (`assertEscalationLabelExists`).
+
+### Escalation Notes
+- **ID:** `long_text_mm3jgh1y`
+- **Type:** `long_text`
+- Retired 2026-09-14: written only by the deleted `EscalationFormModal`. The reason for an
+  escalation is a stamped `[Proposed Stuck …]` line in Notes now, like every other board.
 
 ### Escalation Reason
 - **ID:** `dropdown_mm2fhcd6`

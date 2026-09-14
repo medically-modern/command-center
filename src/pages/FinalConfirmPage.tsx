@@ -18,7 +18,6 @@ import { PatientsSidebar } from "@/components/finalConfirm/PatientsSidebar";
 import { FinalCheckPanel } from "@/components/finalConfirm/FinalCheckPanel";
 import { SendWithChecksButton } from "@/components/finalConfirm/SendWithChecksButton";
 import { SplitOrderButton } from "@/components/finalConfirm/SplitOrderButton";
-import { EscalateButton } from "@/components/finalConfirm/EscalateButton";
 import { ClinicalsDownloadButton } from "@/components/finalConfirm/ClinicalsDownloadButton";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -29,7 +28,11 @@ import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
 import { duplicateItem, writeStatusIndex, writeDate, writeLongText, BOARD_ID, COL } from "@/lib/finalConfirm/mondayApi";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { indexForLabel } from "@/lib/shared/statusOptions";
-import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+/* ⚠️ `EscalateButton` + `EscalationFormModal` left this page on 2026-09-14
+   with the Propose Stuck ladder (§5.34) — they wrote an escalation nothing
+   could clear (§10). `StageActionBar` renders the ladder now. */
+import { StageActionBar } from "@/components/shared/StageActionBar";
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 import { appendNoteEntry, stampNoteEntry } from "@/lib/shared/noteStamp";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
@@ -54,7 +57,9 @@ const FinalConfirmPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
+  /** Which Oversight column a manager clicked in from (`?mv=`) — resolves the
+   *  action bar and, from Final Decisions, the sidebar's proposed-stuck list. */
+  const managerOrigin = managerOriginFromParams(searchParams);
   const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay, addPatient } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
@@ -67,8 +72,8 @@ const FinalConfirmPage = () => {
 
   const viewFilter = viewFilterFromParams(searchParams);
   const visiblePatients = useMemo(
-    () => sidebarVisibleList(patients, viewFilter),
-    [patients, viewFilter],
+    () => sidebarVisibleList(patients, viewFilter, { origin: managerOrigin }),
+    [patients, viewFilter, managerOrigin],
   );
   useAutoSelectPatient(
     initialLoading, patients, visiblePatients, selectedId, setSelectedId,
@@ -118,9 +123,11 @@ const FinalConfirmPage = () => {
     update(selected.id, { [field]: value } as Partial<Patient>);
   };
 
-  const toggleEscalate = () => {
-    if (!selected) return;
-    update(selected.id, { escalated: !selected.escalated });
+  /** After a ladder write the patient has left this view's list — hide them
+   *  now (a claim with an expiry, lib/shared/pendingAdvance), then reconcile. */
+  const handleLadderDone = () => {
+    if (selected) markAdvanced(selected.id);
+    refetch();
   };
 
   const resetForNewPatient = () => {
@@ -153,7 +160,6 @@ const FinalConfirmPage = () => {
       lastBillDateIp: "",
       lastBillDateInfusionSet: "",
       lastBillDateCartridge: "",
-      escalated: false,
     } as Partial<Patient>);
     toast.success("Cleared local edits — refetching from Monday");
     refetch();
@@ -365,11 +371,24 @@ const FinalConfirmPage = () => {
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
                   <h1 className="text-2xl font-bold">Final Profile Confirmation</h1>
-                  {selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}</p>)}
+                  {selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}{selected.proposedStuck && <span className="inline-flex items-center rounded-full bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Proposed Stuck</span>}</p>)}
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
+                {/* Propose Stuck / Approve Stuck / Send back to pipeline, per
+                    (stage × ?mv= origin) — the same bar every ME and Insurance
+                    page carries (lib/shared/stageActions). */}
+                {selected && (
+                  <StageActionBar
+                    stage="final-confirm"
+                    board="welcomeCall"
+                    patientId={selected.id}
+                    patientName={selected.name}
+                    escalationLabel={selected.escalation}
+                    onDone={handleLadderDone}
+                  />
+                )}
                 <Button
                   onClick={() => {
                     if (!selected) return;
@@ -436,12 +455,6 @@ const FinalConfirmPage = () => {
                     onSaveToMonday={(v) => writeLongText(selected.id, COL.notes, v)}
                     notePrefix="Final Confirm"
                   />
-                  <EscalateButton
-                    escalated={selected.escalated}
-                    onToggle={toggleEscalate}
-                    disabled={!selected}
-                    onOpenForm={() => setEscalationModalOpen(true)}
-                  />
                   <SendWithChecksButton
                     findings={findings}
                     onSend={handleSend}
@@ -453,17 +466,6 @@ const FinalConfirmPage = () => {
           </main>
         </div>
       </div>
-    {selected && (
-        <EscalationFormModal
-          open={escalationModalOpen}
-          onOpenChange={setEscalationModalOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, 0); }}
-          writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
-          onSuccess={refetch}
-        />
-      )}
     </SidebarProvider>
   );
 };

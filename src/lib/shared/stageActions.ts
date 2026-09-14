@@ -34,7 +34,11 @@ export type StageKey =
   | "dvs"
   | "doctor-appointments"
   /** Unverified Referrals — the DTC + CareCentrix intake stage. */
-  | "unverified-intake";
+  | "unverified-intake"
+  /** The Welcome Call board's two stages — one Escalation column, one Notes
+   *  log, one ladder (2026-09-14, CLAUDE.md §5.34). */
+  | "welcome-call"
+  | "final-confirm";
 
 /**
  * A button the bar can render.
@@ -123,6 +127,10 @@ export function isDecisionOrigin(origin: ManagerOrigin | null): boolean {
  * Doctor Appointments follows the same ladder for its "won't schedule / wants
  * to cancel" outcome (Josh, 2026-08-03): a rep's proposal reaches Manager
  * Intervention, and a manager proposing from there sends it to Final Decisions.
+ *
+ * Welcome Call and Final Profile Confirmation climb the same two rungs
+ * (Josh, 2026-09-14: "stuck goes to manager escalation — stuck in manager
+ * escalation goes to final escalation").
  */
 export function proposeStuckLevel(
   stage: StageKey,
@@ -131,10 +139,17 @@ export function proposeStuckLevel(
   escalationLabel?: string | null,
 ): "manager" | "final" {
   const label = (escalationLabel ?? "").trim();
-  if (label === "Manager Escalation Required" || label === "Final Escalation Required") return "final";
+  // "Escalation Required" is the Welcome Call board's own wording for the
+  // manager rung (its index-0 label predates the ME/Insurance rename).
+  if (
+    label === "Manager Escalation Required" ||
+    label === "Final Escalation Required" ||
+    label === "Escalation Required"
+  ) return "final";
   if (origin === "manager-intervention") return "final";
   return stage === "submit-auth" || stage === "dvs" || stage === "doctor-appointments"
     || stage === "unverified-intake"
+    || stage === "welcome-call" || stage === "final-confirm"
     ? "manager"
     : "final";
 }

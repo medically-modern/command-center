@@ -425,11 +425,10 @@ export function intakeProfileStatus(
 /**
  * Welcome Call board (`18410804557`) — Welcome Call · Final Profile Confirmation.
  *
- * ⚠️ These two stages hardcode `escalated: false` and never read
- * `color_mm1x7997` (§10 — the escalation there is write-only and the pair needs
- * a rewrite). Pass `escalationIndex` explicitly from the raw column so the badge
- * is honest; reading the column is purely additive and does not touch the
- * broken write path.
+ * Both stages read `color_mm1x7997` by index since 2026-09-14 (§5.34 — the
+ * board joined the Propose Stuck ladder, so index 0 is a manager escalation
+ * and index 2 a stuck proposal, exactly as on Medical Evaluation). The raw
+ * label rides along as the safety net for an unrecognised index.
  */
 export function welcomeCallProfileStatus(
   p: {

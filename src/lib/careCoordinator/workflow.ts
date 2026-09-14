@@ -51,8 +51,16 @@ export const MAX_INTAKE_ATTEMPTS = 5;
 /** Profile Send Off's Intake Escalation labels (mirrors masheke's index model). */
 const INTAKE_ESCALATED_LABELS = new Set(["Manager Escalation Required", "Final Escalation Required"]);
 
-/** Welcome Call board escalation text — `useRoleCounts` ESC_REQUIRED. */
-const WC_ESCALATED_LABEL = "Escalation Required";
+/** Welcome Call board escalation — by INDEX since the board joined the
+ *  Propose Stuck ladder (2026-09-14, §5.34; welcomeCall/mondayApi
+ *  ESCALATION_INDEX), with the label texts as a belt-and-braces fallback for
+ *  a row read without its raw value. Index 0 = with a manager (the board's
+ *  own label still reads "Escalation Required"); index 2 = a stuck proposal
+ *  awaiting Final Decisions — counted, never listed, like the chase column. */
+const WC_ESCALATION_MANAGER = 0;
+const WC_ESCALATION_FINAL = 2;
+const WC_ESCALATED_LABELS = new Set(["Escalation Required", "Manager Escalation Required"]);
+const WC_PROPOSED_STUCK_LABEL = "Final Escalation Required";
 
 /** Medical Evaluation escalation indices (masheke/mondayMapping ESCALATION_INDEX). */
 const ME_ESCALATION_MANAGER = 0;
@@ -131,6 +139,9 @@ export interface WelcomeCallItem {
    *  schedule grid's "Open". Nothing else on this page reads it. */
   email: string;
   escalation: string;
+  /** Raw Escalation index (0 manager · 1 done · 2 proposed stuck). Optional
+   *  because fixtures predate it; `escalation` text is the fallback. */
+  escalationIndex?: number | null;
   followUp: string;
   followUpDate: string;
   serving: string;
@@ -521,18 +532,28 @@ export interface WelcomeCallBuckets {
   /** Follow Up = "Done" — asleep, with a date when one was set. Soonest first,
    *  dateless last. */
   followUpLater: WelcomeCallEntry[];
-  /** Escalation Required — the manager's. */
+  /** Escalation index 0 — the manager's (Manager Intervention). */
   withManager: WelcomeCallEntry[];
+  /** Escalation index 2 — proposed stuck, awaiting a Final Decision in
+   *  Oversight. Counted for the footer, never listed (the chase column's rule). */
+  proposedStuck: number;
 }
 
-export function isWelcomeCallEscalated(item: Pick<WelcomeCallItem, "escalation">): boolean {
-  return (item.escalation ?? "").trim() === WC_ESCALATED_LABEL;
+export function isWelcomeCallEscalated(item: Pick<WelcomeCallItem, "escalation" | "escalationIndex">): boolean {
+  if (item.escalationIndex != null) return item.escalationIndex === WC_ESCALATION_MANAGER;
+  return WC_ESCALATED_LABELS.has((item.escalation ?? "").trim());
+}
+
+export function isWelcomeCallProposedStuck(item: Pick<WelcomeCallItem, "escalation" | "escalationIndex">): boolean {
+  if (item.escalationIndex != null) return item.escalationIndex === WC_ESCALATION_FINAL;
+  return (item.escalation ?? "").trim() === WC_PROPOSED_STUCK_LABEL;
 }
 
 export function welcomeCallBuckets(items: WelcomeCallItem[]): WelcomeCallBuckets {
   const callNow: WelcomeCallEntry[] = [];
   const followUpLater: WelcomeCallEntry[] = [];
   const withManager: WelcomeCallEntry[] = [];
+  let proposedStuck = 0;
 
   for (const item of items) {
     const entry: WelcomeCallEntry = {
@@ -541,6 +562,7 @@ export function welcomeCallBuckets(items: WelcomeCallItem[]): WelcomeCallBuckets
       crossSell: isCrossSell(item),
       attempts: toCount(item.callAttempts),
     };
+    if (isWelcomeCallProposedStuck(item)) { proposedStuck++; continue; }
     if (isWelcomeCallEscalated(item)) { withManager.push(entry); continue; }
     if ((item.followUp ?? "").trim() === "Done") { followUpLater.push(entry); continue; }
     callNow.push(entry);
@@ -560,7 +582,7 @@ export function welcomeCallBuckets(items: WelcomeCallItem[]): WelcomeCallBuckets
     return da < db ? -1 : da > db ? 1 : byCreated(a, b);
   });
 
-  return { callNow, followUpLater, withManager };
+  return { callNow, followUpLater, withManager, proposedStuck };
 }
 
 /* ── The header ──────────────────────────────────────────────── */

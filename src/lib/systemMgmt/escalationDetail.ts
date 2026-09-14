@@ -43,15 +43,17 @@ import {
  *
  * Medical Evaluation and Insurance split their Escalation column in July 2026
  * into index 0 "Manager Escalation Required" and index 2 "Final Escalation
- * Required" (index 1 = Done). Welcome Call never split — it has a single
- * "Escalation Required" label — hence `flat`, which exists so that board is
- * described honestly rather than being labelled a manager rung it has no
- * concept of.
+ * Required" (index 1 = Done). The Welcome Call board joined them on
+ * 2026-09-14 (CLAUDE.md §5.34): its index-0 label still reads "Escalation
+ * Required" — that IS its manager rung now — and index 2 is a stuck proposal.
+ * `flat` survives for a board that never split (Subscription's single
+ * "Escalate" label), so it is described honestly rather than being labelled a
+ * manager rung it has no concept of.
  */
 export type EscalationLevel = "manager" | "final" | "flat";
 
 /** Boards whose Escalation column carries the manager/final split. */
-const SPLIT_BOARDS = new Set([18406060017, 18410601299]);
+const SPLIT_BOARDS = new Set([18406060017, 18410601299, 18410804557]);
 
 /**
  * Derive the rung from the status column's label and raw index.
@@ -70,7 +72,10 @@ export function escalationLevelFrom(
   const text = (escalationText ?? "").trim();
   if (text === "Final Escalation Required") return "final";
   if (text === "Manager Escalation Required") return "manager";
-  if (text === "Escalation Required" || text === "Escalate") return "flat";
+  // "Escalation Required" is a split board's manager rung under its original
+  // wording (Welcome Call), and a flat board's only rung otherwise.
+  if (text === "Escalation Required") return SPLIT_BOARDS.has(boardId) ? "manager" : "flat";
+  if (text === "Escalate") return "flat";
   if (SPLIT_BOARDS.has(boardId)) {
     if (escalationIndex === 2) return "final";
     if (escalationIndex === 0) return "manager";

@@ -428,9 +428,10 @@ export async function sendPatientToMonday(
     }
   }
 
-  // ─── Escalation ───────────────────────────────────────────
-  if (p.escalated)
-    tasks.push({ label: "Escalation", columnId: COL.escalation, value: { index: 0 }, fn: () => writeStatusIndex(p.id, COL.escalation, 0) });
+  // ─── Escalation: NOT written by the send (2026-09-14) ───────
+  // `escalated` is hydrated from the board now, so re-writing it here would
+  // re-assert or overwrite whatever a manager just decided (§7). The Propose
+  // Stuck ladder in welcomeCall/mondayWrite is the only writer of that column.
 
   // ─── Stage Advancer (added to tasks — verified write handles ordering) ───
   tasks.push({

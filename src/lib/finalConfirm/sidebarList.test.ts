@@ -22,7 +22,8 @@ const escalatedE = p({ id: "e1", name: "Escalated E", escalated: true });
 const activeB = p({ id: "a2", name: "Active B" });
 const escalatedF = p({ id: "e2", name: "Escalated F", escalated: true });
 const activeC = p({ id: "a3", name: "Active C" });
-const board = [activeA, escalatedE, activeB, escalatedF, activeC];
+const proposedP = p({ id: "p1", name: "Proposed P", proposedStuck: true });
+const board = [activeA, escalatedE, activeB, escalatedF, activeC, proposedP];
 
 describe("sidebarVisibleList — nonEscalated (default) filter", () => {
   it("shows only non-escalated patients; hides every escalated patient", () => {
@@ -56,7 +57,7 @@ describe("sidebarVisibleList — all filter", () => {
   it("renders Active then Escalated, top to bottom", () => {
     expect(ids(sidebarVisibleList(board, "all"))).toEqual([
       "a1", "a2", "a3", // Active (main)
-      "e1", "e2",       // Escalated
+      "e1", "e2", "p1",       // Escalated
     ]);
   });
 
@@ -76,5 +77,26 @@ describe("sidebarVisibleList — order preservation", () => {
     ]);
     expect(ids(sidebarVisibleList(shuffled, "escalated"))).toEqual(["e2", "e1"]);
     expect(ids(sidebarVisibleList(shuffled, "nonEscalated"))).toEqual(["a3", "a1", "a2"]);
+  });
+});
+
+// ── The Propose Stuck ladder (2026-09-14, §5.34) ──
+describe("proposed stuck (Escalation index 2)", () => {
+  it("is in no rep list and is not an 'escalated' row", () => {
+    expect(ids(sidebarVisibleList(board, "nonEscalated"))).toEqual(["a1", "a2", "a3"]);
+    expect(ids(sidebarVisibleList(board, "escalated"))).toEqual(["e1", "e2"]);
+  });
+
+  it("IS the main list from the Final Decisions column", () => {
+    const s = sidebarSections(board, "escalated", { origin: "final-decisions" });
+    expect(ids(s.main)).toEqual(["p1"]);
+    expect(s.escalated).toEqual([]);
+    expect(s.proposedStuck).toEqual([]);
+  });
+
+  it("gets its own section, last, on the all filter", () => {
+    const s = sidebarSections(board, "all");
+    expect(ids(s.proposedStuck)).toEqual(["p1"]);
+    expect(ids(sidebarVisibleList(board, "all"))).toEqual(["a1", "a2", "a3", "e1", "e2", "p1"]);
   });
 });

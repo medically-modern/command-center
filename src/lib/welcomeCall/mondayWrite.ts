@@ -1,4 +1,10 @@
-import { writeStatusIndex, writeStatusClear, writeCheckbox, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
+import { writeStatusIndex, writeStatusClear, writeCheckbox, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, clearStatusColumn, writePhone, readColumnTexts, COL, BOARD_ID, ESCALATION_INDEX } from "./mondayApi";
+import { fetchStatusOptions, invalidateStatusOptions } from "@/lib/shared/statusOptions";
+import {
+  stampProposedStuck, stampApprovedStuck, stampReturnedToQueue, stampEscalatedToFinal, appendStampedLine,
+} from "@/lib/masheke/proposedStuck";
+import { userInitials } from "@/lib/shared/auth";
+import { etToday } from "@/lib/masheke/etDate";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { appendIntakeToNotes } from "./callIntake";
@@ -396,10 +402,12 @@ export async function sendPatientToMonday(
     tasks.push({ label: "Notes", columnId: COL.notes, value: notesToWrite, fn: () => writeLongText(p.id, COL.notes, notesToWrite) });
   }
 
-  // Escalation toggle — if flagged, write Escalation Required
-  if (p.escalated) {
-    tasks.push({ label: "Escalation", columnId: COL.escalation, value: { index: 0 }, fn: () => writeStatusIndex(p.id, COL.escalation, 0) });
-  }
+  // ⚠️ The send NEVER touches Escalation (2026-09-14). It used to write index 0
+  // whenever `p.escalated` was true — and `escalated` is HYDRATED from the board
+  // now, so re-writing it on every send is the anti-pattern §7 records for the
+  // Insurance board: a flag raised since the page last polled gets overwritten,
+  // a proposal gets silently re-asserted. Escalation is written by the ladder
+  // writers at the bottom of this file and by nothing else on this stage.
 
   // Stage advancer — Review Profile
   tasks.push({ label: "Stage Advancer", columnId: COL.stageAdvancer, value: { index: 0 }, fn: () => writeStatusIndex(p.id, COL.stageAdvancer, 0) });
@@ -536,44 +544,190 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
   await writeStatusIndex(p.id, COL.welcomeCallText, 0);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   The Propose Stuck ladder — this board joined the Medical Evaluation /
+   Insurance system on 2026-09-14 (Josh: "stuck goes to manager escalation —
+   stuck in manager escalation goes to final escalation — patient moved to
+   stuck or moved back to pipeline logic there").
+
+     rep: Propose Stuck ──▶ Escalation 0 (Manager Intervention)
+     manager there: Propose Stuck / Escalate to Final ──▶ Escalation 2 (Final Decisions)
+     Final Decisions: Approve Stuck ──▶ Stage Advancer "Stuck / Don't Proceed"
+                      (automation 7918322174 moves the item to the Stuck group)
+                      Send back to pipeline ──▶ Escalation "Done", Follow Up cleared
+
+   Same column lineage as Medical Evaluation (`color_mm1x7997`), same stamps
+   (`lib/masheke/proposedStuck`), same read-side contract (Oversight's
+   `__proposedReason__` slices the LAST "[Proposed Stuck …]" line out of Notes).
+   Both Welcome Call and Final Profile Confirmation write these — one board,
+   one column, one Notes log.
+
+   ⚠️ **This replaced `markStuckWithReason`**, the DIRECT exit that itself
+   replaced "Don't Advance" three days earlier. A rep no longer writes the
+   Stage Advancer; a manager does, from Final Decisions.
+
+   ⚠️ Reason FIRST, status second, in every writer: the status flip is what
+   surfaces the patient in a manager column, so a manager must never open a
+   row whose reason has not landed. A failed flip leaves a stamped patient in
+   the queue they came from — visible and retryable.
+
+   ⚠️ Deliberately NOT verified-write transactions: the Escalation column
+   triggers no automation on this board (the one workflow that keyed on it,
+   7918322106 → the "Escalation" group, is inactive). The Stage Advancer write
+   in Approve IS an automation trigger, and it is the LAST write there.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+export type StuckLevel = "manager" | "final";
+
+const ESCALATION_LABEL: Record<StuckLevel, string> = {
+  manager: "Manager Escalation Required",
+  final: "Final Escalation Required",
+};
+
+/** The board's index-0 label reads "Escalation Required"; ME's reads
+ *  "Manager Escalation Required". Either means "with a manager". */
+function isFinalLabel(text: string): boolean {
+  return text.trim() === "Final Escalation Required";
+}
+
 /**
- * Mark this patient Stuck, with a reason.
+ * Refuse a rung the board cannot hold.
  *
- * ⚠️ **This is what replaced "Don't Advance"** (Josh, 2026-09-11: *"remove
- * don't advance completely"*). That button was broken in a way worth
- * remembering: BOTH end-of-call choices wrote Stage Advancer → Review Profile,
- * which is the move to Final Profile Confirmation — so the button labelled
- * "hold this patient" moved them forward.
- *
- * ⚠️ **Not a Propose Stuck, and deliberately not pretending to be one.** This
- * board has no propose→approve ladder: `StageActionBar` does not render here,
- * `StageKey` has no `welcome-call`, and the Escalation column carries only
- * "Escalation Required" and "Done" — no index 2 for the ladder to write, and
- * Monday drops a write to a label that does not exist at HTTP 200 with no
- * error. This is the DIRECT exit, which is the same call already made for
- * Profile Send Off (§5.10, Josh 2026-08-20: "no propose stuck anywhere").
- *
- * ⚠️ **Reason FIRST, advancer second** — the §5.10 ordering rule. A failed
- * advancer then leaves a stamped patient still in the rep's queue, visible and
- * retryable; the other order parks somebody in the Stuck group with no
- * explanation of why. And the reason is REQUIRED because this board has no
- * stuck-reason column: the stamped note is the only record that will exist.
- *
- * ⚠️ Appends onto the polled copy of Notes, like every other stage-page note
- * path — the same one-poll lost-update exposure, not a new one.
+ * ⚠️ Monday takes a write to a label id that does not exist at HTTP 200 —
+ * either dropping it or storing a value no reader can name (three Final
+ * Profile Confirmation rows carry `{"index":5}` in Advance? today, 2026-09-14).
+ * The Escalation column carried ids 0 and 1 only when this shipped; id 2 is a
+ * board change (CLAUDE.md §5.34). Until it lands, a promotion to Final would
+ * have written its reason into Notes and then flipped nothing — a proposal
+ * that looks made and reaches nobody. So the label is checked FIRST, before
+ * any write, against the live `settings_str`, and a miss invalidates the
+ * 5-minute cache so a retry right after the board change sees the new label.
  */
-export async function markStuckWithReason(p: Patient, reason: string): Promise<void> {
+export async function assertEscalationLabelExists(level: StuckLevel): Promise<void> {
+  const options = await fetchStatusOptions(BOARD_ID, [COL.escalation]);
+  const wanted = ESCALATION_INDEX[level];
+  if ((options[COL.escalation] ?? []).some((o) => o.index === wanted)) return;
+  invalidateStatusOptions();
+  throw new Error(
+    `The Welcome Call board's Escalation column has no "${ESCALATION_LABEL[level]}" label (id ${wanted}) yet — ` +
+      `nothing was written. Add that label to the column on Monday, then try again.`,
+  );
+}
+
+async function readNotesNow(itemId: string): Promise<string> {
+  const cur = await readColumnTexts(itemId, [COL.notes]);
+  return cur.find((c) => c.id === COL.notes)?.text ?? "";
+}
+
+async function appendNoteLine(itemId: string, existing: string, line: string): Promise<void> {
+  const appended = appendStampedLine(existing, line);
+  await assertTextLikeFits(BOARD_ID, COL.notes, appended, "Welcome Call Notes");
+  await writeLongText(itemId, COL.notes, appended);
+}
+
+/**
+ * The rep's (or a manager's) proposal. Stamps the reason into Notes, THEN
+ * flips Escalation to `level`. Returns the rung actually written.
+ *
+ * ⚠️ Never DOWNGRADES: a patient already at Final Escalation Required stays
+ * there when somebody proposes from the rep view — the manager's decision
+ * outranks a rep's proposal (samantha/ProposeStuckButton's rule). The reason
+ * stamp still lands either way.
+ */
+export async function proposeWelcomeCallStuck(
+  itemId: string,
+  reason: string,
+  level: StuckLevel,
+): Promise<StuckLevel> {
   const text = reason.trim();
-  if (!text) throw new Error("A reason is required to mark a patient stuck");
-  const notes = appendStampedNote(p.notes, `Marked stuck — ${text}`, "Welcome Call");
-  await assertTextLikeFits(BOARD_ID, COL.notes, notes, "Welcome Call Notes");
-  await writeLongText(p.id, COL.notes, notes);
-  await writeStatusIndex(p.id, COL.stageAdvancer, STAGE_ADVANCER_STUCK);
+  if (!text) throw new Error("A reason is required to propose stuck");
+  const cur = await readColumnTexts(itemId, [COL.notes, COL.escalation]);
+  const notes = cur.find((c) => c.id === COL.notes)?.text ?? "";
+  const esc = cur.find((c) => c.id === COL.escalation)?.text ?? "";
+  const target: StuckLevel = level === "manager" && isFinalLabel(esc) ? "final" : level;
+  await assertEscalationLabelExists(target);
+  await appendNoteLine(itemId, notes, stampProposedStuck(text, etToday(), userInitials()));
+  await writeStatusIndex(itemId, COL.escalation, ESCALATION_INDEX[target]);
+  return target;
+}
+
+/**
+ * Manager Intervention → Final Decisions, from the Oversight drill-down. The
+ * note is REQUIRED — "why does this need a final decision" is what the Final
+ * Decisions reviewer works from (the Submit Auth two-step rule, §7). The rep's
+ * own "[Proposed Stuck …]" line stays in Notes as the Proposed Reason.
+ * Idempotent on retry: a stamp already in Notes is not appended twice.
+ */
+export async function escalateWelcomeCallToFinal(itemId: string, note: string): Promise<void> {
+  const trimmed = note.trim();
+  if (!trimmed) throw new Error("A note is required to escalate to Final Decisions");
+  await assertEscalationLabelExists("final");
+  const existing = await readNotesNow(itemId);
+  const stamped = stampEscalatedToFinal(trimmed, etToday(), userInitials());
+  if (!existing.includes(stamped)) await appendNoteLine(itemId, existing, stamped);
+  await writeStatusIndex(itemId, COL.escalation, ESCALATION_INDEX.final);
+}
+
+/**
+ * Approve a stuck proposal: the patient moves to Stuck and leaves the
+ * pipeline. Optional stamped note first (the last thing recorded before they
+ * go), then the Stage Advancer → "Stuck / Don't Proceed" (automation
+ * 7918322174 moves the item to the Stuck group), then Escalation → Done.
+ * Stage before escalation, as `approveProposedStuck` does on Medical
+ * Evaluation: a half-failure leaves a Stuck patient still flagged, which the
+ * Stuck group makes harmless, rather than an un-stuck patient nobody flags.
+ */
+export async function approveWelcomeCallStuck(itemId: string, appendNote?: string): Promise<void> {
+  const note = appendNote?.trim();
+  if (note) {
+    const existing = await readNotesNow(itemId);
+    await appendNoteLine(itemId, existing, stampApprovedStuck(note, etToday(), userInitials()));
+  }
+  await writeStatusIndex(itemId, COL.stageAdvancer, STAGE_ADVANCER_STUCK);
+  await writeStatusIndex(itemId, COL.escalation, ESCALATION_INDEX.done);
+}
+
+/**
+ * Send the patient back to the pipeline — from either manager column.
+ *
+ * The stamped note is written even when the manager leaves the box blank
+ * ("Returned by a manager"): the escalation clearing is the only other trace,
+ * and the rep picks the patient up with no idea what was looked at otherwise.
+ * Then the Follow Up snooze is CLEARED (status and date) so the patient is
+ * due NOW rather than asleep behind whatever date the rep left — this board's
+ * twin of the Next Action Date = today that Medical Evaluation writes on a
+ * return. Escalation → Done goes LAST: it is what makes the patient visible
+ * to the rep, so it must not fire before the data it hands them is in place.
+ */
+export async function returnWelcomeCallToQueue(itemId: string, appendNote?: string): Promise<void> {
+  const note = appendNote?.trim() || "Returned by a manager";
+  const existing = await readNotesNow(itemId);
+  const stamped = stampReturnedToQueue(note, etToday(), userInitials());
+  if (!existing.includes(stamped)) await appendNoteLine(itemId, existing, stamped);
+  await clearStatusColumn(itemId, COL.followUp);
+  await clearDateColumn(itemId, COL.followUpDate);
+  await writeStatusIndex(itemId, COL.escalation, ESCALATION_INDEX.done);
 }
 
 /** Stage Advancer `color_mm1ws96t` — 0 Review Profile · 2 Stuck / Don't
  *  Proceed · 4 Completed · 7 Welcome Call. Read off the live board. */
 export const STAGE_ADVANCER_STUCK = 2;
+
+/**
+ * Reset the Welcome Call Text trigger so it can be sent AGAIN.
+ *
+ * Found by the 2026-09-14 write audit: the "Queued" button used to toggle OFF
+ * locally only, leaving the board at "Send". Automation 7918318033 fires on a
+ * status CHANGE, so the rep's next press re-wrote index 0 onto index 0 —
+ * Monday answered 200, the button read "Queued" again, and no text went out
+ * (§9's advancer-no-op class, on a different column). Clearing the column on
+ * the board (`{}`) is what makes the next press a real change. The inactive
+ * board workflow 7918471337 ("When Welcome Call Text changes → clear") would do
+ * this automatically if it were ever switched on; until then the app does it.
+ */
+export async function resetWelcomeCallText(itemId: string): Promise<void> {
+  await clearStatusColumn(itemId, COL.welcomeCallText);
+}
 
 /**
  * Immediately push phone to Monday (called on check-mark press).

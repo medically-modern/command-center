@@ -17,6 +17,8 @@ const STAGES: StageKey[] = [
   "submit-auth",
   "auth-outstanding",
   "dvs",
+  "welcome-call",
+  "final-confirm",
 ];
 
 const MANAGER = "Manager Escalation Required";
@@ -145,5 +147,31 @@ describe("isDecisionOrigin", () => {
     expect(isDecisionOrigin("manager-intervention")).toBe(false);
     expect(isDecisionOrigin("overview")).toBe(false);
     expect(isDecisionOrigin(null)).toBe(false);
+  });
+});
+
+// ── The Welcome Call board joined the ladder (2026-09-14, §5.34) ──
+describe("proposeStuckLevel — Welcome Call board", () => {
+  it.each(["welcome-call", "final-confirm"] as StageKey[])(
+    "%s: a rep's proposal lands in Manager Intervention",
+    (stage) => {
+      expect(proposeStuckLevel(stage, null)).toBe("manager");
+      expect(proposeStuckLevel(stage, "overview")).toBe("manager");
+    },
+  );
+
+  it.each(["welcome-call", "final-confirm"] as StageKey[])(
+    "%s: a manager's proposal from Manager Intervention promotes to Final",
+    (stage) => {
+      expect(proposeStuckLevel(stage, "manager-intervention")).toBe("final");
+    },
+  );
+
+  it("promotes a patient ALREADY escalated — under the board's own label wording too", () => {
+    // The Welcome Call column's index-0 label reads "Escalation Required",
+    // not ME's "Manager Escalation Required"; both mean "with a manager".
+    expect(proposeStuckLevel("welcome-call", null, "Escalation Required")).toBe("final");
+    expect(proposeStuckLevel("welcome-call", null, MANAGER)).toBe("final");
+    expect(proposeStuckLevel("welcome-call", null, FINAL)).toBe("final");
   });
 });

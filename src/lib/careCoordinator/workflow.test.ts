@@ -277,6 +277,8 @@ describe("welcomeCallBuckets — the right column", () => {
   it("escalated · snoozed · call now, with the ops flags", () => {
     const b = welcomeCallBuckets([
       wc({ id: "esc", escalation: "Escalation Required" }),
+      // Index 2 = proposed stuck (§5.34): counted for the footer, listed nowhere.
+      wc({ id: "proposed", escalation: "Final Escalation Required", escalationIndex: 2 }),
       wc({ id: "snz", followUp: "Done", followUpDate: "2026-09-12" }),
       wc({ id: "snz-nodate", followUp: "Done" }),
       wc({ id: "snz-soon", followUp: "Done", followUpDate: "2026-09-09" }),
@@ -284,11 +286,26 @@ describe("welcomeCallBuckets — the right column", () => {
       wc({ id: "old", createdAt: hoursAgo(100), callAttempts: "2" }),
     ]);
     expect(b.withManager.map((e) => e.item.id)).toEqual(["esc"]);
+    expect(b.proposedStuck).toBe(1);
     expect(b.followUpLater.map((e) => e.item.id)).toEqual(["snz-soon", "snz", "snz-nodate"]);
     expect(b.callNow.map((e) => e.item.id)).toEqual(["old", "new"]);
     const byId = Object.fromEntries(b.callNow.map((e) => [e.item.id, e]));
     expect(byId.old).toMatchObject({ firstTimePump: true, crossSell: false, attempts: 2 });
     expect(byId.new).toMatchObject({ firstTimePump: false, crossSell: true, attempts: 0 });
+  });
+
+  it("reads the escalation by INDEX when the raw value is there, by label otherwise", () => {
+    // A rename of the board's index-0 label must not un-escalate anyone; a
+    // row read without its raw value (older fixtures, a partial read) still
+    // falls back to the two label spellings that mean "with a manager".
+    const b = welcomeCallBuckets([
+      wc({ id: "renamed", escalation: "Anything At All", escalationIndex: 0 }),
+      wc({ id: "me-wording", escalation: "Manager Escalation Required" }),
+      wc({ id: "done", escalation: "Done", escalationIndex: 1 }),
+    ]);
+    expect(b.withManager.map((e) => e.item.id)).toEqual(["renamed", "me-wording"]);
+    expect(b.callNow.map((e) => e.item.id)).toEqual(["done"]);
+    expect(b.proposedStuck).toBe(0);
   });
 });
 

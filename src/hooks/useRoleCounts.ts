@@ -104,15 +104,23 @@ const SAM_DVS_STAGE_INDEX = 1;             // "DVS" label index (verified 2026-0
 // Welcome Call board (shared by welcomeCall + finalConfirm groups)
 const WC_ESC_COL = "color_mm1x7997";       // Escalation
 const WC_FOLLOWUP_COL = "color_mm38w2tk";  // Follow Up
+// The Welcome Call board joined the Propose Stuck ladder on 2026-09-14
+// (§5.34) and is read by INDEX from then on, exactly like Medical Evaluation:
+// index 0 = with a manager (the escalated count), index 2 = a stuck PROPOSAL
+// awaiting Final Decisions (leaves both counts). The label text was
+// "Escalation Required" and may be renamed to ME's wording — text matching
+// would have silently reopened the queue on a rename. Mirrors
+// welcomeCall/mondayApi ESCALATION_INDEX + both baseline generators.
+const WC_ESCALATED_INDEX = 0;
+const WC_PROPOSED_STUCK_INDEX = 2;
 // Profile
 const PROF_FOLLOWUP_COL = "color_mm3822qq"; // Follow Up
 const PROF_REFERRAL_TYPE_COL = "color_mm1wm4n4";   // Referral Type (role split)
 const PROF_REFERRAL_SOURCE_COL = "color_mm1w5wxr"; // Referral Source (role split)
 const PROF_IN_SYSTEM_COL = "color_mm2xe7r8";       // Already In System (role split)
 
-const ESC_REQUIRED = "Escalation Required";
 // Insurance board escalation split into two labels (2026-07) — either counts as
-// escalated. Masheke + Welcome Call still use the single ESC_REQUIRED above.
+// escalated. Masheke + Welcome Call match by INDEX instead (see their helpers).
 const SAM_ESCALATED = new Set(["Manager Escalation Required", "Final Escalation Required"]);
 const isSamEscalated = (txt: string): boolean => SAM_ESCALATED.has(txt);
 
@@ -135,6 +143,12 @@ function statusIndex(raw: string | undefined): number | null {
 // silently break the counts. (Samantha/Welcome Call labels are unchanged and
 // keep their text match below.)
 const MESH_ESCALATED_INDICES = [0];
+function isWcEscalated(item: { vals: Record<string, string> }): boolean {
+  return statusIndex(item.vals[WC_ESC_COL]) === WC_ESCALATED_INDEX;
+}
+function isWcProposedStuck(item: { vals: Record<string, string> }): boolean {
+  return statusIndex(item.vals[WC_ESC_COL]) === WC_PROPOSED_STUCK_INDEX;
+}
 function isMeshEscalated(item: { vals: Record<string, string> }): boolean {
   const idx = statusIndex(item.vals[MESH_ESC_COL]);
   return idx !== null && MESH_ESCALATED_INDICES.includes(idx);
@@ -552,9 +566,11 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
       boardTasks.push(
         (async () => {
           const items = await fetchBoardGroupItemsLight(WC_BOARD_ID, WC_GROUP_ID, [WC_ESC_COL, WC_FOLLOWUP_COL]);
-          const escN = items.filter((i) => i.cols[WC_ESC_COL] === ESC_REQUIRED).length;
+          // Index 0 is the escalated count; index 2 (a stuck proposal) is in
+          // NEITHER count, exactly as the ME counts treat the same column.
+          const escN = items.filter(isWcEscalated).length;
           const active = items.filter(
-            (i) => i.cols[WC_ESC_COL] !== ESC_REQUIRED && i.cols[WC_FOLLOWUP_COL] !== "Done",
+            (i) => !isWcEscalated(i) && !isWcProposedStuck(i) && i.cols[WC_FOLLOWUP_COL] !== "Done",
           );
           merge({ welcomeCall: active.length }, { welcomeCall: escN }, { welcomeCall: active.map((i) => i.id) });
         })(),
@@ -565,8 +581,8 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
       boardTasks.push(
         (async () => {
           const items = await fetchBoardGroupItemsLight(WC_BOARD_ID, FINAL_CONFIRM_GROUP_ID, [WC_ESC_COL]);
-          const escN = items.filter((i) => i.cols[WC_ESC_COL] === ESC_REQUIRED).length;
-          const active = items.filter((i) => i.cols[WC_ESC_COL] !== ESC_REQUIRED);
+          const escN = items.filter(isWcEscalated).length;
+          const active = items.filter((i) => !isWcEscalated(i) && !isWcProposedStuck(i));
           merge({ finalConfirm: active.length }, { finalConfirm: escN }, { finalConfirm: active.map((i) => i.id) });
         })(),
       );

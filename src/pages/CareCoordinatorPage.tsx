@@ -296,6 +296,7 @@ export default function CareCoordinatorPage() {
             progress={welcome.progress}
             alert={wcUncalled ? `${wcUncalled} not yet called` : null}
             alertTone="warn"
+            footer={welcomeB.proposedStuck > 0 ? <>Not shown: {welcomeB.proposedStuck} proposed stuck — awaiting a Final Decision in Oversight.</> : undefined}
           >
             {welcome.loading && <Skeleton />}
             {!welcome.loading && summary.welcome === 0 && welcomeB.withManager.length === 0 && <Empty>Nothing in the Welcome Call queue.</Empty>}

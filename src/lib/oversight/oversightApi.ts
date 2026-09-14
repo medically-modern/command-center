@@ -152,7 +152,12 @@ export interface ChartDef {
      *  Escalate to Final / Send back to pipeline. */
     | "intake-manager"
     /** Patient Intake, Proposed Stuck (index 2): Approve Stuck / Return. */
-    | "intake-final";
+    | "intake-final"
+    /** Welcome Call board (both stages), Manager Intervention rung (index 0):
+     *  Escalate to Final / Send back to pipeline (§5.34). */
+    | "welcome-call-manager"
+    /** Welcome Call board, Proposed Stuck (index 2): Approve Stuck / Return. */
+    | "welcome-call-final";
   /** Reason-bucketed chart (Katie 2026-07-29): the x-axis is one bar per
    *  REASON, not the day buckets. Each bucket names a CHART_FILTERS rule; a
    *  patient can match several buckets and is counted in each (the header
@@ -993,7 +998,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "profile-review",
-    title: "Profile Review",
+    title: "Final Profile Confirmation",
     boardId: 18410804557,
     notesColId: "text_mm6vqq2k",
     drilldownCols: [
@@ -1002,6 +1007,66 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "color_mm1w5wxr", label: "Referral Source" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
+    ],
+  },
+  // ── Welcome Call board — manager views (2026-09-14, §5.34) ──
+  // The board joined the Propose Stuck ladder: one Escalation column
+  // (`color_mm1x7997`, the same id Medical Evaluation carries) shared by both
+  // stages, so each row gets the pair every ME row has — index 0 in Manager
+  // Intervention, index 2 (a stuck proposal) in Final Decisions. The rep's
+  // stamped "[Proposed Stuck …]" reason is sliced out of Notes, which is why
+  // `reasonColId` is the Notes column. Nothing here changes the Processor
+  // Overview charts' rows; those two now exclude both rungs (CHART_FILTERS).
+  {
+    id: "welcome-call-manager",
+    title: "Welcome Call (Escalated)",
+    boardId: 18410804557,
+    notesColId: "text_mm6vqq2k",
+    rowOf: "welcome-call",
+    decision: "welcome-call-manager",
+    reasonColId: "text_mm6vqq2k",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Escalation Reason" },
+      { colId: "color_mm1x7997", label: "Escalation", pill: true },
+    ],
+  },
+  {
+    id: "welcome-call-final",
+    title: "Welcome Call (Proposed Stuck)",
+    boardId: 18410804557,
+    notesColId: "text_mm6vqq2k",
+    rowOf: "welcome-call",
+    decision: "welcome-call-final",
+    reasonColId: "text_mm6vqq2k",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Proposed Reason" },
+      { colId: "color_mm1x7997", label: "Escalation", pill: true },
+    ],
+  },
+  {
+    id: "profile-review-manager",
+    title: "Final Profile Confirmation (Escalated)",
+    boardId: 18410804557,
+    notesColId: "text_mm6vqq2k",
+    rowOf: "profile-review",
+    decision: "welcome-call-manager",
+    reasonColId: "text_mm6vqq2k",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Escalation Reason" },
+      { colId: "color_mm1x7997", label: "Escalation", pill: true },
+    ],
+  },
+  {
+    id: "profile-review-final",
+    title: "Final Profile Confirmation (Proposed Stuck)",
+    boardId: 18410804557,
+    notesColId: "text_mm6vqq2k",
+    rowOf: "profile-review",
+    decision: "welcome-call-final",
+    reasonColId: "text_mm6vqq2k",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Proposed Reason" },
+      { colId: "color_mm1x7997", label: "Escalation", pill: true },
     ],
   },
 ];
@@ -1236,8 +1301,21 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
       "auth-outstanding-final-escalation",
     ],
   },
-  // "profile-review" chart not defined yet — needs a board/group; skipped until added.
-  { id: "welcome-call", title: "Welcome Call", chartIds: ["welcome-call", "profile-review"] },
+  // Welcome Call board — the 3-column manager scheme from 2026-09-14 (§5.34):
+  // both stages share one Escalation column, so both rows carry a Manager
+  // Intervention chart (index 0) and a Final Decisions chart (index 2). Before
+  // this the section was a single column and an escalated Welcome Call patient
+  // matched NO chart — invisible app-wide, the §7 failure.
+  {
+    id: "welcome-call",
+    title: "Welcome Call",
+    chartIds: ["welcome-call", "profile-review"],
+    primaryTitle: "Processor Overview",
+    secondaryTitle: "Manager Intervention",
+    secondaryChartIds: ["welcome-call-manager", "profile-review-manager"],
+    tertiaryTitle: "Final Decisions",
+    tertiaryChartIds: ["welcome-call-final", "profile-review-final"],
+  },
 ];
 
 // ── Day-bucket derivation helpers ───────────────────────────────────────
@@ -1391,6 +1469,14 @@ function columnsForBoard(boardId: number): string[] {
   if (boardId === 18410601299) {
     set.add("color_mm2vsh2f");    // Escalation status
     set.add("numeric_mm27nexq");  // Retry Count
+  }
+
+  // Welcome Call board — the Escalation status backs every one of its six
+  // charts (index 0 → Manager Intervention, 2 → Final Decisions, neither →
+  // Processor Overview). The filter rules name it already; it is added here
+  // explicitly so a rule edit can never leave the charts matching nobody.
+  if (boardId === 18410804557) {
+    set.add("color_mm1x7997");
   }
 
   // Drop synthetic columns (e.g. "__requesting__") — they aren't real Monday ids.
@@ -1800,8 +1886,16 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "submit-auth":        { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.",      andCols: [{ colId: "color_mm2vsh2f", index: [0, 2], not: true }] },
   "auth-outstanding":   { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2], not: true }] },
   "auth-denial":        { type: "group", groupId: "group_mm316hg2", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2], not: true }] },
-  "welcome-call":       { type: "group", groupId: "group_mm1wvq8p" },
-  "profile-review":     { type: "group", groupId: "group_mm2x8jtj" },
+  // ── Welcome Call board (§5.34) ──
+  // Processor Overview excludes BOTH manager rungs, matching the counting
+  // contract (useRoleCounts + both baseline generators drop index 0 and 2), so
+  // the three columns partition each row — `columnExclusivity.test.ts`.
+  "welcome-call":       { type: "group", groupId: "group_mm1wvq8p", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }] },
+  "profile-review":     { type: "group", groupId: "group_mm2x8jtj", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }] },
+  "welcome-call-manager":   { type: "group", groupId: "group_mm1wvq8p", andCols: [{ colId: "color_mm1x7997", index: [0] }] },
+  "welcome-call-final":     { type: "group", groupId: "group_mm1wvq8p", andCols: [{ colId: "color_mm1x7997", index: [2] }] },
+  "profile-review-manager": { type: "group", groupId: "group_mm2x8jtj", andCols: [{ colId: "color_mm1x7997", index: [0] }] },
+  "profile-review-final":   { type: "group", groupId: "group_mm2x8jtj", andCols: [{ colId: "color_mm1x7997", index: [2] }] },
 
   // ── Manager views (2026-07) ──
   // Proposed Stuck (Final Decisions): stage + Escalation = "Final Escalation

@@ -252,9 +252,8 @@ export async function fetchChaseItems(onPage?: PageReport): Promise<ChaseItem[]>
 /* ── Welcome Call group ──────────────────────────────────────── */
 
 /** Welcome Call's Escalation column. The same id as Medical Evaluation's (the
- *  board was duplicated from it), read by label — `useRoleCounts` WC_ESC_COL. The
- *  welcomeCall COL map carries no entry for it (§10: that stage's escalation is
- *  write-only today), so the id lives here. */
+ *  board was duplicated from it) — and since 2026-09-14 the same three rungs
+ *  (welcomeCall/mondayApi ESCALATION_INDEX, §5.34). Read as index AND text. */
 const WC_ESCALATION_COL = "color_mm1x7997";
 
 const WC_COLS: string[] = [
@@ -276,6 +275,7 @@ function toWelcomeCallItem(item: RawItem): WelcomeCallItem {
     phone: text(item, WC_COL.phone),
     email: text(item, WC_COL.email),
     escalation: text(item, WC_ESCALATION_COL),
+    escalationIndex: statusIndex(item, WC_ESCALATION_COL),
     followUp: text(item, WC_COL.followUp),
     followUpDate: text(item, WC_COL.followUpDate),
     serving: text(item, WC_COL.serving),

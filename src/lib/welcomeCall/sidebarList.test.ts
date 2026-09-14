@@ -25,7 +25,10 @@ const activeB = p({ id: "a2", name: "Active B" });
 const followF = p({ id: "f1", name: "Follow F", followUp: "Done" });
 const bothX = p({ id: "b1", name: "Both X", escalated: true, followUp: "Done" });
 const activeC = p({ id: "a3", name: "Active C" });
-const board = [activeA, escalatedE, activeB, followF, bothX, activeC];
+// A stuck PROPOSAL (Escalation index 2). The mapping sets `escalated` false for
+// it, but the list rule must not depend on that — `proposedStuck` wins.
+const proposedP = p({ id: "p1", name: "Proposed P", proposedStuck: true });
+const board = [activeA, escalatedE, activeB, followF, bothX, activeC, proposedP];
 
 describe("sidebarVisibleList — nonEscalated (default) filter", () => {
   it("shows active then follow-up; hides every escalated patient", () => {
@@ -56,6 +59,39 @@ describe("sidebarVisibleList — escalated filter (manager view)", () => {
     expect(s.escalated).toEqual([]);
     expect(s.followUp).toEqual([]);
     expect(s.both).toEqual([]);
+    expect(s.proposedStuck).toEqual([]);
+  });
+});
+
+// ── The Propose Stuck ladder (2026-09-14, §5.34) ──
+describe("proposed stuck (Escalation index 2)", () => {
+  it("never appears in the rep's default view — it is the manager's to decide", () => {
+    expect(ids(sidebarVisibleList(board, "nonEscalated"))).not.toContain("p1");
+  });
+
+  it("is not an 'escalated' row either — Manager Intervention lists index 0 only", () => {
+    expect(ids(sidebarVisibleList(board, "escalated"))).toEqual(["e1", "b1"]);
+  });
+
+  it("IS the main list from the Final Decisions column", () => {
+    const s = sidebarSections(board, "escalated", { origin: "final-decisions" });
+    expect(ids(s.active)).toEqual(["p1"]);
+    expect(s.escalated).toEqual([]);
+    expect(s.followUp).toEqual([]);
+    expect(s.both).toEqual([]);
+    expect(ids(sidebarVisibleList(board, "escalated", { origin: "final-decisions" }))).toEqual(["p1"]);
+  });
+
+  it("gets its own section, last, on the all filter", () => {
+    const s = sidebarSections(board, "all");
+    expect(ids(s.proposedStuck)).toEqual(["p1"]);
+    expect(ids(sidebarVisibleList(board, "all"))).toEqual(["a1", "a2", "a3", "e1", "f1", "b1", "p1"]);
+  });
+
+  it("a proposal outranks a stale escalated flag on the same row", () => {
+    const both = p({ id: "q1", escalated: true, proposedStuck: true });
+    expect(ids(sidebarVisibleList([both], "escalated"))).toEqual([]);
+    expect(ids(sidebarVisibleList([both], "escalated", { origin: "final-decisions" }))).toEqual(["q1"]);
   });
 });
 
@@ -66,6 +102,7 @@ describe("sidebarVisibleList — all filter", () => {
       "e1",             // Escalated (not follow-up)
       "f1",             // Follow Up (not escalated)
       "b1",             // Escalated + Follow Up
+      "p1",             // Proposed Stuck (§5.34)
     ]);
   });
 

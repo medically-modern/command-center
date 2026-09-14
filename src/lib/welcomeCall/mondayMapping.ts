@@ -1,4 +1,4 @@
-import { COL } from "./mondayApi";
+import { COL, ESCALATION_INDEX } from "./mondayApi";
 import type { Patient } from "./workflow";
 import type { MondayItem } from "./mondayApi";
 import { parseIntakeBlock, emptyIntake } from "./callIntake";
@@ -164,7 +164,12 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     addressEdited: null,
     addressLat: null,
     addressLng: null,
-    escalated: false,
+    // Match by INDEX, not label text — the board's index-0 label reads
+    // "Escalation Required" today and may be renamed to the Medical Evaluation
+    // wording; a rename must not silently un-escalate anyone (masheke/mondayMapping
+    // learned this in 2026-07).
+    escalated: statusIndex(COL.escalation) === ESCALATION_INDEX.manager,
+    proposedStuck: statusIndex(COL.escalation) === ESCALATION_INDEX.final,
     groupId: item.group?.id,
     escalationIndex: statusIndex(COL.escalation),
     escalation: txt(COL.escalation),

@@ -24,7 +24,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarVisibleList } from "@/lib/masheke/sidebarList";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
-import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";

@@ -82,9 +82,11 @@ column(s) as stage columns.*
 two-phase (data `Promise.all`, then "Welcome Call Text" trigger) but no
 read-back between phases; the auto-text automation can read stale fields.
 
-**M2. `EscalationFormModal`** (`components/shared/EscalationFormModal.tsx:~77`)
-— escalation status + notes in `Promise.all`; status can land without the
-reason notes. Should be: notes verified first, then status.
+**M2. `EscalationFormModal`** — ~~escalation status + notes in `Promise.all`;
+status can land without the reason notes~~ **RESOLVED 2026-09-14**: the modal is
+deleted. Welcome Call and Final Profile Confirmation run the Propose Stuck
+ladder now (`lib/welcomeCall/mondayWrite.ts`), notes first, status second,
+sequential — CLAUDE.md §5.34.
 
 **M3. Notes panels (all boards)** — single `writeLongText`, no retry;
 local notes state keeps the appended note even when the write failed (toast
@@ -190,3 +192,65 @@ status); add retry to notes/doctor-notes writes.
 *Method: two independent code sweeps (masheke+samantha; all other boards +
 shared) followed by manual verification of every HIGH finding against
 source. Live-site behavior spot-checked where relevant.*
+
+---
+
+## 2026-09-14 — Welcome Call backend audit (Josh: "every field where it's implied you're writing to Monday actually writes")
+
+Scope: `src/pages/WelcomeCallPage.tsx`, `components/welcomeCall/*`, `lib/welcomeCall/*` as of
+commit 4d8f861, checked against the LIVE board `18410804557` (156 columns, 41 workflows + 20
+legacy automations, 61 rows in the two active groups).
+
+### A. Write path — every control that implies a write, and where it lands
+
+| Control | Writes | Path | Verdict |
+|---|---|---|---|
+| Serving (banner select) | `color_mm1w1cm9` | Send (verified) | ✅ |
+| Phone slots · owners · Can Text · caregiver name/relationship/HIPAA | 6 columns + Primary Phone | Send (verified), `phoneSlotWrites` | ✅ null = clear, unparseable = refused by the gate |
+| Caregiver notes · OOP amount · reviewed tick · pump/address confirms | Notes (intake block) | Send | ✅ |
+| CGM Type · Monitor Qty · Monitor Purchase Date | 3 columns | Send | ✅ Monitor Qty always "0"/"1" |
+| Pump Type · Pump Qty · Prior Pump Date | 3 columns | Send | ✅ Pump Qty blank deliberately not written (7918341011) |
+| Infusion Set 1/2 + quantities · Cartridges | 5 columns | Send | ✅ blanks clear (§5.31c); cartridge blank never written (cannot be produced by the UI) |
+| Secondary coverage No / Yes+type / Member ID 2 / Insurance Notes | 3 columns | Send | ✅ Unknown writes nothing BY DESIGN (§5.31c) |
+| Subscription Type (incl. auto-fill) · Order Frequency (effective value) | 2 columns | Send | ✅ |
+| Next Order Dates ×3 | 3 date columns | Send | ✅ clears go through `{}` |
+| Update Address | `location_mm1xhw17` (+ POS derived) | Send | ✅ |
+| Advance | `color_mm301cpp` = 1, then Stage Advancer = Review Profile | Send (advancer last) | ✅ |
+| Send Welcome Call Text | product/phone columns, then `color_mm1xtqvv` = Send | immediate, two-phase | ✅ fires; ⚠️ **M1 stands** (no read-back between phases) |
+| Welcome Call Text "Queued" (second press) | **nothing** — local toggle only | — | ❌ **FIXED**: the board stayed at "Send", so a re-press wrote 0 onto 0 and the automation never fired. Now `resetWelcomeCallText` clears the column (§5.34) |
+| Call Attempts +1 | `text_mm322fg9` + Follow Up = Done + Follow Up Date = tomorrow | immediate | ✅ |
+| Follow Up modal · sidebar "Active" (clear) | Follow Up + date | immediate | ✅ |
+| Notes Add / Edit→Done | `text_mm6vqq2k` | immediate | ✅ (uncapped `text` column since 2026-09-03) |
+| Escalate button + form | `color_mm1x7997` = 0 + `long_text_mm3jgh1y` | immediate | ❌ **FIXED**: write-only — `escalated` was hardcoded `false` on read, "toggle off" never wrote, and nothing could clear the flag (§10). Replaced by the ladder (§5.34) |
+| Stuck (header + End of Call) | Notes stamp + Stage Advancer = Stuck | immediate | ↻ **REPLACED** by Propose Stuck (§5.34) — reps propose, managers approve |
+| Save (header) | localStorage overlay only | — | ✅ honest ("Progress saved — you can leave and come back") |
+| Reset | overlay cleared + refetch | — | ✅ |
+
+Never-written model fields, harmless: `memberId1Edited`, `primaryInsuranceIndexEdited`,
+`phoneEdited` (their controls were deleted in the September redesign; the send's guarded branches
+for them are dead but correct).
+
+### B. Read path
+
+- **Every column id the Welcome Call code references exists on the live board** (97 ids diffed
+  against the board's 156; the three misses are the Cardinal SKU Tracker's, a different board).
+- **Every hardcoded label id the UI writes matches the live `settings_str`**: Serving, Pump Type,
+  CGM Type (incl. Simplera Sync = 10), Subscription Type, Secondary Insurance (Other = 4, Done = 3
+  deactivated), Order Frequency (154/16/3/107), Primary/Alternate Contact (7/4), Can Text (1/2),
+  POS (0/1), Advance? (1/2), Stage Advancer (0 Review Profile · 2 Stuck · 4 Completed · 7 Welcome
+  Call), Follow Up Done = 1, Welcome Call Text Send = 0, Order Handling 0/1/2.
+- `PRIMARY_INSURANCE_OPTIONS` (welcomeCall/workflow) lacks **Health Plans Inc (PHCS)** (board id 7)
+  and spells id 3 "MagnaCare" where the board says "Magnacare". No effect on this page — Primary
+  Insurance is read-only here and rendered from the board's text — but the list is the §5.33
+  "still hardcoded" one and should follow that fix.
+- **Board-side anomaly, not the app's:** three Final Profile Confirmation rows (Roque Bueno,
+  Jacqueline Loville, Chester Saharceski Jr) carry `{"index":5}` in Advance? `color_mm301cpp`, an id
+  no label has. The SPA writes only 1 and 2; no workflow writes that column. They read as "not
+  Advance" — the fail-safe direction — but whoever wrote 5 wrote a dead label.
+- `escalated` was hardcoded `false` on read — fixed (§5.34). `escalationNotes` is read and never
+  mapped (dead read, kept for the Escalations tab's legacy parse).
+- Escalated items stay in their group (the only workflow that moved them, 7918322106 → the
+  "Escalation" group, is inactive), so the group-scoped reads see them. The "Escalation" group is
+  empty and read by nothing.
+- `PatientActivityCard` / `IntakeMessages` read `patient.phone` (the board's primary), not the
+  starred slot the rep may have just changed — correct until Send lands, worth knowing.

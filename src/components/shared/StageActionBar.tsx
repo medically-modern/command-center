@@ -60,8 +60,14 @@ import { returnAttemptReset } from "@/lib/masheke/attemptRollup";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ProposeStuckModal } from "@/components/masheke/ProposeStuckModal";
 import { ProposeStuckButton } from "@/components/samantha/ProposeStuckButton";
+// The Welcome Call board's ladder writers live with that board's write layer
+// (same reasoning as the intake trio above): one Notes log, one Escalation
+// column, shared by Welcome Call and Final Profile Confirmation (§5.34).
+import {
+  approveWelcomeCallStuck, returnWelcomeCallToQueue, proposeWelcomeCallStuck,
+} from "@/lib/welcomeCall/mondayWrite";
 
-export type StageBoard = "masheke" | "insurance" | "profile";
+export type StageBoard = "masheke" | "insurance" | "profile" | "welcomeCall";
 
 /** Every board dispatch below is an exhaustive switch, not an if/else. The
  *  previous binary form treated masheke as the `else`, so adding a board would
@@ -137,18 +143,27 @@ interface Props {
    *  "page" = the redesign's `.btn` classes, MANDATORY inside `.pf-root` —
    *  see the specificity note at the top of this file. */
   skin?: "header" | "page";
+  /** Controlled Propose Stuck dialog. A page with a SECOND trigger for the
+   *  same dialog — Welcome Call's End of Call button (Josh, 2026-09-14: "both
+   *  stuck buttons have same behavior", i.e. two triggers for ONE dialog, not
+   *  two controls) — owns the open state and passes both props. Every other
+   *  caller leaves them out and the bar keeps its own state. */
+  proposeOpen?: boolean;
+  onProposeOpenChange?: (open: boolean) => void;
 }
 
 export function StageActionBar({
   stage, board, patientId, patientName, escalationLabel, onDone, beforeProposeStuck,
-  skin = "header",
+  skin = "header", proposeOpen: proposeOpenControlled, onProposeOpenChange,
 }: Props) {
   const [searchParams] = useSearchParams();
   const { goBack } = useBackNavigation();
   const origin = managerOriginFromParams(searchParams);
   const actions = actionsFor(stage, origin);
 
-  const [proposeOpen, setProposeOpen] = useState(false);
+  const [proposeOpenLocal, setProposeOpenLocal] = useState(false);
+  const proposeOpen = proposeOpenControlled ?? proposeOpenLocal;
+  const setProposeOpen = onProposeOpenChange ?? setProposeOpenLocal;
   const [approveOpen, setApproveOpen] = useState(false);
   const [approveNote, setApproveNote] = useState("");
   const [returnOpen, setReturnOpen] = useState(false);
@@ -171,6 +186,7 @@ export function StageActionBar({
           case "insurance": await approveInsuranceStuck(patientId, note); break;
           case "masheke":   await approveProposedStuck(patientId, note); break;
           case "profile":   await approveIntakeStuck(patientId, note ?? ""); break;
+          case "welcomeCall": await approveWelcomeCallStuck(patientId, note); break;
           default: unhandledBoard(board);
         }
         toast.success(`${patientName} marked Stuck`);
@@ -180,6 +196,7 @@ export function StageActionBar({
           case "insurance": await returnInsuranceToManager(patientId, note); break;
           case "masheke":
           case "profile":
+          case "welcomeCall":
             throw new Error(`"Send back to Manager Intervention" is not wired for the ${board} board`);
           default: unhandledBoard(board);
         }
@@ -194,6 +211,7 @@ export function StageActionBar({
           // (lib/masheke/attemptRollup).
           case "masheke":   await returnProposedToQueue(patientId, note, { resetScope: returnAttemptReset(stage) }); break;
           case "profile":   await returnIntakeToPipeline(patientId, note ?? "Returned by a manager"); break;
+          case "welcomeCall": await returnWelcomeCallToQueue(patientId, note); break;
           default: unhandledBoard(board);
         }
         toast.success(`${patientName} sent back to the pipeline`);
@@ -255,10 +273,24 @@ export function StageActionBar({
               patientId={patientId}
               patientName={patientName}
               onSuccess={onDone}
-              destination={board === "profile" ? proposeStuckLevel(stage, origin, escalationLabel) : "final"}
+              destination={
+                board === "profile" || board === "welcomeCall"
+                  ? proposeStuckLevel(stage, origin, escalationLabel)
+                  : "final"
+              }
               savesFormFirst={Boolean(beforeProposeStuck)}
               onConfirm={
-                board === "profile"
+                board === "welcomeCall"
+                  ? async (reason) => {
+                      // Same ladder: a rep's proposal lands in Manager
+                      // Intervention, a manager's (or a second one) in Final
+                      // Decisions. The writer refuses a rung the board has no
+                      // label for BEFORE writing anything (§5.34).
+                      await proposeWelcomeCallStuck(
+                        patientId, reason, proposeStuckLevel(stage, origin, escalationLabel),
+                      );
+                    }
+                : board === "profile"
                   ? async (reason) => {
                       await beforeProposeStuck?.();
                       // Same ladder as Insurance/Medical Evaluation: a rep's

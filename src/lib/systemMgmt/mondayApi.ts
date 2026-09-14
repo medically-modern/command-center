@@ -558,7 +558,8 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     : "";
   // Escalation labels were split (2026-07) on BOTH the Masheke (18406060017)
   // and Insurance (18410601299) boards: index 0 "Manager Escalation Required" /
-  // index 2 "Final Escalation Required" (index 1 = Done). Detect by the new
+  // index 2 "Final Escalation Required" (index 1 = Done). The Welcome Call
+  // board (18410804557) joined the split on 2026-09-14 (§5.34). Detect by the
   // labels AND by index on those boards, so a future label rename can't break
   // detection; other boards keep their unchanged text labels.
   const escIndex = board.escalationColId ? colIndex(board.escalationColId) : null;
@@ -567,7 +568,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     escalationText === "Escalate" ||
     escalationText === "Manager Escalation Required" ||
     escalationText === "Final Escalation Required" ||
-    ((board.boardId === 18406060017 || board.boardId === 18410601299) &&
+    ((board.boardId === 18406060017 || board.boardId === 18410601299 || board.boardId === 18410804557) &&
       (escIndex === 0 || escIndex === 2));
   // Same inputs as the flag above, so the two can never disagree about who is
   // escalated — a level on a non-escalated row would colour a row nobody

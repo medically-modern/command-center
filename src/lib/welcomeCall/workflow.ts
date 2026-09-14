@@ -13,12 +13,11 @@ export interface Patient {
    *  GROUP, not a column (lib/shared/profileStatus.ts). */
   groupId?: string;
   /** Escalation status INDEX, read straight off the board — 0 manager, 1 done,
-   *  2 final. ⚠️ Separate from `escalated`, which this stage hardcodes to false
-   *  (CLAUDE.md §10). Profile Status is the only consumer; nothing about the
-   *  stage's broken write path changes because this is read. */
+   *  2 final (mondayApi ESCALATION_INDEX). `escalated` and `proposedStuck`
+   *  below are derived from it; Profile Status and the action bar read it. */
   escalationIndex?: number | null;
-  /** Escalation label TEXT, read alongside the index. Same §10 caveat as
-   *  `escalationIndex`: read-only, Profile Status is the only consumer. */
+  /** Escalation label TEXT, read alongside the index. `StageActionBar` hands
+   *  it to `proposeStuckLevel` so a second proposal promotes to Final. */
   escalation?: string;
   // Read-only demographics
   dob: string;
@@ -190,7 +189,16 @@ export interface Patient {
   addressEdited: string | null; // local edit of address
   addressLat: number | null;    // lat from Google Places geocode
   addressLng: number | null;    // lng from Google Places geocode
+  /** Escalation index 0 — with a manager (Manager Intervention). Read off the
+   *  board since 2026-09-14; it was hardcoded `false` before that (§10), which
+   *  is why the sidebar and the burndown used to disagree about who was
+   *  escalated. Nothing on this stage WRITES it any more: the ladder writers in
+   *  mondayWrite do, and the send leaves the column alone. */
   escalated: boolean;
+  /** Escalation index 2 — a stuck PROPOSAL awaiting Final Decisions. Out of the
+   *  rep's queue and out of the role count; a manager reaches it through
+   *  Oversight or the `?mv=final-decisions` view. */
+  proposedStuck: boolean;
   receivedAt: string;
   lastUpdated: string;
   // Never Billed attestations (read-only, mirrored from Samantha board)

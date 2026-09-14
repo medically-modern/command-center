@@ -12,11 +12,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Loader2, RefreshCw, User, AlertCircle, Search, X} from "lucide-react";
+import { AlertTriangle, Flag, Loader2, RefreshCw, User, AlertCircle, Search, X} from "lucide-react";
 import type { Patient } from "@/lib/finalConfirm/workflow";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 import { sidebarSections } from "@/lib/finalConfirm/sidebarList";
 import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
@@ -42,13 +43,18 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [sp] = useSearchParams();
   const viewFilter = viewFilterFromParams(sp);
   const managerMode = viewFilter === "escalated";
+  // From Oversight's Final Decisions column the main list is the proposed-stuck
+  // cohort that chart counts (lib/finalConfirm/sidebarList).
+  const origin = managerOriginFromParams(sp);
+  const finalView = managerMode && origin === "final-decisions";
 
   // Section math lives in lib/finalConfirm/sidebarList so the page's
   // auto-select sees the exact same visible list.
-  const { main: mainPatients, escalated: escalatedSection } = sidebarSections(
-    filteredBySearch,
-    viewFilter,
-  );
+  const {
+    main: mainPatients,
+    escalated: escalatedSection,
+    proposedStuck: proposedSection,
+  } = sidebarSections(filteredBySearch, viewFilter, { origin });
 
   const collapsed = state === "collapsed";
 
@@ -97,8 +103,12 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </div>
         )}
         <SidebarGroup>
-          <SidebarGroupLabel className={cn(managerMode && "text-red-500 font-semibold")}>
-            {managerMode ? `Escalated (${mainPatients.length})` : `Active (${mainPatients.length})`}
+          <SidebarGroupLabel className={cn(managerMode && (finalView ? "text-amber-600 font-semibold" : "text-red-500 font-semibold"))}>
+            {finalView
+              ? `Proposed Stuck (${mainPatients.length})`
+              : managerMode
+                ? `Escalated (${mainPatients.length})`
+                : `Active (${mainPatients.length})`}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -127,9 +137,11 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               ))}
               {!loading && mainPatients.length === 0 && (
                 <p className="text-xs text-muted-foreground px-3 py-4 text-center">
-                  {managerMode
-                    ? "No escalated patients in Final Profile Confirmation group."
-                    : "No patients in Final Profile Confirmation group."}
+                  {finalView
+                    ? "No stuck proposals awaiting a decision."
+                    : managerMode
+                      ? "No escalated patients in Final Profile Confirmation group."
+                      : "No patients in Final Profile Confirmation group."}
                 </p>
               )}
             </SidebarMenu>
@@ -160,7 +172,44 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                         <div className="min-w-0 text-left">
                           <p className="text-sm font-medium truncate">{p.name}</p>
                           <p className="text-[11px] text-red-400 truncate">
-                            Escalation Required
+                            With a manager
+                          </p>
+                        </div>
+                      )}
+                      <ContactStateMarks phone={p.phone} />
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {/* Proposed Stuck (index 2) — `?filter=all` only; the Final Decisions
+            view makes them the main list (lib/finalConfirm/sidebarList). */}
+        {proposedSection.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold flex items-center gap-1.5">
+              <Flag className="h-3 w-3" />
+              Proposed Stuck ({proposedSection.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {proposedSection.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <SidebarMenuButton
+                      isActive={selectedId === p.id}
+                      onClick={() => onSelect(p.id)}
+                      className={cn(
+                        "flex items-start gap-2 py-2 h-auto opacity-60",
+                        selectedId === p.id && "bg-sidebar-accent opacity-100",
+                      )}
+                    >
+                      <Flag className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                      {!collapsed && (
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-amber-600 truncate">
+                            Awaiting a Final Decision
                           </p>
                         </div>
                       )}

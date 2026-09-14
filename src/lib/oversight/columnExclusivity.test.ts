@@ -311,6 +311,82 @@ describe("Insurance columns partition the stage", () => {
   });
 });
 
+// ── Welcome Call board ───────────────────────────────────────────────────
+// Joined the 3-column scheme on 2026-09-14 (§5.34). Both stages share ONE
+// Escalation column, so each row has to partition over the same four
+// escalation states Medical Evaluation does — and the Follow Up snooze must
+// not move anyone between columns (it is a queue rule, not a manager rung).
+
+const WELCOME_CALL = 18410804557;
+const WC_ESC_COL = "color_mm1x7997";
+const WC_FOLLOWUP_COL = "color_mm38w2tk";
+const WC_ROWS: [string, string][] = [
+  ["welcome-call", "group_mm1wvq8p"],
+  ["profile-review", "group_mm2x8jtj"],
+];
+
+function wcPatient(groupId: string, escIndex: number | undefined, followUp: string): OversightPatient {
+  return {
+    id: "p1",
+    name: "Test Patient",
+    boardId: WELCOME_CALL,
+    groupId,
+    dayBucket: "0–2 Days",
+    cols: { [WC_FOLLOWUP_COL]: followUp, [WC_ESC_COL]: escIndex === 0 ? "Escalation Required" : escIndex === 2 ? "Final Escalation Required" : escIndex === 1 ? "Done" : "" },
+    colIndex: escIndex === undefined ? {} : { [WC_ESC_COL]: escIndex },
+  };
+}
+
+describe("Welcome Call columns partition the stage", () => {
+  it.each(WC_ROWS)("%s: exactly one column at every escalation × follow-up combination", (_row, groupId) => {
+    for (const escIndex of [undefined, 1, 0, 2]) {
+      for (const followUp of ["", "Done", "Working on it"]) {
+        const held = columnsHolding("welcome-call", wcPatient(groupId, escIndex, followUp));
+        expect(held, `esc ${escIndex ?? "unset"} · follow up "${followUp}"`).toHaveLength(1);
+      }
+    }
+  });
+
+  it.each(WC_ROWS)("%s: an unescalated patient is the REP's only", (_row, groupId) => {
+    for (const escIndex of [undefined, 1]) {
+      expect(columnsHolding("welcome-call", wcPatient(groupId, escIndex, ""))).toEqual(["Processor Overview"]);
+    }
+  });
+
+  it.each(WC_ROWS)("%s: index 0 goes to Manager Intervention, index 2 to Final Decisions", (_row, groupId) => {
+    expect(columnsHolding("welcome-call", wcPatient(groupId, 0, ""))).toEqual(["Manager Intervention"]);
+    expect(columnsHolding("welcome-call", wcPatient(groupId, 2, ""))).toEqual(["Final Decisions"]);
+  });
+
+  it("the two rows never see each other's patients", () => {
+    for (const escIndex of [undefined, 0, 2]) {
+      const wc = wcPatient("group_mm1wvq8p", escIndex, "");
+      const fc = wcPatient("group_mm2x8jtj", escIndex, "");
+      for (const id of ["profile-review", "profile-review-manager", "profile-review-final"]) {
+        expect(patientMatchesChart(chart(id), wc), id).toBe(false);
+      }
+      for (const id of ["welcome-call", "welcome-call-manager", "welcome-call-final"]) {
+        expect(patientMatchesChart(chart(id), fc), id).toBe(false);
+      }
+    }
+  });
+
+  // The manager's way out: Return to Queue clears the escalation (→ Done) and
+  // the row has to leave their column and land back with the rep.
+  it("clearing the escalation hands the patient back to the rep", () => {
+    expect(columnsHolding("welcome-call", wcPatient("group_mm1wvq8p", 1, "Done"))).toEqual(["Processor Overview"]);
+  });
+
+  it("every manager chart on this board opens the stage page and carries a decision", () => {
+    for (const id of ["welcome-call-manager", "welcome-call-final", "profile-review-manager", "profile-review-final"]) {
+      const c = chart(id);
+      expect(c.decision, id).toBeDefined();
+      expect(c.rowOf, id).toBeDefined();
+      expect(c.reasonColId, id).toBe("text_mm6vqq2k");
+    }
+  });
+});
+
 // ── Patient Intake ───────────────────────────────────────────────────────
 
 const INTAKE_FORM_GROUP = "group_mm5zgeak";

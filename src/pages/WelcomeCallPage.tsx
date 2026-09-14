@@ -20,30 +20,24 @@ import { WelcomeCallForm } from "@/components/welcomeCall/WelcomeCallForm";
 // import { ReviewPanel } from "@/components/welcomeCall/ReviewPanel";
 import { PatientsSidebar } from "@/components/welcomeCall/PatientsSidebar";
 import { SendToMondayButton } from "@/components/welcomeCall/SendToMondayButton";
-import { EscalateButton } from "@/components/welcomeCall/EscalateButton";
 import { NotesPanel } from "@/components/welcomeCall/NotesPanel";
 import { ClinicalsDownloadButton } from "@/components/welcomeCall/ClinicalsDownloadButton";
 import { CallAttemptsCounter } from "@/components/welcomeCall/CallAttemptsCounter";
 import { FollowUpModal } from "@/components/welcomeCall/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock, OctagonX } from "lucide-react";
+import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
-import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendSecondaryInsuranceToMonday, markStuckWithReason } from "@/lib/welcomeCall/mondayWrite";
-import { BOARD_ID, writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
-import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { sendPatientToMonday, sendWelcomeCallTextToMonday, resetWelcomeCallText, sendNotesToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
+import { BOARD_ID, COL } from "@/lib/welcomeCall/mondayApi";
+/* ⚠️ `EscalateButton` + `EscalationFormModal` are GONE from this page
+   (2026-09-14). They wrote Escalation index 0 + a retired Escalation Notes
+   column, and nothing could ever clear the flag (§10). The Propose Stuck
+   ladder replaced them — the same one Medical Evaluation and Insurance run —
+   rendered by `StageActionBar`. */
+import { StageActionBar } from "@/components/shared/StageActionBar";
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
@@ -66,16 +60,19 @@ const WelcomeCallPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
+  /** Which Oversight column a manager clicked in from (`?mv=`). It resolves the
+   *  action bar (lib/shared/stageActions) and — from Final Decisions — makes
+   *  the sidebar list the proposed-stuck cohort that column counts. */
+  const managerOrigin = managerOriginFromParams(searchParams);
   const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [followUpOpen, setFollowUpOpen] = useState(false);
-  const [stuckOpen, setStuckOpen] = useState(false);
-  const [stuckSending, setStuckSending] = useState(false);
-  /* ⚠️ Required, not optional. Stuck replaced "Don't Advance" (Josh,
-     2026-09-11) and this board has NO stuck-reason column, so the stamped note
-     `markStuckWithReason` writes is the only record of why the call stopped.
-     Cleared on close so the next patient never inherits a reason. */
-  const [stuckReason, setStuckReason] = useState("");
+  /* The Propose Stuck dialog is owned HERE because it has TWO triggers — the
+     header's action bar and the End of Call button (Josh, 2026-09-14: "both
+     stuck buttons have same behavior" — two triggers for one dialog, not two
+     controls). `StageActionBar` renders the dialog in controlled mode. The
+     reason is required inside it; this board has no stuck-reason column, so
+     the stamped "[Proposed Stuck …]" line in Notes is the only record. */
+  const [proposeOpen, setProposeOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -87,8 +84,8 @@ const WelcomeCallPage = () => {
 
   const viewFilter = viewFilterFromParams(searchParams);
   const visiblePatients = useMemo(
-    () => sidebarVisibleList(patients, viewFilter),
-    [patients, viewFilter],
+    () => sidebarVisibleList(patients, viewFilter, { origin: managerOrigin }),
+    [patients, viewFilter, managerOrigin],
   );
   useAutoSelectPatient(
     initialLoading, patients, visiblePatients, selectedId, setSelectedId,
@@ -164,9 +161,13 @@ const WelcomeCallPage = () => {
     update(selected.id, { callIntake: next });
   };
 
-  const toggleEscalate = () => {
-    if (!selected) return;
-    update(selected.id, { escalated: !selected.escalated });
+  /** After a ladder write (a proposal, an approval, a return): the patient has
+   *  left THIS view's list, so hide them now rather than leaving a live Send
+   *  button until the poll catches up (§9's re-send window), then reconcile. The
+   *  hide is a claim with an expiry, never a verdict — `lib/shared/pendingAdvance`. */
+  const handleLadderDone = () => {
+    if (selected) markAdvanced(selected.id);
+    refetch();
   };
 
   /**
@@ -226,7 +227,6 @@ const WelcomeCallPage = () => {
       ipNextOrderDateEdited: null,
       sensorsNextOrderDateEdited: null,
       suppliesNextOrderDateEdited: null,
-      escalated: false,
     } as Partial<Patient>);
     toast.success("Cleared local edits — refetching from Monday");
     refetch();
@@ -292,26 +292,20 @@ const WelcomeCallPage = () => {
     }
   };
 
-  const handleStuck = async () => {
+  /** Clear the Welcome Call Text trigger on the board so it can fire again
+   *  (mondayWrite.resetWelcomeCallText). Local state follows the board. */
+  const handleResetWelcomeCallText = async () => {
     if (!selected) return;
-    if (!stuckReason.trim()) return;
-    setStuckSending(true);
     try {
-      await markStuckWithReason(selected, stuckReason);
-      toast.success(`${selected.name} marked as Stuck`);
-      setStuckOpen(false);
-      setStuckReason("");
-      // The advancer moved them to the Stuck group — take them off screen now
-      // rather than leaving a worked-on patient in the queue until the poll AND
-      // the board automation catch up (§9's re-send window).
-      markAdvanced(selected.id);
+      await resetWelcomeCallText(selected.id);
+      update(selected.id, { welcomeCallText: "", welcomeCallTextIndex: null } as Partial<Patient>);
+      toast.success("Welcome Call Text reset — press Send again to re-text");
       refetch();
     } catch (e) {
-      toast.error("Failed to mark as Stuck", {
+      toast.error("Couldn't reset the Welcome Call Text", {
         description: e instanceof Error ? e.message : String(e),
       });
-    } finally {
-      setStuckSending(false);
+      throw e;
     }
   };
 
@@ -343,7 +337,7 @@ const WelcomeCallPage = () => {
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-                  <h1 className="text-2xl font-bold">Welcome Call</h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}</p>)}
+                  <h1 className="text-2xl font-bold">Welcome Call</h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}{selected.proposedStuck && <span className="inline-flex items-center rounded-full bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Proposed Stuck</span>}</p>)}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -356,9 +350,23 @@ const WelcomeCallPage = () => {
                   />
                 )}
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
-                <Button onClick={() => setStuckOpen(true)} disabled={!selected} className="gap-2 bg-red-600 text-white hover:bg-red-700 shadow-elevate">
-                  <OctagonX className="h-4 w-4" /> Stuck
-                </Button>
+                {/* Propose Stuck / Approve Stuck / Send back to pipeline — which
+                    of them renders is decided per (stage × ?mv= origin) in
+                    lib/shared/stageActions, exactly as on every ME and
+                    Insurance page. The dialog is controlled from this page so
+                    the End of Call button can open the same one. */}
+                {selected && (
+                  <StageActionBar
+                    stage="welcome-call"
+                    board="welcomeCall"
+                    patientId={selected.id}
+                    patientName={selected.name}
+                    escalationLabel={selected.escalation}
+                    onDone={handleLadderDone}
+                    proposeOpen={proposeOpen}
+                    onProposeOpenChange={setProposeOpen}
+                  />
+                )}
                 <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
                   <Clock className="h-4 w-4" /> Follow Up
                 </Button>
@@ -409,7 +417,7 @@ const WelcomeCallPage = () => {
                       out-of-pocket step lives in the form's Insurance section
                       as `OopBlock`; the component is still in the tree and
                       still used by nothing else here. */}
-                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} onStuck={() => setStuckOpen(true)} />
+                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} onResetWelcomeCallText={handleResetWelcomeCallText} onProposeStuck={() => setProposeOpen(true)} />
                   {/* Order dates moved INTO Subscription & Logistics (form
                       section 7) on 2026-09-09 — Brandon: "under the cards, in
                       this section", not at the end of the call. */}
@@ -424,7 +432,6 @@ const WelcomeCallPage = () => {
                     notePrefix="Welcome Call"
                   />
                   {/* <ReviewPanel patient={selected} /> */}
-                  <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} onOpenForm={() => setEscalationModalOpen(true)} />
                   <SendToMondayButton
                     onSend={handleSend}
                     disabled={!selected || !validation.valid || sendGaps.length > 0 || reviewMode}
@@ -446,63 +453,6 @@ const WelcomeCallPage = () => {
           onOpenChange={setFollowUpOpen}
           patientId={selected.id}
           patientName={selected.name}
-          onSuccess={refetch}
-        />
-      )}
-      <AlertDialog
-        open={stuckOpen}
-        onOpenChange={(o) => {
-          setStuckOpen(o);
-          if (!o) setStuckReason("");
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Mark this patient as stuck?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This holds {selected?.name ?? "this patient"} here — Stage Advancer goes to{" "}
-              <span className="font-semibold">Stuck / Don&apos;t Proceed</span> and the board
-              moves them to the Stuck group. This is what replaced Don&apos;t Advance.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-1.5">
-            <label htmlFor="wc-stuck-reason" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-              Why are they stuck? <span className="text-red-600">Required</span>
-            </label>
-            <Textarea
-              id="wc-stuck-reason"
-              rows={3}
-              autoFocus
-              value={stuckReason}
-              onChange={(e) => setStuckReason(e.target.value)}
-              placeholder="e.g. Patient wants to cancel — moving to a different supplier"
-            />
-            {/* There is no stuck-reason column on this board, so this note IS
-                the record a manager will find later. */}
-            <p className="text-xs text-muted-foreground">
-              Saved to Welcome Call Notes with your initials and the date.
-            </p>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={stuckSending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleStuck}
-              disabled={stuckSending || !stuckReason.trim()}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              {stuckSending ? "Sending…" : "Yes, mark as Stuck"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    {selected && (
-        <EscalationFormModal
-          open={escalationModalOpen}
-          onOpenChange={setEscalationModalOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, 0); }}
-          writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
           onSuccess={refetch}
         />
       )}

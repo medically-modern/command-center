@@ -18,8 +18,9 @@
  *     Chase split by Clinicals Method: Parachute OR Email → chaseParachute,
  *     anything else (Fax/blank) → chaseFax (CLAUDE.md §5.9 — Email rides
  *     with Parachute). chaseBenefits kept as the combined legacy total.
- *   welcomeCall — not escalated AND Follow Up !== "Done"
- *   finalConfirm — not escalated
+ *   welcomeCall — Escalation index not 0 (manager) and not 2 (proposed stuck)
+ *                 AND Follow Up !== "Done"
+ *   finalConfirm — Escalation index not 0 and not 2
  *   profile / unverifiedReferrals — Follow Up !== "Done", split by referral:
  *     Referral Type "Patient" OR Referral Source "CareCentrix" →
  *     unverifiedReferrals, everything else → profile (Verified Referrals)
@@ -96,6 +97,13 @@ const WC_GROUP    = "group_mm1wvq8p";
 const FC_GROUP    = "group_mm2x8jtj";
 const WC_ESC_COL      = "color_mm1x7997"; // Escalation
 const WC_FOLLOWUP_COL = "color_mm38w2tk"; // Follow Up
+// Welcome Call joined the Propose Stuck ladder 2026-09-14 (CLAUDE.md §5.34):
+// matched by INDEX like Medical Evaluation — 0 = with a manager, 2 = a stuck
+// proposal (both leave the active count). Mirrors useRoleCounts.
+const WC_ESCALATED_INDEX = 0;
+const WC_PROPOSED_STUCK_INDEX = 2;
+const isWcEscalated = (item) => statusIndex(item.vals?.[WC_ESC_COL]) === WC_ESCALATED_INDEX;
+const isWcProposedStuck = (item) => statusIndex(item.vals?.[WC_ESC_COL]) === WC_PROPOSED_STUCK_INDEX;
 
 const PROF_BOARD  = 18406352652;
 const PROF_GROUP  = "group_mm1xf2jb";
@@ -145,9 +153,9 @@ const PQ_CLAIMS_MSG_COL = "long_text_mm3yqgyt";
 const PQ_CLAIMS_HANDLED_COL = "date_mm57skrd";
 
 
-const ESC_REQUIRED = "Escalation Required";
 // Insurance board escalation split into two labels (2026-07) — either counts as
-// escalated. Masheke + Welcome Call still use the single ESC_REQUIRED above.
+// escalated. Masheke + Welcome Call match by INDEX instead (isMeshEscalated /
+// isWcEscalated below).
 const SAM_ESCALATED = new Set(["Manager Escalation Required", "Final Escalation Required"]);
 const isSamEscalated = (txt) => SAM_ESCALATED.has(txt);
 
@@ -315,11 +323,11 @@ async function countMashekeStages(todayStr) {
   return { counts, ids };
 }
 
-/** Welcome Call group: active = not escalated AND Follow Up !== "Done". */
+/** Welcome Call group: active = Escalation index not 0/2 AND Follow Up !== "Done". */
 async function countWelcomeCall() {
   const items = await fetchGroupItems(WC_BOARD, WC_GROUP, [WC_ESC_COL, WC_FOLLOWUP_COL]);
   const active = items.filter(
-    (i) => i.cols[WC_ESC_COL] !== ESC_REQUIRED && i.cols[WC_FOLLOWUP_COL] !== "Done",
+    (i) => !isWcEscalated(i) && !isWcProposedStuck(i) && i.cols[WC_FOLLOWUP_COL] !== "Done",
   );
   return { count: active.length, ids: active.map((i) => i.id) };
 }
@@ -327,7 +335,7 @@ async function countWelcomeCall() {
 /** Final Confirm group: active = not escalated. */
 async function countFinalConfirm() {
   const items = await fetchGroupItems(WC_BOARD, FC_GROUP, [WC_ESC_COL]);
-  const active = items.filter((i) => i.cols[WC_ESC_COL] !== ESC_REQUIRED);
+  const active = items.filter((i) => !isWcEscalated(i) && !isWcProposedStuck(i));
   return { count: active.length, ids: active.map((i) => i.id) };
 }
 
@@ -616,9 +624,12 @@ async function countEscalations() {
         if (boardId === MESH_BOARD) {
           // Masheke labels renamed — match by index (0/2). See isMeshEscalated.
           if (isMeshEscalated(item)) total++;
+        } else if (boardId === WC_BOARD) {
+          // Welcome Call board: index 0 only, as on ME (index 2 is a stuck
+          // proposal awaiting Final Decisions, not an escalation count).
+          if (isWcEscalated(item)) total++;
         } else {
-          // Insurance/Welcome Call: text match (+ isSamEscalated for the
-          // Insurance Manager/Final split).
+          // Insurance: text match (+ isSamEscalated for the Manager/Final split).
           const txt = item.cols[colId] ?? "";
           if (txt === "Escalation Required" || txt === "Escalate" || isSamEscalated(txt)) total++;
         }

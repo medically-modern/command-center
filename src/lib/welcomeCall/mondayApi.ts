@@ -226,8 +226,34 @@ export const COL = {
   // Stage
   stageAdvancer: "color_mm1ws96t",
   escalation: "color_mm1x7997",
+  /** Retired. The `EscalationFormModal` that wrote it left both pages of this
+   *  board on 2026-09-14 with the Propose Stuck ladder (see ESCALATION_INDEX);
+   *  the reason now lives in Notes as a stamped line, like every other board.
+   *  Still read so nothing already written is lost from the Escalations tab. */
   escalationNotes: "long_text_mm3jgh1y",
 } as const;
+
+/**
+ * Escalation `color_mm1x7997` — the same three rungs as Medical Evaluation and
+ * Insurance, matched by LABEL ID (what `{"index": N}` writes), never by text.
+ *
+ *   0 — "Escalation Required" (the board's original label; Medical Evaluation
+ *       calls the same rung "Manager Escalation Required") → Manager Intervention
+ *   1 — "Done" → cleared
+ *   2 — "Final Escalation Required" → Final Decisions (a stuck PROPOSAL)
+ *
+ * ⚠️ Read off the live board 2026-09-14: ids 0 and 1 exist; **id 2 does not
+ * yet** — adding it is a board change (a status label on this column), and
+ * `assertEscalationLabelExists` in mondayWrite refuses to promote a patient to
+ * Final until the board carries it, because Monday takes a write to a label id
+ * that does not exist at HTTP 200 and stores a value no reader can name (three
+ * Final Profile Confirmation rows carry exactly that in Advance? today).
+ * Monday assigns an API-created label's id from its COLOUR (§5.31c/§5.31d),
+ * so the label must be created with colour 0 (working_orange, the id-2 colour
+ * on the Medical Evaluation column) or the id read back and this table
+ * corrected — never inferred.
+ */
+export const ESCALATION_INDEX = { manager: 0, done: 1, final: 2 } as const;
 
 export const READ_COLUMN_IDS = [
   COL.dob, COL.phone, COL.email, COL.address, COL.gender,

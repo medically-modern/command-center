@@ -53,7 +53,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | **Profile Send Off** | `18406352652` | `profile` ("Referral Intake", relabelled from "Verified Referrals" 2026-08-19) + `unverifiedReferrals` ("Non-Referral Intake — Info Collection", §5.20) + `intakeCleanup` ("Intake — Profile Clean-Up", group `group_mm6c3rhb`, §5.20) + `inSystemReferrals` ("Already In System") — FOUR roles on one board, split by Already In System then Referral Type/Source (§5.10), and the DTC form queue split again into two sub-stages (§5.20). Its own board (groups: *Patient Intake → 1. Intake → New Form Partial/Completed → Profile Clean-Up → Already In System → Tests → Stuck → Completed*). `profile` and `inSystemReferrals` work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. The `scheduledCalls` role (**Care Coordinator**, §5.30) also reads the two DTC form groups + Profile Clean-Up here — read-only, beside ME's chase stages and Welcome Call. **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `text_mm6vevjf`** (the capped `long_text_mm27zjt2` until 2026-09-03) (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (**stage**-based — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, **DVS**, Auth Denied, Escalations, Complete, Stuck. ⚠️ The board grew a **DVS group** (`group_mm5gp2r2`, Aug 2026) but the role is still **stage**-defined: stage-DVS items linger in whichever group an automation last left them, so `useDvsPatients`/`useRoleCounts` read the STAGE board-wide and must not be "fixed" to filter on the group. |
-| **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
+| **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. Since 2026-09-14 both stages run the **Propose Stuck ladder** on Escalation `color_mm1x7997` (index 0 manager · 2 final) — §5.34. ⚠️ Index 2 is a **pending board change**: the column carries ids 0 and 1 only, and the app refuses to promote to Final until the label exists. |
 | **Subscription Board - Updated** | `18407459988` | `subscription` role + one source for Patient Questions. |
 | **Secondary Claims Board** | `18413019028` | Second source for Patient Questions inbox. |
 | **MM Doctor Database** | `18142847597` | NPI → doctor record + Doctor Notes (`shared/doctorDb.ts`). Separate from patient boards. |
@@ -1486,11 +1486,11 @@ or if a listed id names a working group somewhere. That check is the point.
 - `group { id }` on every patient query on all five board slices, plus `groupId` on each `Patient`.
   Without it Stuck can never fire, silently.
 - **Welcome Call + Final Confirm + Subscription** now read their escalation column into a new
-  `escalationIndex` field. ⚠️ Deliberately **NOT** wired into `escalated`, which those three
-  hardcode to `false` — that is the write-only escalation §10 says needs a **rewrite, not a
-  piecemeal patch**. Profile Status is the only consumer; sidebars and role counts are unchanged.
-  Without this read an escalated Welcome Call patient's badge would inherit `escalated: false` and
-  read Active.
+  `escalationIndex` field. ⚠️ On **Subscription** it is deliberately **NOT** wired into `escalated`,
+  which that stage still hardcodes to `false` (§10). **Welcome Call and Final Confirm derive
+  `escalated` (index 0) and `proposedStuck` (index 2) from it since 2026-09-14** — the rewrite §10
+  asked for, §5.34 — so their sidebars, role counts and badge finally agree. Without this read an
+  escalated Welcome Call patient's badge would have inherited `escalated: false` and read Active.
   The label TEXT is read alongside the index, because those two boards' indices are inferred from
   §10 rather than observed: `escalationRung` takes the index first (a rename can't blind it) but an
   **unrecognised** index falls through to the label instead of reading Active. ⚠️ Monday assigns a
@@ -3239,7 +3239,7 @@ coordinator arrives it is a FILTER over these same lists — never routing.
 |---|---|---|
 | **Patient Intake** | *Scheduled*: a live Calendly booking today-or-later (a booking WINS over every exclusion but an escalation). *Unscheduled*: touched the DTC form (Drop-off Step set), still in a form group, no booking, ≥ **48h** old (`READY_AFTER_HOURS` — Corey's "2 days later", after the two automated nudges §5.24), under **5** attempts (`MAX_INTAKE_ATTEMPTS`, the stop rule, read off the existing Attempt Counter). Longest-waiting first — the mockup's own header text. | **imported** (blank Drop-off Step — never touched the form) · **cleanUp** (unbooked, already advanced) · **callDone** (Intake Call Complete = Yes) · **sendNow** (completed form that chose "Send request now" — no call wanted) · **nurturing** (< 48h). *Exhausted* (≥ 5 attempts) and *With a manager* (either Intake Escalation rung) are collapsed sections, not exclusions. |
 | **Confirm Receipt + Chase Clinicals** | Mirrors `useRoleCounts`' ME rule exactly: escalation index 2 → counted only (Final Decisions); index 0 → *With a manager*; Appointment Date today-or-later → *Awaiting a provider visit* (§5.12); NAD > today → *Waiting*; else *Due*, most overdue first. ⚠️ **A blank NAD is DUE** (blank counts as active in `useRoleCounts`; the masheke hook backfills it to today). | — |
-| **Welcome Call** | `Escalation Required` → *With a manager*; `Follow Up = "Done"` → *Follow up later* (soonest date first, dateless last); else *Call now*, oldest arrival first. Flags: `isFirstTimePumpUser` / `isCrossSell` from `lib/welcomeCall/workflow` (§5.26). | — |
+| **Welcome Call** | Escalation index 0 (the board's `Escalation Required`) → *With a manager*; index 2 → counted in the footer only (proposed stuck, awaiting a Final Decision — §5.34); `Follow Up = "Done"` → *Follow up later* (soonest date first, dateless last); else *Call now*, oldest arrival first. Flags: `isFirstTimePumpUser` / `isCrossSell` from `lib/welcomeCall/workflow` (§5.26). | — |
 Header chips: total = the three columns' workable counts; "N overdue · N at escalation" separately.
 
 **Why "imported" exists — the board facts found while building (2026-09-08):** `New Form — Partial
@@ -3728,6 +3728,115 @@ an unlisted label reads as `""`) and the `PRIMARY_INSURANCE_OPTIONS` `{index,lab
 
 ---
 
+### 5.34 The Welcome Call board joins the Propose Stuck ladder (Sep 2026)
+Josh, 2026-09-14: *"we need to add a propose stuck system on the manager tab that works just like
+insurance and medical eval does — stuck goes to manager escalation, stuck in manager escalation goes
+to final escalation, patient moved to stuck or moved back to pipeline logic there."* This is the
+**rewrite** §10 asked for instead of piecemeal patches to a write-only escalation, and it covers
+BOTH stages on the board — Welcome Call and Final Profile Confirmation share one Escalation column
+and one Notes log, so a ladder on one stage alone would have left the other writing a flag nobody
+could clear.
+
+**One column, three rungs, matched by label id** (`lib/welcomeCall/mondayApi.ts` `ESCALATION_INDEX`):
+Escalation `color_mm1x7997` — the same id lineage as Medical Evaluation — **0** = with a manager
+(the board's own label still reads **"Escalation Required"**; ME calls that rung "Manager Escalation
+Required", and the code accepts either text), **1** = Done, **2** = Final Escalation Required (a
+stuck PROPOSAL awaiting Final Decisions).
+
+> ⚠️ **Index 2 does NOT exist on the board yet (checked live 2026-09-14: ids 0 and 1 only).** The
+> session that built this was not permitted to change the shared board, so the label is a
+> **pending board change**. Add a status label **"Final Escalation Required"** to `color_mm1x7997`
+> on board `18410804557` with colour **working_orange (0)** — Monday assigns an API-created label's
+> id from its COLOUR (§5.31c/§5.31d), and 0 is the colour ME's id-2 label carries — then **read
+> `settings_str` back**. If the id that comes back is not 2, correct `ESCALATION_INDEX.final` and
+> the readers in the keep-in-agreement list below (they hardcode 2 the way the ME readers do).
+> Until it lands, **the first rung works and the second refuses**:
+> `mondayWrite.assertEscalationLabelExists` checks the live label set BEFORE any write and throws
+> *"has no 'Final Escalation Required' label (id 2) yet — nothing was written"*. That guard is not
+> optional: Monday takes a write to a non-existent label id at HTTP 200 (three Final Profile
+> Confirmation rows carry `{"index":5}` in Advance? today, a value no label names), so an unguarded
+> promotion would have stamped its reason into Notes and then flipped nothing — a proposal that
+> looks made and reaches nobody. Optional, cosmetic: rename id 0 to "Manager Escalation Required"
+> to match the other two boards; every reader keys on the index.
+
+**The writers — `lib/welcomeCall/mondayWrite.ts`**, stamps shared from `lib/masheke/proposedStuck`
+so Oversight's `__proposedReason__` reads them with no special-casing:
+- `proposeWelcomeCallStuck(id, reason, level)` — reason stamped into Notes FIRST, then Escalation →
+  `level`. Never downgrades: a patient already at Final stays there. Returns the rung written.
+- `escalateWelcomeCallToFinal(id, note)` — Manager Intervention → Final from the Oversight
+  drill-down; note REQUIRED (the Submit Auth two-step rule); idempotent on retry.
+- `approveWelcomeCallStuck(id, note?)` — optional stamped note → **Stage Advancer → "Stuck / Don't
+  Proceed" (id 2)** → Escalation → Done. Board automation **7918322174** moves the item to the Stuck
+  group. The advancer is the automation trigger, so it goes before the flag clear, as on ME.
+- `returnWelcomeCallToQueue(id, note?)` — stamped note (defaulting to "Returned by a manager",
+  the one trace the rep gets) → **Follow Up status + date CLEARED** (this board has no Next Action
+  Date; a cleared snooze is "due now", the twin of ME's NAD = today) → Escalation → Done, LAST.
+Every one is sequential and deliberately NOT a verified-write transaction: nothing on this board
+triggers on the Escalation column (the one workflow that did, 7918322106 → the "Escalation" group,
+is inactive).
+
+**What went, on both pages:** `EscalateButton` (×2) and the shared `EscalationFormModal` are
+**deleted** — they wrote index 0 plus a retired Escalation Notes long_text and nothing could clear
+the flag; the four ME pages' dead import lines went with them (`lib/shared/escalation.ts` stays for
+the Escalations tab's legacy parse). `markStuckWithReason`, the DIRECT exit that itself replaced
+"Don't Advance" on 2026-09-11, is gone: a rep no longer writes the Stage Advancer, a manager does
+from Final Decisions. Both stages' **sends no longer write Escalation at all** — `escalated` is
+hydrated from the board now, so re-writing it on every Send was §7's Insurance anti-pattern (a flag
+raised since the last poll overwritten, a proposal silently re-asserted). `stuckLadder.test.ts`
+scans both writers for it.
+
+**The screen.** `StageActionBar` gained the `welcomeCall` board (`stage="welcome-call"` /
+`"final-confirm"`); the same (stage × `?mv=`) table decides Propose Stuck / Approve Stuck / Send
+back to pipeline as on every ME and Insurance page. Welcome Call's two Stuck buttons (header + End
+of Call) are now two triggers for ONE Propose Stuck dialog — the bar renders it in **controlled
+mode** (`proposeOpen` / `onProposeOpenChange`) so the page can open it from the second button.
+`proposeStuckLevel` starts both stages at **manager**; a proposal from Manager Intervention, or on
+a patient already flagged, promotes to **final**.
+
+**Reads, all by index:** `mondayMapping` derives `escalated` (0) and `proposedStuck` (2) on both
+stages — no more hardcoded `false`. `sidebarList` (both stages) drops proposals from every rep
+list, lists index 0 under the escalated filter, and — from `?mv=final-decisions`, which Oversight
+sets beside `?manager=1` — lists ONLY the proposals, so a manager clicking a Final Decisions chart
+gets that column's cohort. `useRoleCounts` + both baseline generators: index 0 is the escalated
+count, index 2 is in neither count (the ME rule). `escalationDetail` treats the board as split
+(`"Escalation Required"` = manager rung there, `flat` survives only for Subscription);
+`systemMgmt/mondayApi` detects by index on it; Search's Proposed Stuck folder follows.
+`careCoordinator` counts index 2 in the footer, never lists it.
+
+**Oversight.** The Welcome Call section is the 3-column scheme now — before this an escalated
+Welcome Call patient matched NO chart (§7's failure). Four charts: `welcome-call-manager` /
+`-final` and `profile-review-manager` / `-final`, `rowOf` their stage, decisions
+`welcome-call-manager` (Escalate to Final / Send back to pipeline) and `welcome-call-final`
+(Approve Stuck / Return), reason sliced from Notes `text_mm6vqq2k`. The Processor Overview charts
+exclude both rungs, so the three columns partition each row — `columnExclusivity.test.ts` has a
+Welcome Call block. `profile-review` also gained the `/final-confirm` route it never had.
+
+**Blast radius when this shipped: zero.** 29 Welcome Call rows and 32 Final Profile Confirmation
+rows scanned live on 2026-09-14 — not one carried an Escalation value.
+
+**Keep-in-agreement (§5.8 counting contract):**
+1. **Label ids** — `welcomeCall/mondayApi.ts` `ESCALATION_INDEX` (the writers) ⇄ the hardcoded
+   `index: [0]` / `[2]` in `oversightApi.ts` CHART_FILTERS, `escalationDetail.ts` SPLIT_BOARDS,
+   `systemMgmt/mondayApi.ts`, `useRoleCounts.ts` `WC_*_INDEX`, both baseline generators,
+   `careCoordinator/workflow.ts`. All assume 2 = final; verify against `settings_str` when the label
+   is added.
+2. **Queue rules** — `welcomeCall/sidebarList.ts` · `finalConfirm/sidebarList.ts` ·
+   `useRoleCounts.ts` · `scripts/snapshot-baseline.mjs` · `services/baseline-cron/index.mjs` ·
+   `oversightApi.ts` (`welcome-call` / `profile-review` filters).
+3. **Stage keys** — `lib/shared/stageActions.ts` (`welcome-call`, `final-confirm`) ⇄ the two pages'
+   `<StageActionBar stage=…>`.
+
+Tests: `welcomeCall/stuckLadder.test.ts` (write order · the label guard · the send-path scan),
+`columnExclusivity.test.ts` (Welcome Call block), `stageActions.test.ts`, both `sidebarList.test.ts`,
+`escalationDetail.test.ts`, `careCoordinator/workflow.test.ts`.
+
+**The same day's write/read audit of the Welcome Call UI** is recorded in
+`WRITE_RELIABILITY_AUDIT.md` (2026-09-14 section). Its one code fix besides the ladder: the
+**Welcome Call Text "Queued" button now resets the trigger ON THE BOARD** (`resetWelcomeCallText`).
+It used to toggle off locally only, so the column stayed at "Send" and a re-press wrote the same
+value onto itself — no status change, automation 7918318033 never fired, the button read "Queued"
+again and no text went out. The §9 advancer-no-op class, one column over.
+
 ## 6. Patient flow across boards (the big picture)
 
 ```
@@ -4171,9 +4280,10 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   ⚠️ Its **Remove** button is still the blunt one — Escalation → Done + Next Action Date = today,
   with **no stamped note and no attempt reset**, unlike Oversight's `returnProposedToQueue`
   (§7 above). Known gap, deliberately left; don't assume clearing here leaves the same trail.
-  ⚠️ The retired **`EscalationFormModal`** is commented out on the four ME pages but **still live
-  on `WelcomeCallPage` + `FinalConfirmPage`**, so those two stages can still write the dead column.
-  Left in place (Josh, 2026-08-14) pending a Propose Stuck equivalent for Welcome Call.
+  ⚠️ The retired **`EscalationFormModal`** was **deleted on 2026-09-14** together with the two
+  `EscalateButton`s that opened it: Welcome Call and Final Confirm run the Propose Stuck ladder now
+  (§5.34), and the four ME pages' commented-out mounts lost their dead import lines with it.
+  `lib/shared/escalation.ts` stays for this tab's legacy `[ESCALATION FORM]` parse.
 - **Communications is a System Management TAB** (Josh, 2026-09-10) — the same
   `AssignedPatientsPage` hub as `/assigned-patients` (§5.28), rendered with an
   **`embedded`** prop. That prop does exactly two things: it stops the page
@@ -4648,18 +4758,15 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   ⚠️ **Live-board changes like these are an OFF-HOURS job** (Josh, 2026-09-03 — these are active boards):
   sandbox first, then the columns, the copies and the hop workflows in one evening, then the lengths re-scan.
   Not during the day.
-- **Welcome Call + Final Confirm escalation is WRITE-ONLY, and those two stages need a REWRITE —
-  don't patch it piecemeal** (Josh, 2026-08-14, from the escalation audit). `mondayMapping`
-  hardcodes **`escalated: false`** and `COL.escalation` (`color_mm1x7997`) is **not in the read
-  set**, so the column is never read back; `mondayWrite` writes index 0 only `if (p.escalated)` and
-  has no `→ Done` branch. Consequences, all live: a rep escalates, the send writes the board, the
-  next poll shows them un-escalated — so `sidebarSections` (which keys on `p.escalated`) leaves them
-  in the **active** list while `useRoleCounts` reads the BOARD column and drops them from the active
-  count, i.e. **the sidebar and the burndown disagree**; the `escalated` filter view is
-  **permanently empty** while the role bar reports a non-zero escalated count; there are no
-  Oversight charts for these stages; and **nothing in the app can clear the flag**. The board has no
-  index 2 either (labels are *Escalation Required · Done*), so it was never wired for the three-rung
-  ladder. One patient sits in this state today.
+- ~~**Welcome Call + Final Confirm escalation is WRITE-ONLY, and those two stages need a REWRITE**~~
+  **REWRITTEN 2026-09-14 — §5.34.** (Josh, 2026-08-14, from the escalation audit: `mondayMapping`
+  hardcoded `escalated: false`, `mondayWrite` wrote index 0 only `if (p.escalated)` with no `→ Done`
+  branch, so the sidebar and the burndown disagreed, the escalated filter was permanently empty,
+  there were no Oversight charts and nothing could clear the flag.) Both stages now read the
+  column by index, never write it from the send, run the Propose Stuck ladder, and have Manager
+  Intervention / Final Decisions charts. ⚠️ **One piece is still open and is a board change:** the
+  column has no index-2 label yet, so a promotion to Final is refused with a message until
+  "Final Escalation Required" is added (how: §5.34). The first rung works today.
 - **Subscription's Escalate button never persists anything** (same audit). The mapping hardcodes
   `escalated: false`, `COL.authEscalation` (`color_mm2n237s`) is defined but **never written by
   `mondayWrite`**, and `toggleEscalate` only touches the local overlay — the button reverts on
@@ -4782,6 +4889,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Search row opens the wrong screen, or a different one from Oversight | §7 — `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` is the one rule; it must send the same `?mv=` / `manager` / `escalated` params `OversightTab.handlePatientClick` sends |
 | The Communications tab's composer or profile spinner is off screen | §7 — the host tab needs `h-screen overflow-hidden`, not `min-h-screen`: `min-h-0` cannot bound a parent with no definite height, so a long conversation list grows the document to ~48,000px. ⚠️ Reproducing it needs a REAL list — a couple of conversations fit inside 100vh and the two layouts are pixel-identical |
 | The Escalations tab is missing from System Management | §7 — commented out 2026-09-10 with its header count chip, not deleted; `?tab=escalations` falls through to Search on purpose. Uncomment the `TabBtn` and the `EscalationView` block in `SystemMgmtPage.tsx`. Escalations are worked in Oversight's manager columns meanwhile |
+| A Welcome Call rep's Propose Stuck says the board has no "Final Escalation Required" label / a manager can't escalate to Final | §5.34 — the Escalation column `color_mm1x7997` on board `18410804557` still has ids 0 and 1 only. Add the status label **"Final Escalation Required"** with colour **working_orange (0)** so Monday assigns id **2**, read `settings_str` back, and if it is not 2 correct `welcomeCall/mondayApi` `ESCALATION_INDEX.final` + every reader listed in §5.34's keep-in-agreement. The first rung (Manager Intervention, id 0) works today |
+| An escalated Welcome Call / Final Confirm patient is in no Oversight column, or the sidebar and burndown disagree | §5.34 — `escalated` is read off the board (index 0) since 2026-09-14 and `proposedStuck` is index 2; both leave the rep's list and count (`welcomeCall`/`finalConfirm` `sidebarList`, `useRoleCounts`, both baselines) and land in the Welcome Call section's Manager Intervention / Final Decisions charts. A patient in NO column fails `columnExclusivity.test.ts` |
+| The Welcome Call Text shows "Queued" but the patient never got a second text | §5.34 / the 2026-09-14 audit — the trigger fires on a status CHANGE, so re-pressing Send onto a column already at "Send" is a no-op. Press the Queued button once to reset it on the board (`mondayWrite.resetWelcomeCallText`), then Send |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---

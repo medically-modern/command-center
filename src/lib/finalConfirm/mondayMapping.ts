@@ -178,8 +178,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     emailEdited: null,
     phoneEdited: null,
 
-    // Escalation
-    escalated: false,
+    // Escalation — by INDEX, never label text (a rename must not un-escalate
+    // anyone). 0 = with a manager, 2 = a stuck proposal (Final Decisions).
+    escalated: parseIndex(cv(item, COL.escalation)?.value ?? null) === 0,
+    proposedStuck: parseIndex(cv(item, COL.escalation)?.value ?? null) === 2,
     groupId: item.group?.id,
     escalationIndex: parseIndex(cv(item, COL.escalation)?.value ?? null),
     escalation: cv(item, COL.escalation)?.text ?? "",

@@ -46,12 +46,23 @@ describe("escalationLevelFrom", () => {
     expect(escalationLevelFrom(INSURANCE, "", 2)).toBe("final");
   });
 
+  it("reads the Welcome Call board as a split board since it joined the ladder (§5.34)", () => {
+    // Its index-0 label still reads "Escalation Required" — that IS its
+    // manager rung now, and index 2 is a stuck proposal awaiting Final Decisions.
+    expect(escalationLevelFrom(WELCOME_CALL, "Escalation Required", 0)).toBe("manager");
+    expect(escalationLevelFrom(WELCOME_CALL, "Final Escalation Required", 2)).toBe("final");
+    expect(escalationLevelFrom(WELCOME_CALL, "Renamed By Somebody", 0)).toBe("manager");
+    expect(escalationLevelFrom(WELCOME_CALL, "", 2)).toBe("final");
+  });
+
   it("does NOT apply the index fallback to unsplit boards", () => {
-    // Welcome Call's index 0 is its only escalation label; a board that never
-    // split must not be described with a manager/final rung it has no concept
-    // of — but it must still resolve to a level, or it drops out of the tab.
-    expect(escalationLevelFrom(WELCOME_CALL, "Escalation Required", 0)).toBe("flat");
-    expect(escalationLevelFrom(WELCOME_CALL, "", 0)).toBeNull();
+    // Subscription's single "Escalate" label is the one flat board left: it
+    // must not be described with a manager/final rung it has no concept of —
+    // but it must still resolve to a level, or it drops out of the tab.
+    const SUBSCRIPTION = 18407459988;
+    expect(escalationLevelFrom(SUBSCRIPTION, "Escalate", 0)).toBe("flat");
+    expect(escalationLevelFrom(SUBSCRIPTION, "Escalation Required", 0)).toBe("flat");
+    expect(escalationLevelFrom(SUBSCRIPTION, "", 0)).toBeNull();
   });
 
   it("returns null for Done, blank and the grey unlabelled index", () => {
@@ -70,7 +81,7 @@ describe("escalationLevelFrom", () => {
       text === "Escalate" ||
       text === "Manager Escalation Required" ||
       text === "Final Escalation Required" ||
-      ((boardId === ME || boardId === INSURANCE) && (index === 0 || index === 2));
+      ((boardId === ME || boardId === INSURANCE || boardId === WELCOME_CALL) && (index === 0 || index === 2));
 
     const cases: [number, string, number | null][] = [
       [ME, "Manager Escalation Required", 0],
@@ -84,8 +95,11 @@ describe("escalationLevelFrom", () => {
       [INSURANCE, "Final Escalation Required", 2],
       [INSURANCE, "Done", 1],
       [WELCOME_CALL, "Escalation Required", 0],
+      [WELCOME_CALL, "Final Escalation Required", 2],
       [WELCOME_CALL, "Done", 1],
       [WELCOME_CALL, "", 0],
+      [WELCOME_CALL, "", 2],
+      [WELCOME_CALL, "", null],
     ];
     for (const [boardId, text, index] of cases) {
       expect(escalationLevelFrom(boardId, text, index) !== null).toBe(

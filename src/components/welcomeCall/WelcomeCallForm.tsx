@@ -78,7 +78,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { AddressAutocomplete, type AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
-import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff, AlertTriangle, Lightbulb, OctagonX } from "lucide-react";
+import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff, AlertTriangle, Lightbulb, Flag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CardinalAddressNote } from "@/components/shared/CardinalAddressNote";
 import { cardinalAddressNote } from "@/lib/shared/cardinalAddress";
@@ -93,17 +93,27 @@ interface Props {
   onIntakeChange?: (next: CallIntake) => void;
   onSendWelcomeCallText?: () => Promise<void>;
   /**
-   * Opens the Stuck reason dialog — the SAME dialog the header button opens
-   * (Josh, 2026-09-14: *"add a second stuck button option down there … both
-   * stuck buttons have same behavior"*).
-   *
-   * ⚠️ The page owns the dialog and the reason state, so this is a second
-   * TRIGGER for one control, not a second control. Nothing here writes, and
-   * Stuck deliberately stays immediate rather than becoming a toggle like
-   * Advance — `markStuckWithReason` writes directly, takes a required reason
-   * and never runs the send gate, and that is the point of it.
+   * Clears the Welcome Call Text trigger ON THE BOARD so it can be sent again.
+   * Without it the "Queued" button only forgot locally, and the next Send
+   * re-wrote the same value — no status change, no automation, no text
+   * (mondayWrite.resetWelcomeCallText). Optional for the preview/no-Monday
+   * environment, where the local toggle survives as the fallback.
    */
-  onStuck?: () => void;
+  onResetWelcomeCallText?: () => Promise<void>;
+  /**
+   * Opens the Propose Stuck dialog — the SAME dialog the header's action bar
+   * opens (Josh, 2026-09-14: *"add a second stuck button option down there …
+   * both stuck buttons have same behavior"*).
+   *
+   * ⚠️ The page owns the dialog (it renders `StageActionBar` in controlled
+   * mode), so this is a second TRIGGER for one control, not a second control.
+   * Nothing here writes. Since 2026-09-14 the hold is a PROPOSAL on the shared
+   * ladder (§5.34): a required reason, stamped into Notes, and Escalation →
+   * Manager Intervention, where a manager approves Stuck or sends the patient
+   * back. It never runs the send gate — a patient who cannot be reached is
+   * never trapped behind a confirmation nobody could get.
+   */
+  onProposeStuck?: () => void;
 }
 
 /**
@@ -316,7 +326,7 @@ function CapNote({ qty, cap, payerLabel }: { qty: number; cap: number; payerLabe
   );
 }
 
-export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSendWelcomeCallText, onStuck }: Props) {
+export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSendWelcomeCallText, onResetWelcomeCallText, onProposeStuck }: Props) {
   // The no-column payload. Falls back to a blank one so a patient mapped before
   // this field existed (or a test fixture) still renders.
   const intake = patient.callIntake ?? emptyIntake();
@@ -1400,8 +1410,21 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               patient.welcomeCallTextIndex !== null && "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300"
             )}
             onClick={async () => {
-              // If already queued and the parent hasn't supplied a sender, allow toggle off (legacy behavior)
+              // Already queued: RESET it, on the board when a resetter is
+              // supplied. A local-only toggle here was the 2026-09-14 audit's
+              // finding — the column stayed "Send", so the next press changed
+              // nothing and the automation never fired (see
+              // mondayWrite.resetWelcomeCallText).
               if (patient.welcomeCallTextIndex !== null) {
+                if (onResetWelcomeCallText) {
+                  try {
+                    setSendingWelcomeText(true);
+                    await onResetWelcomeCallText();
+                  } finally {
+                    setSendingWelcomeText(false);
+                  }
+                  return;
+                }
                 onFieldChange("welcomeCallText", "");
                 onFieldChange("welcomeCallTextIndex" as keyof Patient, null);
                 return;
@@ -1422,11 +1445,16 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           >
             <MessageSquare className="h-4 w-4" />
             {sendingWelcomeText
-              ? "Sending…"
+              ? "Working…"
               : patient.welcomeCallTextIndex !== null
                 ? "Welcome Call Text: Queued"
                 : "Send Welcome Call Text"}
           </Button>
+          {patient.welcomeCallTextIndex !== null && !sendingWelcomeText && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Sent from the board. Press again to reset it so it can be re-sent.
+            </p>
+          )}
           {/* One source for the disabled button AND its reason — the same rule
               `unmetSendRequirements` follows, because a greyed-out control with
               no stated reason is what reps report as "the app is broken". */}
@@ -1469,17 +1497,17 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             worth remembering: BOTH buttons wrote Stage Advancer → Review
             Profile, which is the move to Final Profile Confirmation, so the
             button labelled "hold this patient" moved them forward.
-            The hold is the red **Stuck** button in the page header, which now
-            takes a required reason (`mondayWrite.markStuckWithReason`).
-            ⚠️ It is NOT a Propose Stuck and must not be relabelled as one —
-            this board has no ladder to propose into (see that writer). */}
-        {/* ⚠️ Advance and Stuck sit SIDE BY SIDE from 2026-09-14 (Josh: *"let's
-            bring a stuck button down next to Advance too"*), and the paragraph
-            that used to sit under Advance — *"… to hold this patient instead,
-            use Stuck at the top of the page"* — was deleted with it, on his
-            instruction: it pointed at a button that is now right here.
-            ⚠️ The header Stuck button STAYS. Josh, same day: *"add a second
-            stuck button option down there … both stuck buttons have same
+            The hold became a direct Stuck button with a required reason, and
+            on 2026-09-14 that became a PROPOSAL on the shared ladder (§5.34):
+            the rep proposes, a manager approves Stuck or sends the patient
+            back. The header's action bar is the same control. */}
+        {/* ⚠️ Advance and Propose Stuck sit SIDE BY SIDE (Josh, 2026-09-14:
+            *"let's bring a stuck button down next to Advance too"*), and the
+            paragraph that used to sit under Advance — *"… to hold this patient
+            instead, use Stuck at the top of the page"* — was deleted with it,
+            on his instruction: it pointed at a button that is now right here.
+            ⚠️ The header button STAYS. Josh, same day: *"add a second stuck
+            button option down there … both stuck buttons have same
             behavior"* — two triggers for one dialog, not two controls. */}
         <div className="flex flex-col sm:flex-row gap-3">
           <Button
@@ -1516,28 +1544,28 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           </Button>
 
           {/* ⚠️ NOT a toggle, unlike Advance beside it. Clicking opens the
-              page's Stuck dialog, which takes a REQUIRED reason and writes
-              immediately — it never waits for Send to Monday. Josh, 2026-09-14:
-              *"it should still open the form for stuck … no behaviour change"*.
-              So the light-to-dark treatment here is resting-vs-HOVER, not
-              unselected-vs-selected: there is no selected state to show. */}
-          {onStuck && (
+              page's Propose Stuck dialog, which takes a REQUIRED reason and
+              writes immediately — it never waits for Send to Monday. Josh,
+              2026-09-14: *"it should still open the form for stuck … no
+              behaviour change"*. So the light-to-dark treatment here is
+              resting-vs-HOVER, not unselected-vs-selected: there is no
+              selected state to show. */}
+          {onProposeStuck && (
             <Button
               type="button"
               variant="outline"
-              disabled={!onStuck}
               className={cn(
                 "h-auto w-full sm:w-auto py-4 px-6 justify-start text-left whitespace-normal border",
-                "focus-visible:ring-red-500 focus-visible:ring-offset-0",
-                "bg-red-500/10 hover:bg-red-600 hover:text-white hover:border-red-700 text-red-800 dark:text-red-300 border-red-300 dark:border-red-800",
+                "focus-visible:ring-rose-500 focus-visible:ring-offset-0",
+                "bg-rose-500/10 hover:bg-rose-600 hover:text-white hover:border-rose-700 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800",
               )}
-              onClick={onStuck}
+              onClick={onProposeStuck}
             >
               <div className="flex items-start gap-2">
-                <OctagonX className="h-5 w-5 shrink-0 mt-0.5" />
+                <Flag className="h-5 w-5 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-bold text-lg">Stuck</p>
-                  <p className="text-sm opacity-90 font-normal">Hold this patient here.</p>
+                  <p className="font-bold text-lg">Propose Stuck</p>
+                  <p className="text-sm opacity-90 font-normal">Ask a manager to hold this patient.</p>
                 </div>
               </div>
             </Button>

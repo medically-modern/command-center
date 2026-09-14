@@ -35,6 +35,11 @@ import {
 import {
   approveIntakeStuck, returnIntakeToPipeline, proposeIntakeStuck,
 } from "@/lib/profile/unverifiedWrite";
+// Same rule for the Welcome Call board (§5.34): its ladder writers live with
+// its write layer, shared with the two stage pages, never re-spelt here.
+import {
+  approveWelcomeCallStuck, returnWelcomeCallToQueue, escalateWelcomeCallToFinal,
+} from "@/lib/welcomeCall/mondayWrite";
 import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
 import { returnAttemptReset } from "@/lib/masheke/attemptRollup";
@@ -132,6 +137,13 @@ const CHART_ROUTES: Record<string, string | null> = {
   "auth-outstanding": "/auth-outstanding",
   "auth-denial": null,              // no CC view yet
   "welcome-call": "/welcome-call",
+  // Welcome Call board manager views (§5.34) — every column opens the stage
+  // page in manager mode, whose sidebar then lists that column's cohort.
+  "welcome-call-manager": "/welcome-call",
+  "welcome-call-final": "/welcome-call",
+  "profile-review": "/final-confirm",
+  "profile-review-manager": "/final-confirm",
+  "profile-review-final": "/final-confirm",
   // Doctor Appointments — all three columns open the outreach page. The work is
   // calling the PATIENT; the chase UI would show the wrong job entirely.
   "doctor-appointments": "/doctor-appointments",
@@ -1000,11 +1012,23 @@ function DrilldownModal({
   // Outstanding buckets on that date).
   const isDecisionChart = !!chart.decision;
   const returnRedates = chart.decision === "proposed-stuck";
-  const reasonNotesLabel = chart.decision === "proposed-stuck" ? "MN Notes" : "Reference Notes";
+  // Welcome Call board returns clear the Follow Up SNOOZE rather than writing a
+  // date — that board has no Next Action Date; a cleared Follow Up is "due now".
+  const returnClearsSnooze =
+    chart.decision === "welcome-call-manager" || chart.decision === "welcome-call-final";
+  const reasonNotesLabel =
+    chart.decision === "proposed-stuck"
+      ? "MN Notes"
+      : returnClearsSnooze
+        ? "Welcome Call Notes"
+        : "Reference Notes";
   // Manager Intervention Submit Auth chart: the only action is Escalate to
   // Final Decisions, and only Propose Stuck rows get it (a DVS retry/manual
   // row is a bot state — there's nothing to escalate).
-  const isEscalateChart = chart.decision === "submit-auth-manager" || chart.decision === "intake-manager";
+  const isEscalateChart =
+    chart.decision === "submit-auth-manager" ||
+    chart.decision === "intake-manager" ||
+    chart.decision === "welcome-call-manager";
   /** ⚠️ The bot-owned exemption is INSURANCE-only. A DVS retry/manual row has
    *  nothing for a manager to decide; every Patient Intake escalation is a
    *  human's, so every row there gets buttons — and must, since the escalation
@@ -1729,7 +1753,9 @@ function DrilldownModal({
                       ? "Moves the patient to the Stuck stage and clears the escalation — they leave the pipeline. "
                       : returnRedates
                         ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue. "
-                        : "Sets the Follow Up Date to today and clears the escalation, so the patient reappears in the rep's due queue. "}
+                        : returnClearsSnooze
+                          ? "Clears the Follow Up snooze and the escalation, so the patient reappears in the rep's queue as due now. "
+                          : "Sets the Follow Up Date to today and clears the escalation, so the patient reappears in the rep's due queue. "}
                   {isEscalate
                     ? `${reasonNotesLabel}.`
                     : noteRequired
@@ -2135,6 +2161,15 @@ export default function OversightTab() {
         } else if (kind === "insurance-final") {
           if (action === "approve") await approveInsuranceStuck(patientId, appendNote);
           else await returnInsuranceToQueue(patientId, appendNote);
+        } else if (kind === "welcome-call-manager") {
+          // Welcome Call board, Manager Intervention: Escalate to Final
+          // Decisions (required note — the modal AND the writer enforce it) or
+          // send back to the pipeline (clears the Follow Up snooze + the flag).
+          if (action === "escalate") await escalateWelcomeCallToFinal(patientId, appendNote ?? "");
+          else await returnWelcomeCallToQueue(patientId, appendNote);
+        } else if (kind === "welcome-call-final") {
+          if (action === "approve") await approveWelcomeCallStuck(patientId, appendNote);
+          else await returnWelcomeCallToQueue(patientId, appendNote);
         } else {
           if (action === "approve") await approveProposedStuck(patientId, appendNote);
           // Same rule as the stage pages' own action bar: a return hands the rep
@@ -2159,6 +2194,7 @@ export default function OversightTab() {
         // Manager Intervention charts share the "submit-auth-manager" kind.
         const leaves = (k: string) =>
           kind === "submit-auth-manager" || kind === "intake-manager" || kind === "intake-final"
+          || kind === "welcome-call-manager" || kind === "welcome-call-final"
             ? k === chartId
             : k.endsWith(kind === "insurance-final" ? "-final-escalation" : "-proposed-stuck");
         setData((prev) => {

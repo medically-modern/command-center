@@ -12,13 +12,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Clock, Loader2, RefreshCw, User, AlertCircle, Undo2, Search, X} from "lucide-react";
+import { AlertTriangle, Clock, Flag, Loader2, RefreshCw, User, AlertCircle, Undo2, Search, X} from "lucide-react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { clearStatusColumn, clearDateColumn, COL } from "@/lib/welcomeCall/mondayApi";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 import { sidebarSections } from "@/lib/welcomeCall/sidebarList";
 import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
@@ -52,6 +53,11 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [sp] = useSearchParams();
   const viewFilter = viewFilterFromParams(sp);
   const managerMode = viewFilter === "escalated";
+  // Oversight's Final Decisions column sets `?mv=final-decisions` beside
+  // `?manager=1`: the main list is then the proposed-stuck cohort that chart
+  // counts, not the index-0 escalations (lib/welcomeCall/sidebarList).
+  const origin = managerOriginFromParams(sp);
+  const finalView = managerMode && origin === "final-decisions";
 
   // Section math lives in lib/welcomeCall/sidebarList so the page's
   // auto-select sees the exact same visible list.
@@ -60,7 +66,8 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
     escalated: escalatedPatients,
     followUp: followUpPatients,
     both: bothPatients,
-  } = sidebarSections(filteredBySearch, viewFilter);
+    proposedStuck: proposedPatients,
+  } = sidebarSections(filteredBySearch, viewFilter, { origin });
 
   return (
     <Sidebar collapsible="icon">
@@ -71,8 +78,12 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 Monday · Welcome Call
               </p>
-              <p className={cn("text-sm font-semibold truncate", managerMode && "text-red-500")}>
-                {managerMode ? `Escalated (${activePatients.length})` : `Patients (${patients.length})`}
+              <p className={cn("text-sm font-semibold truncate", managerMode && (finalView ? "text-amber-600" : "text-red-500"))}>
+                {finalView
+                  ? `Proposed Stuck (${activePatients.length})`
+                  : managerMode
+                    ? `Escalated (${activePatients.length})`
+                    : `Patients (${patients.length})`}
               </p>
             </div>
           )}
@@ -153,7 +164,13 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                 </SidebarMenuItem>
               ))}
               {!loading && activePatients.length === 0 && !error && !collapsed && (
-                <p className="px-3 py-4 text-xs text-muted-foreground">No active patients.</p>
+                <p className="px-3 py-4 text-xs text-muted-foreground">
+                  {finalView
+                    ? "No stuck proposals awaiting a decision."
+                    : managerMode
+                      ? "No escalated patients."
+                      : "No active patients."}
+                </p>
               )}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -183,7 +200,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                         <div className="min-w-0 text-left">
                           <p className="text-sm font-medium truncate">{p.name}</p>
                           <p className="text-[11px] text-red-400 truncate">
-                            Escalation Required
+                            With a manager
                           </p>
                         </div>
                       )}
@@ -227,6 +244,45 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                       </SidebarMenuButton>
                       <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
                     </div>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* ── Proposed Stuck (Escalation index 2) — `?filter=all` only; the
+            rep's default view never lists them and the Final Decisions view
+            makes them the main list instead (lib/welcomeCall/sidebarList). ── */}
+        {proposedPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold flex items-center gap-1.5">
+              <Flag className="h-3 w-3" />
+              Proposed Stuck ({proposedPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {proposedPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <SidebarMenuButton
+                      isActive={selectedId === p.id}
+                      onClick={() => onSelect(p.id)}
+                      className={cn(
+                        "flex items-start gap-2 py-2 h-auto opacity-60",
+                        selectedId === p.id && "bg-sidebar-accent opacity-100",
+                      )}
+                    >
+                      <Flag className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                      {!collapsed && (
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-amber-600 truncate">
+                            Awaiting a Final Decision
+                          </p>
+                        </div>
+                      )}
+                      <ContactStateMarks phone={p.phone} />
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
