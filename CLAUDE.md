@@ -2920,6 +2920,15 @@ The send writes the **effective** value including an untouched payer default, or
 cadence stays blank and the hop has nothing to copy. One muted hint, only when it means
 something: "default for Medicaid" while it's our guess, "edited" once the rep changes it,
 nothing for a value the board already holds.
+⚠️ **The CARD is HIDDEN from 2026-09-14** (Josh: *"Order Frequency — comment out this code"* ·
+*"make subscription type go full screen"*) behind `SHOW_ORDER_FREQUENCY` in
+`WelcomeCallForm.tsx` — the `SHOW_CHASE_COLUMN` convention (§5.30), because a JSX block comment
+cannot nest the comments the card carries and a flag keeps the code type-checked. Subscription Type
+takes the full row while it is off. ⚠️ **Only the card is off**: `frequencyState` still runs and
+every Welcome Call send still writes `color_mm71xdhj` — the board value, or the payer default (60
+for Medicaid, 90 otherwise; a stranded 75 still drops) — so the population keeps filling for the
+workflow re-pointing below. `orderFrequencyOptionsSource.test.ts` still holds, because the select is
+gated rather than deleted. Flip the flag to bring the card back; the grid follows it.
 ⚠️ **A payer correction invalidates a stranded 75, and the check lives INSIDE `frequencyState`
 — not in an effect beside it.** 75 days is Aetna-only (§5.31), and the first shape validated
 only the rep's `orderFrequencyEdited` in a `useEffect`, returning early for an untouched

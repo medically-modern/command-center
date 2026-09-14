@@ -131,6 +131,20 @@ interface Props {
  * hierarchy goes flat. The numbered teal circle in `SectionHeading` is what
  * carries the accent here.
  */
+/**
+ * ⚠️ The Order Frequency card is SWITCHED OFF (Josh, 2026-09-14: *"Order
+ * Frequency — comment out this code"*). A flag rather than a block comment,
+ * for the reason `SHOW_CHASE_COLUMN` on the Care Coordinator page is one: the
+ * card carries its own JSX comments, which a wrapping comment cannot nest, and
+ * a flag keeps the code type-checked and the option-source scan test honest.
+ * ⚠️ Only the CARD is off — `frequencyState` still runs below and
+ * `mondayWrite` still writes `color_mm71xdhj` on every send (the board value,
+ * or the payer default), so the column keeps filling for the day the five
+ * WC→Subscription workflows are re-pointed (CLAUDE.md §5.31c). Flip this to
+ * bring the card back; the Subscription & Logistics grid follows it.
+ */
+const SHOW_ORDER_FREQUENCY: boolean = false;
+
 function FormSection({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div
@@ -1246,7 +1260,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
       {/* ─── Section 6: Subscription & Logistics ─── */}
       <FormSection>
         <SectionHeading number={6} title="Subscription & Logistics" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {/* ⚠️ Two columns only while the Order Frequency card renders. With
+            it hidden, Subscription Type takes the full row — Josh, 2026-09-14:
+            *"make subscription type go full screen"*. */}
+        <div className={`grid grid-cols-1 ${SHOW_ORDER_FREQUENCY ? "sm:grid-cols-2" : ""} gap-6`}>
           {/* Subscription Type */}
           <div>
             <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
@@ -1273,7 +1290,8 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             {/* One muted hint, only while it means something — "from product
                 mix" while it is our guess, "edited" once the rep changes it,
                 nothing for a value the board already held. Same rule and same
-                look as the Order Frequency card below. */}
+                look as the Order Frequency card (hidden behind
+                SHOW_ORDER_FREQUENCY). */}
             {subType.hint && (
               <p className="mt-1.5 text-xs text-muted-foreground">{subType.hint}</p>
             )}
@@ -1288,38 +1306,42 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           {/* Order Frequency — Brandon: "call it that, not 'Supply length', so
               it matches the boards". It is a real Monday column now
               (`color_mm71xdhj`) rather than a line in the notes block, which is
-              what lets the Subscription hop copy it. */}
-          <div>
-            <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
-              Order Frequency
-            </label>
-            <Select
-              value={frequency.days}
-              onValueChange={(v) => {
-                onFieldChange("orderFrequencyEdited" as keyof Patient, v);
-                onFieldChange(
-                  "orderFrequencyIndex" as keyof Patient,
-                  ORDER_FREQUENCY_INDEX[daysToLabel(v)] ?? null,
-                );
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select frequency" />
-              </SelectTrigger>
-              <SelectContent>
-                {frequency.options.map((d) => (
-                  <SelectItem key={d} value={d}>
-                    {d} days
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {/* One muted hint, and only while it means something: our guess, or
-                the rep's edit. A value already on the board gets neither. */}
-            {frequency.hint && (
-              <p className="mt-1.5 text-xs text-muted-foreground">{frequency.hint}</p>
-            )}
-          </div>
+              what lets the Subscription hop copy it.
+              ⚠️ HIDDEN behind `SHOW_ORDER_FREQUENCY` (Josh, 2026-09-14) —
+              see the flag's comment for what still runs while it is off. */}
+          {SHOW_ORDER_FREQUENCY && (
+            <div>
+              <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground block mb-2">
+                Order Frequency
+              </label>
+              <Select
+                value={frequency.days}
+                onValueChange={(v) => {
+                  onFieldChange("orderFrequencyEdited" as keyof Patient, v);
+                  onFieldChange(
+                    "orderFrequencyIndex" as keyof Patient,
+                    ORDER_FREQUENCY_INDEX[daysToLabel(v)] ?? null,
+                  );
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select frequency" />
+                </SelectTrigger>
+                <SelectContent>
+                  {frequency.options.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d} days
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* One muted hint, and only while it means something: our guess, or
+                  the rep's edit. A value already on the board gets neither. */}
+              {frequency.hint && (
+                <p className="mt-1.5 text-xs text-muted-foreground">{frequency.hint}</p>
+              )}
+            </div>
+          )}
 
         </div>
 

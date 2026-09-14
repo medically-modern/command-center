@@ -212,7 +212,7 @@ legacy automations, 61 rows in the two active groups).
 | Pump Type · Pump Qty · Prior Pump Date | 3 columns | Send | ✅ Pump Qty blank deliberately not written (7918341011) |
 | Infusion Set 1/2 + quantities · Cartridges | 5 columns | Send | ✅ blanks clear (§5.31c); cartridge blank never written (cannot be produced by the UI) |
 | Secondary coverage No / Yes+type / Member ID 2 / Insurance Notes | 3 columns | Send | ✅ Unknown writes nothing BY DESIGN (§5.31c) |
-| Subscription Type (incl. auto-fill) · Order Frequency (effective value) | 2 columns | Send | ✅ |
+| Subscription Type (incl. auto-fill) · Order Frequency (effective value) | 2 columns | Send | ✅ Order Frequency's CARD is hidden behind `SHOW_ORDER_FREQUENCY` from 2026-09-14 (Josh); the column is still written — board value or payer default (§5.31c) |
 | Next Order Dates ×3 | 3 date columns | Send | ✅ clears go through `{}` |
 | Update Address | `location_mm1xhw17` (+ POS derived) | Send | ✅ |
 | Advance | `color_mm301cpp` = 1, then Stage Advancer = Review Profile | Send (advancer last) | ✅ |
