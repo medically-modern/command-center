@@ -924,6 +924,29 @@ so `seen` climbing while `rings` stays 0 names this failure instantly.
   other just adopted).
 - **Ack the webhook FIRST**, then do the work — RingCentral retries and eventually blacklists a slow
   endpoint.
+- ⚠️⚠️ **A RINGING CALL WHOSE TERMINAL EVENT NEVER ARRIVES IS IMMORTAL AND CONTAGIOUS — sweep it**
+  (`callRules.staleRings` + `inboundCalls.sweepStaleRings`, 2026-09-15). `sessionOutcome` returns
+  null unless an inbound party is `Answered` or **every** inbound party is in `TERMINAL_STATES`, so
+  one dropped final webhook — or a party resting in a status that list does not name — leaves
+  `state: "ringing"` and `endedAt: 0`. Three things then compound: the card never clears, because
+  the client only clears on a non-ringing update; `pruneCalls` never evicts it, because it only
+  drops entries that HAVE an `endedAt`; and the SSE connect handler **re-sends `call-ring` for it to
+  every browser that opens a stream**, so the ghost returns on every page load, for every rep it
+  matched, until the container restarts. Reported as *"they linger there for 1000 of seconds"*
+  (Josh, 2026-09-15). `MAX_RING_MS` is **2 minutes** — four times a real ring, since voicemail takes
+  an unanswered call at ~20–30s and the Forward API only works in Setup/Proceeding; sweeping EARLY
+  would pull a card while somebody could still take the call, which is the worse failure.
+  ⚠️ A **claimed** call sweeps to `answered`, never `missed` — the same caveat `handleEvent` carries,
+  or the rep who took it watches their own card flip to Missed two minutes later.
+  ⚠️ The sweep has its **own 30s timer**, not just the `pruneCalls()` on the webhook path: a call
+  gets stuck precisely BECAUSE its events stopped arriving, so hanging the recovery off the next
+  event hangs it off the thing that failed. The audit row says `swept — no terminal event after Ns`,
+  so a RUN of them — a webhook stream dropping its terminals — is findable in `/calls/history`,
+  which no counter would show you.
+  ⚠️ The browser keeps its own backstop at a LONGER window (`useInboundCalls` `MAX_RING_MS`, 150s)
+  for the other way a card strands: the update was sent and this tab missed it (an SSE drop, a
+  reconnect between the two events). Longer on purpose, so the gateway's honest verdict wins
+  whenever it arrives. One timer over the list, never one per card.
 
 ⚠️ **One replica is load-bearing** (`cmd ctr server`, checked 2026-08-05). The live-call registry is
 in-memory, so a webhook landing on replica A never reaches a browser on replica B. If this is ever
@@ -2580,25 +2603,6 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   matches nothing, with no error. Patients in **Chase Clinicals** lead the list and are
   highlighted, because an arriving fax is most likely the answer to that chase; within a group the
   patient with **no** next-action date leads, since nothing will surface them on their own.
-- **Phone / Text / Fax lives in the CENTRE of the header, not in a left rail** (Josh, 2026-09-15:
-  *"we're losing so much space up here for the rest of the tab — reformat this selector to be in
-  the center"*). Embedded in System Management the page sits under two bands of host chrome
-  already, and the rail was spending 64px of width on every screen for three buttons while the
-  header band was being paid for anyway.
-  ⚠️ **The header itself is UNCHANGED — navy, icon, eyebrow, title** (his pick of four options, and
-  §7's rule): the session that restyled it into a white strip had it sent back as *"half-built"*.
-  Moving a control INTO the header is not restyling it. The dialer gives up `mx-auto` and sits
-  right, before the bell.
-  ⚠️ It is **absolutely centred** (`absolute left-1/2 -translate-x-1/2` in a `relative` row), not
-  `mx-auto`: the title and the dialer are different widths, so flex would leave it wherever the
-  leftovers fall. Which means it is OUT OF FLOW and will happily draw on top of its neighbours —
-  ⚠️⚠️ **the `xl` breakpoint is MEASURED, not chosen for looking round.** Rendered against the
-  compiled CSS at nine widths (2026-09-15): at **768px it overlapped the dialer by 152px** and the
-  title by 68px, at 900px by 86px, at **1024px still by 24px**; the first clean width is ~1100 and
-  **1280 leaves 188px / 104px of air**. Below it the old rail renders instead (`xl:hidden`), so
-  exactly one of the two is ever on screen. Re-measure before lowering it: nothing here throws, it
-  just stacks two controls. `voicemailWiring.test.ts` pins the breakpoint, the one-at-a-time rule
-  and the header's parity.
 - ⚠️ **Only the OPEN tab polls RingCentral.** All four reads go through
   `hooks/commsHub/rcStore.ts`, one factory carrying the incident guards, so the four lists cannot
   drift into having three of them.
@@ -2610,11 +2614,20 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   `basedOnInboundId`) and a `Fax`-named helper applied to voicemail is how a future reader concludes
   there must be a voicemail one somewhere and writes it. The panel must render the OVERRIDDEN list
   (`voicemailList`), or a row springs back to unheard until the next poll.
-  ⚠️⚠️ **Opening a voicemail deliberately does NOT mark it heard, unlike a fax.** Reading a fax IS
-  opening it; a voicemail is listened to — and the call list opens one on its own now (below), so
-  marking on open would silently empty the Unheard filter as a rep scrolled the call list. The menu
-  is the only writer. Playing the audio does not mark it either: that is a one-line addition if
-  anybody asks, and nobody has.
+  **Opening one marks it heard and the menu puts it back** (Josh, 2026-09-15: *"opening it marks it
+  read, right clicking and marking it unread puts it back on unread"*) — the same contract the fax
+  list has. ⚠️ The call-row auto-open (below) marks it too, but **once per message**
+  (`autoHeard`): the effect reads the overridden list, so without that guard marking one unread
+  re-runs it and re-marks it heard — a right-click that visibly undoes itself.
+  ⚠️⚠️ **Read state is SYSTEM-WIDE by construction, and that is the whole reason for the
+  `readStatus` rule** (Josh, 2026-09-15: *"if one person marks a text as read then its read for
+  everyone else"*). `setMessageRead` PUTs `message-store/{id}` on the **shared extension** — the
+  whole team is one RingCentral user (§5.13b) — so there is exactly ONE `readStatus` per message,
+  and one rep's click reaches every other rep and the RingCentral desktop app. Propagation is the
+  other browser's next poll: **60s for texts, 120s for voicemail and fax** (`useHubData`'s
+  `TEXT_TTL_MS` / `SLOW_TTL_MS`). The override maps are per-browser and cover only the seconds
+  before THAT browser's own poll — never a stored opinion. Nothing here is in localStorage, and
+  nothing may be.
 - **A call that left a voicemail opens the message AND the thread under it** (Josh, 2026-09-15:
   *"calls — if they left a voicemail — it should auto open the voicemail + the texts below it"*).
   Rule: **`lib/commsHub/callVoicemail.ts`** (+ tests).
@@ -4961,10 +4974,6 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   the whole content, so its chrome is the only thing telling a rep the view is
   finished. `systemMgmtTabs.test.ts` pins the parity (navy, icon, title, and no
   `embedded` branch inside the header but the back button).
-  ⚠️ **The hub's own Phone / Text / Fax selector moved into its header on
-  2026-09-15** (§5.28) — the two bands of chrome above it are exactly why. The
-  navy bar is otherwise untouched, which is this bullet's rule holding, not
-  being worked around.
   ⚠️ **Mounted CONDITIONALLY, never hidden.** Every RingCentral poll in the hub
   is scoped to its mounted tab (§5.28's "only the OPEN tab polls"), so a
   `hidden`/`display:none` toggle would poll the shared account from a screen
@@ -4974,6 +4983,18 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   further), and is `lazyWithReload`-imported so the tab nobody opened costs
   nothing. `systemMgmtTabs.test.ts` scans for all of it — verified to fail when
   the conditional mount is replaced by an always-render.
+- **The tabs sit INLINE in the header, centred** (Josh, 2026-09-15: *"i wanted search communication
+  stage manager and operations centered to save space at the top"*). They used to occupy their own
+  ~45px strip under the title row, left-aligned with the right half empty; merged and centred, the
+  page gets that strip back — measured 64px of chrome against ~135px, which matters most on the
+  Communications tab where the hub adds a third band of its own.
+  ⚠️ Centred by giving the OUTER groups `flex-1`, **not** by absolutely positioning the middle one:
+  equal flex basis centres it while the title and Refresh are different widths, and a narrow window
+  makes it SQUEEZE rather than draw on top of its neighbours. Below `lg` it wraps to its own centred
+  row (`w-full justify-center`), so nothing is ever clipped or stacked — measured 89px wrapped,
+  64px inline at ≥1440.
+  ⚠️ `TabBtn` became a PILL: the old `border-b-2 -mb-px` underline anchored to the header's bottom
+  edge, and inline in the row it drew a stray line through the middle of the bar.
 - ⚠️ **The Escalations tab is COMMENTED OUT, not deleted** (Josh, 2026-09-10) —
   the `TabBtn`, the `EscalationView` body and the header's escalation-count chip.
   Everything behind them stays wired (`useSystemPatients`' `escalated`,
@@ -5528,6 +5549,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Audit a write that "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
 | "What was the gateway doing at 4:46 last Thursday?" | `GET /audit/requests.json?key=…&hours=…&path=/rc&failed=1` (Postgres `request_log`, §8). NOT Railway logs — they cap at 500 lines ≈ 13 minutes |
 | "A call never reached me" / "taking it gave an error" | §5.13 — `GET /calls/history?hours=…&last4=…` (Postgres `call_events` + `call_claims`), NOT Railway logs: those cap at 500 lines ≈ 13 minutes. A `410` from `/calls/claim` is RingCentral saying the party is already gone — the caller hung up or somebody else picked up — never a throttle, which surfaces as `502` |
+| A call card stays on screen after the call ended, and comes back on reload | §5.13 — the terminal webhook never arrived, so the gateway kept it `ringing` with `endedAt: 0`: never pruned, and re-pushed to every new SSE stream. `callRules.staleRings` sweeps at 2 min (own 30s timer) and the browser backstops at 150s. Look for `swept — no terminal event after` in `/calls/history` — a run of those is a webhook stream dropping its terminals |
 | A rep can't answer a call in the browser / the home badge says "Not connected" | §5.13b — first: are they in `callAnswerers` on `/access` (max 5)? Not assigned ⇒ no cards, no stream, no badge, by design. Assigned but red ⇒ read the badge's reason: "line is full" is RingCentral's five (another browser, or the RingCentral app signed in as Katie Tyler, holds a slot; it retries every minute), anything else is in `registrationError`. Amber "another tab" ⇒ **Use this tab** |
 | The team is past five answerers / "get off the RC app for everyone" | §5.13b **Route A** — a RingCentral user per person, the main number kept on extension 2 and its call handling pointed at a queue, per-user auth-code sign-in on the gateway, `provision()` swapped. Not built |
 | A card shows "Take it" where it used to show — or should show — "Answer" | §5.13b — `ringMerge.ts`: Answer needs the SIP leg in THIS browser's leader tab; no leg means not registered (badge) or the INVITE never arrived. Take it still forwards to the cell either way |
@@ -5545,6 +5567,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's ORDERS aren't in System Search, or an order turns up in another folder | §5.35 — `lib/systemMgmt/ordersSearch.ts`. The board rides `LIVE_SEARCH_BOARDS` (what the search box asks) and is deliberately absent from `BOARDS` (the patient registry — inbound-call lookup, the dossier, the gateway's mirrored directory, the snapshot); `searchBucket` returns `orders` FIRST, or every order files under Active with nothing erroring. An empty Orders folder under a chart pick or a stage filter is correct — those rows come from the snapshot |
 | A CAH / PO / tracking number finds nothing in System Search | §5.35 — `rulesLiteral`'s order branch + `ORDER_IDENTIFIER_COLS`. It is on BOTH paths because CAH (10 digits) and tracking (12) arrive as PHONE queries while a PO (`MM-<itemId>-<date>`) arrives as a one-word NAME query; a multi-word query keeps its AND and deliberately does not match identifiers. The results are in the **Orders** folder, so an empty Active tab with "Found in: Orders" is the expected landing. ⚠️ Never move the rule into `phoneRulesLiteral` — that is the same-number pass, and a 10-digit CAH number would pull a stranger's order onto a patient |
 | A Search row opens the wrong screen, or a different one from Oversight | §7 — `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` is the one rule; it must send the same `?mv=` / `manager` / `escalated` params `OversightTab.handlePatientClick` sends |
+| The System Management tabs wrap to their own row | §7 — they sit inline in the header, centred by giving the title and Refresh groups `flex-1` (never an absolutely-positioned centre, which would draw on top of them). Below ~1440 they wrap to their own centred row by design; that is `flex-wrap`, not a bug |
 | The Communications tab's composer or profile spinner is off screen | §7 — the host tab needs `h-screen overflow-hidden`, not `min-h-screen`: `min-h-0` cannot bound a parent with no definite height, so a long conversation list grows the document to ~48,000px. ⚠️ Reproducing it needs a REAL list — a couple of conversations fit inside 100vh and the two layouts are pixel-identical |
 | The Escalations tab is missing from System Management | §7 — commented out 2026-09-10 with its header count chip, not deleted; `?tab=escalations` falls through to Search on purpose. Uncomment the `TabBtn` and the `EscalationView` block in `SystemMgmtPage.tsx`. Escalations are worked in Oversight's manager columns meanwhile |
 | A Welcome Call rep's Propose Stuck says the board has no "Final Escalation Required" label / a manager can't escalate to Final | §5.34 — that label EXISTS since 2026-09-14 (id **2**, working_orange, read back from `settings_str`), so `assertEscalationLabelExists` firing means it was deleted or deactivated on the board since, or the 5-minute label cache is stale right after a board change (the guard drops the cache on a miss, so a retry re-reads). Check `color_mm1x7997`'s `settings_str` on board `18410804557`; if the id is no longer 2, correct `welcomeCall/mondayApi` `ESCALATION_INDEX.final` + every reader listed in §5.34's keep-in-agreement — never by inference. Re-adding it needs the two-step colour swap §5.34 records (Monday refuses duplicate colours and derives a new label's id from its colour) |

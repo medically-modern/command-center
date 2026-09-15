@@ -315,8 +315,23 @@ const SystemMgmtPage = () => {
       )}
       {/* Header */}
       <header className="shrink-0 bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
-        <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
+        {/* ── One band, not two ───────────────────────────────────────────
+            The tabs used to sit in their own ~45px strip under this row, left
+            aligned, with the right half of it empty (Josh, 2026-09-15: *"i
+            wanted search communication stage manager and operations centered to
+            save space at the top"*). Inline and centred, the page gets that
+            strip back for content — which matters most on the Communications
+            tab, where the hub adds a third band of its own.
+
+            ⚠️ Centred by giving the OUTER groups `flex-1`, not by absolutely
+            positioning the middle one. Equal flex basis makes the centre truly
+            centred while the title and Refresh are different widths, and —
+            unlike an out-of-flow centre — narrow widths make it SQUEEZE rather
+            than draw on top of its neighbours. Below `lg` it wraps to its own
+            centred row instead (`w-full justify-center`), so nothing is ever
+            clipped or stacked. */}
+        <div className="px-3 sm:px-6 py-3 flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
+          <div className="flex flex-1 items-center gap-3 min-w-0">
             <button
               onClick={goBack}
               className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
@@ -330,10 +345,10 @@ const SystemMgmtPage = () => {
               <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">
                 Medically Modern
               </p>
-              <h1 className="text-2xl font-bold">System Management</h1>
+              <h1 className="text-xl font-bold leading-tight">System Management</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="order-last flex flex-1 items-center justify-end gap-2 lg:order-none">
             {/* ── the escalation count — commented out with its tab, 2026-09-10.
                 It was never clickable, so with the Escalations tab gone it
                 advertises a number this page can no longer show anybody: the
@@ -355,49 +370,49 @@ const SystemMgmtPage = () => {
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Refresh
             </Button>
           </div>
-        </div>
-
-        {/* Tab bar */}
-        <div className="px-3 sm:px-6 flex gap-0">
-          <TabBtn
-            active={activeTab === "search"}
-            onClick={() => selectTab("search")}
-            icon={<Search className="w-4 h-4" />}
-            label="Search"
-          />
+          {/* Tabs — centred between the two flex-1 groups above and below
+              `lg`, a full-width centred row of their own. */}
+          <nav className="order-last flex w-full shrink-0 items-center justify-center gap-1 lg:order-none lg:w-auto">
+            <TabBtn
+              active={activeTab === "search"}
+              onClick={() => selectTab("search")}
+              icon={<Search className="w-4 h-4" />}
+              label="Search"
+            />
           {/* ── escalations — commented out 2026-09-10, see the Tab type ──
-          <TabBtn
-            active={activeTab === "escalations"}
-            onClick={() => selectTab("escalations")}
-            icon={<AlertTriangle className="w-4 h-4" />}
-            label={`Escalations${escalated.length ? ` (${escalated.length})` : ""}`}
-            alert={escalated.length > 0}
-          />
+            <TabBtn
+              active={activeTab === "escalations"}
+              onClick={() => selectTab("escalations")}
+              icon={<AlertTriangle className="w-4 h-4" />}
+              label={`Escalations${escalated.length ? ` (${escalated.length})` : ""}`}
+              alert={escalated.length > 0}
+            />
           ── */}
-          <TabBtn
-            active={activeTab === "communications"}
-            onClick={() => selectTab("communications")}
-            icon={<MessageSquare className="w-4 h-4" />}
-            label="Communications"
-          />
-          <TabBtn
-            active={activeTab === "stageManager"}
-            onClick={() => selectTab("stageManager")}
-            icon={<ArrowRightLeft className="w-4 h-4" />}
-            label="Stage Manager"
-          />
-          <TabBtn
-            active={activeTab === "operations"}
-            onClick={() => selectTab("operations")}
-            icon={<Activity className="w-4 h-4" />}
-            label="Operations"
-          />
-          <TabBtn
-            active={activeTab === "oversight"}
-            onClick={() => selectTab("oversight")}
-            icon={<BarChart3 className="w-4 h-4" />}
-            label="Oversight"
-          />
+            <TabBtn
+              active={activeTab === "communications"}
+              onClick={() => selectTab("communications")}
+              icon={<MessageSquare className="w-4 h-4" />}
+              label="Communications"
+            />
+            <TabBtn
+              active={activeTab === "stageManager"}
+              onClick={() => selectTab("stageManager")}
+              icon={<ArrowRightLeft className="w-4 h-4" />}
+              label="Stage Manager"
+            />
+            <TabBtn
+              active={activeTab === "operations"}
+              onClick={() => selectTab("operations")}
+              icon={<Activity className="w-4 h-4" />}
+              label="Operations"
+            />
+            <TabBtn
+              active={activeTab === "oversight"}
+              onClick={() => selectTab("oversight")}
+              icon={<BarChart3 className="w-4 h-4" />}
+              label="Oversight"
+            />
+          </nav>
         </div>
       </header>
 
@@ -545,10 +560,13 @@ function TabBtn({
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
+        // A PILL, not the old bottom-border underline: that anchored to the
+        // header's bottom edge, and inline in the row it would draw a stray
+        // line through the middle of the bar.
+        "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
         active
-          ? "border-white text-white"
-          : "border-transparent text-white/60 hover:text-white/80",
+          ? "bg-white text-navy shadow-sm"
+          : "text-white/70 hover:bg-white/10 hover:text-white",
         alert && !active && "text-red-300",
       )}
     >

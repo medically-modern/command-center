@@ -27,6 +27,20 @@ import { isAuthed, onAuthChange } from "@/lib/shared/auth";
  *  enough to register "missed" or "Sarah took it"; short enough that a stale
  *  card is never mistaken for a live one. */
 const LINGER_MS = 6_000;
+/**
+ * How long a card may claim to be ringing before this browser ends it itself.
+ *
+ * ⚠️ **A backstop, not the fix.** The gateway sweeps stuck rings at
+ * `MAX_RING_MS` (2 min) and broadcasts the update — that is the real repair,
+ * because a call stuck at "ringing" there is also never pruned and is
+ * re-pushed to every browser that opens a stream. This covers the other way a
+ * card strands: the terminal `call-update` was sent and THIS tab missed it (an
+ * SSE drop, a backgrounded tab, a reconnect between the two events). Slightly
+ * longer than the gateway's window so the honest "Missed"/"answered" update
+ * wins the race whenever it does arrive, and this only fires when it never
+ * does.
+ */
+const MAX_RING_MS = 150_000;
 /** EventSource retries forever by default. A token the gateway rejects would
  *  otherwise reconnect in a tight loop for the life of the tab. */
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -60,6 +74,16 @@ export function useInboundCalls(enabled = true) {
     timers.current.delete(id);
   }, []);
 
+  /**
+   * End a card this browser has been shown as ringing for longer than any real
+   * call rings. Marks it missed rather than dropping it silently, so it reads
+   * like every other call that nobody took, and then clears on the usual
+   * linger.
+   */
+  const expire = useCallback((id: string) => {
+    setCalls((cur) => cur.map((c) => (c.id === id && c.state === "ringing" ? { ...c, state: "missed" } : c)));
+  }, []);
+
   /** Clear a finished call after a beat, without racing a second update. */
   const scheduleClear = useCallback(
     (id: string) => {
@@ -71,6 +95,27 @@ export function useInboundCalls(enabled = true) {
     },
     [dismiss],
   );
+
+  /**
+   * ⚠️ One timer over the whole list, never a timer per card: a card is
+   * re-rendered on every patient-name resolution and every `call-update`, and
+   * a per-card `setTimeout` in that path is how you end up with dozens of them
+   * (INCIDENT_2026-08-20's shape, in miniature). This reads the list it
+   * already has.
+   */
+  useEffect(() => {
+    if (!calls.some((c) => c.state === "ringing")) return;
+    const t = setInterval(() => {
+      const now = Date.now();
+      for (const c of calls) {
+        if (c.state === "ringing" && c.startedAt > 0 && now - c.startedAt > MAX_RING_MS) {
+          expire(c.id);
+          scheduleClear(c.id);
+        }
+      }
+    }, 5_000);
+    return () => clearInterval(t);
+  }, [calls, expire, scheduleClear]);
 
   useEffect(() => {
     if (!inboundCallsConfigured() || !authed || !enabled) return;

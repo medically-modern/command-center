@@ -5,6 +5,8 @@ import {
   normalizePrefs,
   pickInboundParty,
   sessionOutcome,
+  staleRings,
+  MAX_RING_MS,
   shouldNotify,
   unwrapEvent,
   claimRefusal,
@@ -278,5 +280,42 @@ describe("claimRefusal — what the rep is told when a forward is refused", () =
 
   it("trims upstream whitespace rather than storing a padded string", () => {
     expect(claimRefusal(500, "  boom  ").detail).toBe("boom");
+  });
+});
+
+describe("staleRings — the stuck-card sweep", () => {
+  const ring = (over = {}) => ({ id: "s1", state: "ringing", startedAt: 1_000_000, claimedBy: null, ...over });
+
+  it("ends a call that has been ringing longer than any real one", () => {
+    const now = 1_000_000 + MAX_RING_MS + 1;
+    expect(staleRings([ring()], now).map((c) => c.id)).toEqual(["s1"]);
+  });
+
+  it("leaves a call that is still plausibly ringing", () => {
+    expect(staleRings([ring()], 1_000_000 + 20_000)).toEqual([]);
+    expect(staleRings([ring()], 1_000_000 + MAX_RING_MS)).toEqual([]);
+  });
+
+  it("only ever touches RINGING calls", () => {
+    const now = 1_000_000 + MAX_RING_MS + 1;
+    expect(staleRings([ring({ state: "answered" })], now)).toEqual([]);
+    expect(staleRings([ring({ state: "missed" })], now)).toEqual([]);
+  });
+
+  it("⚠️ a call with no start time is left alone — absence is not evidence", () => {
+    const now = Date.now();
+    expect(staleRings([ring({ startedAt: 0 })], now)).toEqual([]);
+    expect(staleRings([ring({ startedAt: undefined })], now)).toEqual([]);
+  });
+
+  it("survives junk in the registry", () => {
+    expect(staleRings(null, Date.now())).toEqual([]);
+    expect(staleRings([null, undefined, {}], Date.now())).toEqual([]);
+  });
+
+  it("⚠️ the window is far longer than a real ring (voicemail takes it at ~30s)", () => {
+    // Sweeping early would pull a card while somebody could still take the
+    // call — worse than one that lingers a few seconds.
+    expect(MAX_RING_MS).toBeGreaterThanOrEqual(90_000);
   });
 });

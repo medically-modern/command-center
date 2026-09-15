@@ -55,6 +55,7 @@ import {
   normalizePrefs,
   pickInboundParty,
   sessionOutcome,
+  staleRings,
   claimRefusal,
   shouldNotify,
   unwrapEvent,
@@ -93,6 +94,8 @@ const RECONCILE_EVERY_MS = 60 * 60_000;
 /** How long a finished call stays in memory, so a card can resolve to
  *  "missed"/"answered" instead of vanishing mid-glance. */
 const KEEP_ENDED_MS = 60_000;
+/** How often to look for ringing calls no terminal event ever arrived for. */
+const SWEEP_EVERY_MS = 30_000;
 /** Backstop against an event storm holding memory forever. */
 const MAX_TRACKED_CALLS = 200;
 const SSE_HEARTBEAT_MS = 25_000;
@@ -247,7 +250,49 @@ const calls = new Map();
 const subscribers = new Map();
 let subscriberSeq = 0;
 
+/**
+ * End ringing calls no terminal event ever arrived for.
+ *
+ * ⚠️ **The card is the smaller half of this bug.** A call stuck at
+ * `state: "ringing"` also has `endedAt: 0`, and `pruneCalls` below only drops
+ * entries that HAVE an `endedAt` — so it is never evicted, and the SSE connect
+ * handler re-sends `call-ring` for it to every browser that opens a stream.
+ * The ghost comes back on every page load, for every rep it matched, until the
+ * container restarts. (Josh, 2026-09-15: *"when calls end or are picked up
+ * remove the tab from showing, they linger there for 1000 of seconds"*.)
+ *
+ * ⚠️ It resolves the outcome the SAME way `handleEvent` does — a CLAIMED call
+ * is `answered`, never `missed` — or a rep who took the call would watch their
+ * own card flip to "Missed" two minutes later.
+ *
+ * Fire-and-forget on the audit row, like every other `recordEvent` here: a dead
+ * Postgres must never become a slow webhook.
+ */
+function sweepStaleRings() {
+  const now = Date.now();
+  for (const call of staleRings(calls.values(), now)) {
+    call.state = call.claimedBy ? "answered" : "missed";
+    call.endedAt = now;
+    broadcastUpdate(call);
+    void recordEvent({
+      kind: "end",
+      sessionId: call.id,
+      partyId: call.partyId,
+      hmac: call.hmac,
+      from: call.from,
+      state: call.state,
+      audience: call.audience.length,
+      claimedBy: call.claimedBy,
+      // Findable later: a RUN of these is a webhook stream that is dropping
+      // its terminal events, which no counter would show you.
+      detail: `swept — no terminal event after ${Math.round((now - call.startedAt) / 1000)}s`,
+    });
+  }
+}
+
 function pruneCalls() {
+  // Ended first, so a swept call is eligible for eviction in the same pass.
+  sweepStaleRings();
   const now = Date.now();
   for (const [id, c] of calls) {
     if (c.endedAt && now - c.endedAt > KEEP_ENDED_MS) calls.delete(id);
@@ -717,6 +762,11 @@ export function registerInboundCalls({ app }) {
     }
     void reconcileSubscription();
     setInterval(() => void reconcileSubscription(), RECONCILE_EVERY_MS).unref?.();
+    // ⚠️ The sweep needs its OWN timer, not just the `pruneCalls()` that rides
+    // the webhook path: a call gets stuck precisely BECAUSE its events stopped
+    // arriving, so hanging the recovery off the next event is hanging it off
+    // the thing that failed. Cheap — it walks a map of at most a few dozen.
+    setInterval(() => pruneCalls(), SWEEP_EVERY_MS).unref?.();
   });
 
   /**

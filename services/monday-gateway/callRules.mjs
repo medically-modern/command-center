@@ -133,6 +133,47 @@ export function sessionOutcome(event) {
   return null;
 }
 
+/**
+ * How long a call may sit on screen as "ringing" before we conclude it is over
+ * whatever the webhook did or did not say.
+ *
+ * RingCentral takes an unanswered call to voicemail in ~20–30s on this account,
+ * and the Forward API ("Take it") only works while a party is Setup/Proceeding
+ * — so nothing real is still ringing after two minutes. Generous by a factor of
+ * four on purpose: the cost of sweeping too early is a card that vanishes while
+ * somebody could still have taken it, which is worse than one that lingers a
+ * few seconds too long.
+ */
+export const MAX_RING_MS = 120_000;
+
+/**
+ * Ringing calls that must be ended even though no terminal event arrived.
+ *
+ * ⚠️ **THIS IS NOT BELT AND BRACES — WITHOUT IT A STUCK CARD IS IMMORTAL AND
+ * CONTAGIOUS.** `sessionOutcome` returns null unless an inbound party is
+ * `Answered` or EVERY inbound party is in `TERMINAL_STATES`, so a dropped final
+ * webhook, or a party resting in a status that list does not name, leaves
+ * `state: "ringing"` and `endedAt: 0` for ever. `pruneCalls` only drops entries
+ * that HAVE an `endedAt`, so the call is never evicted — and every new SSE
+ * connection re-sends `call-ring` for it, so the ghost card comes back on every
+ * page load, for every rep it matched. That is the "they linger there for
+ * thousands of seconds" Josh reported on 2026-09-15.
+ *
+ * Pure so the window is testable without a webhook: hand it the registry's
+ * values and a clock.
+ */
+export function staleRings(calls, now, maxRingMs = MAX_RING_MS) {
+  const out = [];
+  for (const c of calls ?? []) {
+    if (!c || c.state !== "ringing") continue;
+    // A call with no start time is not evidence of anything — leaving it is
+    // strictly safer than ending a call that may be live.
+    if (!(c.startedAt > 0)) continue;
+    if (now - c.startedAt > maxRingMs) out.push(c);
+  }
+  return out;
+}
+
 /** Ring modes. `list` is "only what I chose"; `off` silences everything. */
 export const RING_MODES = ["all", "list", "off"];
 

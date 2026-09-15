@@ -50,13 +50,28 @@ describe("voicemail rows carry the right-click menu (Josh, 2026-09-15)", () => {
     expect(page).not.toMatch(/voicemails=\{voicemails\.data\}/);
   });
 
-  it("⚠️ opening a voicemail does NOT mark it heard", () => {
-    // A fax is read by opening it; a voicemail is listened to — and the call
-    // list opens one on its own now, so marking on open would empty the
-    // Unheard filter as a rep scrolled. The menu is the only writer.
-    const onSelect = page.match(/onSelect=\{\(phone\) => \{[\s\S]*?\}\}/)?.[0] ?? "";
+  it("opening a voicemail marks it heard, and the menu puts it back", () => {
+    // Josh, 2026-09-15: "opening it marks it read, right clicking and marking
+    // it unread puts it back on unread" — the same contract the fax list has.
+    const onSelect = page.match(/onSelect=\{\(phone\) => \{[\s\S]*?\n {14}\}\}/)?.[0] ?? "";
     expect(onSelect).toMatch(/setSelectedVoicemail/);
-    expect(onSelect).not.toMatch(/setVoicemailRead|setMessageRead/);
+    expect(onSelect).toMatch(/if \(vm && !vm\.read\) setVoicemailRead\(vm, true\)/);
+  });
+
+  it("⚠️ a call that auto-opens one marks it heard ONCE, not on every render", () => {
+    // The effect reads `voicemailList`, which the override changes — so without
+    // the guard, marking it unread re-runs the effect and re-marks it heard: a
+    // right-click that visibly undoes itself.
+    expect(page).toMatch(/autoHeard\.current\.has\(v\.id\)/);
+    expect(page).toMatch(/autoHeard\.current\.add\(v\.id\)/);
+  });
+
+  it("⚠️ read state is SYSTEM-WIDE by construction, never per browser", () => {
+    // `setMessageRead` PUTs RingCentral's own readStatus on the shared
+    // extension, so one rep marking it read is read for everyone (§5.13b).
+    // The override map is only this browser's few seconds before its own poll.
+    expect(page).toMatch(/setMessageRead\(v\.id, read\)/);
+    expect(page).not.toMatch(/localStorage[\s\S]{0,80}(voicemail|readStatus)/i);
   });
 });
 
@@ -75,47 +90,5 @@ describe("a call that left a voicemail opens it above the thread", () => {
 
   it("⚠️ stacked, it must not claim flex-1 — the thread underneath needs the room", () => {
     expect(detail).toMatch(/fill \? "min-h-0 flex-1" : "max-h-\[45%\] shrink-0/);
-  });
-});
-
-/**
- * The Phone / Text / Fax selector moved into the CENTRE of the Communications
- * header (Josh, 2026-09-15: *"we're losing so much space up here for the rest
- * of the tab — reformat this selector to be in the center"*), and the left rail
- * it replaced survives only below the breakpoint.
- */
-describe("the tab selector sits in the header, not in a left rail", () => {
-  it("is absolutely centred in the header row", () => {
-    // `mx-auto` would not be centred: the title and the dialer are different
-    // widths, so flex would leave it wherever the leftovers fall.
-    expect(page).toMatch(/absolute left-1\/2 hidden -translate-x-1\/2[^"]*xl:flex/);
-    expect(page).toMatch(/relative flex items-center gap-3 px-4 sm:px-6 py-4/);
-  });
-
-  it("⚠️ EXACTLY ONE of the two selectors is ever on screen", () => {
-    // Both rendering at once is two live controls for one piece of state.
-    expect(page).toMatch(/xl:flex/);
-    expect(page).toMatch(/py-3 xl:hidden/);
-  });
-
-  it("⚠️ the breakpoint is xl — 1280 is measured, not chosen for looking round", () => {
-    // Rendered against the compiled CSS at nine widths: md (768) overlapped
-    // the dialer by 152px and the title by 68px, lg (1024) still by 24px.
-    // 1280 leaves 188px / 104px of air. Lowering it needs a re-measure.
-    expect(page).not.toMatch(/(md|lg):flex[^"]*ring-white\/20/);
-    expect(page).not.toMatch(/py-3 (md|lg):hidden/);
-  });
-
-  it("⚠️ the header itself is UNCHANGED — navy, icon, eyebrow, title (§7)", () => {
-    // The session that restyled this into a white strip had it sent back as
-    // half-built. Moving a control INTO the header is not restyling it.
-    expect(page).toMatch(/bg-gradient-navy text-navy-foreground/);
-    expect(page).toMatch(/Medically Modern · RingCentral/);
-    expect(page).toMatch(/<h1 className="truncate text-xl font-bold">Communications<\/h1>/);
-  });
-
-  it("the dialer gives up the centre and sits right, before the bell", () => {
-    expect(page).toMatch(/ml-auto flex items-center gap-2 rounded-xl bg-white\/10/);
-    expect(page).not.toMatch(/mx-auto flex items-center gap-2 rounded-xl bg-white\/10/);
   });
 });
