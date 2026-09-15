@@ -2583,6 +2583,38 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
 - ⚠️ **Only the OPEN tab polls RingCentral.** All four reads go through
   `hooks/commsHub/rcStore.ts`, one factory carrying the incident guards, so the four lists cannot
   drift into having three of them.
+- **Right-click a voicemail → Mark as heard / unheard** (Josh, 2026-09-15: *"need it"*), the same
+  posture as the Text and Fax tabs: RingCentral's own `readStatus`, never a local flag, because
+  reps work this line in the RingCentral desktop app too. ⚠️ It reuses the FAX override rule rather
+  than adding a third copy — renamed `applyMessageReadOverrides` / `pruneMessageReadOverrides` /
+  `MessageReadRow`, because a fax and a voicemail ARE the message (neither needs a conversation's
+  `basedOnInboundId`) and a `Fax`-named helper applied to voicemail is how a future reader concludes
+  there must be a voicemail one somewhere and writes it. The panel must render the OVERRIDDEN list
+  (`voicemailList`), or a row springs back to unheard until the next poll.
+  ⚠️⚠️ **Opening a voicemail deliberately does NOT mark it heard, unlike a fax.** Reading a fax IS
+  opening it; a voicemail is listened to — and the call list opens one on its own now (below), so
+  marking on open would silently empty the Unheard filter as a rep scrolled the call list. The menu
+  is the only writer. Playing the audio does not mark it either: that is a one-line addition if
+  anybody asks, and nobody has.
+- **A call that left a voicemail opens the message AND the thread under it** (Josh, 2026-09-15:
+  *"calls — if they left a voicemail — it should auto open the voicemail + the texts below it"*).
+  Rule: **`lib/commsHub/callVoicemail.ts`** (+ tests).
+  ⚠️ **NOTHING JOINS THE TWO LISTS** — they are different RingCentral endpoints and a call-log
+  record carries no message id — so this is a NUMBER-AND-TIME match, and **it could not be verified
+  against the live account**: every RC read now goes through the gateway's employee-authenticated
+  `/rc/` proxy, so the exact relationship between a call's `startTime` and its voicemail's
+  `creationTime` is reasoned from the endpoints' meanings, not measured. **Measure and tighten it**
+  the first time somebody with a token can. Until then every branch fails CLOSED: no match renders
+  exactly the layout that existed before, which is §5.31e's rule.
+  ⚠️ **Gated on the CALL saying it reached voicemail** (`isVoicemail`, which reads the legs, §5.16).
+  Number-and-time alone would hang a caller's week-old message off an ordinary answered call, and a
+  rep would listen to it believing it was just left.
+  ⚠️ The window runs **forward** (15 min after the call, 2 min before for clock skew between the two
+  subsystems) and **NEAREST wins** — the voicemail list is newest-first, so "first in the window" is
+  the LATEST message, i.e. the wrong one whenever a number rang twice.
+  ⚠️ The list therefore hands the page the whole `PickedCall` (phone · start time · voicemail
+  verdict), not a phone string, and `VoicemailDetail` takes **`fill={false}`** when stacked — at
+  `flex-1` it would collapse the thread underneath it to nothing.
 - ⚠️ **Voicemail transcription is written defensively and is UNVERIFIED against this account.**
   RingCentral returns transcripts as a `text/plain` attachment with `vmTranscriptionStatus` saying
   whether one exists, but transcription is a per-account feature that may be off here. It degrades
@@ -5483,6 +5515,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A whole board's patients resolve to phone numbers | §5.29 — the gateway's `DIRECTORY_BOARDS` mirrors the SPA registry and a missing board is never scanned. `directoryCoverage.test.ts` names it |
 | A hub list row shows a phone number instead of a name | §5.28 — `lib/commsHub/directory.ts` (RC contact → our boards → the number) fed by `hooks/commsHub/useDirectoryNames`. A permanent number means the batched `any_of` found nobody; check the board holds one of the digit shapes `phoneMatchVariants` asks for |
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
+| A voicemail won't stay heard / unheard, or a call doesn't open the message it left | §5.28 — read state is RingCentral's `readStatus` (`applyMessageReadOverrides`, the same rule the fax list uses); the panel must render `voicemailList`, not `voicemails.data`. A call opens its message through `lib/commsHub/callVoicemail.ts`, a number-and-time match gated on the call log saying it reached voicemail — it fails closed, so "no voicemail shown" means no match in the window, and that window is **reasoned, not measured** (no token reaches RingCentral from here). `voicemailWiring.test.ts` scans both |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |

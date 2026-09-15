@@ -238,55 +238,63 @@ export function pruneReadOverrides(
 /* ── Fax read state ────────────────────────────────────────────────────────── */
 
 /**
- * The same read/unread override, for the Fax list.
+ * The same read/unread override, for a list whose ROW is the message — the Fax
+ * tab, and from 2026-09-15 Voicemail too.
  *
  * Lives here rather than inline in the page so it is one tested rule beside the
  * conversation one, not a second implementation of the same mechanism that
- * drifts from it. A fax needs no `basedOnInboundId`: a fax IS the message, so
- * "the thing the rep made a judgement about" is the row itself, and the
- * override retires when RingCentral's own answer agrees.
+ * drifts from it. Neither needs `basedOnInboundId`: a fax and a voicemail ARE
+ * the message, so "the thing the rep made a judgement about" is the row itself,
+ * and the override retires when RingCentral's own answer agrees. (A
+ * CONVERSATION needs it, because a newer inbound text makes an old judgement a
+ * lie — see `overrideStillApplies`.)
  *
  * ⚠️ Read state is RingCentral's `readStatus`, never a local flag — reps work
  * this line in the RingCentral desktop app too, so an invented one would
  * disagree with what they see there within a day. This covers ONLY the seconds
  * between the PUT and the next poll.
+ *
+ * ⚠️ Named for the MESSAGE, not for the fax tab that happened to need it first:
+ * `setMessageRead` is the one RingCentral call behind all three surfaces, and a
+ * `Fax`-named helper applied to voicemail is how a future reader concludes
+ * there must be a voicemail one somewhere and writes a third.
  */
-export interface FaxReadRow {
+export interface MessageReadRow {
   id: number;
   read: boolean;
 }
 
 /** Apply the rep's clicks on top of RingCentral's answer. Returns the SAME
  *  array when nothing is overridden, so a caller can skip a re-render. */
-export function applyFaxReadOverrides<T extends FaxReadRow>(
-  faxes: T[],
+export function applyMessageReadOverrides<T extends MessageReadRow>(
+  rows: T[],
   overrides: ReadonlyMap<number, boolean>,
 ): T[] {
-  if (!overrides.size) return faxes;
+  if (!overrides.size) return rows;
   let changed = false;
-  const next = faxes.map((f) => {
+  const next = rows.map((f) => {
     const want = overrides.get(f.id);
     if (want === undefined || want === f.read) return f;
     changed = true;
     return { ...f, read: want };
   });
-  return changed ? next : faxes;
+  return changed ? next : rows;
 }
 
 /**
  * Drop overrides RingCentral has caught up with, so a long session can't
  * accumulate them. Returns the SAME map when nothing changed.
  *
- * ⚠️ An override for a fax that has dropped out of the window is KEPT, matching
+ * ⚠️ An override for a row that has dropped out of the window is KEPT, matching
  * `pruneReadOverrides`: its absence is not evidence of anything, and discarding
  * it would re-badge the row if it scrolled back in.
  */
-export function pruneFaxReadOverrides<T extends FaxReadRow>(
-  faxes: T[],
+export function pruneMessageReadOverrides<T extends MessageReadRow>(
+  rows: T[],
   overrides: ReadonlyMap<number, boolean>,
 ): ReadonlyMap<number, boolean> {
   if (!overrides.size) return overrides;
-  const live = new Map(faxes.map((f) => [f.id, f.read]));
+  const live = new Map(rows.map((f) => [f.id, f.read]));
   const next = new Map<number, boolean>();
   for (const [id, want] of overrides) {
     const actual = live.get(id);

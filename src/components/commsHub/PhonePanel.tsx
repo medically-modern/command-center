@@ -12,12 +12,19 @@
  * flashed "Missed" at the person who had just answered.
  */
 import { useMemo } from "react";
-import { Loader2, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Voicemail } from "lucide-react";
+import { Loader2, MailOpen, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Voicemail } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { callConnected, isVoicemail, type RcCallLogRecord } from "@/lib/callHistory/callHistory";
 import { contactKey } from "@/lib/contactState/contactState";
 import type { VoicemailRecord } from "@/lib/fax/ringcentralApi";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { resolveDisplayName, type NameSource } from "@/lib/commsHub/directory";
+import type { PickedCall } from "@/lib/commsHub/callVoicemail";
 import { cn } from "@/lib/utils";
 import { FilterPill, HubListHeader, Initials, ListEmpty, ListError, NamingProgress, listTime } from "./HubList";
 
@@ -109,6 +116,8 @@ export function PhonePanel({
   onReload,
   selectedKey,
   onSelect,
+  onSelectCall,
+  onSetVoicemailRead,
   query,
   onQuery,
   missedOnly,
@@ -124,7 +133,22 @@ export function PhonePanel({
   error: string | null;
   onReload: () => void;
   selectedKey: string | null;
+  /** A voicemail row was picked — the page follows the number. */
   onSelect: (phone: string) => void;
+  /**
+   * A CALL row was picked. Separate from `onSelect` because the page needs more
+   * than the number: `voicemailForCall` joins on the call's own start time and
+   * on whether the log says it reached voicemail, and neither survives being
+   * flattened to a phone string.
+   */
+  onSelectCall: (call: PickedCall) => void;
+  /**
+   * Right-click → Mark as heard / unheard. RingCentral's own `readStatus`,
+   * exactly as the Text and Fax tabs do it (§5.28) — reps work this same line
+   * in the RingCentral desktop app, so a local-only flag would disagree with
+   * what they see there within a day.
+   */
+  onSetVoicemailRead: (v: VoicemailRecord, read: boolean) => void;
   query: string;
   onQuery: (v: string) => void;
   missedOnly: boolean;
@@ -236,7 +260,7 @@ export function PhonePanel({
               return (
                 <button
                   key={r.id}
-                  onClick={() => onSelect(r.phone)}
+                  onClick={() => onSelectCall({ phone: r.phone, at: r.at, voicemail: r.voicemail })}
                   className={cn(
                     "flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2.5 text-left hover:bg-muted/40",
                     r.key === selectedKey && "bg-muted/70",
@@ -298,36 +322,53 @@ export function PhonePanel({
               </ListEmpty>
             )}
             {shownVoicemails.map(({ vm: v, label, source }) => (
-              <button
-                key={v.id}
-                onClick={() => onSelect(v.fromNumber)}
-                className={cn(
-                  "flex w-full items-start gap-2.5 border-b border-border/60 px-3 py-2.5 text-left hover:bg-muted/40",
-                  contactKey(v.fromNumber) === selectedKey && "bg-muted/70",
-                )}
-              >
-                <Initials
-                  name={source === "number" ? "" : label}
-                  phone={v.fromNumber}
-                  tone={!v.read ? "bg-primary/15 text-primary" : undefined}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline gap-2">
-                    <span className={cn("truncate text-sm", v.read ? "font-medium" : "font-semibold")}>
-                      {label}
+              <ContextMenu key={v.id}>
+                <ContextMenuTrigger asChild>
+                  <button
+                    onClick={() => onSelect(v.fromNumber)}
+                    className={cn(
+                      "flex w-full items-start gap-2.5 border-b border-border/60 px-3 py-2.5 text-left hover:bg-muted/40",
+                      contactKey(v.fromNumber) === selectedKey && "bg-muted/70",
+                    )}
+                  >
+                    <Initials
+                      name={source === "number" ? "" : label}
+                      phone={v.fromNumber}
+                      tone={!v.read ? "bg-primary/15 text-primary" : undefined}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-2">
+                        <span className={cn("truncate text-sm", v.read ? "font-medium" : "font-semibold")}>
+                          {label}
+                        </span>
+                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                          {listTime(v.creationTime)}
+                        </span>
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Voicemail className="h-3 w-3 shrink-0" />
+                        {source !== "number" && <span className="tabular-nums">{fmtPhone(v.fromNumber)} ·</span>}
+                        {v.durationSec ? mmss(v.durationSec) : "Voicemail"}
+                        {!v.read && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />}
+                      </span>
                     </span>
-                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                      {listTime(v.creationTime)}
-                    </span>
-                  </span>
-                  <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <Voicemail className="h-3 w-3 shrink-0" />
-                    {source !== "number" && <span className="tabular-nums">{fmtPhone(v.fromNumber)} ·</span>}
-                    {v.durationSec ? mmss(v.durationSec) : "Voicemail"}
-                    {!v.read && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />}
-                  </span>
-                </span>
-              </button>
+                  </button>
+                </ContextMenuTrigger>
+                {/* ⚠️ "Heard", not "read" — the Unheard filter beside it says
+                    the same, and a voicemail is listened to. The write is the
+                    same `readStatus` the other two tabs set. */}
+                <ContextMenuContent className="w-48">
+                  {v.read ? (
+                    <ContextMenuItem onSelect={() => onSetVoicemailRead(v, false)}>
+                      <Voicemail className="mr-2 h-3.5 w-3.5" /> Mark as unheard
+                    </ContextMenuItem>
+                  ) : (
+                    <ContextMenuItem onSelect={() => onSetVoicemailRead(v, true)}>
+                      <MailOpen className="mr-2 h-3.5 w-3.5" /> Mark as heard
+                    </ContextMenuItem>
+                  )}
+                </ContextMenuContent>
+              </ContextMenu>
             ))}
           </>
         )}

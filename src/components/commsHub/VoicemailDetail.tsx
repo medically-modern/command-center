@@ -18,11 +18,25 @@ import {
   type VoicemailRecord,
 } from "@/lib/fax/ringcentralApi";
 import { fmtPhone } from "@/lib/assignedPatients/format";
+import { cn } from "@/lib/utils";
 
 /** Statuses that mean "a transcript exists" — anything else is an absence. */
 const HAS_TRANSCRIPT = new Set(["completed", "completedpartially"]);
 
-export function VoicemailDetail({ voicemail }: { voicemail: VoicemailRecord }) {
+export function VoicemailDetail({
+  voicemail,
+  fill = true,
+}: {
+  voicemail: VoicemailRecord;
+  /**
+   * Whether this owns the whole detail pane (the Voicemail sub-tab) or sits
+   * ABOVE the text thread (a call that left a message — §5.28). Stacked, it
+   * must not claim `flex-1`, or the thread underneath it collapses to nothing;
+   * it is capped instead, because the transcript can run long and the point of
+   * stacking is that the rep can read the reply box without scrolling past it.
+   */
+  fill?: boolean;
+}) {
   const [audio, setAudio] = useState<string | null>(null);
   const [audioErr, setAudioErr] = useState<string | null>(null);
   const [loadingAudio, setLoadingAudio] = useState(false);
@@ -78,7 +92,12 @@ export function VoicemailDetail({ voicemail }: { voicemail: VoicemailRecord }) {
   const expected = HAS_TRANSCRIPT.has(voicemail.transcriptionStatus.toLowerCase());
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div
+      className={cn(
+        "flex flex-col overflow-y-auto",
+        fill ? "min-h-0 flex-1" : "max-h-[45%] shrink-0 border-b-2 border-border",
+      )}
+    >
       <div className="border-b border-border px-4 py-3">
         <p className="flex items-center gap-1.5 text-sm font-semibold">
           <Voicemail className="h-4 w-4 text-muted-foreground" />

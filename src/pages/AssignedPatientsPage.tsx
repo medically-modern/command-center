@@ -46,6 +46,7 @@ import NewTextPanel from "@/components/commsHub/NewTextPanel";
 import PhonePanel, { type PhoneMode } from "@/components/commsHub/PhonePanel";
 import FaxPanel, { FaxProviderDetail } from "@/components/commsHub/FaxPanel";
 import VoicemailDetail from "@/components/commsHub/VoicemailDetail";
+import { voicemailForCall, type PickedCall } from "@/lib/commsHub/callVoicemail";
 import PatientDossierPanel from "@/components/commsHub/PatientDossierPanel";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { searchPatientsByName, type PatientRef } from "@/lib/assignedPatients/patientLookup";
@@ -58,9 +59,9 @@ import {
   type VoicemailRecord,
 } from "@/lib/fax/ringcentralApi";
 import {
-  applyFaxReadOverrides,
+  applyMessageReadOverrides,
   applyReadOverrides,
-  pruneFaxReadOverrides,
+  pruneMessageReadOverrides,
   pruneReadOverrides,
   type Conversation,
   type ReadOverride,
@@ -155,8 +156,21 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   const [phoneMode, setPhoneMode] = useState<PhoneMode>("calls");
   const [phoneQuery, setPhoneQuery] = useState("");
   const [missedOnly, setMissedOnly] = useState(false);
-  const [selectedCallPhone, setSelectedCallPhone] = useState("");
+  /**
+   * The call row a rep picked, not just its number: `voicemailForCall` joins on
+   * the call's own start time and on whether the log says it reached voicemail
+   * (§5.28), and a phone string carries neither.
+   */
+  const [selectedCall, setSelectedCall] = useState<PickedCall | null>(null);
+  const selectedCallPhone = selectedCall?.phone ?? "";
   const [selectedVoicemail, setSelectedVoicemail] = useState<VoicemailRecord | null>(null);
+  /**
+   * Local heard/unheard clicks on the voicemail list, covering the seconds
+   * between the PUT and the next poll. The SAME rule the fax list uses
+   * (`applyMessageReadOverrides`), because a voicemail row IS the message —
+   * see the note on `MessageReadRow`.
+   */
+  const [voicemailReadOverrides, setVoicemailReadOverrides] = useState<Map<number, boolean>>(new Map());
 
   const [faxQuery, setFaxQuery] = useState("");
   /** Which slice of the fax history is shown — mirrors RingCentral's own menu
@@ -405,10 +419,10 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   );
 
   /** The fax list with the rep's own read/unread clicks applied. The rule is
-   *  `applyFaxReadOverrides`, beside the conversation one it mirrors, so the two
+   *  `applyMessageReadOverrides`, beside the conversation one it mirrors, so the two
    *  halves of the same mechanism are tested together rather than diverging. */
   const faxList = useMemo(
-    () => applyFaxReadOverrides(faxes.data ?? [], faxReadOverrides),
+    () => applyMessageReadOverrides(faxes.data ?? [], faxReadOverrides),
     [faxes.data, faxReadOverrides],
   );
 
@@ -417,7 +431,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
    *  loop-free — the same shape `setOverride` uses for texts. */
   const setFaxOverride = useCallback(
     (id: number, read: boolean) =>
-      setFaxReadOverrides((m) => new Map(pruneFaxReadOverrides(faxes.data ?? [], m)).set(id, read)),
+      setFaxReadOverrides((m) => new Map(pruneMessageReadOverrides(faxes.data ?? [], m)).set(id, read)),
     [faxes.data],
   );
 
@@ -453,6 +467,60 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
         });
     },
     [setFaxOverride, clearFaxOverride],
+  );
+
+  /** The voicemail list with the rep's own heard/unheard clicks applied — the
+   *  same rule as the fax list, so the two halves of one mechanism cannot
+   *  drift (`applyMessageReadOverrides`). */
+  const voicemailList = useMemo(
+    () => applyMessageReadOverrides(voicemails.data ?? [], voicemailReadOverrides),
+    [voicemails.data, voicemailReadOverrides],
+  );
+
+  /**
+   * Right-click → Mark as heard / unheard (Josh, 2026-09-15: *"right click mark
+   * as read / unread for voicemail — need it"*). Writes RingCentral's own
+   * `readStatus`, exactly as the Text and Fax tabs do.
+   *
+   * ⚠️ **Opening a voicemail deliberately does NOT mark it heard**, unlike a
+   * fax. Reading a fax IS opening it, but a voicemail is listened to — and the
+   * call list now opens one on its own when a call left a message, so marking
+   * on open would silently empty the Unheard filter as a rep scrolled the call
+   * list. This menu is the only thing that writes it.
+   */
+  const setVoicemailRead = useCallback(
+    (v: VoicemailRecord, read: boolean) => {
+      setVoicemailReadOverrides((m) =>
+        new Map(pruneMessageReadOverrides(voicemails.data ?? [], m)).set(v.id, read),
+      );
+      void setMessageRead(v.id, read)
+        .then(() => voicemails.reload())
+        .catch((e: unknown) => {
+          // A failed write must not leave the row claiming a state RingCentral
+          // does not hold — the RC desktop app would disagree with it.
+          setVoicemailReadOverrides((m) => {
+            if (!m.has(v.id)) return m;
+            const next = new Map(m);
+            next.delete(v.id);
+            return next;
+          });
+          toast.error(
+            `Couldn't mark the voicemail ${read ? "heard" : "unheard"}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        });
+    },
+    [voicemails],
+  );
+
+  /**
+   * The voicemail a picked CALL left, when it left one. Nothing joins the call
+   * log to the message store, so this is a number-and-time match — see
+   * `lib/commsHub/callVoicemail`, including why it can be trusted only to fail
+   * closed.
+   */
+  const callVoicemail = useMemo(
+    () => voicemailForCall(selectedCall, voicemailList),
+    [selectedCall, voicemailList],
   );
 
   /** Selecting a fax joins its number to a provider and their patients. Bound
@@ -747,7 +815,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
               mode={phoneMode}
               onMode={setPhoneMode}
               calls={calls.data}
-              voicemails={voicemails.data}
+              voicemails={voicemailList}
               loading={calls.loading || voicemails.loading}
               error={calls.error || voicemails.error}
               onReload={() => {
@@ -765,13 +833,14 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
               }
               onSelect={(phone) => {
                 setDirectPerson("");
-                if (phoneMode === "voicemail") {
-                  const vm = (voicemails.data ?? []).find((v) => contactKey(v.fromNumber) === contactKey(phone));
-                  setSelectedVoicemail(vm ?? null);
-                } else {
-                  setSelectedCallPhone(phone);
-                }
+                const vm = voicemailList.find((v) => contactKey(v.fromNumber) === contactKey(phone));
+                setSelectedVoicemail(vm ?? null);
               }}
+              onSelectCall={(call) => {
+                setDirectPerson("");
+                setSelectedCall(call);
+              }}
+              onSetVoicemailRead={setVoicemailRead}
               query={phoneQuery}
               onQuery={setPhoneQuery}
               missedOnly={missedOnly}
@@ -823,13 +892,20 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                 <HubIdle title="Voicemail" hint="Pick a message to hear it and read the transcript." />
               )
             ) : selectedCallPhone ? (
-              <ConversationThread
-                key={selectedCallPhone}
-                phone={selectedCallPhone}
-                patient={threadPatient}
-                onCall={() => void dial(selectedCallPhone)}
-                calling={activeCall?.phone === selectedCallPhone}
-              />
+              /* A call that left a voicemail opens the message AND the thread
+                 under it (Josh, 2026-09-15) — the rep hears what they wanted
+                 and replies without leaving the row. `callVoicemail` is null
+                 for every other call, so this is the old layout exactly. */
+              <>
+                {callVoicemail && <VoicemailDetail voicemail={callVoicemail} fill={false} />}
+                <ConversationThread
+                  key={selectedCallPhone}
+                  phone={selectedCallPhone}
+                  patient={threadPatient}
+                  onCall={() => void dial(selectedCallPhone)}
+                  calling={activeCall?.phone === selectedCallPhone}
+                />
+              </>
             ) : (
               <HubIdle title="Call details" hint="Pick a call to see the patient and text them back." />
             ))}
