@@ -638,7 +638,10 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
       embedded ? "min-h-0 flex-1" : "h-screen bg-gradient-subtle",
     )}>
       <header className="shrink-0 border-b border-sidebar-border bg-gradient-navy text-navy-foreground">
-        <div className="flex items-center gap-3 px-4 sm:px-6 py-4">
+        {/* `relative` so the tab selector can sit at the TRUE centre of the
+            bar rather than wherever flex leaves it — the title and the dialer
+            are different widths, so `mx-auto` would not be centred. */}
+        <div className="relative flex items-center gap-3 px-4 sm:px-6 py-4">
           {/* The one embedded difference: the host's header already has a Back
               that goes to the same place, so two of them stack 45px apart. */}
           {!embedded && (
@@ -654,7 +657,50 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
             <h1 className="truncate text-xl font-bold">Communications</h1>
           </div>
 
-          <div className="mx-auto flex items-center gap-2 rounded-xl bg-white/10 p-1.5 ring-1 ring-white/20">
+          {/* ── Phone / Text / Fax ─────────────────────────────
+              Centred in the header rather than stacked in a left rail (Josh,
+              2026-09-15: *"we're losing so much space up here for the rest of
+              the tab — reformat this selector to be in the center"*). The rail
+              cost 64px of width on every screen for three buttons; the header
+              band was already being paid for.
+
+              ⚠️ The header itself is UNCHANGED — navy, icon, eyebrow, title.
+              That is the §7 rule, from the session that restyled it into a
+              white strip and had it sent back as "half-built": the three-pane
+              hub is the whole content, so this chrome is the only thing saying
+              the view is finished. Moving a control INTO it is not restyling
+              it. */}
+          <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 rounded-xl bg-white/10 p-1 ring-1 ring-white/20 xl:flex">
+            {TABS.map(({ id, label, Icon }) => {
+              const active = tab === id;
+              const badge =
+                id === "text"
+                  ? conversations.filter((c) => c.unread > 0).length
+                  : id === "fax"
+                    ? faxList.filter((f) => !f.read).length
+                    : voicemailList.filter((v) => !v.read).length;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setTab(id)}
+                  className={cn(
+                    "relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                    active ? "bg-white text-navy shadow-sm" : "text-navy-foreground/80 hover:bg-white/10",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                  {badge > 0 && (
+                    <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold leading-4 text-white tabular-nums">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2 rounded-xl bg-white/10 p-1.5 ring-1 ring-white/20">
             <div className="relative">
               <Phone className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-400" />
               <input
@@ -698,8 +744,20 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
       )}
 
       <div className="flex min-h-0 flex-1">
-        {/* ── Tab rail ──────────────────────────────────────── */}
-        <nav className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-border bg-card py-3">
+        {/* ── Phone / Text / Fax, narrow screens ─────────────
+            The header selector is `xl:flex`, so below 1280px it is not
+            rendered at all and this strip is the same three buttons. Not a
+            second selector: exactly one of the two is ever on screen.
+
+            ⚠️ **1280 is MEASURED, not chosen for looking round.** The header
+            nav is absolutely centred, so it is out of flow and will happily
+            sit on top of its neighbours. Rendered against the compiled CSS at
+            nine widths (2026-09-15): at 768px it overlapped the dialer by
+            152px and the title by 68px, at 900px by 86px, at 1024px still by
+            24px; the first clean width is ~1100 and 1280 leaves 188px / 104px
+            of air. Re-measure before lowering it — nothing about this failure
+            throws, it just draws two controls on top of each other. */}
+        <nav className="flex shrink-0 flex-col items-center gap-1 border-r border-border bg-card py-3 xl:hidden">
           {TABS.map(({ id, label, Icon }) => {
             const active = tab === id;
             const badge =
@@ -707,7 +765,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                 ? conversations.filter((c) => c.unread > 0).length
                 : id === "fax"
                   ? faxList.filter((f) => !f.read).length
-                  : (voicemails.data ?? []).filter((v) => !v.read).length;
+                  : voicemailList.filter((v) => !v.read).length;
             return (
               <button
                 key={id}

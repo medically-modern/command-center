@@ -2580,6 +2580,25 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   matches nothing, with no error. Patients in **Chase Clinicals** lead the list and are
   highlighted, because an arriving fax is most likely the answer to that chase; within a group the
   patient with **no** next-action date leads, since nothing will surface them on their own.
+- **Phone / Text / Fax lives in the CENTRE of the header, not in a left rail** (Josh, 2026-09-15:
+  *"we're losing so much space up here for the rest of the tab — reformat this selector to be in
+  the center"*). Embedded in System Management the page sits under two bands of host chrome
+  already, and the rail was spending 64px of width on every screen for three buttons while the
+  header band was being paid for anyway.
+  ⚠️ **The header itself is UNCHANGED — navy, icon, eyebrow, title** (his pick of four options, and
+  §7's rule): the session that restyled it into a white strip had it sent back as *"half-built"*.
+  Moving a control INTO the header is not restyling it. The dialer gives up `mx-auto` and sits
+  right, before the bell.
+  ⚠️ It is **absolutely centred** (`absolute left-1/2 -translate-x-1/2` in a `relative` row), not
+  `mx-auto`: the title and the dialer are different widths, so flex would leave it wherever the
+  leftovers fall. Which means it is OUT OF FLOW and will happily draw on top of its neighbours —
+  ⚠️⚠️ **the `xl` breakpoint is MEASURED, not chosen for looking round.** Rendered against the
+  compiled CSS at nine widths (2026-09-15): at **768px it overlapped the dialer by 152px** and the
+  title by 68px, at 900px by 86px, at **1024px still by 24px**; the first clean width is ~1100 and
+  **1280 leaves 188px / 104px of air**. Below it the old rail renders instead (`xl:hidden`), so
+  exactly one of the two is ever on screen. Re-measure before lowering it: nothing here throws, it
+  just stacks two controls. `voicemailWiring.test.ts` pins the breakpoint, the one-at-a-time rule
+  and the header's parity.
 - ⚠️ **Only the OPEN tab polls RingCentral.** All four reads go through
   `hooks/commsHub/rcStore.ts`, one factory carrying the incident guards, so the four lists cannot
   drift into having three of them.
@@ -4942,6 +4961,10 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   the whole content, so its chrome is the only thing telling a rep the view is
   finished. `systemMgmtTabs.test.ts` pins the parity (navy, icon, title, and no
   `embedded` branch inside the header but the back button).
+  ⚠️ **The hub's own Phone / Text / Fax selector moved into its header on
+  2026-09-15** (§5.28) — the two bands of chrome above it are exactly why. The
+  navy bar is otherwise untouched, which is this bullet's rule holding, not
+  being worked around.
   ⚠️ **Mounted CONDITIONALLY, never hidden.** Every RingCentral poll in the hub
   is scoped to its mounted tab (§5.28's "only the OPEN tab polls"), so a
   `hidden`/`display:none` toggle would poll the shared account from a screen

@@ -77,3 +77,45 @@ describe("a call that left a voicemail opens it above the thread", () => {
     expect(detail).toMatch(/fill \? "min-h-0 flex-1" : "max-h-\[45%\] shrink-0/);
   });
 });
+
+/**
+ * The Phone / Text / Fax selector moved into the CENTRE of the Communications
+ * header (Josh, 2026-09-15: *"we're losing so much space up here for the rest
+ * of the tab — reformat this selector to be in the center"*), and the left rail
+ * it replaced survives only below the breakpoint.
+ */
+describe("the tab selector sits in the header, not in a left rail", () => {
+  it("is absolutely centred in the header row", () => {
+    // `mx-auto` would not be centred: the title and the dialer are different
+    // widths, so flex would leave it wherever the leftovers fall.
+    expect(page).toMatch(/absolute left-1\/2 hidden -translate-x-1\/2[^"]*xl:flex/);
+    expect(page).toMatch(/relative flex items-center gap-3 px-4 sm:px-6 py-4/);
+  });
+
+  it("⚠️ EXACTLY ONE of the two selectors is ever on screen", () => {
+    // Both rendering at once is two live controls for one piece of state.
+    expect(page).toMatch(/xl:flex/);
+    expect(page).toMatch(/py-3 xl:hidden/);
+  });
+
+  it("⚠️ the breakpoint is xl — 1280 is measured, not chosen for looking round", () => {
+    // Rendered against the compiled CSS at nine widths: md (768) overlapped
+    // the dialer by 152px and the title by 68px, lg (1024) still by 24px.
+    // 1280 leaves 188px / 104px of air. Lowering it needs a re-measure.
+    expect(page).not.toMatch(/(md|lg):flex[^"]*ring-white\/20/);
+    expect(page).not.toMatch(/py-3 (md|lg):hidden/);
+  });
+
+  it("⚠️ the header itself is UNCHANGED — navy, icon, eyebrow, title (§7)", () => {
+    // The session that restyled this into a white strip had it sent back as
+    // half-built. Moving a control INTO the header is not restyling it.
+    expect(page).toMatch(/bg-gradient-navy text-navy-foreground/);
+    expect(page).toMatch(/Medically Modern · RingCentral/);
+    expect(page).toMatch(/<h1 className="truncate text-xl font-bold">Communications<\/h1>/);
+  });
+
+  it("the dialer gives up the centre and sits right, before the bell", () => {
+    expect(page).toMatch(/ml-auto flex items-center gap-2 rounded-xl bg-white\/10/);
+    expect(page).not.toMatch(/mx-auto flex items-center gap-2 rounded-xl bg-white\/10/);
+  });
+});
