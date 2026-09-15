@@ -19,6 +19,41 @@ describe("searchOpenUrl", () => {
     expect(q.get("manager")).toBeNull();
   });
 
+  it("an order opens the Orders page, by orderId — not the patient", () => {
+    /* A patient has an item per reorder, so this row is ONE of them.
+       OrdersPage also accepts `patientId`, so the generic path underneath
+       would work by accident; naming it `orderId` is what stops the next
+       reader routing an order like a stage. */
+    const url = searchOpenUrl({
+      ...base, id: "9001", boardId: 18405457690, boardName: "New Order Board",
+      groupId: "group_mm20m7gz", roleRoute: "/orders", stageAdvancerText: "Process Claim",
+    });
+    expect(url!.startsWith("/orders?")).toBe(true);
+    const q = params(url);
+    expect(q.get("orderId")).toBe("9001");
+    expect(q.get("patientId")).toBeNull();
+    expect(q.get("from")).toBe("system-mgmt");
+    expect(q.get("mv")).toBeNull();
+  });
+
+  it("never sends an order down the stuck or completed paths", () => {
+    // Shipped/Delivered is a finished ORDER; "Stuck" is one of this board's own
+    // Order Status labels. Neither may turn the row into a manager screen.
+    const order = {
+      ...base, id: "9002", boardId: 18405457690, boardName: "New Order Board",
+      groupId: "group_mm20m7gz", roleRoute: "/orders",
+    };
+    for (const over of [
+      { isCompleted: true },
+      { stageAdvancerText: "Stuck" },
+      { escalated: true, escalationLevel: "final" as const },
+    ]) {
+      const url = searchOpenUrl({ ...order, ...over });
+      expect(url!.startsWith("/orders?orderId=9002")).toBe(true);
+      expect(params(url).get("mv")).toBeNull();
+    }
+  });
+
   it("a finished record opens its review page, read-only", () => {
     const url = searchOpenUrl({ ...base, isCompleted: true, hasPage: false, roleRoute: "", groupId: "group_mm2vw3c0" });
     expect(url!.startsWith("/benefits?")).toBe(true);

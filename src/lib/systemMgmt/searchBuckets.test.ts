@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { bucketResults, searchBucket } from "./searchBuckets";
+import {
+  bucketEmptyNoun,
+  bucketResultCount,
+  bucketResults,
+  searchBucket,
+  SEARCH_BUCKETS,
+} from "./searchBuckets";
 import { BOARDS } from "./mondayApi";
+import { ORDERS_BOARD_ID } from "./ordersSearch";
+import { GROUPS as ORDER_GROUPS } from "@/lib/orders/mondayApi";
 import { STUCK_GROUP_IDS, COMPLETED_GROUP_IDS } from "@/lib/shared/profileStatus";
 
 const row = (over: Partial<Parameters<typeof searchBucket>[0]> = {}) => ({
@@ -69,6 +77,28 @@ describe("searchBucket", () => {
       .toBe("stuck");
   });
 
+  it("files every New Order Board group under orders, and only there", () => {
+    /* ⚠️ "ONLY show them in a tab to the right of stuck" (Josh, 2026-09-15) is
+       this assertion. Nothing else would catch a regression: an order has no
+       Completed group, no Stuck group and no escalation column, so dropping
+       the first check files every one of them under ACTIVE — silently, in
+       among the pipeline stages a rep is searching for. */
+    for (const groupId of Object.values(ORDER_GROUPS)) {
+      expect(searchBucket(row({ boardId: ORDERS_BOARD_ID, groupId, stageAdvancerText: "Process Claim" })))
+        .toBe("orders");
+    }
+  });
+
+  it("an order stays an order whatever else the row looks like", () => {
+    // Shipped/Delivered is a finished ORDER, not a finished patient; "Stuck"
+    // is one of this board's own Order Status labels; an escalation level
+    // could only arrive here by mistake. None of them may move the row.
+    const order = { boardId: ORDERS_BOARD_ID, groupId: ORDER_GROUPS.shippedDelivered };
+    expect(searchBucket(row({ ...order, isCompleted: true }))).toBe("orders");
+    expect(searchBucket(row({ ...order, stageAdvancerText: "Stuck" }))).toBe("orders");
+    expect(searchBucket(row({ ...order, escalationLevel: "final" }))).toBe("orders");
+  });
+
   it("completed still wins over a stale Final escalation", () => {
     expect(searchBucket(row({ isCompleted: true, groupId: COMPLETED_GROUP_IDS[3], escalationLevel: "final" }))).toBe("completed");
   });
@@ -86,7 +116,42 @@ describe("bucketResults", () => {
     expect(b.active.map((r) => r.groupId)).toEqual(["a", "b"]);
     expect(b.completed).toHaveLength(1);
     expect(b.stuck).toHaveLength(1);
-    expect(b.active.length + b.completed.length + b.stuck.length).toBe(rows.length);
+    expect(b.orders).toHaveLength(0);
+    expect(b.active.length + b.completed.length + b.stuck.length + b.orders.length)
+      .toBe(rows.length);
+  });
+
+  it("keeps orders out of the other three folders", () => {
+    const rows = [
+      row(),
+      row({ boardId: ORDERS_BOARD_ID, groupId: ORDER_GROUPS.order, stageAdvancerText: "Order" }),
+      row({ boardId: ORDERS_BOARD_ID, groupId: ORDER_GROUPS.shippedDelivered, stageAdvancerText: "Process Claim" }),
+    ];
+    const b = bucketResults(rows);
+    expect(b.orders).toHaveLength(2);
+    expect(b.active).toHaveLength(1);
+    expect(b.completed).toHaveLength(0);
+    expect(b.stuck).toHaveLength(0);
   });
 });
 
+describe("how a folder names what is in it", () => {
+  it("keeps the patient folders reading as they always did", () => {
+    expect(bucketResultCount("active", 3)).toBe("3 active results");
+    expect(bucketResultCount("completed", 1)).toBe("1 completed result");
+    expect(bucketEmptyNoun("stuck")).toBe("stuck patients");
+  });
+
+  it("does not call an order a patient, or say 'orders results'", () => {
+    expect(bucketResultCount("orders", 3)).toBe("3 orders");
+    expect(bucketResultCount("orders", 1)).toBe("1 order");
+    expect(bucketEmptyNoun("orders")).toBe("orders");
+  });
+
+  it("phrases every folder — a new one must not fall through to a template", () => {
+    for (const b of SEARCH_BUCKETS) {
+      expect(bucketResultCount(b, 2), b).toMatch(/^2 \S/);
+      expect(bucketEmptyNoun(b), b).toBeTruthy();
+    }
+  });
+});

@@ -12,6 +12,7 @@
  * |   / Proposed Stuck (escalation Final)| Stuck group has none) as **Final Decisions**: `?mv=final-decisions&manager=1`, the view with Approve Stuck / Return to Queue — Gregory White's screen |
  * | escalated (Manager Intervention)     | its stage page as **Manager Intervention**: `?mv=manager-intervention&manager=1&escalated=1` |
  * | ordinary live work                   | its stage page, plain                                    |
+ * | an ORDER (New Order Board)           | `/orders?orderId=` — the order itself, not the patient   |
  * | anything else                        | null → Search renders a "check Monday" note              |
  *
  * ⚠️ These params are OversightTab's `handlePatientClick` contract, read by
@@ -29,6 +30,7 @@
  */
 import { MANAGER_ORIGIN_PARAM } from "@/lib/shared/managerOrigin";
 import type { SystemPatient } from "./mondayApi";
+import { isOrderRow } from "./ordersSearch";
 import { searchBucket } from "./searchBuckets";
 import {
   COMPLETED_STAGE_ROUTES,
@@ -43,6 +45,16 @@ export type OpenableRow = Pick<
 >;
 
 export function searchOpenUrl(p: OpenableRow): string | null {
+  /* ⚠️ An order opens by `orderId`, BEFORE anything below runs. OrdersPage
+     accepts `patientId` as a fallback, so the generic path underneath happens
+     to work today — but this row IS an order, one of several the patient has,
+     and naming it `patientId` invites the next reader to route it like a
+     patient. None of the rules below apply either: an order has no Completed
+     group, no Stuck group and no escalation column. */
+  if (isOrderRow(p)) {
+    return `/orders?${new URLSearchParams({ orderId: p.id, from: "system-mgmt" }).toString()}`;
+  }
+
   const completed = completedStageForPatient(p);
   if (completed) return completedStageUrl(completed);
 

@@ -8,7 +8,8 @@
  * beside the call. This is the SAME search as System Management → Search — the
  * same live hook (`useLiveSearch`, one Monday request per debounced query), the
  * same Active / Completed / Stuck folders and the same stage-first row — so a
- * rep learns one search, not two.
+ * rep learns one search, not two. (Search's fourth folder, Orders, is the one
+ * thing this pane does not take — see the filter below.)
  *
  * Picking a row is an EXPLICIT identity choice by the rep, which is what lets
  * the pane show that patient against a number their record does not carry.
@@ -22,16 +23,17 @@ import { systemProfileStatus } from "@/lib/shared/profileStatus";
 import { useLiveSearch } from "@/hooks/systemMgmt/useLiveSearch";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 import {
-  SEARCH_BUCKETS,
+  PATIENT_SEARCH_BUCKETS,
   SEARCH_BUCKET_LABEL,
   bucketResults,
   type SearchBucket,
 } from "@/lib/systemMgmt/searchBuckets";
+import { isOrderRow } from "@/lib/systemMgmt/ordersSearch";
 import { boardStageLabel, boardTone } from "@/lib/systemMgmt/boardTone";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { cn } from "@/lib/utils";
 
-const BUCKET_ON: Record<SearchBucket, string> = {
+const BUCKET_ON: Partial<Record<SearchBucket, string>> = {
   active: "bg-primary text-primary-foreground border-primary",
   completed: "bg-green-600 text-white border-green-600",
   stuck: "bg-red-600 text-white border-red-600",
@@ -41,7 +43,12 @@ export default function DossierSearch({ onPick }: { onPick: (row: SystemPatient)
   const [query, setQuery] = useState("");
   const [bucket, setBucket] = useState<SearchBucket>("active");
   const live = useLiveSearch(query);
-  const bucketed = bucketResults(live.results);
+  /* ⚠️ Orders are dropped here, not hidden by the tab list below. The live
+     search reads the New Order Board (§5.35 — System Management → Search grew
+     an Orders folder on 2026-09-15), and this pane asks a different question:
+     WHICH PATIENT is on this line. An order is not an identity, and picking one
+     fails silently — see `PATIENT_SEARCH_BUCKETS`. */
+  const bucketed = bucketResults(live.results.filter((p) => !isOrderRow(p)));
   const rows = bucketed[bucket];
   const settled = !live.searching && live.searchedQuery === query.trim();
 
@@ -70,7 +77,7 @@ export default function DossierSearch({ onPick }: { onPick: (row: SystemPatient)
 
       {query.trim() && !live.tooShort && (
         <div className="flex flex-wrap gap-1" role="tablist" aria-label="Result folders">
-          {SEARCH_BUCKETS.map((b) => (
+          {PATIENT_SEARCH_BUCKETS.map((b) => (
             <button
               key={b}
               role="tab"

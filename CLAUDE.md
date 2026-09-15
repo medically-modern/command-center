@@ -4292,12 +4292,52 @@ human does that by hand before re-flipping — the app does not, and a re-flip o
 Claim" is refused); (4) update the test and this section.
 
 **Deliberately not built:** notes are display-only (the role is observation — the composer is a
-one-line add via the Subscription `NotesPanel` pattern when wanted); the New Order board is **not**
-in `systemMgmt/mondayApi` `BOARDS` (Search, the directory mirror, Profile Status and the dossier
-would all follow — `directoryCoverage.test.ts` / `profileStatus.test.ts` would need the ids), so
-System Management's Search does not return orders — the page's own search does; no Oversight
-charts (it is not a pipeline stage); no Profile Status badge (the board has no escalation column —
-the page wears its own stage and Cardinal pills instead).
+one-line add via the Subscription `NotesPanel` pattern when wanted); no Oversight charts (it is not
+a pipeline stage); no Profile Status badge (the board has no escalation column — the page wears its
+own stage and Cardinal pills instead).
+
+**System Management → Search returns orders from 2026-09-15, in a fourth folder of their own**
+(Josh: *"add them to the search but ONLY show them in a tab to the right of stuck that says
+orders"*) — **`lib/systemMgmt/ordersSearch.ts`** (+ tests). ⚠️ **The board is still NOT in
+`systemMgmt/mondayApi` `BOARDS`, and the distinction is the whole design.** That registry is not
+"boards Search reads": it is also `patientLookup`'s inbound-caller lookup (running while the phone
+rings), the Comms Hub dossier's stage trail, the gateway's mirrored `DIRECTORY_BOARDS`
+(`directoryCoverage.test.ts` fails the build on a drift, so adding a board there is a Railway
+change), `profileStatus.test.ts`'s bidirectional group assertion, the seven-board snapshot and the
+pipeline chart — none of which wants an item per REORDER. So the board rides **`LIVE_SEARCH_BOARDS`**,
+i.e. the live search and nothing else: one more alias on a request that already runs (§7 — the
+snapshot stopped answering the search box on 2026-09-03), which is also why a chart pick or a stage
+filter shows an empty Orders folder, correctly.
+- ⚠️ **`searchBucket` returns `orders` FIRST, above Completed.** An order has no Completed group, no
+  Stuck group and no escalation column, so every other rule files it under **Active** — silently, in
+  among the pipeline stages a rep was searching for. That one line is the "ONLY" in the ask, and
+  `searchBuckets.test.ts` pins it against all five groups plus a stale completed/stuck/escalated row.
+- ⚠️ **The row's stage is `orderStage` + `cardinalStatus`, never the group** (`orderSearchStage`):
+  the group is not the stage, and Cardinal's verdict is the more precise answer once it has the
+  order — "Partially shipped" over "Shipped", "On hold — Credit Check Failure" over "Placed — in
+  progress". A `none` verdict falls back to the stage, which is what keeps the 609 pre-poller rows
+  reading Shipped rather than blank. ⚠️ A **stale** Hold Reason survives on delivered orders (the
+  poller never clears the column — live on the board today), and `cardinalStatus` matching the
+  shipped/delivered labels ahead of the reason is what stops a delivered order reading "on hold".
+- ⚠️ One patient has an item per reorder, so the rows carry the same name, phone and often the same
+  stage: `SystemPatient.subtitle` (date · group · CAH number) is what tells them apart, and they are
+  sorted **by item id**, not Order Date — workflow 7919939752 rewrites Order Date to the day an On
+  Hold snooze returns, so a held order carries a FUTURE date.
+- ⚠️ Order rows are dropped from **`sameNumberNeedles`' input** (not from the pass): that cap returns
+  NOTHING above three distinct numbers, so feeding it order rows would switch the same-name-different-
+  spelling pass off for queries where it used to run, silently (§7).
+- ⚠️ The **Communications Hub's "find this patient" pane shares this search and must not offer them**
+  (`PATIENT_SEARCH_BUCKETS`, and `DossierSearch` filters the rows out). It asks which PATIENT is on
+  the line, and `dossierApi.fetchDossierItemsForPick` looks the picked row's board up in `BOARDS` —
+  an order picked there contributes nothing and the pane renders what the phone lookup already had,
+  as though the choice had taken.
+- A row opens `/orders?orderId=` (`searchOpen`), gets the orange board tone, and renders **neither**
+  the Profile Status badge nor the days-in-stage chip — the board has neither column, so both would
+  be invented ("ACTIVE" on an order delivered last month). Its stage text is plain rather than a
+  filter link: that filter runs over the snapshot, which has no orders in it.
+- **Not covered:** a CAH / PO / tracking number typed into System Search still finds nothing — a
+  10-digit CAH number is read as a phone query. The Orders page's own search does that (§5.35), and
+  System Search would need per-board rules to.
 
 **Keep-in-agreement:**
 1. **Column ids** — `lib/orders/mondayApi.ts` `COL` (+ `LIST_COLUMN_IDS`, pinned by `listColumns.test.ts`).
@@ -4307,6 +4347,7 @@ the page wears its own stage and Cardinal pills instead).
 5. **Substitution** — `lib/orders/substitution.ts` (+ its test's `BOARD_LABELS`, which is the live
    `color_mm727p5m` label set) ⇄ `email-serivce/src/features/backorder-substitution/index.js`
    `STATUS` + its `skip` reasons, and `email-serivce/src/cardinal.js` `normalizeSetName`.
+6. **Search** — `lib/systemMgmt/ordersSearch.ts` `ORDERS_SEARCH_BOARD` mirrors this slice's `GROUPS` / `GROUP_TITLES` / `COL`, and re-uses `workflow.orderStage` rather than restating it. It must stay OUT of `BOARDS` (`ordersSearch.test.ts` asserts both halves).
 
 ## 6. Patient flow across boards (the big picture)
 
@@ -4620,8 +4661,8 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   ⚠️ A number genuinely shared by two patients (18 of 3,140 on the live boards, §5.28) surfaces the
   household under that heading. That is the heading's job; do not "fix" it by narrowing to one name.
   `sameNumberSearch.test.ts` holds the five live records as its fixtures.
-  **Results are FOLDERED — Active · Completed · Stuck** (`lib/systemMgmt/searchBuckets.ts` + tests,
-  same day). A patient is one item per board (§6), so one name returns three to five rows — the
+  **Results are FOLDERED — Active · Completed · Stuck · Orders** (`lib/systemMgmt/searchBuckets.ts`
+  + tests; Orders joined 2026-09-15, §5.35). A patient is one item per board (§6), so one name returns three to five rows — the
   finished Profile Send Off record, the finished ME record, the live Insurance record — and in a
   flat list a rep clicks the first row carrying the name: "Search shows the wrong profiles".
   `searchBucket`: Completed group ⇒ **completed** (checked first, as `profileStatus` does); a
@@ -4633,9 +4674,12 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   pointing at a stuck patient on that screen: *"stuck patients absolutely do have a UI"*; to the
   manager this search serves a proposal and an approval are one queue, and the Profile Status badge
   still tells them apart) ⇒ **stuck**; everything else ⇒ **active** — Manager Intervention (index 0)
-  included, since that patient is being worked, by a manager. Defaults to Active; an empty folder
-  names the others' counts rather than saying "no patients found". Chart picks and stage filters go
-  through the same folders.
+  included, since that patient is being worked, by a manager; and **orders** — every New Order Board
+  row and nothing else, checked before all of them (§5.35). Defaults to Active; an empty folder
+  names the others' counts rather than saying "no patients found", which is also how a rep discovers
+  the Orders folder: search a name, be told where the rows are. Chart picks and stage filters go
+  through the same folders — and show an empty Orders folder, correctly, because those come from the
+  snapshot and the order board is not in it.
   **Search is a MANAGER's tool, so a row opens the OVERSIGHT screen for that patient** —
   `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` (+ tests), one rule for every click: a finished
   record → its review page (`?completedStage=`); **stuck or Proposed Stuck → the stage page as Final
@@ -5363,6 +5407,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
+| A patient's ORDERS aren't in System Search, or an order turns up in another folder | §5.35 — `lib/systemMgmt/ordersSearch.ts`. The board rides `LIVE_SEARCH_BOARDS` (what the search box asks) and is deliberately absent from `BOARDS` (the patient registry — inbound-call lookup, the dossier, the gateway's mirrored directory, the snapshot); `searchBucket` returns `orders` FIRST, or every order files under Active with nothing erroring. An empty Orders folder under a chart pick or a stage filter is correct — those rows come from the snapshot. A CAH / PO / tracking number still finds nothing here (it reads as a phone query); the Orders page's own search does that |
 | A Search row opens the wrong screen, or a different one from Oversight | §7 — `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` is the one rule; it must send the same `?mv=` / `manager` / `escalated` params `OversightTab.handlePatientClick` sends |
 | The Communications tab's composer or profile spinner is off screen | §7 — the host tab needs `h-screen overflow-hidden`, not `min-h-screen`: `min-h-0` cannot bound a parent with no definite height, so a long conversation list grows the document to ~48,000px. ⚠️ Reproducing it needs a REAL list — a couple of conversations fit inside 100vh and the two layouts are pixel-identical |
 | The Escalations tab is missing from System Management | §7 — commented out 2026-09-10 with its header count chip, not deleted; `?tab=escalations` falls through to Search on purpose. Uncomment the `TabBtn` and the `EscalationView` block in `SystemMgmtPage.tsx`. Escalations are worked in Oversight's manager columns meanwhile |

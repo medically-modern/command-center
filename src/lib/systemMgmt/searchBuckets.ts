@@ -1,5 +1,5 @@
 /**
- * The three folders System Management → Search sorts its results into.
+ * The four folders System Management → Search sorts its results into.
  *
  * A patient is a separate Monday item on every board they have passed through
  * (§6), so one name returns three to five rows: the finished Profile Send Off
@@ -26,24 +26,49 @@
  *                   queue; the Profile Status badge still tells them apart.
  *                   Manager Intervention (index 0) stays ACTIVE — that patient
  *                   is being worked, just by a manager.
+ * - **orders**    — the item is on the **New Order Board**: one ORDER, not a
+ *                   patient's stage. Checked FIRST, above Completed, because
+ *                   this folder is the only place an order may appear (Josh,
+ *                   2026-09-15: *"ONLY show them in a tab to the right of
+ *                   stuck"*). Without that first check every order would file
+ *                   under Active — no Stuck group, no escalation column, no
+ *                   Completed flag — and a rep searching a name would get their
+ *                   eight reorders in among the stages they were looking for.
  *
- * Completed is checked FIRST, as `profileStatus` does: a stale Stuck label on a
- * finished item must not resurrect it. The group lists are the shared ones from
+ * Orders is checked first of all (it is a whole board, not a state), then
+ * Completed, as `profileStatus` does: a stale Stuck label on a finished item
+ * must not resurrect it. The group lists are the shared ones from
  * `profileStatus.ts`, whose test pins them to the `BOARDS` registry in both
  * directions, so a board that grows a Stuck group without being listed fails
  * the build rather than silently filing its patients under Active.
  */
 import { STUCK_GROUP_IDS } from "@/lib/shared/profileStatus";
 import { STUCK_LABELS, type SystemPatient } from "./mondayApi";
+import { isOrderRow } from "./ordersSearch";
 
-export type SearchBucket = "active" | "completed" | "stuck";
+export type SearchBucket = "active" | "completed" | "stuck" | "orders";
 
-export const SEARCH_BUCKETS: readonly SearchBucket[] = ["active", "completed", "stuck"];
+/** Tab order, left to right. Orders sits to the RIGHT of Stuck, as asked. */
+export const SEARCH_BUCKETS: readonly SearchBucket[] = ["active", "completed", "stuck", "orders"];
+
+/**
+ * The folders a surface offers when it is asking **which PATIENT is this** —
+ * the Communications Hub's "find this patient" pane, which shares this search.
+ *
+ * ⚠️ An order is not an identity, and picking one there is a SILENT wrong
+ * answer: `dossierApi.fetchDossierItemsForPick` looks the picked row's board up
+ * in `BOARDS`, which deliberately does not carry the order board
+ * (`ordersSearch.ts`), so the pick contributes nothing and the pane renders
+ * whatever the phone lookup already had — as though the rep's choice had taken.
+ * The Hub therefore drops order rows before bucketing and offers these three.
+ */
+export const PATIENT_SEARCH_BUCKETS: readonly SearchBucket[] = ["active", "completed", "stuck"];
 
 export const SEARCH_BUCKET_LABEL: Record<SearchBucket, string> = {
   active: "Active",
   completed: "Completed",
   stuck: "Stuck",
+  orders: "Orders",
 };
 
 export type BucketInput = Pick<
@@ -75,6 +100,9 @@ function advancerSaysStuck(p: BucketInput): boolean {
 }
 
 export function searchBucket(p: BucketInput): SearchBucket {
+  // ⚠️ First, ahead of everything: an order is only ever an order. See the
+  // header — every other rule here would file it under Active.
+  if (isOrderRow(p)) return "orders";
   if (p.isCompleted) return "completed";
   if (p.groupId && STUCK_GROUP_IDS.includes(p.groupId)) return "stuck";
   if (advancerSaysStuck(p)) return "stuck";
@@ -82,11 +110,32 @@ export function searchBucket(p: BucketInput): SearchBucket {
   return "active";
 }
 
+/**
+ * How a sentence names what is in a folder.
+ *
+ * ⚠️ Three of the four labels are ADJECTIVES describing patients — "3 active
+ * results", "no stuck patients" — and Orders is a noun for something that is
+ * not a patient at all. Run through the same template it reads "3 orders
+ * results" and "No orders patients matching …", so the phrasing is declared
+ * here rather than derived from the label at each call site.
+ */
+export function bucketResultCount(bucket: SearchBucket, n: number): string {
+  const s = n === 1 ? "" : "s";
+  if (bucket === "orders") return `${n} order${s}`;
+  return `${n} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} result${s}`;
+}
+
+/** What an empty folder says it has none of: "No orders matching …". */
+export function bucketEmptyNoun(bucket: SearchBucket): string {
+  if (bucket === "orders") return "orders";
+  return `${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} patients`;
+}
+
 export type BucketedResults<T extends BucketInput = SystemPatient> = Record<SearchBucket, T[]>;
 
-/** Split ranked results into the three folders, preserving order within each. */
+/** Split ranked results into the four folders, preserving order within each. */
 export function bucketResults<T extends BucketInput>(results: readonly T[]): BucketedResults<T> {
-  const out: BucketedResults<T> = { active: [], completed: [], stuck: [] };
+  const out: BucketedResults<T> = { active: [], completed: [], stuck: [], orders: [] };
   for (const p of results) out[searchBucket(p)].push(p);
   return out;
 }

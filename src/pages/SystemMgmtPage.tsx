@@ -55,6 +55,7 @@ import {
   ArrowRightLeft,
   Ban,
   Info,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
@@ -66,10 +67,13 @@ import { useLiveSearch } from "@/hooks/systemMgmt/useLiveSearch";
 import {
   SEARCH_BUCKETS,
   SEARCH_BUCKET_LABEL,
+  bucketEmptyNoun,
+  bucketResultCount,
   bucketResults,
   type SearchBucket,
 } from "@/lib/systemMgmt/searchBuckets";
 import { rowIsWorkable, searchOpenUrl, workableFirst } from "@/lib/systemMgmt/searchOpen";
+import { isOrderRow } from "@/lib/systemMgmt/ordersSearch";
 import { boardStageLabel, boardTone } from "@/lib/systemMgmt/boardTone";
 
 /**
@@ -439,6 +443,7 @@ const SystemMgmtPage = () => {
                 active: bucketed.active.length,
                 completed: bucketed.completed.length,
                 stuck: bucketed.stuck.length,
+                orders: bucketed.orders.length,
               }}
               searching={live.searching}
               searchedQuery={live.searchedQuery}
@@ -767,8 +772,8 @@ function SearchView({
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground px-1">
             {nameResults.length > 50
-              ? `Showing 50 of ${nameResults.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} results — refine your search`
-              : `${nameResults.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} result${nameResults.length !== 1 ? "s" : ""}`}
+              ? `Showing 50 of ${bucketResultCount(bucket, nameResults.length)} — refine your search`
+              : bucketResultCount(bucket, nameResults.length)}
             {sameNumberResults.length > 0
               ? ` · ${sameNumberResults.length} more on the same phone number`
               : ""}
@@ -865,6 +870,7 @@ const BUCKET_ACTIVE_CLASS: Record<SearchBucket, string> = {
   active: "bg-primary text-primary-foreground border-primary",
   completed: "bg-green-600 text-white border-green-600",
   stuck: "bg-red-600 text-white border-red-600",
+  orders: "bg-orange-600 text-white border-orange-600",
 };
 
 function BucketTabs({
@@ -895,6 +901,7 @@ function BucketTabs({
           >
             {b === "completed" && <CheckCircle2 className="w-3 h-3" />}
             {b === "stuck" && <Ban className="w-3 h-3" />}
+            {b === "orders" && <Package className="w-3 h-3" />}
             {SEARCH_BUCKET_LABEL[b]}
             <span
               className={cn(
@@ -937,7 +944,7 @@ function EmptyBucket({
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted-foreground">
-        No {SEARCH_BUCKET_LABEL[bucket].toLowerCase()} patients {subject}
+        No {bucketEmptyNoun(bucket)} {subject}
       </p>
       <p className="text-xs text-muted-foreground flex items-center justify-center gap-2 flex-wrap">
         <span>Found in:</span>
@@ -1537,6 +1544,17 @@ function PatientRow({
   const opensRecord = !!completedStageForPatient(patient);
   const tone = boardTone(patient.boardId);
   const boardLabel = boardStageLabel(patient.boardId, patient.boardName);
+  /** This row is an ORDER, not a patient's stage — three things below don't
+   *  apply to it. See each one; they are not cosmetic. */
+  const isOrder = isOrderRow(patient);
+  /** The muted line under the stage: an order says WHICH order (date · group ·
+   *  CAH number), since one patient's reorders all carry the same name, phone
+   *  and often the same stage. Everything else keeps the group title. */
+  const subLine =
+    patient.subtitle ||
+    (!completed && patient.groupTitle && patient.groupTitle !== patient.pipelineStage
+      ? patient.groupTitle
+      : "");
   /** The stage as the rep will say it. A completed record says so instead of
    *  repeating "Completed" twice; a Stuck group says which board it is stuck on. */
   const stageText = completed ? `Completed` : patient.pipelineStage || patient.groupTitle || "—";
@@ -1588,7 +1606,7 @@ function PatientRow({
                   <CheckCircle2 className="w-2.5 h-2.5" />
                   COMPLETED
                 </span>
-              ) : (
+              ) : isOrder ? null : (
                 /* Profile Status — the same vocabulary the role pages show, so a
                    patient reads the same here as on the page they're worked on.
                    It replaced a flat "ACTIVE" pill that was true of everything
@@ -1605,16 +1623,24 @@ function PatientRow({
               )}
               {/* Days-in-stage is a live urgency signal. On a finished board it
                   is a frozen number, so it keeps the text and loses the alarm
-                  colour rather than sitting there in red inside a green row. */}
-              <span
-                className={cn(
-                  "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold leading-none tracking-wide",
-                  completed ? "bg-muted text-muted-foreground" : "text-white",
-                )}
-                style={completed ? undefined : { backgroundColor: getDayBucketColor(patient.daysSinceStage) }}
-              >
-                {patient.daysSinceStage || "Unknown"}
-              </span>
+                  colour rather than sitting there in red inside a green row.
+                  ⚠️ An ORDER gets neither this nor the badge above: the New
+                  Order Board has no Days Since Stage column and no escalation
+                  column, so both would render an invented answer — a permanent
+                  grey "Unknown" and an "ACTIVE" pill on an order Cardinal
+                  delivered last month. The order's own date is in `subLine`
+                  and its Cardinal verdict is the stage. */}
+              {!isOrder && (
+                <span
+                  className={cn(
+                    "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold leading-none tracking-wide",
+                    completed ? "bg-muted text-muted-foreground" : "text-white",
+                  )}
+                  style={completed ? undefined : { backgroundColor: getDayBucketColor(patient.daysSinceStage) }}
+                >
+                  {patient.daysSinceStage || "Unknown"}
+                </span>
+              )}
             </div>
           </div>
         </button>
@@ -1641,21 +1667,30 @@ function PatientRow({
         <span className={cn("text-[10px] font-semibold uppercase tracking-[0.14em]", tone.label)}>
           {boardLabel}
         </span>
-        <span
-          role="link"
-          onClick={(e) => {
-            e.stopPropagation();
-            onStageClick?.(patient.pipelineStage);
-          }}
-          className={cn(
-            "text-[15px] font-bold leading-tight hover:underline decoration-dotted underline-offset-2",
-            completed ? "text-green-700 dark:text-green-400" : tone.stage,
-          )}
-        >
-          {stageText}
-        </span>
-        {patient.groupTitle && patient.groupTitle !== patient.pipelineStage && !completed && (
-          <span className="text-[11px] text-muted-foreground truncate">{patient.groupTitle}</span>
+        {/* ⚠️ The stage text also FILTERS the list to that stage — off the
+            seven-board snapshot, which has no orders in it (`ordersSearch.ts`).
+            So on an order row the click would clear the rep's query and open an
+            empty "Showing 0 patients in Delivered" filter. It renders as plain
+            text there instead of a link that leads nowhere. */}
+        {isOrder ? (
+          <span className={cn("text-[15px] font-bold leading-tight", tone.stage)}>{stageText}</span>
+        ) : (
+          <span
+            role="link"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStageClick?.(patient.pipelineStage);
+            }}
+            className={cn(
+              "text-[15px] font-bold leading-tight hover:underline decoration-dotted underline-offset-2",
+              completed ? "text-green-700 dark:text-green-400" : tone.stage,
+            )}
+          >
+            {stageText}
+          </span>
+        )}
+        {subLine && (
+          <span className="text-[11px] text-muted-foreground truncate">{subLine}</span>
         )}
       </button>
 

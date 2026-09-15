@@ -8,6 +8,12 @@
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { escalationLevelFrom, type EscalationLevel } from "./escalationDetail";
 import {
+  ORDERS_SEARCH_BOARD,
+  compareOrdersNewestFirst,
+  isOrderRow,
+  orderSearchFields,
+} from "./ordersSearch";
+import {
   COMPLETED_STAGE_ROUTES,
   STAGE_COMPLETION_COLUMNS,
   completedAtFromLogs,
@@ -127,6 +133,16 @@ export interface BoardDef {
   notesColType: "text" | "long_text" | null;
   /** Column ID for Next Action Date (date column, null = board has none) */
   nextActionDateColId: string | null;
+  /**
+   * Columns a board needs beyond the fields above, added to `searchColumnIds`
+   * verbatim. Only the New Order Board uses it (`ordersSearch.ts`): its stage
+   * is read from API Status + Hold Reason + API Message, which no field here
+   * names. Extras go through `searchColumnIds` rather than a second read so
+   * there is still ONE place the column list is built — a column fetched on
+   * one path and not the other renders as a permanently blank field with no
+   * error (§5.11's trap).
+   */
+  extraColumnIds?: string[];
 }
 
 /**
@@ -357,6 +373,13 @@ export interface SystemPatient {
   roleRoute: string;
   /** Human-readable pipeline stage label */
   pipelineStage: string;
+  /**
+   * A second line under the stage, for a row whose NAME does not identify it.
+   * Set only by the New Order Board, where one patient has an item per reorder
+   * (`ordersSearch.orderSearchSubtitle` — date · group · CAH number). Every
+   * other row leaves it undefined and falls back to the group title.
+   */
+  subtitle?: string;
   /** Whether the patient has an active escalation */
   escalated: boolean;
   /** Raw escalation text (e.g. "Escalation Required") */
@@ -426,6 +449,7 @@ export function searchColumnIds(board: BoardDef): string[] {
   if (board.daysSinceStageColId) colIds.push(board.daysSinceStageColId);
   if (board.notesColId) colIds.push(board.notesColId);
   if (board.nextActionDateColId) colIds.push(board.nextActionDateColId);
+  if (board.extraColumnIds) colIds.push(...board.extraColumnIds);
   return colIds;
 }
 
@@ -583,16 +607,20 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   const stageAdvancerText = board.stageAdvancerColId
     ? colVal(board.stageAdvancerColId)
     : "";
-  const { pipelineStage, roleRoute, isCompleted, hasPage } = rowRouting(
-    board,
-    item.group,
-    stageAdvancerText,
-  );
+  /* ⚠️ An ORDER is not a patient's stage, and its GROUP is not its stage
+     either (§5.35): a Delivered order can still sit in Accepted / Partial, and
+     609 pre-poller rows in Shipped/Delivered carry no Cardinal record at all.
+     So an order row's stage comes from the orders slice's own rules — the same
+     ones the Orders page runs — rather than from `rowRouting`'s group table. */
+  const order = isOrderRow(board) ? orderSearchFields(item.group, stageAdvancerText, colVal) : null;
+  const { pipelineStage, roleRoute, isCompleted, hasPage } =
+    order ?? rowRouting(board, item.group, stageAdvancerText);
 
   return {
     id: item.id,
     name: item.name,
     phone,
+    subtitle: order?.subtitle,
     boardId: board.boardId,
     boardName: board.boardName,
     groupId: item.group.id,
@@ -734,6 +762,19 @@ const MAX_NAME_TERMS = 4;
  * spelling is worth going and getting.
  */
 export const SAME_NUMBER_MAX_PHONES = 3;
+/**
+ * The boards the SEARCH BOX asks — the seven-board patient registry plus the
+ * New Order Board, which rides this path and only this path.
+ *
+ * ⚠️ `BOARDS` deliberately does NOT carry the order board, and the difference
+ * is the point: that registry is also the inbound-call lookup, the
+ * Communications Hub dossier, the gateway's mirrored directory, the pipeline
+ * chart and the seven-board snapshot, none of which wants an item per reorder.
+ * `ordersSearch.ts` has the full argument. Anything that means "boards the
+ * search box reads" belongs here; anything that means "boards a PATIENT has a
+ * record on" belongs in `BOARDS`.
+ */
+export const LIVE_SEARCH_BOARDS: BoardDef[] = [...BOARDS, ORDERS_SEARCH_BOARD];
 /**
  * Digits compared when matching a number. Ten is the number without its
  * country code: this account stores both `4062237445` and `14062237445`
@@ -914,7 +955,17 @@ export async function searchPatientsLive(
      carry — the one field every record of hers agrees on. It runs only for a
      name query (a phone query has already found everyone on the number) and
      only when the answer has narrowed to a person (`sameNumberNeedles`). */
-  const needles = rules.kind === "name" ? sameNumberNeedles(named) : [];
+  /* ⚠️ Orders are excluded from the CAP's input, not from the pass. One
+     patient has an item per reorder, so their order rows carry a number their
+     pipeline rows already contributed — but an order for somebody the name
+     pass matched only on the order board would add a number of its own, and
+     `sameNumberNeedles` returns NOTHING above three. Feeding it order rows
+     would therefore switch the pass off for queries where it used to run, and
+     silently: the rep just stops being told about the records filed under
+     another spelling. The pass itself still searches the order board, so a
+     patient found under either name gets their orders. */
+  const needles =
+    rules.kind === "name" ? sameNumberNeedles(named.filter((r) => !isOrderRow(r))) : [];
   let rows = named;
   if (needles.length) {
     try {
@@ -943,7 +994,7 @@ async function fetchLiveRows(
   literalFor: (board: BoardDef) => string,
   signal?: AbortSignal,
 ): Promise<SystemPatient[]> {
-  const aliases = BOARDS.map(
+  const aliases = LIVE_SEARCH_BOARDS.map(
     (b, i) => `
       b${i}: boards(ids: [${b.boardId}]) {
         items_page(limit: ${LIVE_SEARCH_PER_BOARD}, query_params: ${literalFor(b)}) {
@@ -963,9 +1014,15 @@ async function fetchLiveRows(
   );
 
   const rows: SystemPatient[] = [];
-  BOARDS.forEach((b, i) => {
+  LIVE_SEARCH_BOARDS.forEach((b, i) => {
     const items = data[`b${i}`]?.[0]?.items_page?.items ?? [];
-    for (const item of items) rows.push(mapToSystemPatient(item, b));
+    const mapped = items.map((item) => mapToSystemPatient(item, b));
+    // Monday answers in board order — by group, then position — which on the
+    // order board is roughly OLDEST first. A patient ringing about an order
+    // means their latest one, and `rankLiveResults` sorts stably, so ordering
+    // them here is what puts it at the top of the folder.
+    if (isOrderRow(b)) mapped.sort(compareOrdersNewestFirst);
+    rows.push(...mapped);
   });
   return rows;
 }

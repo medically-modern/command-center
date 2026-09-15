@@ -18,6 +18,9 @@ export const BOARD_TONE: Record<number, BoardTone> = {
   18410601299: { bar: "border-l-violet-500",  label: "text-violet-700 dark:text-violet-300",   stage: "text-violet-950 dark:text-violet-100" },   // Insurance
   18410804557: { bar: "border-l-emerald-500", label: "text-emerald-700 dark:text-emerald-300", stage: "text-emerald-950 dark:text-emerald-100" }, // Welcome Call
   18407459988: { bar: "border-l-teal-500",    label: "text-teal-700 dark:text-teal-300",       stage: "text-teal-950 dark:text-teal-100" },       // Subscription
+  // Orange rather than another blue-green: the New Order Board is not a
+  // pipeline stage, and its rows sit in their own Search folder (§5.35).
+  18405457690: { bar: "border-l-orange-500",  label: "text-orange-700 dark:text-orange-300",   stage: "text-orange-950 dark:text-orange-100" },   // New Order Board
 };
 
 export const DEFAULT_BOARD_TONE: BoardTone = {
@@ -35,6 +38,7 @@ export const BOARD_STAGE_LABEL: Record<number, string> = {
   18407459988: "Subscription",
   18392794310: "DTC Intake",
   18413019028: "Secondary Claims",
+  18405457690: "Order",
 };
 
 export function boardTone(boardId: number): BoardTone {
