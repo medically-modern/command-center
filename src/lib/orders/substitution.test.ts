@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { mkOrder } from "./fixtures";
 import {
   backorderedEntries, backorderedSetOnOrder, hasSubstitutionStory, normalizeSetName,
-  substitutionBlockers, substitutionVerdict, SUBSTITUTION_FIX,
+  substitutionAnswered, substitutionBlockers, substitutionOptions, substitutionSendKind,
+  substitutionSendRefusal, substitutionVerdict, SUBSTITUTION_FIX,
 } from "./substitution";
 
 /**
@@ -131,5 +132,80 @@ describe("hasSubstitutionStory", () => {
     expect(hasSubstitutionStory(mkOrder({ substituteInfusionSet: 'TruSteel 6 mm 23"' }))).toBe(true);
     expect(hasSubstitutionStory(mkOrder({ substitutionStatus: "Sent" }))).toBe(true);
     expect(hasSubstitutionStory(mkOrder({ substitutionCahNumber: "1120960999" }))).toBe(true);
+  });
+});
+
+/** The live Substitute Infusion Set labels, read 2026-09-15 (a sample). */
+const SET_LABELS = [
+  'TruSteel 6 mm 23"', 'AutoSoft 90 6 mm 23"', 'VariSoft 13 mm 23"', 'AutoSoft XC 6 mm 23"',
+  'Mio Advance Clear 9mm 23"',
+];
+
+describe("substitutionSendRefusal — every refusal names something a rep can do", () => {
+  const ok = { cahOrderNumber: "1120960884", qtyInfusionSet1: "3", infusionSet1: 'AutoSoft 90 6 mm 23"' };
+
+  it("lets a complete order through", () => {
+    expect(substitutionSendRefusal(mkOrder(ok), 'TruSteel 6 mm 23"')).toBe("");
+  });
+
+  it("nothing picked", () => {
+    expect(substitutionSendRefusal(mkOrder(ok), "")).toMatch(/Pick the replacement/);
+  });
+
+  it("the service's own refusals, quoted back before the email goes", () => {
+    expect(substitutionSendRefusal(mkOrder({ ...ok, cahOrderNumber: "" }), 'TruSteel 6 mm 23"')).toMatch(/CAH Order Number/);
+    expect(substitutionSendRefusal(mkOrder({ ...ok, qtyInfusionSet1: "" }), 'TruSteel 6 mm 23"')).toMatch(/Qty: Infusion Set 1/);
+  });
+
+  it("picking the backordered set itself is refused HERE, not by the email", () => {
+    const o = mkOrder({ ...ok, backordered: 'AutoSoft 90 6mm 23" infusion sets' });
+    expect(substitutionSendRefusal(o, 'AutoSoft 90 6 mm 23"')).toMatch(/on back order/);
+    expect(substitutionSendRefusal(o, 'TruSteel 6 mm 23"')).toBe("");
+  });
+});
+
+describe("substitutionSendKind — a repeat pick has to clear first", () => {
+  it("a different set is an ordinary send", () => {
+    expect(substitutionSendKind('AutoSoft 90 6 mm 23"', 'TruSteel 6 mm 23"')).toBe("send");
+  });
+
+  it("the SAME set is a resend — writing it again fires no webhook", () => {
+    expect(substitutionSendKind('TruSteel 6 mm 23"', 'TruSteel 6 mm 23"')).toBe("resend");
+    // Spelling differences that normalise to one set still count as the same.
+    expect(substitutionSendKind('Mio Advance Clear 9 mm 23"', 'Mio Advance Clear 9mm 23"')).toBe("resend");
+  });
+
+  it("an empty board value is a first send", () => {
+    expect(substitutionSendKind("", 'TruSteel 6 mm 23"')).toBe("send");
+  });
+});
+
+describe("substitutionOptions", () => {
+  it("drops the set being switched away from — the service refuses it", () => {
+    const o = mkOrder({ infusionSet1: 'AutoSoft 90 6 mm 23"', backordered: 'AutoSoft 90 6mm 23" infusion sets' });
+    expect(substitutionOptions(SET_LABELS, o)).not.toContain('AutoSoft 90 6 mm 23"');
+    expect(substitutionOptions(SET_LABELS, o)).toContain('TruSteel 6 mm 23"');
+  });
+
+  it("drops NOTHING when which set to replace is ambiguous", () => {
+    const o = mkOrder({ infusionSet1: 'AutoSoft 90 6 mm 23"', infusionSet2: 'TruSteel 6 mm 23"' });
+    expect(substitutionOptions(SET_LABELS, o)).toHaveLength(SET_LABELS.length);
+  });
+
+  it("and nothing when the order names no set at all", () => {
+    expect(substitutionOptions(SET_LABELS, mkOrder())).toHaveLength(SET_LABELS.length);
+  });
+});
+
+describe("substitutionAnswered — the post-send watcher's stop condition", () => {
+  const before = { status: "Sent", notes: "…prior history" };
+
+  it("a changed status is an answer", () => {
+    expect(substitutionAnswered(before, { ...before, status: "Error: No SKU On Board" })).toBe(true);
+  });
+
+  it("⚠️ a RE-SEND writes the same 'Sent' — the Notes receipt is what moves", () => {
+    expect(substitutionAnswered(before, before)).toBe(false);
+    expect(substitutionAnswered(before, { ...before, notes: before.notes + "\n[Sep 15] Auto-email…" })).toBe(true);
   });
 });

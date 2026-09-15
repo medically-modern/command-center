@@ -193,3 +193,115 @@ export function hasSubstitutionStory(
     (o.substitutionCahNumber ?? "").trim()
   );
 }
+
+/* ── Picking and sending, from the Command Center ──────────────────────────
+ *
+ * The pick used to be made on the order board; from 2026-09-15 the page makes
+ * it (Josh: *"let them actually pick the substitute and then click a 'send'
+ * button, then notify them if email successfully sent via the second column"*).
+ * Writing `color_mm727jnp` is what the email service listens to, so this page's
+ * Send button and a rep's click on the board are the SAME act — there is no
+ * second trigger and no second code path.
+ *
+ * ⚠️ WHICH MEANS THE WRITE IS THE SEND. There is no draft, no preview and no
+ * undo: the email leaves the moment the column changes. Everything below is
+ * about refusing a send that would bounce, and about not firing twice by
+ * accident.
+ */
+
+export interface SubstitutionSendRefusal {
+  /** Why Send is disabled. "" when it may be pressed. */
+  reason: string;
+}
+
+/**
+ * Why a send would bounce, in the words the card shows — checked BEFORE the
+ * write, because after it the email has gone and an `Error:` label is the only
+ * thing left to read. Mirrors the service's own refusals in its own order, plus
+ * the one it cannot make (nothing picked).
+ *
+ * ⚠️ Every branch names something a rep can DO. A refusal with no passing move
+ * is the dead end §5.10/§5.20/§5.31c/§5.32c each record reversing — which is
+ * also why the missing-SKU case is NOT here: the card reports it beside the
+ * pick, and the service is the authority on whether the tracker has a row.
+ */
+export function substitutionSendRefusal(
+  o: Pick<Order, "backordered" | "infusionSet1" | "infusionSet2" | "cahOrderNumber" | "qtyInfusionSet1">,
+  picked: string,
+): string {
+  const set = (picked ?? "").trim();
+  if (!set) return "Pick the replacement set first.";
+  const blockers = substitutionBlockers(o);
+  if (blockers.length > 0) return `Cardinal would refuse this: ${blockers[0]}.`;
+  const backordered = backorderedSetOnOrder(o);
+  if (backordered?.name && normalizeSetName(backordered.name) === normalizeSetName(set)) {
+    return "That is the set that is on back order — pick a different one.";
+  }
+  return "";
+}
+
+export type SubstitutionSendKind = "send" | "resend";
+
+/**
+ * ⚠️ **WRITING THE SAME LABEL AGAIN SENDS NOTHING** — the §9 advancer no-op,
+ * one column over, and doubly so: Monday takes a status write onto the value it
+ * already holds at HTTP 200 without firing a webhook, and the service's own
+ * `matches()` rejects an event whose value equals its previous value anyway. So
+ * a rep chasing an unanswered request would press Send, see green, and send no
+ * email.
+ *
+ * A repeat IS a legitimate act — the service is explicit that it has no
+ * "already sent" suppression because "a repeat pick may be a correction or a
+ * chase" — so the column is CLEARED first and re-written, which is exactly what
+ * a rep does on the board by hand. The clear itself cannot send (the service
+ * needs a real set label), so the pair is one email, not two.
+ */
+export function substitutionSendKind(currentOnBoard: string, picked: string): SubstitutionSendKind {
+  const now = (currentOnBoard ?? "").trim();
+  const want = (picked ?? "").trim();
+  if (!now || !want) return "send";
+  return normalizeSetName(now) === normalizeSetName(want) ? "resend" : "send";
+}
+
+/**
+ * The sets a rep may pick. The board's own label set, read live (never a
+ * hardcoded list — the write is by label INDEX and a stale one lands blank,
+ * `lib/shared/statusOptions`), minus the set this order is switching away from:
+ * the service refuses that with `Error: Same Set Picked`, so offering it is
+ * offering a guaranteed error.
+ *
+ * ⚠️ Dropped only when we know WHICH set that is. An ambiguous pair (two sets
+ * on the order, nothing singling one out) drops nothing — the service will
+ * refuse the whole request anyway and `substitutionBlockers` says so before the
+ * send, which is a better answer than a silently shortened list.
+ */
+export function substitutionOptions(
+  labels: readonly string[],
+  o: Pick<Order, "backordered" | "infusionSet1" | "infusionSet2">,
+): string[] {
+  const backordered = backorderedSetOnOrder(o);
+  if (!backordered?.name) return [...labels];
+  const drop = normalizeSetName(backordered.name);
+  return labels.filter((l) => normalizeSetName(l) !== drop);
+}
+
+/**
+ * Has the service answered yet? Compared against the snapshot taken just
+ * before the send, because a status column already reading `Sent` from an
+ * earlier request cannot change to `Sent` again — a value-only test would wait
+ * for ever on precisely the chase the resend path exists for. The Notes receipt
+ * line is the second signal and the reliable one: the service appends to it on
+ * every run, sent or refused.
+ *
+ * ⚠️ A timeout is NOT a failure. The email may still be going out, and the
+ * status column will carry the verdict whenever it lands — saying "it failed"
+ * because we stopped watching is the invented-outage class §5.13's monitor
+ * records.
+ */
+export function substitutionAnswered(
+  before: { status: string; notes: string },
+  now: { status: string; notes: string },
+): boolean {
+  if ((now.status ?? "").trim() !== (before.status ?? "").trim()) return true;
+  return (now.notes ?? "").length !== (before.notes ?? "").length;
+}

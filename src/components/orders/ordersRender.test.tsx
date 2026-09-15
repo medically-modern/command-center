@@ -27,6 +27,20 @@ vi.mock("@/components/masheke/mmKit", () => ({
   PatientContact: ({ phone }: { phone?: string }) => <span data-testid="contact">{phone}</span>,
 }));
 vi.mock("@/components/shared/ContactStateMarks", () => ({ ContactStateMarks: () => null }));
+// The substitution pick reads the board's live label set; nothing here touches
+// a network, and `ready: false` would (correctly) disable the control.
+vi.mock("@/hooks/useStatusOptions", () => ({
+  useStatusOptions: () => ({
+    options: {
+      color_mm727jnp: [
+        { index: 0, label: 'TruSteel 6 mm 23"' },
+        { index: 1, label: 'AutoSoft 90 6 mm 23"' },
+        { index: 7, label: 'AutoSoft XC 6 mm 23"' },
+      ],
+    },
+    loading: false, error: null, ready: true, reload: () => {},
+  }),
+}));
 
 const rows: SkuTrackerRow[] = [
   { id: "r1", name: 'TruSteel 6 mm 23"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002833I", description: "TruSteel", uom: "BX", unitCost: 63.77, qtyAvail: 426, status: "Available", lastChanged: "2026-09-15 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
@@ -95,26 +109,32 @@ describe("the Orders page renders every card", () => {
     expect(screen.getByText("9/10: a note")).toBeInTheDocument();
   });
 
-  it("substitution: the backordered set, the pick, the verdict and its fix", () => {
+  it("substitution: the pick, the Send button, the verdict and its fix", () => {
     // Nothing to say about an ordinary order — the card renders nothing.
     const { container } = wrap(<SubstitutionCard order={done} skuRows={rows} />);
     expect(container.querySelector(".border.bg-card")).toBeNull();
 
-    wrap(
-      <SubstitutionCard
-        order={placed({
-          id: "s", name: "Swap Person",
-          backordered: 'AutoSoft 90 6mm 23" infusion sets',
-          infusionSet1: 'AutoSoft 90 6 mm 23"', qtyInfusionSet1: "3", cahOrderNumber: "1120960884",
-          substituteInfusionSet: 'TruSteel 6 mm 23"', substitutionStatus: "Sent",
-        })}
-        skuRows={rows}
-      />,
-    );
-    expect(screen.getByText("Swap requested")).toBeInTheDocument();
+    const swap = placed({
+      id: "s", name: "Swap Person",
+      backordered: 'AutoSoft 90 6mm 23" infusion sets',
+      infusionSet1: 'AutoSoft 90 6 mm 23"', qtyInfusionSet1: "3", cahOrderNumber: "1120960884",
+      substituteInfusionSet: 'TruSteel 6 mm 23"', substitutionStatus: "Sent",
+    });
+    wrap(<SubstitutionCard order={swap} skuRows={rows} />);
+    expect(screen.getByText("Email sent")).toBeInTheDocument();
     expect(screen.getByText('AutoSoft 90 6mm 23" infusion sets')).toBeInTheDocument();
-    expect(screen.getByText("TN1002833I")).toBeInTheDocument(); // the substitute's SKU, off the tracker
+    expect(screen.getByText("TN1002833I", { exact: false })).toBeInTheDocument(); // the pick's SKU, off the tracker
+    // The set already on the board is selected, so pressing Send is a re-send.
+    expect((screen.getByLabelText("Switch to") as HTMLSelectElement).value).toBe('TruSteel 6 mm 23"');
+    expect(screen.getByText("Re-send swap request")).toBeInTheDocument();
+    // ⚠️ The backordered set is NOT offered — the email service refuses it.
+    const opts = [...(screen.getByLabelText("Switch to") as HTMLSelectElement).options].map((o) => o.value);
+    expect(opts).not.toContain('AutoSoft 90 6 mm 23"');
+    expect(opts).toContain('AutoSoft XC 6 mm 23"');
 
+  });
+
+  it("substitution: an Error: label reads as not sent, and Send is refused with the reason", () => {
     wrap(
       <SubstitutionCard
         order={placed({
@@ -125,8 +145,11 @@ describe("the Orders page renders every card", () => {
         skuRows={rows}
       />,
     );
-    expect(screen.getByText("Swap request failed")).toBeInTheDocument();
+    expect(screen.getByText("Email not sent")).toBeInTheDocument();
     expect(screen.getByText(/Add the CAH Order Number/)).toBeInTheDocument();
+    // No order number and no quantity, so Send is refused with the reason said.
+    expect(screen.getByRole("button", { name: /swap request/i })).toBeDisabled();
+    expect(screen.getByText(/Cardinal would refuse this/)).toBeInTheDocument();
   });
 
   it("overview counts and alerts, and the stock table", () => {

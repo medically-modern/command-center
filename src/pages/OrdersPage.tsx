@@ -188,7 +188,7 @@ const OrdersPage = () => {
                   <OrderTimeline order={open} />
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                     <OrderLinesCard order={open} skuRows={sku.rows} />
-                    <SubstitutionCard order={open} skuRows={sku.rows} />
+                    <SubstitutionCard key={open.id} order={open} skuRows={sku.rows} onSent={() => void refetch(true)} />
                     <ShippingCard order={open} />
                     <CardinalCard order={open} />
                     <PatientCoverageCard order={open} />

@@ -29,7 +29,6 @@ import {
 import { productWords } from "@/lib/orders/rowSummary";
 import { CardinalPill, Pill, StagePill } from "./pills";
 import { STAGE_TONE } from "./tones";
-import { Field } from "./Field";
 
 interface Props {
   order: Order;
@@ -75,6 +74,7 @@ export function OrderHeaderCard({ order, allOrders, onSelect, onPlaced }: Props)
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               {[
+                order.dob ? `DOB ${order.dob}` : "",
                 order.orderDate ? `Created ${fmtDate(order.orderDate)}` : "",
                 order.cahOrderNumber ? `Cardinal order ${order.cahOrderNumber}` : "",
                 order.poNumber ? `PO ${order.poNumber}` : "",
@@ -82,9 +82,8 @@ export function OrderHeaderCard({ order, allOrders, onSelect, onPlaced }: Props)
               ].filter(Boolean).join(" · ")}
             </p>
           </div>
-          <div className="flex flex-col items-end gap-2 shrink-0">
+          <div className="shrink-0">
             <PatientContact phone={order.phone} />
-            <Field label="DOB" value={order.dob} />
           </div>
         </div>
 

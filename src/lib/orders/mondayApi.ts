@@ -421,6 +421,43 @@ export async function readColumnText(itemId: string, columnId: string): Promise<
 
 /** Status write by LABEL ID. Only `mondayWrite.markOrdered` calls it, and that
  *  is dark until the ordering switch is flipped (`config.ts`). */
+/**
+ * Clear a status column. ⚠️ `{}`, never `{"index": null}` (Monday reads that as
+ * an unreadable value) and never `""` — the §5.31c rule.
+ */
+export async function clearStatus(itemId: string, columnId: string): Promise<void> {
+  await gql(
+    `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }`,
+    { boardId: String(BOARD_ID), itemId, columnId, value: JSON.stringify({}) },
+  );
+}
+
+/**
+ * The three fields the substitution watcher reads — the pick, the service's
+ * verdict and the Notes receipt. One item, three columns, so a 3-second poll
+ * after a send costs about as little as a Monday read can.
+ */
+export async function readSubstitutionState(
+  itemId: string,
+  signal?: AbortSignal,
+): Promise<{ substitute: string; status: string; notes: string }> {
+  const data = await gql<{ items: { column_values: { id: string; text: string | null }[] }[] }>(
+    `query ($itemId: [ID!], $cols: [String!]) {
+      items(ids: $itemId) { column_values(ids: $cols) { id text } }
+    }`,
+    { itemId: [itemId], cols: [COL.substituteInfusionSet, COL.substitutionStatus, COL.notes] },
+    signal,
+  );
+  const byId = new Map((data.items?.[0]?.column_values ?? []).map((c) => [c.id, c.text ?? ""]));
+  return {
+    substitute: byId.get(COL.substituteInfusionSet) ?? "",
+    status: byId.get(COL.substitutionStatus) ?? "",
+    notes: byId.get(COL.notes) ?? "",
+  };
+}
+
 export async function writeStatusIndex(itemId: string, columnId: string, index: number): Promise<void> {
   await gql(
     `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
