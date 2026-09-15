@@ -3515,6 +3515,11 @@ all ten pairs correctly — the divergence was created by the write rule, never 
      never get an SoS entry. ⚠️ Which means the silence Brandon asked for on 9/2 **has never once
      fired**; tell him. The SoS family is the more honest input anyway — it is literally "have we
      billed this".
+     ⚠️ **He was told, and it came back as a bug five days later — see §5.32f.** A moot whose second
+     half can never be true on the population it exists for is not a harmless no-op, it is an
+     unconditional warning; "zero verdicts changed" measured the swap correctly and the feature
+     wrongly. The supplies now have a second route in (a PAID Medicaid DVS claim); the Last Bill
+     route here is unchanged.
    - Final Confirm's five editable boxes — they wrote legacy, and `resolveLastBill` then displayed
      the SoS value OVER the rep's correction. The only four both-set-and-differ rows on either
      board were exactly this (all Welcome Call sensors, all Completed, none on Insurance — so
@@ -3757,6 +3762,73 @@ date keeps working** — this is not a one-way write.
 **Pinned by `samantha/sosFactsPreserved.test.ts`** — a source scan (the `listColumns.test.ts`
 convention), verified to fail when either condition is restored. A regression here is silent on
 every surface: green toast, green page, empty column.
+### 5.32f C18 auth expiry stands down on a PAID Medicaid DVS supply claim (Sep 2026)
+Brandon, 2026-09-15: *"this keeps popping up for medicaid supplies. if supplies got paid via dvs,
+don't need this warning. only for supplies via dvs should this pop-up not exist."*
+
+§5.32's audit measured `authExpiryMoot`'s silence and recorded it as a harmless no-op — 324 Medicaid
+× Auth Valid × has-end-date product-rows, not one carrying a date in either Last Bill family, so
+"this has never once fired". ⚠️ **From the floor the same fact is the bug.** Medicaid supplies
+auto-clear and never get an SoS entry, so for the one population the expiry row keeps firing on, the
+moot's second half was permanently false and the warning was **unconditional**. Measuring that a
+silence never fires and concluding it is harmless is the inversion to watch for: a check that cannot
+be satisfied is not quiet, it is noise.
+
+On DVS the "auth" is an ePACES approval for the order in front of us and its window is **days** wide
+by design — every live example ends 3 days out — so the rep reads *"Infusion sets auth expires in
+3d"* and *"Cartridges auth expires in 3d"* on two lines whose claims **already paid inside that
+window**. Nothing is wrong and there is nothing to fix, which is exactly how a check pack teaches
+people to click through it.
+
+**The evidence is the claim column, not a payer rule.** Infusion sets → **A4230 Claim**
+`text_mm28a3xt`, cartridges → **A4232 Claim** `text_mm282cy5`, written by the `automate-dvs` Railway
+services and already in Final Confirm's read set, `Patient` type and mapping. `authExpiryMoot` gains
+an OR: `medicaidCoverage && (!blank(lastBill) || dvsClaimPaid(dvsClaim))`. Canonical rule:
+**`lib/shared/dvsClaim.ts`** (+ tests).
+
+⚠️ **NON-BLANK IS NOT PAID.** The shape is `<verdict>[: <detail>]`, and the live vocabulary across
+all **107** non-blank rows on the Welcome Call board (2026-09-15) is `Paid: $456.00` · `Paid: $108.30`
+· `Paid: $455.00` · `Paid: $0.00` · `Denied: Claim denied — see ePACES for details` · `Denied:
+Maximum coverage amount met or exceeded for benefit period.` · `ERROR — see Claims Error col` · a
+legacy `Yes`. A blank check would read a **denial** as evidence the line is fine — the opposite of
+what it says, and the one direction that costs money. Linda Nadas (`12798018278`) carries `Denied`
+live today. Only an explicit `Paid` verdict silences; the legacy `Yes` does not.
+⚠️ **The verdict decides, the amount only explains.** `Paid: $0.00` is paid — DVS adjudicated and
+accepted it; reading the dollar figure to overrule the word is the inversion §5.5 records for SMS
+delivery. Three rows carry it, all Completed or Stuck, none live.
+
+⚠️⚠️ **DO NOT gate this on `hcpcRules.suppliesRouteToMedicaid`** — the obvious reading of "supplies
+via dvs", and wrong. That rule is a **prediction** built on a hand-maintained payer set
+(`SUPPLIES_NEED_NY_MEDICAID_SECONDARY`), and it is already wrong for this population: **`United
+Medicaid` is not in it**, yet two live patients on that payer (`12364959798`, `12979216005`) have
+paid A4230/A4232 claims. A set that must be updated when a payer is added will not be (§5.9/§5.10).
+`medicaidCoverage` is kept instead — a **regex** (`/medicaid/i`) plus the NY Medicaid secondary, so
+United Medicaid passes — and the claim column is the **record of what DVS actually did**. Both halves
+still required on both routes, for §5.32's own reason: a commercial window IS what the payer
+enforces.
+
+⚠️ **Scoped to the supplies BY CONSTRUCTION**, per Brandon's "only for supplies via dvs". Only the
+infusion-set and cartridge rows of `authProducts` carry a claim column at all — the monitor, sensors
+and pump pass `""` and can never be silenced this way — so the scope cannot drift as that array
+grows, and no second condition has to be kept in step. Per LINE, like the Last Bill pairing: a paid
+infusion-set claim does not cover the cartridges.
+⚠️ Scoped to the **EXPIRY** branch only, exactly as the Last Bill route is. `C17_AUTH_DENIED`,
+`C17_AUTH_UNRESOLVED` and `C18_AUTH_NO_ID` still fire however well a line has paid — those are
+statements about the auth's RESULT, not about a date drifting past today.
+
+**Blast radius when it shipped:** the two live patients it was reported from — John Higgins
+(`13043500534`, Fidelis Medicaid) and Suleiman Mohsen (`13043572541`, Anthem BCBS Medicaid (JLJ)) —
+both with infusion-set and cartridge auths ending 2026-09-18 and both claims paid, i.e. Brandon's
+screenshot to the day. Alex Pinet, Yisroel Schreiber (ended 09-13, red) and Charmaine Brooks (09-15)
+lose the same row. **Final Confirm never blocks Send**, so this only ever removes noise.
+
+**Keep-in-agreement:**
+1. **The rule** — `lib/shared/dvsClaim.ts` (+ `dvsClaim.test.ts`, whose fixtures are the live column
+   vocabulary — re-run that `is_not_empty` scan before adding a verdict).
+2. **The moot** — `lib/finalConfirm/checkPack.ts` `authExpiryMoot` + the `dvsClaim` field on
+   `authProducts` (`""` for the three non-supply lines).
+3. **The columns** — `text_mm28a3xt` / `text_mm282cy5` on Welcome Call, already in
+   `finalConfirm/mondayApi.ts` `READ_COLUMN_IDS`. The SPA never writes them; `automate-dvs` owns them.
 
 ### 5.33 The two insurance pickers read their labels from the board (Sep 2026)
 Brandon added the payer **"Health Plans Inc (PHCS)"** (label id **159**) to Monday and expected it
@@ -5126,6 +5198,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A last bill date a rep entered isn't on the board (and a next-order date exists that could only have come from it) | §5.32e — the Benefits send used to blank the SoS column whenever that product's auth was pending. Confirm with the gateway audit (`/audit.json?key=…&item=<id>&all=1`), NOT the board: a blank write leaves no activity-log entry worth reading and the derived next-order date is the fingerprint. `sosFactsPreserved.test.ts` guards the fix; the Auth Outstanding recheck's clear is legitimate and stays |
 | A Humana patient's Same-or-Similar was never asked / a product sits in Skip SoS Products | §5.32c — `benefitsDerive.sosRequiredDespiteAuth`. Auth = Required defers the check for every payer EXCEPT Humana; keyed on primary insurance (the secondary column has no Humana label). An auth-required Humana product with no entry derives `""`, which holds the stage — never `"skip"` |
 | The patient's phone is wrong and a rep can't fix it | §5.32d — editable on **Auth Outstanding only**, via `BenefitsPatientHeader`'s opt-in `onSavePhone`. The refusal fires BEFORE the write (`planPhoneWrite` skips what it can't parse, so an unchecked save is green and empty); the write goes straight to the board, never into the overlay. Not a route back to the retired Edit-profile dialog — §7 |
+| The auth-expiry warning keeps popping up on Medicaid supplies | §5.32f — `lib/shared/dvsClaim.ts`. A **paid** A4230/A4232 claim silences the C18 expiry row on that line; a `Denied`, an `ERROR` or the legacy `Yes` deliberately does not, and neither does a blank. Still firing on a patient whose claim paid ⇒ check the primary matches `/medicaid/i` or the secondary is NY Medicaid. ⚠️ Never re-gate this on `hcpcRules.suppliesRouteToMedicaid` — its payer set omits `United Medicaid` |
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |

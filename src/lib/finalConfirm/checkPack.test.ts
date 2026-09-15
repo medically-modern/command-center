@@ -243,6 +243,130 @@ describe("checkPack — C18 expiry is moot once Medicaid has paid", () => {
 });
 
 /**
+ * C18 expiry vs the Medicaid DVS supply claim (Brandon, 2026-09-15).
+ *
+ * *"this keeps popping up for medicaid supplies. if supplies got paid via dvs,
+ * don't need this warning. only for supplies via dvs should this pop-up not
+ * exist."*
+ *
+ * The Last Bill route above could never reach these patients: Medicaid supplies
+ * auto-clear and never get an SoS entry, so the moot's second half was always
+ * false and the expiry row fired unconditionally on exactly the population it
+ * was least useful for. The A4230/A4232 Claim column is the missing evidence —
+ * it is DVS's own record that the line billed and paid.
+ *
+ * The live case this was reported from: John Higgins (13043500534) and Suleiman
+ * Mohsen (13043572541), both Welcome Call on 2026-09-15, infusion-set AND
+ * cartridge auths ending 2026-09-18, both claims "Paid: $456.00" / "$108.30".
+ */
+describe("checkPack — C18 expiry is moot once the DVS supply claim has paid", () => {
+  const EXPIRED = "2026-01-01";
+  const soon = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  /** Both supply lines served, both auths valid-but-lapsed. */
+  const lapsedSupplies = (over: Partial<Patient>): Partial<Patient> => ({
+    serving: "Insulin Pump", pumpType: "t:slim",
+    infusionSetAuthResult: "Auth Valid", infusionSetAuthId: "A1", infusionSetAuthEnd: EXPIRED,
+    cartridgeAuthResult: "Auth Valid", cartridgeAuthId: "A2", cartridgeAuthEnd: EXPIRED,
+    ...over,
+  });
+
+  scenario("Medicaid + both DVS claims paid → both silent",
+    lapsedSupplies({
+      primaryInsurance: "Fidelis Medicaid", secondaryInsurance: "NY Medicaid", memberId2: "AB12345C",
+      a4230Claim: "Paid: $456.00", a4232Claim: "Paid: $108.30",
+    }),
+    [], ["C18_AUTH_EXPIRED", "C18_AUTH_EXPIRING"]);
+
+  // Brandon's screenshot, to the day: a 3-day window on a line that already paid.
+  scenario("The reported case — expiring in 3d with the claim paid → silent",
+    lapsedSupplies({
+      primaryInsurance: "Anthem BCBS Medicaid (JLJ)", secondaryInsurance: "NY Medicaid", memberId2: "AB12345C",
+      infusionSetAuthEnd: soon(), cartridgeAuthEnd: soon(),
+      a4230Claim: "Paid: $456.00", a4232Claim: "Paid: $108.30",
+    }),
+    [], ["C18_AUTH_EXPIRING", "C18_AUTH_EXPIRED"]);
+
+  // ⚠️ THE WHOLE POINT OF PARSING RATHER THAN CHECKING FOR NON-BLANK. A denied
+  // claim is the opposite of evidence the line is fine, and it is a real value
+  // this column carries — Linda Nadas (12798018278) holds it live today.
+  scenario("A DENIED claim does not silence anything",
+    lapsedSupplies({
+      primaryInsurance: "Fidelis Medicaid",
+      a4230Claim: "Denied: Claim denied — see ePACES for details",
+      a4232Claim: "Denied: Maximum coverage amount met or exceeded for benefit period.",
+    }),
+    ["C18_AUTH_EXPIRED"]);
+
+  scenario("An ERROR claim does not silence anything",
+    lapsedSupplies({ primaryInsurance: "Fidelis Medicaid", a4230Claim: "ERROR — see Claims Error col", a4232Claim: "ERROR — see Claims Error col" }),
+    ["C18_AUTH_EXPIRED"]);
+
+  // One legacy row on the board reads exactly this. It does not say "paid".
+  scenario("The legacy \"Yes\" value does not silence anything",
+    lapsedSupplies({ primaryInsurance: "Fidelis Medicaid", a4230Claim: "Yes", a4232Claim: "Yes" }),
+    ["C18_AUTH_EXPIRED"]);
+
+  // PER LINE, like the Last Bill pairing above: a paid infusion-set claim says
+  // nothing about the cartridges. Both lines raise the same finding ID, so this
+  // one has to read the anchor FIELD — an id-only assertion would pass on a
+  // rule that silenced both.
+  it("a paid infusion-set claim does not cover the cartridges", () => {
+    const findings = runFinalChecks({
+      ...basePatient(),
+      ...lapsedSupplies({ primaryInsurance: "Fidelis Medicaid", a4230Claim: "Paid: $456.00" }),
+    }).filter((f) => f.id === "C18_AUTH_EXPIRED");
+    expect(findings.map((f) => f.field)).toEqual(["cartridgeAuthResult"]);
+  });
+
+  // ⚠️ "only for supplies via dvs". The monitor, the sensors and the pump pass
+  // `""` and are unreachable from this route however the claim columns read.
+  scenario("A paid supply claim never silences the PUMP's own expiry",
+    lapsedSupplies({
+      primaryInsurance: "Fidelis Medicaid",
+      ipAuthResult: "Auth Valid", ipAuthId: "A3", ipAuthEnd: EXPIRED,
+      infusionSetAuthResult: "Not Serving", cartridgeAuthResult: "Not Serving",
+      a4230Claim: "Paid: $456.00", a4232Claim: "Paid: $108.30",
+    }),
+    ["C18_AUTH_EXPIRED"]);
+
+  scenario("A paid supply claim never silences the SENSORS' own expiry",
+    lapsedSupplies({
+      serving: "Supplies + CGM", cgmType: "Dexcom G7",
+      primaryInsurance: "Fidelis Medicaid",
+      sensorsAuthResult: "Auth Valid", sensorsAuthId: "A4", sensorsAuthEnd: EXPIRED,
+      infusionSetAuthResult: "Not Serving", cartridgeAuthResult: "Not Serving",
+      a4230Claim: "Paid: $456.00", a4232Claim: "Paid: $108.30",
+    }),
+    ["C18_AUTH_EXPIRED"]);
+
+  // A commercial auth window IS the window the payer enforces, and a claim
+  // column on a commercial patient would be a value nothing writes today.
+  scenario("Commercial + a paid claim → still fires",
+    lapsedSupplies({ primaryInsurance: "Cigna", a4230Claim: "Paid: $456.00", a4232Claim: "Paid: $108.30" }),
+    ["C18_AUTH_EXPIRED"]);
+
+  // ⚠️ `United Medicaid` is the payer `hcpcRules.suppliesRouteToMedicaid` omits
+  // from its hand-maintained set, and two live patients on it carry paid DVS
+  // claims. Gating this on that rule instead of on `medicaidCoverage` would
+  // leave exactly those reps still clicking through the warning.
+  scenario("United Medicaid — outside the routing set, still silenced",
+    lapsedSupplies({
+      primaryInsurance: "United Medicaid", secondaryInsurance: "NY Medicaid", memberId2: "AB12345C",
+      a4230Claim: "Paid: $456.00", a4232Claim: "Paid: $108.30",
+    }),
+    [], ["C18_AUTH_EXPIRED"]);
+
+  // Scoped to the EXPIRY branch, exactly as the Last Bill route is.
+  scenario("A denial still fires on a DVS-paid line",
+    lapsedSupplies({ primaryInsurance: "Fidelis Medicaid", infusionSetAuthResult: "Denied", a4230Claim: "Paid: $456.00", a4232Claim: "Paid: $108.30" }),
+    ["C17_AUTH_DENIED"]);
+});
+
+/**
  * Retired at Final Confirm (Brandon, 2026-09-02) — the rows that popped up on
  * nearly every profile. Cost-sharing is the Welcome Call's conversation and
  * still renders there (Benefits card + OopEstimateCard); repeating it here

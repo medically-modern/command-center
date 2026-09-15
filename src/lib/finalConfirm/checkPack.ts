@@ -40,6 +40,7 @@ import {
   ORDER_LINE_LABEL,
   type OrderLine,
 } from "@/lib/shared/servingLines";
+import { dvsClaimPaid } from "@/lib/shared/dvsClaim";
 
 /** Anchor field for each Next Order Date finding (C29). */
 const NEXT_ORDER_DATE_FIELD: Record<OrderLine, keyof Patient> = {
@@ -675,24 +676,60 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
    * (Medicaid supplies auto-clear and never get an SoS entry), so this silence
    * has never once fired and the swap changed zero verdicts. The SoS family is
    * the more honest input anyway — it is literally "have we billed this".
+   *
+   * ⚠️ WHICH IS EXACTLY WHY THE SUPPLIES NEEDED A SECOND ROUTE IN (Brandon,
+   * 2026-09-15: *"this keeps popping up for medicaid supplies. if supplies got
+   * paid via dvs, don't need this warning. only for supplies via dvs should this
+   * pop-up not exist"*). That audit measured the silence and recorded it as
+   * harmless; from the floor the same fact is the bug. Medicaid supplies never
+   * get an SoS entry, so for the one population whose auth this row keeps firing
+   * on, the moot could never fire and the warning was unconditional.
+   *
+   * On DVS the "auth" is an ePACES approval for the order in front of us and its
+   * window is days wide by design — every live example below ends 3 days out —
+   * so a rep sees "expires in 3d" on a line whose claim ALREADY PAID inside that
+   * window. Nothing is wrong and there is nothing to fix, which is how a check
+   * pack teaches people to click through it.
+   *
+   * `dvsClaim` is that line's A4230/A4232 Claim column — the record of what DVS
+   * actually did (`lib/shared/dvsClaim.ts`). A PAID verdict answers the same
+   * question the SoS date answers, which is why it is an OR and not a third
+   * condition: either piece of billing evidence settles the expiry row.
+   *
+   * ⚠️ Scoped to the supplies BY CONSTRUCTION, per Brandon's "only for supplies
+   * via dvs". Only the infusion-set and cartridge rows carry a claim column at
+   * all — the monitor, sensors and pump pass `""` and can never be silenced this
+   * way, so the scope cannot drift as this array grows.
+   *
+   * ⚠️ `medicaidCoverage` is still required on BOTH routes, and it is a regex
+   * (`/medicaid/i`) plus the NY Medicaid secondary rather than a payer list —
+   * which is what makes it right where `hcpcRules.suppliesRouteToMedicaid` is
+   * wrong: that rule's hand-maintained set omits `United Medicaid`, and two live
+   * patients on that payer have paid DVS claims. See `dvsClaim.ts`.
    */
-  const authExpiryMoot = (lastBill: string): boolean =>
-    medicaidCoverage && !blank(lastBill);
+  const authExpiryMoot = (lastBill: string, dvsClaim: string): boolean =>
+    medicaidCoverage && (!blank(lastBill) || dvsClaimPaid(dvsClaim));
 
   // C17/C18 — per-product auth state, expiry, and completeness (split-aware
   // via each product's own "Not Serving" auth result).
   //
-  // `lastBill` is the per-product Last Bill Date, and it is what silences the
-  // EXPIRY half of C18 on Medicaid — see the note on `authExpiryMoot` above.
+  // `lastBill` is the per-product Last Bill Date and `dvsClaim` the per-line
+  // Medicaid DVS claim; either one silences the EXPIRY half of C18 on Medicaid —
+  // see the note on `authExpiryMoot` above.
+  //
+  // ⚠️ `dvsClaim` is `""` for the monitor, the sensors and the pump because those
+  // lines HAVE no claim column — DVS bills the supplies only. Leave it that way:
+  // it is what keeps the exemption on the supplies, per Brandon's "only for
+  // supplies via dvs", without a second scoping condition to keep in step.
   const authProducts: Array<{
     name: string; served: boolean; result: string;
-    authId: string; end: string; lastBill: string; field: keyof Patient;
+    authId: string; end: string; lastBill: string; dvsClaim: string; field: keyof Patient;
   }> = [
-    { name: "CGM monitor", served: cgmServed, result: p.cgmAuthResult, authId: p.monitorAuthId, end: p.monitorAuthEnd, lastBill: p.lastBillDateMonitor, field: "cgmAuthResult" },
-    { name: "Sensors", served: cgmServed, result: p.sensorsAuthResult, authId: p.sensorsAuthId, end: p.sensorsAuthEnd, lastBill: p.lastBillDateSensors, field: "sensorsAuthResult" },
-    { name: "Insulin pump", served: pumpServed, result: p.ipAuthResult, authId: p.ipAuthId, end: p.ipAuthEnd, lastBill: p.lastBillDateIp, field: "ipAuthResult" },
-    { name: "Infusion sets", served: pumpishInServing, result: p.infusionSetAuthResult, authId: p.infusionSetAuthId, end: p.infusionSetAuthEnd, lastBill: p.lastBillDateInfusionSet, field: "infusionSetAuthResult" },
-    { name: "Cartridges", served: pumpishInServing, result: p.cartridgeAuthResult, authId: p.cartridgeAuthId, end: p.cartridgeAuthEnd, lastBill: p.lastBillDateCartridge, field: "cartridgeAuthResult" },
+    { name: "CGM monitor", served: cgmServed, result: p.cgmAuthResult, authId: p.monitorAuthId, end: p.monitorAuthEnd, lastBill: p.lastBillDateMonitor, dvsClaim: "", field: "cgmAuthResult" },
+    { name: "Sensors", served: cgmServed, result: p.sensorsAuthResult, authId: p.sensorsAuthId, end: p.sensorsAuthEnd, lastBill: p.lastBillDateSensors, dvsClaim: "", field: "sensorsAuthResult" },
+    { name: "Insulin pump", served: pumpServed, result: p.ipAuthResult, authId: p.ipAuthId, end: p.ipAuthEnd, lastBill: p.lastBillDateIp, dvsClaim: "", field: "ipAuthResult" },
+    { name: "Infusion sets", served: pumpishInServing, result: p.infusionSetAuthResult, authId: p.infusionSetAuthId, end: p.infusionSetAuthEnd, lastBill: p.lastBillDateInfusionSet, dvsClaim: p.a4230Claim, field: "infusionSetAuthResult" },
+    { name: "Cartridges", served: pumpishInServing, result: p.cartridgeAuthResult, authId: p.cartridgeAuthId, end: p.cartridgeAuthEnd, lastBill: p.lastBillDateCartridge, dvsClaim: p.a4232Claim, field: "cartridgeAuthResult" },
   ];
   for (const prod of authProducts) {
     if (!prod.served || prod.result === "Not Serving") continue;
@@ -710,7 +747,7 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
       });
     } else if (prod.result === "Auth Valid") {
       const end = parseYmd(prod.end);
-      if (end && !authExpiryMoot(prod.lastBill)) {
+      if (end && !authExpiryMoot(prod.lastBill, prod.dvsClaim)) {
         const days = daysFromToday(end);
         if (days < 0) {
           add({
