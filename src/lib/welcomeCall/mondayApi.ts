@@ -223,10 +223,6 @@ export const COL = {
   // for most billed patients. Their data was copied into these and they are
   // retired on the board; shared/lastBillDate.ts has the audit. Do not re-add.
   sosLastBillSensors: "date_mm59n1x1",
-  /** "CGM Sensors SoS Units" — copied from Insurance `numeric_mm596xga` by the
-   *  create-item automation (7918324247). A cadence input: one billed unit is a
-   *  30-day supply, two is 60 (shared/nextOrderCadence.ts). */
-  sosUnitsSensors: "numeric_mm59c4tw",
   sosLastBillIp: "date_mm593ghh",
   sosLastBillInfusionSet: "date_mm59jcf5",
   sosLastBillCartridge: "date_mm59mw5n",
@@ -304,7 +300,7 @@ export const READ_COLUMN_IDS = [
   COL.escalationNotes,
   COL.neverBilledIsCar, COL.neverBilledCgm,
   COL.sosNeverBilledMonitor, COL.sosLastBillMonitor,
-  COL.sosLastBillSensors, COL.sosUnitsSensors, COL.sosLastBillIp,
+  COL.sosLastBillSensors, COL.sosLastBillIp,
   COL.sosLastBillInfusionSet, COL.sosLastBillCartridge,
 ];
 

@@ -1,30 +1,28 @@
 import { describe, it, expect } from "vitest";
 import { computeNextOrder, resolveNextOrderWrite } from "./workflow";
-import type { NextOrderCadence } from "@/lib/shared/nextOrderCadence";
 
-const SENSORS: NextOrderCadence = { line: "sensors" };
+/** Local-calendar YYYY-MM-DD — mirrors nextOrderDate.test.ts. */
+function ymdLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 /**
  * MM-1042: sensor next order date was being populated (with "today", so it
- * matched supplies/pump) for patients not being served sensors. The fix gated
+ * matched supplies/pump) for patients not being served sensors. The fix gates
  * each next-order write on whether that product is served.
- *
- * ⚠️ The "today" default it was gating AGAINST is gone as of 2026-09-15 — a
- * line with no last-bill history now resolves to "" on both paths
- * (shared/nextOrderCadence.ts). The serving gate still matters and still has
- * its own job: a not-served line must CLEAR a stale board value, where a served
- * line with nothing to compute from leaves it alone.
  */
 describe("resolveNextOrderWrite — not-served products must stay empty", () => {
-  it("does not write anything to a not-served line that is already blank", () => {
+  it("does NOT default a not-served line to today (the MM-1042 bug)", () => {
+    const today = ymdLocal(new Date());
     const value = resolveNextOrderWrite({
       served: false,
       edited: null,
-      mondayDate: "",
-      lastBillDates: [],
-      cadence: SENSORS,
+      mondayDate: "", // nothing on the board
+      lastBillDates: [], // no billing history → served path would give "today"
     });
-    expect(value).toBeNull();
+    // Served path would have produced today; the not-served path must not.
+    expect(computeNextOrder([])).toBe(today); // sanity: the trap exists
+    expect(value).toBeNull(); // board already empty → skip, never write today
   });
 
   it("clears a stale date on a not-served line", () => {
@@ -33,9 +31,8 @@ describe("resolveNextOrderWrite — not-served products must stay empty", () => 
       edited: null,
       mondayDate: "2026-07-15",
       lastBillDates: [],
-      cadence: SENSORS,
     });
-    expect(value).toBe("");
+    expect(value).toBe(""); // clear the stale value
   });
 
   it("honors an explicit rep edit even on a not-served line", () => {
@@ -44,60 +41,31 @@ describe("resolveNextOrderWrite — not-served products must stay empty", () => 
       edited: "2026-09-01",
       mondayDate: "",
       lastBillDates: [],
-      cadence: SENSORS,
     });
     expect(value).toBe("2026-09-01");
   });
 });
 
-describe("resolveNextOrderWrite — served products", () => {
-  /** The regression guard. A served line with no billing history used to write
-   *  TODAY; 89 live CGM rows carried one. It must now write nothing at all. */
-  it("writes NOTHING for a served line with no last-bill history", () => {
+describe("resolveNextOrderWrite — served products keep existing behavior", () => {
+  it("still applies the computed today default for a served line with no history", () => {
+    const today = ymdLocal(new Date());
     const value = resolveNextOrderWrite({
       served: true,
       edited: null,
       mondayDate: "",
       lastBillDates: [],
-      cadence: SENSORS,
     });
-    expect(value).toBeNull();
+    expect(value).toBe(today);
   });
 
-  /** ⚠️ Skip, not clear. Having no basis to compute a date is not evidence the
-   *  date on the board is wrong — the rep's own entry arrives via `edited`. */
-  it("leaves an existing board date alone when it has nothing to compute from", () => {
-    const value = resolveNextOrderWrite({
-      served: true,
-      edited: null,
-      mondayDate: "2026-07-15",
-      lastBillDates: [],
-      cadence: SENSORS,
-    });
-    expect(value).toBeNull();
-  });
-
-  it("writes the cadence result for a served line with history", () => {
+  it("writes last-bill + 90 days for a served line", () => {
     const value = resolveNextOrderWrite({
       served: true,
       edited: null,
       mondayDate: "",
       lastBillDates: ["2026-01-01"],
-      cadence: SENSORS,
     });
-    expect(value).toBe(computeNextOrder(["2026-01-01"], SENSORS));
-    expect(value).toBe("2026-04-01");
-  });
-
-  it("uses the PUMP cadence on the pump line — years, not 90 days", () => {
-    const value = resolveNextOrderWrite({
-      served: true,
-      edited: null,
-      mondayDate: "",
-      lastBillDates: ["2026-01-01"],
-      cadence: { line: "insulin_pump", isMedicare: true },
-    });
-    expect(value).toBe("2030-12-31");
+    expect(value).toBe(computeNextOrder(["2026-01-01"]));
   });
 
   it("skips the write when the effective value already matches the board", () => {
@@ -106,7 +74,6 @@ describe("resolveNextOrderWrite — served products", () => {
       edited: "2026-05-05",
       mondayDate: "2026-05-05",
       lastBillDates: [],
-      cadence: SENSORS,
     });
     expect(value).toBeNull();
   });

@@ -3904,62 +3904,6 @@ All ten filler quantities are **3** now. The fixture was wrong, not the check.
 3. **The columns** — `numeric_mm1xv7wr` / `numeric_mm1xkq3b` and `color_mm1w5wxr`, all already in
    `finalConfirm/mondayApi.ts` `READ_COLUMN_IDS`.
 
-### 5.32f Welcome Call stopped inventing reorder dates (Sep 2026)
-Josh, 2026-09-15, on the last-bill audit: *"i just care about moving forward not the past."*
-So: no backfill, one code fix. Canonical rule: **`lib/shared/nextOrderCadence.ts`** (+ tests).
-
-**Two stages write the SAME three Next Order Date columns by two different rules**, and the
-disagreement was invisible because Welcome Call only ever fills a blank (`effectiveNextOrder` =
-edit → board value → computed). Insurance's payer-aware answer normally won, so the Welcome Call
-rule surfaced exactly where Insurance had written nothing — the auth-deferred / Skip-SoS
-population, i.e. the patients whose cadence was least understood:
-
-| | Insurance (`samantha/workflow`) | Welcome Call (before) |
-|---|---|---|
-| Insulin pump | last bill + 4 yr (5 Medicare) | last bill + **90 DAYS** |
-| Sensors | + 30 / 60 / 90 by billed units | + 90 days, flat |
-| Supplies | + 60 Medicaid / 90 | + 90 days, flat |
-| No last bill | `""` — an honest gap | **TODAY** |
-| Sensors input | the sensors bill | sensors **OR THE MONITOR** |
-
-⚠️ **Measured on the live boards 2026-09-15, and the "today" default is not theoretical: 89
-CGM-serving Welcome Call rows carry a Sensors Next Order Date with no billing evidence of any
-kind behind it** — no sensors date, no monitor date, no never-billed checkbox. Those 89 land on
-a weekday **89 times out of 89**; the control group (rows with a real sensors last bill) lands
-on a weekend 15 times in 93, as +90-day arithmetic must. They were not computed from anything —
-they are the day the rep pressed Send. Two Completed patients also carry an insulin-pump reorder
-**90 days** after their last pump (Medicare's RUL is five years).
-
-- ⚠️ **No evidence ⇒ BLANK, never today.** A blank is a gap somebody can see and fill (C29 flags
-  one on a served line); "today" is a cadence that looks real and is not. Same rule as
-  `monitorSale`'s empty verdict (§5.31) — absent data is UNKNOWN, never an answer.
-- ⚠️ **BLANK means SKIP, not CLEAR** (`resolveNextOrderWrite`). Having no basis to compute a date
-  is not evidence the board's date is wrong, and a rep's own entry arrives via `edited`. Positive
-  evidence only — the `pendingAdvance` / `isOrphanRow` rule (§9 / §5.29).
-- ⚠️ **The sensors line reads the SENSORS bill and nothing else.** The monitor fallback dated a
-  90-day consumable off a five-year device — a monitor billed last month puts sensors "due" in 90
-  days whatever their history says. It is what produced Hope Hebb's wrong reorder once her sensors
-  date had been erased (§5.32e). The card's "Last Bill Date:" line carried the same fallback, so it
-  told a rep we had billed sensors when we had not. **Supplies still takes the later of infusion
-  sets and cartridges** — those genuinely ship as one order (Brandon's rule).
-- ⚠️ **`cadence` is a REQUIRED argument on all three of `computeNextOrder` / `effectiveNextOrder` /
-  `resolveNextOrderWrite`** — the bug WAS three lines sharing one rule, so tsc now makes every call
-  site name its line. The `SupplyLengthField` required-`options` precedent (§5.31): a guarantee in
-  the type system cannot rot. `nextOrderCadences(patient)` builds all three from one helper so the
-  card and the send path cannot drift.
-- **One new read: CGM Sensors SoS Units `numeric_mm59c4tw`** on Welcome Call (`sosUnitsSensors`),
-  already carried by hop 7918324247 from Insurance `numeric_mm596xga`. 1 unit = 30 days, 2 = 60.
-- ⚠️ `lib/shared/*` must not import a role slice, so the Insurance path keeps its own copy and
-  **`nextOrderCadence.test.ts` pins the two against each other** — including that BOTH return `""`
-  for no history. Verified to fail (9 tests) when either half is reverted.
-- `addDaysUtc` is `Date.UTC`-anchored, never `new Date("…T00:00:00")` + `toISOString()` — that
-  pattern builds a LOCAL midnight and renders it in UTC, handing back the day BEFORE east of UTC
-  (§9's standing trap). The old `computeNextOrder` also read "today" off local parts rather than ET.
-
-**No board change, no automation change, and no backfill** — the 89 rows keep their dates until
-something re-sends them. Deliberate (Josh, above): this stops the bleeding rather than rewriting
-history nobody can now reconstruct.
-
 ### 5.33 The two insurance pickers read their labels from the board (Sep 2026)
 Brandon added the payer **"Health Plans Inc (PHCS)"** (label id **159**) to Monday and expected it
 in the Command Center. It wasn't: **Primary Insurance `color_mm1xg10n`** and **General Insurance
@@ -5480,7 +5424,6 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
-| A reorder date looks invented, or a pump is "due" 90 days after the last one | §5.32f — `lib/shared/nextOrderCadence.ts` is the one cadence rule; `nextOrderCadence.test.ts` pins it against the Insurance stage. A BLANK next-order date on a served line is now correct and intended: it means no last-bill evidence, not a broken read. A date on a row with no last bill anywhere predates 2026-09-15 |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |
