@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import { mkOrder } from "./fixtures";
 import {
   backorderedEntries, backorderedSetOnOrder, hasSubstitutionStory, normalizeSetName,
-  substitutionAnswered, substitutionBlockers, substitutionOptions, substitutionSendKind,
-  substitutionSendRefusal, substitutionVerdict, SUBSTITUTION_FIX,
+  substitutionAnswered, substitutionBlockers, substitutionEmailPreview, substitutionOptions,
+  substitutionPronouns, substitutionSendKind, substitutionSendRefusal, substitutionVerdict,
+  SUBSTITUTION_FIX,
 } from "./substitution";
 
 /**
@@ -207,5 +208,85 @@ describe("substitutionAnswered — the post-send watcher's stop condition", () =
   it("⚠️ a RE-SEND writes the same 'Sent' — the Notes receipt is what moves", () => {
     expect(substitutionAnswered(before, before)).toBe(false);
     expect(substitutionAnswered(before, { ...before, notes: before.notes + "\n[Sep 15] Auto-email…" })).toBe(true);
+  });
+});
+
+/**
+ * ⚠️ The assertions below are a copy of
+ * `email-serivce/src/features/backorder-substitution/template.js` `render()`,
+ * read on 2026-09-15. They are deliberately literal — the point of the preview
+ * is that it shows the words Cardinal will actually read, so a drift in either
+ * repo has to fail here rather than quietly showing a rep prose nobody sends.
+ */
+describe("substitutionEmailPreview — the read-only preview of Cardinal's email", () => {
+  const o = mkOrder({
+    name: "Sample Patient",
+    gender: "Female",
+    cahOrderNumber: "1119501795",
+    qtyInfusionSet1: "3",
+    infusionSet1: 'AutoSoft 90 6 mm 23"',
+    backordered: 'AutoSoft 90 6mm 23" infusion sets',
+  });
+  const replacement = { name: 'TruSteel 6 mm 23"', sku: "TN1001680I" };
+
+  it("is the service's subject line, word for word", () => {
+    expect(substitutionEmailPreview(o, replacement).subject).toBe(
+      'Backordered infusion set - switch order 1119501795 to TruSteel 6 mm 23"',
+    );
+  });
+
+  it("is the service's body, in the service's order", () => {
+    expect(substitutionEmailPreview(o, replacement).body).toEqual([
+      "Hi Cardinal team,",
+      'Patient Sample Patient has placed an order for the AutoSoft 90 6 mm 23", but the infusion set ' +
+        "remains on back order and she needs new supplies. Could we please switch her order to the " +
+        'TruSteel 6 mm 23"?',
+      "Order ID: 1119501795",
+      "SKU for new order: TN1001680I",
+      "Quantity of boxes to ship: 3",
+      "Let me know if you need additional information.",
+    ]);
+  });
+
+  it("the quantity is the order's own Qty: Infusion Set 1", () => {
+    const p = substitutionEmailPreview({ ...o, qtyInfusionSet1: "9" }, replacement);
+    expect(p.body).toContain("Quantity of boxes to ship: 9");
+  });
+
+  it("⚠️ a field the order does not carry shows as a dash — never guessed, never dropped", () => {
+    const p = substitutionEmailPreview(
+      { ...o, cahOrderNumber: "", qtyInfusionSet1: "" },
+      { name: 'TruSteel 6 mm 23"', sku: "" },
+    );
+    expect(p.subject).toBe('Backordered infusion set - switch order — to TruSteel 6 mm 23"');
+    expect(p.body).toContain("Order ID: —");
+    expect(p.body).toContain("SKU for new order: —");
+    expect(p.body).toContain("Quantity of boxes to ship: —");
+    // Still six paragraphs: the preview shows the shape of the email either way.
+    expect(p.body).toHaveLength(6);
+  });
+
+  it("names the set generically when the order's own set columns are blank", () => {
+    const p = substitutionEmailPreview({ ...o, infusionSet1: "", backordered: "" }, replacement);
+    expect(p.body[1]).toContain("order for the backordered infusion set");
+  });
+
+  it("does not print the configured recipient addresses — they live on the service", () => {
+    const p = substitutionEmailPreview(o, replacement);
+    expect(p.recipients).not.toMatch(/@/);
+    expect(p.signoff).toBe("Best,\nKatie Tyler");
+  });
+});
+
+describe("substitutionPronouns", () => {
+  it("is the service's own mapping", () => {
+    expect(substitutionPronouns("Male")).toEqual({ subject: "he", possessive: "his", needs: "needs" });
+    expect(substitutionPronouns("female")).toEqual({ subject: "she", possessive: "her", needs: "needs" });
+  });
+
+  it("⚠️ blank or anything unexpected is they/their — it can never get a patient wrong", () => {
+    for (const g of ["", "   ", "Nonbinary", "unknown", "M"]) {
+      expect(substitutionPronouns(g), g).toEqual({ subject: "they", possessive: "their", needs: "need" });
+    }
   });
 });

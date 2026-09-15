@@ -4284,8 +4284,29 @@ the Send button, and that second column as the notification.
   duplicate, which is why every fix sentence ends "…then re-pick the substitute set".
 - ⚠️ `normalizeSetName` is deliberately NOT `infusionStock.stockKey`: that one answers "board label
   → tracker row" and strips neither the `infusion sets` suffix nor a `REPLACES` tail.
-- ⚠️ **The SKU shown beside the pick is a courtesy, not the one that is sent.** The service re-reads
-  the tracker as it writes the email (Cardinal reissues item numbers), so the card says so.
+- ⚠️ **The SKU shown beside the pick is a courtesy, not the one that is sent** — the service
+  re-reads the tracker as it writes the email (Cardinal reissues item numbers). The card used to
+  say so beside the number and no longer does (Josh, 2026-09-15: the card was "really busy"); the
+  fact is unchanged and lives in `substitutionEmailPreview`'s doc comment.
+- **The email is PREVIEWED, read-only, in a collapsed `<details>`** (Josh, same day, in place of a
+  paragraph describing what it would do) — `substitution.substitutionEmailPreview` + tests.
+  ⚠️ **A SECOND MIRROR, of `template.js` this time**, and the more visible one: a drifted preview
+  shows a rep prose Cardinal never receives, which is worse than showing nothing, so the tests
+  assert the subject and all six body paragraphs LITERALLY. ⚠️ It renders the TRACKER row's name
+  where there is one, because that is what the service passes — the board label would give a
+  subject line the email never carries. ⚠️ A field the order does not carry shows as an **em dash**,
+  never guessed and never dropped: every one of them is already a `substitutionBlockers` refusal,
+  so Send is shut and the card says why above, and a line quietly missing from the preview is how a
+  rep learns nothing. ⚠️ It deliberately does **not** print the recipient addresses —
+  `config.backorderTo` / `backorderCc` are Railway-overridable on the service, so a list here would
+  claim to be the real recipients while being only this file's memory of the defaults, with no test
+  that could catch the drift (the sign-off IS printed: every one of these emails has carried it and
+  a signature-less preview reads unfinished). One known divergence, in the SET NAME only: the
+  service falls back to the tracker for a backordered entry the order's own set columns do not name
+  (its `backorderedSet()` case 2), which `backorderedSetOnOrder` does not implement.
+- The pick reads top-to-bottom — **Switch from · ↓ · Switch to**, the SKU and the stock pill on one
+  quiet line under the select (Josh, 2026-09-15). The side-by-side row it replaced carried the two
+  sets, an arrow, a select, a pill and a sub-sentence on one wrapping line.
 
 **"First Order" is suppressed when the board contradicts it** (`workflow.orderTypeLabel` + tests).
 Order Type `color_mm1s96z2` is a real signal board-wide — a mix across 1,484 rows — but it is not
@@ -4398,6 +4419,10 @@ filter shows an empty Orders folder, correctly.
 5. **Substitution** — `lib/orders/substitution.ts` (+ its test's `BOARD_LABELS`, which is the live
    `color_mm727p5m` label set) ⇄ `email-serivce/src/features/backorder-substitution/index.js`
    `STATUS` + its `skip` reasons, and `email-serivce/src/cardinal.js` `normalizeSetName`.
+   **The preview is a second mirror**: `substitutionEmailPreview` / `substitutionPronouns` ⇄
+   `email-serivce/src/features/backorder-substitution/template.js` `render()` / `pronouns()`, and
+   the sign-off ⇄ `config.backorderSignoff`. Its tests hold the subject and every body paragraph
+   verbatim, so a change in either repo fails the build rather than showing a rep the wrong email.
 6. **Search** — `lib/systemMgmt/ordersSearch.ts` `ORDERS_SEARCH_BOARD` mirrors this slice's `GROUPS` / `GROUP_TITLES` / `COL`, and re-uses `workflow.orderStage` rather than restating it. It must stay OUT of `BOARDS` (`ordersSearch.test.ts` asserts both halves). `ORDER_IDENTIFIER_COLS` ⇄ `workflow.orderMatchesQuery`'s haystack — the two searches should match the same numbers.
 
 ## 6. Patient flow across boards (the big picture)
@@ -5473,6 +5498,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The Orders tile count looks wrong / says "not connected" | §5.35 — it is the Order group's items at Order Status "Order" (waiting to be placed), in `useRoleCounts` + both baseline generators; "not connected" until the first 9 AM cron after the role shipped |
 | A product line reads "Not on the SKU tracker" / a stock pill is grey | §5.35 — `lib/orders/skuJoin.ts` joins BY NAME (`stockKey`); receivers match the sensor label as a suffix of the tracker row's left side. Re-run `skuJoin.test.ts`'s comparison against the live labels; a Medtronic sensor has no receiver row by design |
 | A backordered set's swap request didn't go / the board shows an `Error:` label | §5.35 — the card names the fix and the Send button re-sends; the rule is `lib/orders/substitution.ts` and the AUTHORITY is `email-serivce` (feature `backorder-substitution`, webhook 635472669). Fix the field it names, then press Send again — a repeat CLEARS the column first (`substitutionSendKind`), because re-writing the same label fires no webhook. A blank Substitution Status means the service never ran, not that it succeeded. "No answer from the email service yet" is the watcher giving up after 45s, never a failure |
+| The email preview doesn't match what Cardinal actually got | §5.35 — `substitution.substitutionEmailPreview` mirrors `email-serivce/.../template.js` `render()` and its tests hold the subject and every paragraph verbatim, so a live mismatch means the SERVICE moved — port the change here. Two things are divergent by design: the SET NAME in the one case the mirror skips (the service's tracker fallback), and the recipients line, which names no addresses because they are Railway-overridable there |
 | A patient's fifth order says "First Order" | §5.35 — the column is not maintained per item (all eleven to-place orders read `First Order` on 2026-09-15). `workflow.orderTypeLabel` hides the chip when another order for the same patient is dated on or before this one. ⚠️ It hides only — `email-serivce`'s first-order check-in text still keys off the COLUMN |
 | Somebody wants to place orders from the Command Center | §5.35 — `lib/orders/config.ts` `ORDERING_FROM_COMMAND_CENTER`, the write is `mondayWrite.markOrdered` (refuses anything not at "Order"). Read the four-point checklist there before flipping; `orderingSwitch.test.ts` will fail until updated |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |

@@ -20,7 +20,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowRight, Check, Loader2, Mail, Send } from "lucide-react";
+import { AlertTriangle, ArrowDown, Check, Loader2, Mail, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { indexForLabel } from "@/lib/shared/statusOptions";
@@ -32,8 +32,8 @@ import { BOARD_ID, COL, readSubstitutionState } from "@/lib/orders/mondayApi";
 import { requestSubstitution } from "@/lib/orders/mondayWrite";
 import {
   backorderedEntries, backorderedSetOnOrder, hasSubstitutionStory, substitutionAnswered,
-  substitutionBlockers, substitutionOptions, substitutionSendKind, substitutionSendRefusal,
-  substitutionVerdict,
+  substitutionBlockers, substitutionEmailPreview, substitutionOptions, substitutionSendKind,
+  substitutionSendRefusal, substitutionVerdict,
 } from "@/lib/orders/substitution";
 import { isOpenStage, orderStage, type Order } from "@/lib/orders/workflow";
 import { StockPill } from "./pills";
@@ -90,6 +90,14 @@ export function SubstitutionCard({
 
   const subRow = picked && skuRows ? skuRowForLine({ family: "infusionSets", product: picked }, skuRows) : null;
   const subStock = subRow ? stockVerdict(picked, new Map([[stockKey(picked), subRow]]), etToday()) : null;
+
+  // The email the service would compose, for the read-only preview. ⚠️ The set
+  // it names is the TRACKER row's name where there is one — that is what the
+  // service passes — so the preview matches the real subject line.
+  const preview = substitutionEmailPreview(order, {
+    name: subRow?.name || picked,
+    sku: subRow?.sku ?? "",
+  });
 
   /** Poll Substitution Status until the service answers, then hand back. */
   const watchForAnswer = useCallback(
@@ -182,45 +190,46 @@ export function SubstitutionCard({
         </div>
       )}
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 px-3 py-2.5">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Set on the order</p>
+      <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Switch from</p>
+        <p className="text-sm font-semibold break-words">
+          {setOnOrder?.ambiguous
+            ? setOnOrder.ambiguous.join(" and ")
+            : setOnOrder?.name || <span className="font-normal text-muted-foreground">none on this order</span>}
+        </p>
+
+        <div className="my-2 flex items-center gap-2">
+          <ArrowDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="h-px flex-1 bg-border" />
+        </div>
+
+        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold" htmlFor="sub-set">
+          Switch to
+        </label>
+        {open ? (
+          <select
+            id="sub-set"
+            value={picked}
+            onChange={(e) => setPicked(e.target.value)}
+            disabled={!ready || busy}
+            className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-sm font-medium disabled:opacity-60"
+          >
+            <option value="">{ready ? "Pick a replacement set…" : "Loading the board's sets…"}</option>
+            {choices.map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+        ) : (
           <p className="text-sm font-semibold break-words">
-            {setOnOrder?.ambiguous
-              ? setOnOrder.ambiguous.join(" and ")
-              : setOnOrder?.name || <span className="font-normal text-muted-foreground">none on this order</span>}
+            {onBoard || <span className="font-normal text-muted-foreground">none picked</span>}
           </p>
-        </div>
-        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 mb-1" />
-        <div className="min-w-[14rem] flex-1">
-          <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold" htmlFor="sub-set">
-            Switch to
-          </label>
-          {open ? (
-            <select
-              id="sub-set"
-              value={picked}
-              onChange={(e) => setPicked(e.target.value)}
-              disabled={!ready || busy}
-              className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-sm font-medium disabled:opacity-60"
-            >
-              <option value="">{ready ? "Pick a replacement set…" : "Loading the board's sets…"}</option>
-              {choices.map((l) => (
-                <option key={l} value={l}>{l}</option>
-              ))}
-            </select>
-          ) : (
-            <p className="text-sm font-semibold break-words">
-              {onBoard || <span className="font-normal text-muted-foreground">none picked</span>}
-            </p>
-          )}
-          {subRow?.sku && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              SKU <span className="font-mono">{subRow.sku}</span> — read from the tracker again when the email is written
-            </p>
-          )}
-        </div>
-        {subStock && subStock.label && <StockPill verdict={subStock} />}
+        )}
+        {(subRow?.sku || subStock?.label) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            {subRow?.sku && <span className="font-mono text-[11px] text-muted-foreground">{subRow.sku}</span>}
+            {subStock?.label && <StockPill verdict={subStock} />}
+          </div>
+        )}
       </div>
 
       {picked && skuRows && !subRow && (
@@ -243,9 +252,7 @@ export function SubstitutionCard({
                 ? optionsError
                   ? `Can't read the board's set list: ${optionsError}`
                   : "Reading the board's set list…"
-                : kind === "resend"
-                  ? "Same set as the board already holds — this clears it and re-picks, so Cardinal gets the request again."
-                  : "This emails Cardinal customer care straight away."}
+                : "This emails Cardinal customer care straight away."}
           </p>
         </div>
       )}
@@ -294,13 +301,24 @@ export function SubstitutionCard({
         </div>
       )}
 
-      <p className="mt-3 pt-3 border-t text-[11px] text-muted-foreground flex items-start gap-1.5">
-        <Mail className="h-3.5 w-3.5 mt-px shrink-0" />
-        <span>
-          Sending asks Cardinal customer care to switch this order onto the set you picked. The SKU is read from the
-          Cardinal SKU Tracker as the email is written, and the quantity is the order's own Qty: Infusion Set 1.
-        </span>
-      </p>
+      {open && (
+        <details className="mt-3 pt-3 border-t">
+          <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground">
+            <Mail className="h-3.5 w-3.5 shrink-0" />
+            Preview the email Cardinal will get
+          </summary>
+          <div className="mt-2 rounded-lg border bg-muted/30 px-3 py-2.5 text-xs">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">To</p>
+            <p className="break-words">{preview.recipients}</p>
+            <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Subject</p>
+            <p className="font-medium break-words">{preview.subject}</p>
+            <div className="mt-2 space-y-1.5 border-t pt-2 break-words">
+              {preview.body.map((line, i) => <p key={i}>{line}</p>)}
+              <p className="whitespace-pre-line">{preview.signoff}</p>
+            </div>
+          </div>
+        </details>
+      )}
 
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>

@@ -123,7 +123,7 @@ describe("the Orders page renders every card", () => {
     wrap(<SubstitutionCard order={swap} skuRows={rows} />);
     expect(screen.getByText("Email sent")).toBeInTheDocument();
     expect(screen.getByText('AutoSoft 90 6mm 23" infusion sets')).toBeInTheDocument();
-    expect(screen.getByText("TN1002833I", { exact: false })).toBeInTheDocument(); // the pick's SKU, off the tracker
+    expect(screen.getByText("TN1002833I")).toBeInTheDocument(); // the pick's SKU, off the tracker
     // The set already on the board is selected, so pressing Send is a re-send.
     expect((screen.getByLabelText("Switch to") as HTMLSelectElement).value).toBe('TruSteel 6 mm 23"');
     expect(screen.getByText("Re-send swap request")).toBeInTheDocument();
@@ -132,6 +132,12 @@ describe("the Orders page renders every card", () => {
     expect(opts).not.toContain('AutoSoft 90 6 mm 23"');
     expect(opts).toContain('AutoSoft XC 6 mm 23"');
 
+    // The email itself is previewed, read-only — the words Cardinal will read,
+    // not a description of them. Nothing here is editable and nothing sends.
+    expect(screen.getByText("Preview the email Cardinal will get")).toBeInTheDocument();
+    expect(screen.getByText(/switch order 1120960884 to TruSteel 6 mm 23"/)).toBeInTheDocument();
+    expect(screen.getByText("Quantity of boxes to ship: 3")).toBeInTheDocument();
+    expect(screen.getByText("SKU for new order: TN1002833I")).toBeInTheDocument();
   });
 
   it("substitution: an Error: label reads as not sent, and Send is refused with the reason", () => {

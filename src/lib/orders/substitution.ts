@@ -305,3 +305,96 @@ export function substitutionAnswered(
   if ((now.status ?? "").trim() !== (before.status ?? "").trim()) return true;
   return (now.notes ?? "").length !== (before.notes ?? "").length;
 }
+
+/* ── The email itself, for the read-only preview ───────────────────────────
+ *
+ * ⚠️ **MIRROR of `email-serivce/src/features/backorder-substitution/template.js`**
+ * — the same hand-synced hazard as the rules above, and the more visible one:
+ * a drifted preview shows a rep prose Cardinal never receives, which is worse
+ * than showing nothing. Keep the pronouns, the sentence and the three fact
+ * lines byte-for-byte with that file's `render()`. It is a PREVIEW, not the
+ * payload: nothing here is sent, and the service composes the real message
+ * from the board as it writes it.
+ */
+
+/** The set the email names, i.e. the service's `replacement` (a tracker row). */
+export interface SubstitutionReplacement {
+  /** The tracker row's own name when there is one, else the board label. */
+  name: string;
+  /** The tracker row's SKU. "" when the tracker has no row or no SKU. */
+  sku: string;
+}
+
+export interface SubstitutionEmailPreview {
+  subject: string;
+  /** The body paragraphs, in order. */
+  body: string[];
+  /** The sign-off, newline-separated as the email renders it. */
+  signoff: string;
+  /** Who it goes to, in words — see the note on `SUBSTITUTION_RECIPIENTS`. */
+  recipients: string;
+}
+
+/**
+ * ⚠️ Deliberately NOT the address list. The To/cc and the sign-off are
+ * `config.backorderTo` / `backorderCc` / `backorderSignoff` on the service,
+ * every one of them overridable by a Railway variable — so a list printed here
+ * would claim to be the real recipients while being only this file's memory of
+ * the defaults, with no test that could catch the drift. The sign-off IS
+ * printed because the default is what every one of these emails has carried and
+ * a signature-less preview reads unfinished.
+ */
+const SUBSTITUTION_RECIPIENTS = "Cardinal customer care, cc the MM team and our Cardinal reps";
+const SUBSTITUTION_SIGNOFF = "Katie Tyler";
+
+/** he / she / they, and the verb that goes with it. The service's `pronouns()`. */
+export function substitutionPronouns(gender: string): { subject: string; possessive: string; needs: string } {
+  const g = (gender ?? "").trim().toLowerCase();
+  if (g === "male") return { subject: "he", possessive: "his", needs: "needs" };
+  if (g === "female") return { subject: "she", possessive: "her", needs: "needs" };
+  return { subject: "they", possessive: "their", needs: "need" };
+}
+
+/**
+ * The email Cardinal will receive if this pick is sent.
+ *
+ * ⚠️ A field the order does not carry renders as an em dash rather than being
+ * guessed or dropped: the preview's whole job is to show what would go out, and
+ * a line quietly missing from it is how a rep learns nothing. Every one of them
+ * is already a `substitutionBlockers` refusal, so the Send button is shut and
+ * the card says why above.
+ *
+ * ⚠️ One known divergence, in the SET NAME only: the service falls back to the
+ * tracker row for a backordered entry the order's own set columns do not name
+ * (its `backorderedSet()` case 2), which `backorderedSetOnOrder` above does not
+ * implement. In that case the email names the set slightly differently than
+ * this preview. The order, the SKU and the quantity are unaffected.
+ */
+export function substitutionEmailPreview(
+  o: Pick<Order, "name" | "gender" | "cahOrderNumber" | "qtyInfusionSet1" | "backordered" | "infusionSet1" | "infusionSet2">,
+  replacement: SubstitutionReplacement,
+): SubstitutionEmailPreview {
+  const p = substitutionPronouns(o.gender);
+  const set = (replacement.name ?? "").trim() || "—";
+  const orderId = (o.cahOrderNumber ?? "").trim() || "—";
+  const patient = (o.name ?? "").trim() || "—";
+  const backordered = backorderedSetOnOrder(o)?.name?.trim() || "backordered infusion set";
+  const n = Number.parseInt((o.qtyInfusionSet1 ?? "").trim(), 10);
+  const boxes = Number.isFinite(n) && n > 0 ? String(n) : "—";
+
+  return {
+    subject: `Backordered infusion set - switch order ${orderId} to ${set}`,
+    body: [
+      "Hi Cardinal team,",
+      `Patient ${patient} has placed an order for the ${backordered}, but the infusion set ` +
+        `remains on back order and ${p.subject} ${p.needs} new supplies. Could we please switch ` +
+        `${p.possessive} order to the ${set}?`,
+      `Order ID: ${orderId}`,
+      `SKU for new order: ${(replacement.sku ?? "").trim() || "—"}`,
+      `Quantity of boxes to ship: ${boxes}`,
+      "Let me know if you need additional information.",
+    ],
+    signoff: `Best,\n${SUBSTITUTION_SIGNOFF}`,
+    recipients: SUBSTITUTION_RECIPIENTS,
+  };
+}
