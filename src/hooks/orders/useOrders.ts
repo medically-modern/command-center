@@ -1,5 +1,5 @@
 /**
- * useOrders — the New Order board in two tiers (§5.25's shape).
+ * useOrders — the order board in two tiers (§5.25's shape).
  *
  *   LIST   every order on the board, slim columns, every 60s. ~1,480 rows ×
  *          30 columns — what the sidebar, the overview and the stock view's

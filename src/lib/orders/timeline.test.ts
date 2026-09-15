@@ -8,7 +8,7 @@ const states = (o: Parameters<typeof orderTimeline>[0]) => orderTimeline(o).map(
 describe("orderTimeline", () => {
   it("a to-place order is created and waiting to be placed", () => {
     expect(states(mkOrder())).toEqual(["created:done", "placed:current", "cardinal:pending", "shipped:pending", "delivered:pending"]);
-    expect(orderTimeline(mkOrder())[1].lines[0]).toMatch(/New Order board/);
+    expect(orderTimeline(mkOrder())[1].lines[0]).toMatch(/waiting to be placed on the order board/i);
   });
 
   it("on hold names the day it comes back", () => {

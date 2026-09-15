@@ -1,7 +1,7 @@
 /**
  * An order's product lines, and which Cardinal SKU each one is.
  *
- * The New Order board says WHAT was ordered in product-label columns (CGM
+ * The order board says WHAT was ordered in product-label columns (CGM
  * Type, Insulin Pump Type, Infusion Set Type 1/2, Cartridge Type) with a
  * quantity beside each; the Cardinal SKU Tracker says what Cardinal can ship,
  * one row per SKU, grouped by family. The two are joined BY NAME, and that

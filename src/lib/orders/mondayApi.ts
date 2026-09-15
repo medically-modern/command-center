@@ -1,6 +1,6 @@
 /**
- * Monday.com GraphQL client for the New Order Board — the `orders` role.
- * Board 18405457690 — "New Order Board (No sub-items)".
+ * Monday.com GraphQL client for the order board — the `orders` role.
+ * Board 18405457690 — "New Order Board (No sub-items)" on monday.
  *
  * ── What this board IS (read the whole chain before touching a write) ──
  * One item = ONE ORDER, not one patient — a patient has an item per order, so
@@ -49,12 +49,6 @@ import {
 const MONDAY_API_VERSION = "2024-10";
 
 export const BOARD_ID = 18405457690;
-export const BOARD_URL = `https://medicallymodern-force.monday.com/boards/${BOARD_ID}`;
-
-/** Open an order on Monday — the page this role deliberately still defers to. */
-export function orderMondayUrl(itemId: string): string {
-  return `${BOARD_URL}/pulses/${itemId}`;
-}
 
 export const GROUPS = {
   order: "group_mm18v6n3",
@@ -169,8 +163,6 @@ export const COL = {
   holdReason: "text_mm486hh7",           // Hold Reason
   uspsCheck: "text_mm4ds1hw",            // USPS Check (informational)
   lineItemDetail: "long_text_mm489t0z",  // Line Item Detail
-  cardinalRawResponse: "long_text_mm483yt2",
-  cardinalRequestPayload: "long_text_mm48ww67",
   orderDiscrepancy: "text_mm4czd9g",
 
   // Shipping & delivery (written by the Cardinal order-status poll)

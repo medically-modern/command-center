@@ -17,15 +17,16 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { AlertTriangle, ExternalLink, Info, Loader2, PackageCheck } from "lucide-react";
+import { AlertTriangle, Info, Loader2, PackageCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PatientContact } from "@/components/masheke/mmKit";
-import { orderMondayUrl } from "@/lib/orders/mondayApi";
 import { ORDERING_FROM_COMMAND_CENTER } from "@/lib/orders/config";
 import { markOrdered, OrderNotPlaceableError, canMarkOrdered } from "@/lib/orders/mondayWrite";
 import {
-  cardinalStatus, fmtDate, orderFlags, orderStage, ordersForSamePatient, STAGE_LABEL, type Order, type OrderFlag,
+  cardinalStatus, fmtDate, orderFlags, orderStage, ordersForSamePatient, orderTypeLabel, STAGE_LABEL,
+  type Order, type OrderFlag,
 } from "@/lib/orders/workflow";
+import { productWords } from "@/lib/orders/rowSummary";
 import { CardinalPill, Pill, StagePill } from "./pills";
 import { STAGE_TONE } from "./tones";
 import { Field } from "./Field";
@@ -48,9 +49,15 @@ export function OrderHeaderCard({ order, allOrders, onSelect, onPlaced }: Props)
   const stage = orderStage(order);
   const cs = cardinalStatus(order.apiStatus, order.holdReason, order.apiMessage);
   const flags = orderFlags(order);
+  const typeLabel = orderTypeLabel(order, allOrders);
   const others = ordersForSamePatient(order, allOrders)
     .slice()
     .sort((a, b) => (b.orderDate || "").localeCompare(a.orderDate || ""));
+  // Two orders for one patient on ONE day is the thing this strip is worth
+  // showing for: it is usually a duplicate somebody is about to place twice.
+  // (It is not always — a split order is two items by design — so it asks
+  // rather than declares.)
+  const sameDay = others.filter((o) => o.orderDate && o.orderDate === order.orderDate);
 
   return (
     <div className="space-y-3">
@@ -62,7 +69,7 @@ export function OrderHeaderCard({ order, allOrders, onSelect, onPlaced }: Props)
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <StagePill stage={stage} />
               <CardinalPill status={cs} />
-              {order.orderType && <Pill tone="slate">{order.orderType}</Pill>}
+              {typeLabel && <Pill tone="slate">{typeLabel}</Pill>}
               {order.subscriptionType && <Pill tone="slate">{order.subscriptionType}</Pill>}
               {order.groupTitle && <Pill tone="slate" title="Board group">{order.groupTitle}</Pill>}
             </div>
@@ -77,17 +84,7 @@ export function OrderHeaderCard({ order, allOrders, onSelect, onPlaced }: Props)
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
             <PatientContact phone={order.phone} />
-            <div className="flex items-center gap-4">
-              <Field label="DOB" value={order.dob} />
-              <a
-                href={orderMondayUrl(order.id)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-              >
-                Open on Monday <ExternalLink className="h-3 w-3" />
-              </a>
-            </div>
+            <Field label="DOB" value={order.dob} />
           </div>
         </div>
 
@@ -111,8 +108,14 @@ export function OrderHeaderCard({ order, allOrders, onSelect, onPlaced }: Props)
       {others.length > 0 && (
         <Card className="p-3">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-            Other orders for this patient ({others.length})
+            This patient's other orders ({others.length})
           </p>
+          {sameDay.length > 0 && (
+            <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
+              {sameDay.length === 1 ? "Another order" : `${sameDay.length} more orders`} for this patient
+              {order.orderDate ? ` dated ${fmtDate(order.orderDate)}` : " on the same day"} — worth checking it isn't a duplicate.
+            </p>
+          )}
           <div className="flex flex-wrap gap-1.5">
             {others.map((o) => {
               const s = orderStage(o);
@@ -126,6 +129,14 @@ export function OrderHeaderCard({ order, allOrders, onSelect, onPlaced }: Props)
                   <span className={cn("h-2 w-2 rounded-full", DOT[STAGE_TONE[s]])} />
                   <span className="font-medium tabular-nums">{o.orderDate ? fmtDate(o.orderDate) : "no date"}</span>
                   <span className="text-muted-foreground">{STAGE_LABEL[s]}</span>
+                  {/* Date and stage alone make a same-day pair read as the
+                      order you are already on — so each chip carries what
+                      tells it apart. */}
+                  {(o.cahOrderNumber || productWords(o)) && (
+                    <span className="text-muted-foreground">
+                      · {o.cahOrderNumber ? `Cardinal ${o.cahOrderNumber}` : productWords(o)}
+                    </span>
+                  )}
                   {o.name.trim().toLowerCase() !== order.name.trim().toLowerCase() && (
                     <span className="text-muted-foreground">· {o.name}</span>
                   )}
@@ -164,7 +175,7 @@ function PlaceOrderRow({ order, onPlaced }: { order: Order; onPlaced?: () => voi
     return (
       <p className="mt-4 text-xs text-muted-foreground flex items-center gap-1.5">
         <Info className="h-3.5 w-3.5 shrink-0" />
-        Orders are placed on the New Order board for now — flip Order Status to “Ordered” there. Ordering from here is coming.
+        Orders are placed on the order board for now — flip Order Status to “Ordered” there. Ordering from here is coming.
       </p>
     );
   }

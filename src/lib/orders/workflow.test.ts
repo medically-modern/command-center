@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { GROUPS } from "./mondayApi";
 import {
   cardinalStatus, holdReasonFrom, orderStage, orderFlags, trackingUrl, orderMatchesQuery,
-  ordersForSamePatient, fmtDate, fmtMoney, qty, phoneDigits,
+  ordersForSamePatient, orderTypeLabel, fmtDate, fmtMoney, qty, phoneDigits,
 } from "./workflow";
 import { mkOrder, placed, delivered, HOLD_SENTENCE, HOLD_RELEASED_SENTENCE, BOOKING_ERROR_SENTENCE } from "./fixtures";
 
@@ -198,5 +198,40 @@ describe("formatting", () => {
     expect(qty("0")).toBe(0);
     expect(qty("3")).toBe(3);
     expect(phoneDigits("+1 (555) 555-0100")).toBe("5555550100");
+  });
+});
+
+describe("orderTypeLabel — 'First Order' only when the board doesn't contradict it", () => {
+  const first = { id: "a", name: "Jane Doe", phone: "5555550100", orderType: "First Order", orderDate: "2026-09-15" };
+  const earlier = { ...first, id: "old", orderDate: "2026-06-01" };
+  const sameDay = { ...first, id: "twin" };
+  const later = { ...first, id: "new", orderDate: "2026-10-01" };
+  const other = { ...first, id: "x", name: "Someone Else", phone: "5555550199", orderDate: "2026-01-01" };
+
+  it("shows it when this really is the patient's only order", () => {
+    expect(orderTypeLabel(first, [first, other])).toBe("First Order");
+  });
+
+  it("drops it when the same patient has an EARLIER order", () => {
+    expect(orderTypeLabel(first, [first, earlier])).toBe("");
+  });
+
+  it("drops it on BOTH of a same-day pair — one of them is wrong and we can't say which", () => {
+    expect(orderTypeLabel(first, [first, sameDay])).toBe("");
+    expect(orderTypeLabel(sameDay, [first, sameDay])).toBe("");
+  });
+
+  it("a LATER order is no contradiction — this one still was the first", () => {
+    expect(orderTypeLabel(first, [first, later])).toBe("First Order");
+  });
+
+  it("a missing date on either side proves nothing, so the chip stands", () => {
+    expect(orderTypeLabel({ ...first, orderDate: "" }, [first, earlier])).toBe("First Order");
+    expect(orderTypeLabel(first, [first, { ...earlier, orderDate: "" }])).toBe("First Order");
+  });
+
+  it("'Reorder' and a blank are passed through untouched", () => {
+    expect(orderTypeLabel({ ...first, orderType: "Reorder" }, [first, earlier])).toBe("Reorder");
+    expect(orderTypeLabel({ ...first, orderType: "" }, [first])).toBe("");
   });
 });

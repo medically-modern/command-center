@@ -1,6 +1,6 @@
 /**
- * Cardinal's side of the order — identity, its last word, the invoice — and,
- * folded away, the exact request we sent and the exact response we got.
+ * Cardinal's side of the order — who it is to them, their last word on it,
+ * and the invoice.
  */
 import { Card } from "@/components/ui/card";
 import { cardinalStatus, fmtDate, fmtMoney, type Order } from "@/lib/orders/workflow";
@@ -47,22 +47,6 @@ export function CardinalCard({ order }: { order: Order }) {
         </div>
       )}
 
-      {(order.cardinalRequestPayload || order.cardinalRawResponse) && (
-        <div className="mt-3 pt-3 border-t space-y-2">
-          {order.cardinalRawResponse && (
-            <details>
-              <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">Cardinal's raw response</summary>
-              <pre className="mt-2 whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 text-[11px] leading-relaxed">{order.cardinalRawResponse}</pre>
-            </details>
-          )}
-          {order.cardinalRequestPayload && (
-            <details>
-              <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">What we sent Cardinal</summary>
-              <pre className="mt-2 whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 text-[11px] leading-relaxed">{order.cardinalRequestPayload}</pre>
-            </details>
-          )}
-        </div>
-      )}
     </Card>
   );
 }

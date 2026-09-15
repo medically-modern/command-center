@@ -126,8 +126,6 @@ export function mondayItemToOrder(item: MondayItem, opts: { partial?: boolean } 
     holdReason: txt(COL.holdReason),
     uspsCheck: txt(COL.uspsCheck),
     lineItemDetail: txt(COL.lineItemDetail),
-    cardinalRawResponse: txt(COL.cardinalRawResponse),
-    cardinalRequestPayload: txt(COL.cardinalRequestPayload),
     orderDiscrepancy: txt(COL.orderDiscrepancy),
 
     warehouse: txt(COL.warehouse),

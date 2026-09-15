@@ -4231,6 +4231,52 @@ and the sidebar's *To place* section, minus the transient "Ordered". The Operati
 "not connected" until the first cron after deploy; `operationsGroups.ts` places the role under
 *Other*.
 
+**Backorder substitution — the one thing a rep DOES here, and it is done on the board.**
+A rep whose infusion set is on back order picks the replacement in **Substitute Infusion Set**
+`color_mm727jnp`, and that single pick is the whole interaction: the **`email-serivce`** Railway
+app (feature `backorder-substitution`, monday webhook **635472669**) hears the column change, reads
+the replacement's SKU **live** from the Cardinal SKU Tracker, emails Cardinal customer care
+(`crtcustcare@cardinalhealth.com`, cc Katie/Josh/Brandon + our two reps) asking them to switch the
+order, and writes **Substitution Status** `color_mm727p5m` — `Sent`, or an `Error:` label naming
+exactly which field blocked it — plus a receipt line in Notes. The page renders all of it in
+`components/orders/SubstitutionCard`: what is on back order, which set on the order it maps to, the
+pick and its SKU + stock pill, the verdict, and — before a pick is made — what would bounce.
+- ⚠️ **`lib/orders/substitution.ts` is a READ-ONLY MIRROR of that service's rules** (+ tests): the
+  nine live Substitution Status labels and their fixes, `normalizeSetName` (which is what makes the
+  tracker's `AutoSoft 90 6 mm 23"`, Cardinal's `AutoSoft 90 Infusion Set · 6 mm Cannula · …
+  REPLACES TN1002817` and the Backordered column's `AutoSoft 90 6mm 23" infusion sets` one set),
+  `backorderedSetOnOrder` and the three pre-send refusals. Same hand-synced hazard as §5.7 and
+  §5.17, with the same failure mode — the page saying one thing while the email does another — so
+  when `email-serivce/src/features/backorder-substitution/index.js` changes, change this too.
+  Nothing here sends, writes or decides: the service is the authority.
+- ⚠️ **An unrecognised `Error:` label still reads as an error**, never as silence: the column exists
+  to complain, and a label added after this file was written must not come out green.
+- ⚠️ **Every flip sends** (`dedupe: false` there) — re-picking the same set is a chase, not a
+  duplicate, which is why every fix sentence ends "…then re-pick the substitute set".
+- ⚠️ `normalizeSetName` is deliberately NOT `infusionStock.stockKey`: that one answers "board label
+  → tracker row" and strips neither the `infusion sets` suffix nor a `REPLACES` tail.
+
+**"First Order" is suppressed when the board contradicts it** (`workflow.orderTypeLabel` + tests).
+Order Type `color_mm1s96z2` is a real signal board-wide — a mix across 1,484 rows — but it is not
+maintained per item: on 2026-09-15 **all eleven** orders in the Order group read `First Order`,
+including a **same-day pair for one patient**, which cannot both be a first order. The chip is
+therefore dropped whenever another order for the same patient is dated on or before this one; a
+missing date on either side proves nothing and leaves it alone, and `Reorder` always shows as the
+board has it. ⚠️ Suppression only — nothing is relabelled, and **nothing downstream reads this**:
+`email-serivce`'s first-order delivery check-in text keys off the COLUMN, so a wrong `First Order`
+still texts a repeat patient. That is the board's to fix.
+⚠️ The header's **"This patient's other orders"** strip exists for exactly that same-day pair, so
+each chip carries what tells it apart (Cardinal order number, else the product words) and a same-day
+sibling raises an amber "worth checking it isn't a duplicate" line. Date + stage alone made a
+duplicate read as the order the rep was already on.
+
+**Deliberately NOT shown** (Josh, 2026-09-15): Cardinal's raw response and the request payload we
+sent (`long_text_mm483yt2` / `long_text_mm48ww67` — dropped from `COL`, the `Order` type and the
+read, not merely hidden); "Open on Monday" on either view; the Cardinal product-page links
+(`link_mm4wz81e`, and `productUrl` left `SkuTrackerRow` with them); and the pre-check's
+"(advisory — never blocks ordering)" parenthetical. The board is called **the order board** on
+screen, never "Monday · New Order Board".
+
 **⚠️ THE SWITCH — `lib/orders/config.ts` `ORDERING_FROM_COMMAND_CENTER = false`.** The write is
 built and dark: `mondayWrite.markOrdered` re-reads Order Status and writes label id **1** only when
 the column reads "Order" (`canMarkOrdered`: "Process Claim" is already placed, "Ordered" is in
@@ -4258,6 +4304,9 @@ the page wears its own stage and Cardinal pills instead).
 2. **Stage rule** — `workflow.orderStage` ⇄ the sidebar sections ⇄ the count's "Order" test (three files above).
 3. **Names** — `skuJoin.test.ts`'s label lists ⇄ the live Infusion Set / CGM Type / Pump columns and the tracker's rows. Re-run the comparison when either board grows a label.
 4. **Automation ids** in the table above — re-verify with `list_automations` before changing what a status write is expected to trigger.
+5. **Substitution** — `lib/orders/substitution.ts` (+ its test's `BOARD_LABELS`, which is the live
+   `color_mm727p5m` label set) ⇄ `email-serivce/src/features/backorder-substitution/index.js`
+   `STATUS` + its `skip` reasons, and `email-serivce/src/cardinal.js` `normalizeSetName`.
 
 ## 6. Patient flow across boards (the big picture)
 
@@ -5323,6 +5372,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | "Where is this patient's order?" / an order shows the wrong stage | §5.35 — `/orders`, search the sidebar (name · phone · CAH # · PO · tracking). Stage is `lib/orders/workflow.ts` `orderStage`: **API Status first**, group second — a Delivered order can still sit in *Accepted / Partial*, and 609 pre-poller rows have no API Status. `cardinalStatus` reads API Status + Hold Reason + API Message together |
 | The Orders tile count looks wrong / says "not connected" | §5.35 — it is the Order group's items at Order Status "Order" (waiting to be placed), in `useRoleCounts` + both baseline generators; "not connected" until the first 9 AM cron after the role shipped |
 | A product line reads "Not on the SKU tracker" / a stock pill is grey | §5.35 — `lib/orders/skuJoin.ts` joins BY NAME (`stockKey`); receivers match the sensor label as a suffix of the tracker row's left side. Re-run `skuJoin.test.ts`'s comparison against the live labels; a Medtronic sensor has no receiver row by design |
+| A backordered set's swap request didn't go / the board shows an `Error:` label | §5.35 — the card names the fix; the rule is `lib/orders/substitution.ts` and the AUTHORITY is `email-serivce` (feature `backorder-substitution`, webhook 635472669). Fix the field it names and **re-pick the Substitute Infusion Set** — every pick sends, so re-picking is the retry. A blank Substitution Status means the service never ran, not that it succeeded |
+| A patient's fifth order says "First Order" | §5.35 — the column is not maintained per item (all eleven to-place orders read `First Order` on 2026-09-15). `workflow.orderTypeLabel` hides the chip when another order for the same patient is dated on or before this one. ⚠️ It hides only — `email-serivce`'s first-order check-in text still keys off the COLUMN |
 | Somebody wants to place orders from the Command Center | §5.35 — `lib/orders/config.ts` `ORDERING_FROM_COMMAND_CENTER`, the write is `mondayWrite.markOrdered` (refuses anything not at "Order"). Read the four-point checklist there before flipping; `orderingSwitch.test.ts` will fail until updated |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 

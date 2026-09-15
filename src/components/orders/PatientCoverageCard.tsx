@@ -1,6 +1,6 @@
 /**
  * Who the order is for, what pays for it, who prescribed it — the columns the
- * Welcome Call → New Order hop copied onto the item — plus the board's own
+ * Welcome Call → order board hop copied onto the item — plus the board's own
  * notes and the advisory pre-check. All read-only here (`mondayApi.ts` header).
  */
 import { Card } from "@/components/ui/card";
@@ -57,7 +57,7 @@ export function NotesCard({ order }: { order: Order }) {
       )}
       {(order.preCheck || order.preCheckDetail) && (
         <div className="mt-3 pt-3 border-t">
-          <Field label="Pre-check (advisory — never blocks ordering)" value={order.preCheck} valueClassName={/^good to go/i.test(order.preCheck) ? "text-emerald-700" : "text-amber-700"} />
+          <Field label="Pre-check" value={order.preCheck} valueClassName={/^good to go/i.test(order.preCheck) ? "text-emerald-700" : "text-amber-700"} />
           {order.preCheckDetail && (
             <pre className="mt-1.5 whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 text-[11px] leading-relaxed">{order.preCheckDetail}</pre>
           )}

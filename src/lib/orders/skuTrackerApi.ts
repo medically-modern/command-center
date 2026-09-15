@@ -3,7 +3,7 @@
  *
  * `lib/welcomeCall/stockApi.ts` reads the same board (`18420366344`) for three
  * columns and hands `infusionStock.ts` a name-keyed index; that stays as it is.
- * This role wants the whole row — SKU, family, cost, the link — for its stock
+ * This role wants the whole row — SKU, family, cost, stock — for its stock
  * table and for joining an order's lines to what Cardinal can ship
  * (`skuJoin.ts`). Same incident guards as that read (§5.31b), one 46-row board,
  * refreshed on a 30-minute TTL against a scraper that runs once a day.
@@ -17,8 +17,6 @@ import { MONDAY_API_URL, hasMondayAuth, mondayAuthHeaders, mondayIdentityHeaders
 import type { StockRow } from "../welcomeCall/infusionStock";
 
 export const SKU_BOARD_ID = 18420366344;
-export const SKU_BOARD_URL = `https://medicallymodern-force.monday.com/boards/${SKU_BOARD_ID}`;
-
 export const SKU_GROUPS = {
   runLog: "group_mm4w9gaw",
   infusionSets: "group_mm4wcen0",
@@ -30,7 +28,6 @@ export const SKU_GROUPS = {
 
 export const SKU_COL = {
   sku: "text_mm4wgzdw",
-  productPage: "link_mm4wz81e",
   description: "text_mm4wazkc",
   uom: "text_mm4wtf4y",
   unitCost: "numeric_mm4wd6b",
@@ -53,8 +50,6 @@ export interface SkuTrackerRow extends StockRow {
   unitCost: number | null;
   oopPrice: number | null;
   notes: string;
-  /** The Cardinal product page URL, or "" */
-  productUrl: string;
   /** Run Log rows only. */
   runHistory: string;
 }
@@ -116,13 +111,6 @@ export async function fetchSkuTracker(signal?: AbortSignal): Promise<SkuTrackerR
   return items.map((it) => {
     const byId = new Map(it.column_values.map((c) => [c.id, c]));
     const txt = (id: string) => byId.get(id)?.text ?? "";
-    let productUrl = "";
-    try {
-      const v = byId.get(SKU_COL.productPage)?.value;
-      if (v) productUrl = (JSON.parse(v) as { url?: string }).url ?? "";
-    } catch {
-      productUrl = "";
-    }
     return {
       id: it.id,
       name: it.name,
@@ -138,7 +126,6 @@ export async function fetchSkuTracker(signal?: AbortSignal): Promise<SkuTrackerR
       lastChanged: txt(SKU_COL.lastChanged),
       oopPrice: num(txt(SKU_COL.oopPrice)),
       notes: txt(SKU_COL.notes).trim(),
-      productUrl,
       runHistory: txt(SKU_COL.runHistory),
     };
   });

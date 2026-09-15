@@ -51,7 +51,7 @@ let n = 0;
 const rows: SkuTrackerRow[] = Object.entries(TRACKER_NAMES).flatMap(([groupId, names]) =>
   names.map((name) => ({
     id: String(++n), name, groupId, sku: `SKU${n}`, description: "", uom: "BX", unitCost: 1, qtyAvail: 100,
-    status: "Available", lastChanged: "2026-09-15 09:05 ET", oopPrice: null, notes: "", productUrl: "", runHistory: "",
+    status: "Available", lastChanged: "2026-09-15 09:05 ET", oopPrice: null, notes: "", runHistory: "",
   })),
 );
 

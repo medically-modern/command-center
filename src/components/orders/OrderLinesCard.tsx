@@ -4,7 +4,6 @@
  * (`infusionStock.stockVerdict`: status decides, the count only explains).
  */
 import { Card } from "@/components/ui/card";
-import { ExternalLink } from "lucide-react";
 import { stockKey, stockVerdict } from "@/lib/welcomeCall/infusionStock";
 import type { SkuTrackerRow } from "@/lib/orders/skuTrackerApi";
 import { FAMILY_LABEL, orderLines, skuRowForLine } from "@/lib/orders/skuJoin";
@@ -50,14 +49,7 @@ export function OrderLinesCard({ order, skuRows }: { order: Order; skuRows: SkuT
                     <td className="py-2 pr-3 text-right tabular-nums font-semibold">{l.quantity}</td>
                     <td className="py-2 pr-3">
                       {row ? (
-                        <span className="inline-flex items-center gap-1">
-                          <span className="font-mono text-xs">{row.sku || "—"}</span>
-                          {row.productUrl && (
-                            <a href={row.productUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" title="Cardinal product page">
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
-                        </span>
+                        <span className="font-mono text-xs">{row.sku || "—"}</span>
                       ) : (
                         <span className="text-xs text-muted-foreground">{skuRows ? "Not on the SKU tracker" : "Tracker not loaded"}</span>
                       )}
@@ -73,14 +65,12 @@ export function OrderLinesCard({ order, skuRows }: { order: Order; skuRows: SkuT
         </div>
       )}
 
-      {(order.backordered || order.inactiveProducts || order.substituteInfusionSet || order.substitutionStatus || order.backorderedQty) && (
-        <div className="mt-3 pt-3 border-t grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Backordered at Cardinal" value={order.backordered} valueClassName="text-amber-700" />
-          <Field label="Backordered qty" value={order.backorderedQty} />
+      {/* Backordered and the swap request live in `SubstitutionCard` — one
+          subject, one card. What stays here is the other availability fact,
+          which has no swap path: Cardinal will not sell it at all. */}
+      {order.inactiveProducts && (
+        <div className="mt-3 pt-3 border-t">
           <Field label="Not for sale at Cardinal" value={order.inactiveProducts} valueClassName="text-rose-700" />
-          <Field label="Substitute infusion set" value={order.substituteInfusionSet} />
-          <Field label="Substitution status" value={order.substitutionStatus} valueClassName={/^error/i.test(order.substitutionStatus) ? "text-rose-700" : ""} />
-          <Field label="Substitution Cardinal order" value={order.substitutionCahNumber} />
         </div>
       )}
 

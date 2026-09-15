@@ -122,7 +122,7 @@ export function OrdersSidebar({
         <div className="flex items-center justify-between gap-2">
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Monday · New Order Board</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Order board</p>
               <p className="text-sm font-semibold truncate">
                 {initialLoading ? (
                   <span className="inline-flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading{loadedRows ? ` · ${loadedRows.toLocaleString("en-US")} rows` : "…"}</span>

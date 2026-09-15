@@ -1,5 +1,5 @@
 /**
- * Orders — the New Order Board and the Cardinal SKU Tracker in one place.
+ * Orders — the order board and the Cardinal SKU Tracker in one place.
  *
  * READ-ONLY (Josh, 2026-09-15): reps observe orders here and still place them
  * on the board. The one write this role knows how to make sits dark behind
@@ -30,6 +30,7 @@ import { OrdersSidebar } from "@/components/orders/OrdersSidebar";
 import { OrderHeaderCard } from "@/components/orders/OrderHeaderCard";
 import { OrderTimeline } from "@/components/orders/OrderTimeline";
 import { OrderLinesCard } from "@/components/orders/OrderLinesCard";
+import { SubstitutionCard } from "@/components/orders/SubstitutionCard";
 import { ShippingCard } from "@/components/orders/ShippingCard";
 import { CardinalCard } from "@/components/orders/CardinalCard";
 import { NotesCard, PatientCoverageCard } from "@/components/orders/PatientCoverageCard";
@@ -187,6 +188,7 @@ const OrdersPage = () => {
                   <OrderTimeline order={open} />
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                     <OrderLinesCard order={open} skuRows={sku.rows} />
+                    <SubstitutionCard order={open} skuRows={sku.rows} />
                     <ShippingCard order={open} />
                     <CardinalCard order={open} />
                     <PatientCoverageCard order={open} />

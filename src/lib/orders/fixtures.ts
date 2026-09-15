@@ -22,7 +22,7 @@ export function mkOrder(over: Partial<Order> = {}): Order {
     cgmCoverage: "", medicarePriorPumpDate: "",
     doctorName: "", doctorNpi: "", doctorAddress: "", doctorPhone: "", doctorFax: "",
     cahOrderNumber: "", poNumber: "", lastCardinalSync: "", apiMessage: "", holdReason: "", uspsCheck: "",
-    lineItemDetail: "", cardinalRawResponse: "", cardinalRequestPayload: "", orderDiscrepancy: "",
+    lineItemDetail: "", orderDiscrepancy: "",
     warehouse: "", carrier: "", carrierDescription: "", estimatedShipDate: "", shipDate: "", tracking: [],
     packageWeight: "", serialNumbers: "", deliveryDate: "", signedBy: "", confirmedDeliveryAddress: "",
     shipTextLog: "", deliveryCheckinText: "",

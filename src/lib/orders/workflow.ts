@@ -121,8 +121,6 @@ export interface Order {
   holdReason: string;
   uspsCheck: string;
   lineItemDetail: string;
-  cardinalRawResponse: string;
-  cardinalRequestPayload: string;
   orderDiscrepancy: string;
 
   // Shipping
@@ -497,4 +495,36 @@ export function ordersForSamePatient<T extends Pick<Order, "id" | "name" | "phon
   return all.filter(
     (o) => o.id !== order.id && ((digits && phoneDigits(o.phone) === digits) || (name && norm(o.name) === name)),
   );
+}
+
+/**
+ * The Order Type chip to draw — which is NOT always what the column says.
+ *
+ * Board-wide the column is a real signal (a mix of First Order and Reorder
+ * across 1,484 rows, read 2026-09-15), but it is not maintained per item: on
+ * that date every one of the eleven orders in the Order group read
+ * "First Order", including a same-day PAIR for one patient, which cannot both
+ * be a first order. "First Order" on a patient's fifth order is worse than no
+ * chip at all, so it is SUPPRESSED whenever the board itself contradicts it —
+ * another order for the same patient dated on or before this one.
+ *
+ * ⚠️ Suppression on positive evidence only, never a correction: a missing date
+ * on either side proves nothing and leaves the chip alone, and "Reorder" is
+ * always drawn as the board has it. ⚠️ Nothing downstream reads this — the
+ * email service's first-order delivery check-in text keys off the COLUMN, so a
+ * wrong "First Order" still texts a repeat patient. That is the board's to fix.
+ */
+export function orderTypeLabel<T extends Pick<Order, "id" | "name" | "phone" | "orderType" | "orderDate">>(
+  order: T,
+  all: readonly T[],
+): string {
+  const label = (order.orderType ?? "").trim();
+  if (!/^first order$/i.test(label)) return label;
+  const mine = (order.orderDate ?? "").trim();
+  if (!mine) return label;
+  const contradicted = ordersForSamePatient(order, all).some((o) => {
+    const theirs = (o.orderDate ?? "").trim();
+    return !!theirs && theirs <= mine;
+  });
+  return contradicted ? "" : label;
 }

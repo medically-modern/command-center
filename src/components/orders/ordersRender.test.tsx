@@ -7,6 +7,7 @@ import { OrderHeaderCard } from "./OrderHeaderCard";
 import { OrderTimeline } from "./OrderTimeline";
 import { OrderLinesCard } from "./OrderLinesCard";
 import { ShippingCard } from "./ShippingCard";
+import { SubstitutionCard } from "./SubstitutionCard";
 import { CardinalCard } from "./CardinalCard";
 import { NotesCard, PatientCoverageCard } from "./PatientCoverageCard";
 import { OrdersOverview } from "./OrdersOverview";
@@ -28,10 +29,10 @@ vi.mock("@/components/masheke/mmKit", () => ({
 vi.mock("@/components/shared/ContactStateMarks", () => ({ ContactStateMarks: () => null }));
 
 const rows: SkuTrackerRow[] = [
-  { id: "r1", name: 'TruSteel 6 mm 23"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002833I", description: "TruSteel", uom: "BX", unitCost: 63.77, qtyAvail: 426, status: "Available", lastChanged: "2026-09-15 09:05 ET", oopPrice: null, notes: "", productUrl: "https://example.invalid/p", runHistory: "" },
-  { id: "r2", name: 'AutoSoft 90 6 mm 23"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002817I", description: "", uom: "BX", unitCost: 71.94, qtyAvail: 220, status: "Backordered", lastChanged: "2026-09-15 09:05 ET", oopPrice: 12, notes: "", productUrl: "", runHistory: "" },
-  { id: "r3", name: "Dexcom G7 / G7 15-Day → G7 Receiver", groupId: SKU_GROUPS.cgmReceivers, sku: "EDSTKAT013MEDIM", description: "", uom: "EA", unitCost: 234.28, qtyAvail: 1156, status: "Available", lastChanged: "2026-09-15 09:05 ET", oopPrice: null, notes: "", productUrl: "", runHistory: "" },
-  { id: "log", name: "Last run: 2026-09-15 09:05 ET (cron) — 31 changed", groupId: SKU_GROUPS.runLog, sku: "", description: "", uom: "", unitCost: null, qtyAvail: null, status: "", lastChanged: "", oopPrice: null, notes: "", productUrl: "", runHistory: "[2026-09-15 09:05 ET] cron — 45 SKUs" },
+  { id: "r1", name: 'TruSteel 6 mm 23"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002833I", description: "TruSteel", uom: "BX", unitCost: 63.77, qtyAvail: 426, status: "Available", lastChanged: "2026-09-15 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
+  { id: "r2", name: 'AutoSoft 90 6 mm 23"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002817I", description: "", uom: "BX", unitCost: 71.94, qtyAvail: 220, status: "Backordered", lastChanged: "2026-09-15 09:05 ET", oopPrice: 12, notes: "", runHistory: "" },
+  { id: "r3", name: "Dexcom G7 / G7 15-Day → G7 Receiver", groupId: SKU_GROUPS.cgmReceivers, sku: "EDSTKAT013MEDIM", description: "", uom: "EA", unitCost: 234.28, qtyAvail: 1156, status: "Available", lastChanged: "2026-09-15 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
+  { id: "log", name: "Last run: 2026-09-15 09:05 ET (cron) — 31 changed", groupId: SKU_GROUPS.runLog, sku: "", description: "", uom: "", unitCost: null, qtyAvail: null, status: "", lastChanged: "", oopPrice: null, notes: "", runHistory: "[2026-09-15 09:05 ET] cron — 45 SKUs" },
 ];
 
 const held = placed({
@@ -40,7 +41,7 @@ const held = placed({
   backordered: 'AutoSoft 90 6mm 23" infusion sets', preCheck: "Good to Go", notes: "9/10: a note", dob: "01/01/1980",
   files: { file_mm4cfc8m: [{ assetId: "1", name: "pod.pdf", url: "https://files.example/x" }] },
 });
-const done = delivered({ id: "d", name: "Done Person", phone: "5555550102", infusionSet1: 'TruSteel 6 mm 23"', qtyInfusionSet1: "3", invoiceNumber: "INV1", invoiceAmount: "215.31", cardinalRawResponse: "{}" });
+const done = delivered({ id: "d", name: "Done Person", phone: "5555550102", infusionSet1: 'TruSteel 6 mm 23"', qtyInfusionSet1: "3", invoiceNumber: "INV1", invoiceAmount: "215.31" });
 // Distinct numbers: the header joins "other orders" on the phone, and the
 // fixture default is one number for everybody.
 const all = [mkOrder({ id: "t", name: "Waiting Person", phone: "5555550101" }), held, done, mkOrder({ id: "same", name: "Held Person", orderDate: "2026-08-01" })];
@@ -64,14 +65,14 @@ describe("the Orders page renders every card", () => {
     wrap(<OrderHeaderCard order={held} allOrders={all} onSelect={() => {}} />);
     expect(screen.getByText("Held Person")).toBeInTheDocument();
     expect(screen.getAllByText("On hold — Credit Check Failure").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Other orders for this patient \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/This patient's other orders \(1\)/)).toBeInTheDocument();
     // Not a to-place order, so no ordering note either way.
     expect(screen.queryByText(/Ordering from here is coming/)).toBeNull();
   });
 
   it("a to-place order says where it is placed today (the switch is off)", () => {
     wrap(<OrderHeaderCard order={all[0]} allOrders={all} onSelect={() => {}} />);
-    expect(screen.getByText(/Orders are placed on the New Order board for now/)).toBeInTheDocument();
+    expect(screen.getByText(/Orders are placed on the order board for now/)).toBeInTheDocument();
     expect(screen.queryByText("Mark as Ordered")).toBeNull();
   });
 
@@ -92,6 +93,40 @@ describe("the Orders page renders every card", () => {
     expect(screen.getByText("POD PDF", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("$215.31")).toBeInTheDocument();
     expect(screen.getByText("9/10: a note")).toBeInTheDocument();
+  });
+
+  it("substitution: the backordered set, the pick, the verdict and its fix", () => {
+    // Nothing to say about an ordinary order — the card renders nothing.
+    const { container } = wrap(<SubstitutionCard order={done} skuRows={rows} />);
+    expect(container.querySelector(".border.bg-card")).toBeNull();
+
+    wrap(
+      <SubstitutionCard
+        order={placed({
+          id: "s", name: "Swap Person",
+          backordered: 'AutoSoft 90 6mm 23" infusion sets',
+          infusionSet1: 'AutoSoft 90 6 mm 23"', qtyInfusionSet1: "3", cahOrderNumber: "1120960884",
+          substituteInfusionSet: 'TruSteel 6 mm 23"', substitutionStatus: "Sent",
+        })}
+        skuRows={rows}
+      />,
+    );
+    expect(screen.getByText("Swap requested")).toBeInTheDocument();
+    expect(screen.getByText('AutoSoft 90 6mm 23" infusion sets')).toBeInTheDocument();
+    expect(screen.getByText("TN1002833I")).toBeInTheDocument(); // the substitute's SKU, off the tracker
+
+    wrap(
+      <SubstitutionCard
+        order={placed({
+          id: "e", name: "Blocked Person",
+          backordered: 'AutoSoft 90 6mm 23" infusion sets', infusionSet1: 'AutoSoft 90 6 mm 23"',
+          substituteInfusionSet: 'TruSteel 6 mm 23"', substitutionStatus: "Error: No CAH Order Number",
+        })}
+        skuRows={rows}
+      />,
+    );
+    expect(screen.getByText("Swap request failed")).toBeInTheDocument();
+    expect(screen.getByText(/Add the CAH Order Number/)).toBeInTheDocument();
   });
 
   it("overview counts and alerts, and the stock table", () => {

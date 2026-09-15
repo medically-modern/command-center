@@ -65,7 +65,7 @@ export function orderTimeline(o: Input): TimelineStep[] {
   } else if (stage === "cancelled") {
     steps.push({ key: "placed", title: "Placed", state: "pending", lines: [] });
   } else {
-    steps.push({ key: "placed", title: "Placed", state: "current", lines: ["Waiting to be placed on the New Order board"] });
+    steps.push({ key: "placed", title: "Placed", state: "current", lines: ["Waiting to be placed on the order board"] });
   }
 
   // Cardinal

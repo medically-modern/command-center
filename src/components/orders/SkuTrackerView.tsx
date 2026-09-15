@@ -7,11 +7,11 @@
  */
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STOCK_STALE_DAYS, stockKey, stockVerdict } from "@/lib/welcomeCall/infusionStock";
 import { etToday } from "@/lib/masheke/etDate";
-import { SKU_BOARD_URL, isRunLogRow, type SkuTrackerRow } from "@/lib/orders/skuTrackerApi";
+import { isRunLogRow, type SkuTrackerRow } from "@/lib/orders/skuTrackerApi";
 import { FAMILY_LABEL, FAMILY_ORDER, familyOfRow, openOrdersBySku } from "@/lib/orders/skuJoin";
 import { fmtMoney, isOpenStage, orderStage, type Order } from "@/lib/orders/workflow";
 import { StockPill } from "./pills";
@@ -64,9 +64,6 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, onRefres
             <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading} className="gap-1.5">
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
             </Button>
-            <a href={SKU_BOARD_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-              Open on Monday <ExternalLink className="h-3 w-3" />
-            </a>
           </div>
         </div>
       </Card>
@@ -106,14 +103,7 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, onRefres
                           {r.description && <p className="text-[11px] text-muted-foreground truncate max-w-[28rem]" title={r.description}>{r.description}</p>}
                         </td>
                         <td className="py-2 pr-3 font-mono text-xs">
-                          <span className="inline-flex items-center gap-1">
-                            {r.sku || "—"}
-                            {r.productUrl && (
-                              <a href={r.productUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" title="Cardinal product page">
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            )}
-                          </span>
+                          {r.sku || "—"}
                         </td>
                         <td className="py-2 pr-3"><StockPill verdict={v} /></td>
                         <td className="py-2 pr-3 text-right tabular-nums">{r.qtyAvail == null ? "—" : r.qtyAvail.toLocaleString("en-US")}</td>
