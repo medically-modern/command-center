@@ -21,6 +21,20 @@ function shiftYmd(ymd: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days, 12)).toISOString().slice(0, 10);
 }
 const TODAY = etToday();
+/**
+ * An ISO instant on the ET calendar day `days` back, at ET midday.
+ *
+ * ⚠️ NOT `hoursAgo`, and the difference is not cosmetic. A card's age is
+ * WHOLE ET CALENDAR DAYS (`formatDaysSince` → `daysBetween`) while the
+ * readiness bucket is ELAPSED HOURS (`READY_AFTER_HOURS`), so an hour offset
+ * that is not a multiple of 24 renders a different number depending on the
+ * time of day the suite runs: `hoursAgo(38 + 24)` read "2 days" from 2 PM ET
+ * and "3 days" before it, so the build passed every afternoon and failed every
+ * morning (first red: the 9 AM baseline commit, 2026-09-15). Midday keeps the
+ * ET date unambiguous through DST, and three days back is 60-84h old at any
+ * clock time, so it clears the 48h gate whenever the suite runs.
+ */
+const etDaysAgo = (days: number) => `${shiftYmd(TODAY, -days)}T16:00:00Z`;
 
 const intake = (over: Partial<IntakeLead>): IntakeLead => ({
   id: "i", name: "Lead", groupId: "group_mm5z87zt", createdAt: hoursAgo(72), phone: "3475550101",
@@ -52,7 +66,7 @@ vi.mock("@/lib/careCoordinator/mondayApi", () => ({
   fetchIntakeLeads: async () => [
     intake({ id: "booked", name: "Marcus Delaney", scheduledCallTime: `${TODAY} 23:59`, bookingStatus: "Scheduled" }),
     intake({ id: "booked-later", name: "Priya Natarajan", scheduledCallTime: `${shiftYmd(TODAY, 2)} 10:30`, bookingStatus: "Scheduled" }),
-    intake({ id: "ready", name: "Eleanor Boyd", createdAt: hoursAgo(38 + 24), groupId: "group_mm5zgeak" }),
+    intake({ id: "ready", name: "Eleanor Boyd", createdAt: etDaysAgo(3), groupId: "group_mm5zgeak" }),
     intake({ id: "pushed", name: "Theo Marsh", attemptCounter: "1", followUpDate: shiftYmd(TODAY, 1) }),
     intake({ id: "import", name: "Hubert Baldwin", dropOffStep: "", referralType: "Doctor", referralSource: "SNJ [2.0]", attemptCounter: "1" }),
     intake({ id: "fresh", name: "Josen Man", createdAt: hoursAgo(3) }),
@@ -174,7 +188,7 @@ describe("CareCoordinatorPage", () => {
     const pillText = Array.from(card.querySelectorAll("span.rounded-full")).map((e) => e.textContent);
     expect(pillText).toEqual(["Completed", "CGM", "Anthem", "Insulin"]);
     // Days since intake, no hours, no "waiting".
-    expect(card).toHaveTextContent(/2 days/);
+    expect(card).toHaveTextContent(/3 days/);
     expect(card).not.toHaveTextContent(/waiting/);
     // Counts, buttons.
     expect(within(card).getByTitle("Call attempts")).toHaveTextContent("0");
