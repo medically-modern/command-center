@@ -11,6 +11,7 @@ import {
   ORDERS_SEARCH_BOARD,
   compareOrdersNewestFirst,
   isOrderRow,
+  orderIdentifierColumns,
   orderSearchFields,
 } from "./ordersSearch";
 import {
@@ -818,18 +819,52 @@ export function liveSearchRules(query: string): LiveSearchRules | null {
   return terms.length ? { kind: "name", terms } : null;
 }
 
-/** GraphQL `query_params` literal for one board. Strings go through
- *  JSON.stringify, whose escaping is valid GraphQL string syntax. */
-function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
+/**
+ * GraphQL `query_params` literal for one board — what the rep TYPED. Strings go
+ * through JSON.stringify, whose escaping is valid GraphQL string syntax.
+ *
+ * ⚠️ Exported for its tests. The properties below are silent when they break:
+ * a wrong operator or a missing column returns 200 with an empty list, which
+ * reads as "this patient is not in the system".
+ */
+export function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
   const rule = (columnId: string, value: string) =>
     `{column_id: ${JSON.stringify(columnId)}, compare_value: [${JSON.stringify(value)}], operator: contains_text}`;
+  const orOf = (rs: string[]) => `{rules: [${rs.join(", ")}], operator: or}`;
+  /* ⚠️ On the ORDER board a typed query also matches the order's OWN
+     identifiers — CAH number, PO number, all five tracking numbers (Josh,
+     2026-09-15: "make CAH and tracking numbers searchable there"). Every other
+     board gets an empty list here and is unchanged.
+
+     It has to be added on BOTH paths, because the real values fall on both
+     sides of `liveSearchRules`' split (measured off the live board): a CAH
+     number is 10 digits and a FedEx tracking number is 12, so both arrive as
+     PHONE queries; a PO number is `MM-<itemId>-<yyyymmdd>`, so it arrives as a
+     one-word NAME query. Covering one path only would have left half of what a
+     rep pastes finding nothing, with no error. */
+  const idCols = orderIdentifierColumns(board);
+
   /* ⚠️ The two kinds need OPPOSITE operators, which is why this is not one
      list. Name terms are ANDed — "doe, jane" must find `Jane Doe` and not
      every Jane — while phone columns are ORed: the digits are in the primary
      number or the alternate, never both, so ANDing them finds nobody at all.
      Search silently returning zero rows is the failure this whole file's
      comments keep recording. */
-  if (rules.kind === "phone") return phoneRulesLiteral(board, [rules.digits]);
+  if (rules.kind === "phone") {
+    if (!idCols.length) return phoneRulesLiteral(board, [rules.digits]);
+    return orOf([
+      ...phoneColIdsFor(board).map((c) => rule(c, rules.digits)),
+      ...idCols.map((c) => rule(c, rules.digits)),
+    ]);
+  }
+  /* ⚠️ ONE term only. An order identifier never contains a space, so a
+     multi-word query is a name and keeps the AND — widening it to an OR there
+     would turn "jose delgado" into "jose OR delgado" and hand back every Jose
+     on the board. A single word costs nothing: "Smith" cannot be inside a CAH
+     number, so the extra rules simply match nothing. */
+  if (idCols.length && rules.terms.length === 1) {
+    return orOf([rule("name", rules.terms[0]), ...idCols.map((c) => rule(c, rules.terms[0]))]);
+  }
   const list = rules.terms.map((t) => rule("name", t));
   return `{rules: [${list.join(", ")}], operator: and}`;
 }
@@ -841,8 +876,16 @@ function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
  * means. ORed for the reason above, in both directions now: a number is in the
  * primary column or the alternate, and a household's two records are under two
  * different numbers.
+ *
+ * ⚠️ **PHONE COLUMNS ONLY — never the order identifiers `rulesLiteral` adds.**
+ * This is also what the same-number pass asks with, and that pass means "the
+ * other records belonging to THIS PERSON's number". A CAH number is ten digits
+ * exactly as a phone number is, so matching identifiers here would let one
+ * patient's number pull in a stranger's order and file it under their name.
+ * The widening belongs to the typed query, which is the rep saying what they
+ * are holding.
  */
-function phoneRulesLiteral(board: BoardDef, digits: string[]): string {
+export function phoneRulesLiteral(board: BoardDef, digits: string[]): string {
   const rules = digits.flatMap((d) =>
     phoneColIdsFor(board).map(
       (c) =>

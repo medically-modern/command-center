@@ -651,7 +651,7 @@ function SearchView({
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search by patient name or phone number…"
+          placeholder="Search by patient name, phone, or an order / tracking number…"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           className="pl-10 h-12 text-base"
@@ -740,7 +740,7 @@ function SearchView({
 
       {searchTooShort && (
         <p className="text-xs text-muted-foreground px-1">
-          Keep typing — at least 2 letters of a name, or 3 digits of a phone number.
+          Keep typing — at least 2 letters of a name, or 3 digits of a phone or order number.
         </p>
       )}
 

@@ -4423,9 +4423,28 @@ filter shows an empty Orders folder, correctly.
   the Profile Status badge nor the days-in-stage chip — the board has neither column, so both would
   be invented ("ACTIVE" on an order delivered last month). Its stage text is plain rather than a
   filter link: that filter runs over the snapshot, which has no orders in it.
-- **Not covered:** a CAH / PO / tracking number typed into System Search still finds nothing — a
-  10-digit CAH number is read as a phone query. The Orders page's own search does that (§5.35), and
-  System Search would need per-board rules to.
+- ⚠️ **A typed query also matches the ORDER's own identifiers** — CAH number, PO number and all
+  five tracking numbers (Josh, 2026-09-15: *"make CAH and tracking numbers searchable there"*),
+  the same set the Orders page's own `orderMatchesQuery` uses, so a number that finds an order on
+  one screen finds it on the other. ⚠️ **The rule is on BOTH halves of `rulesLiteral`, because the
+  real values straddle `liveSearchRules`' digits-vs-name split** (measured off the live board): a
+  CAH number is 10 digits and a FedEx tracking number is 12, so both arrive as PHONE queries, while
+  a PO number is `MM-<itemId>-<yyyymmdd>` and arrives as a one-word NAME query. Covering one path
+  would leave half of what a rep pastes finding nothing, with no error. The **item id needs no
+  column**: the PO contains it, so the digits reach it anyway. ⚠️ The widening is **one term only** —
+  an identifier never contains a space, so a multi-word query keeps its AND; turning that into an OR
+  would make "jose delgado" mean "jose OR delgado". A single word costs nothing, since "Smith"
+  cannot be inside a CAH number. ⚠️ These seven columns are **searched but not fetched**: Monday
+  matches server-side, and the row already names the order by date, group and CAH.
+- ⚠️⚠️ **`phoneRulesLiteral` must NEVER gain them.** That builder is also what the **same-number
+  pass** asks with, and that pass means *the other records belonging to THIS PERSON's number*. A CAH
+  number is ten digits exactly as a phone number is, so an identifier rule there would let one
+  patient's number pull in a stranger's order and file it under their name. The widening lives in
+  `rulesLiteral`, the TYPED query — the rep saying what they are holding. `ordersSearch.test.ts`
+  pins it, and the test is verified to fail when the rule is moved.
+- ⚠️ An order number matches ONLY orders, so the folder a rep lands on (Active, by design) is empty
+  and the **"Found in: Orders (1)"** line is the way through. That is the existing foldering
+  behaviour, not a special case — see §7.
 
 **Keep-in-agreement:**
 1. **Column ids** — `lib/orders/mondayApi.ts` `COL` (+ `LIST_COLUMN_IDS`, pinned by `listColumns.test.ts`).
@@ -4435,7 +4454,7 @@ filter shows an empty Orders folder, correctly.
 5. **Substitution** — `lib/orders/substitution.ts` (+ its test's `BOARD_LABELS`, which is the live
    `color_mm727p5m` label set) ⇄ `email-serivce/src/features/backorder-substitution/index.js`
    `STATUS` + its `skip` reasons, and `email-serivce/src/cardinal.js` `normalizeSetName`.
-6. **Search** — `lib/systemMgmt/ordersSearch.ts` `ORDERS_SEARCH_BOARD` mirrors this slice's `GROUPS` / `GROUP_TITLES` / `COL`, and re-uses `workflow.orderStage` rather than restating it. It must stay OUT of `BOARDS` (`ordersSearch.test.ts` asserts both halves).
+6. **Search** — `lib/systemMgmt/ordersSearch.ts` `ORDERS_SEARCH_BOARD` mirrors this slice's `GROUPS` / `GROUP_TITLES` / `COL`, and re-uses `workflow.orderStage` rather than restating it. It must stay OUT of `BOARDS` (`ordersSearch.test.ts` asserts both halves). `ORDER_IDENTIFIER_COLS` ⇄ `workflow.orderMatchesQuery`'s haystack — the two searches should match the same numbers.
 
 ## 6. Patient flow across boards (the big picture)
 
@@ -4768,6 +4787,9 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   the Orders folder: search a name, be told where the rows are. Chart picks and stage filters go
   through the same folders — and show an empty Orders folder, correctly, because those come from the
   snapshot and the order board is not in it.
+  ⚠️ **A digits query is a phone search on every board but the ORDER board**, where it also matches
+  the CAH number, the PO number and all five tracking numbers (§5.35) — so a tracking number lands in
+  the Orders folder while Active reads empty, and the "Found in:" line is the route to it.
   **Search is a MANAGER's tool, so a row opens the OVERSIGHT screen for that patient** —
   `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` (+ tests), one rule for every click: a finished
   record → its review page (`?completedStage=`); **stuck or Proposed Stuck → the stage page as Final
@@ -5496,7 +5518,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
-| A patient's ORDERS aren't in System Search, or an order turns up in another folder | §5.35 — `lib/systemMgmt/ordersSearch.ts`. The board rides `LIVE_SEARCH_BOARDS` (what the search box asks) and is deliberately absent from `BOARDS` (the patient registry — inbound-call lookup, the dossier, the gateway's mirrored directory, the snapshot); `searchBucket` returns `orders` FIRST, or every order files under Active with nothing erroring. An empty Orders folder under a chart pick or a stage filter is correct — those rows come from the snapshot. A CAH / PO / tracking number still finds nothing here (it reads as a phone query); the Orders page's own search does that |
+| A patient's ORDERS aren't in System Search, or an order turns up in another folder | §5.35 — `lib/systemMgmt/ordersSearch.ts`. The board rides `LIVE_SEARCH_BOARDS` (what the search box asks) and is deliberately absent from `BOARDS` (the patient registry — inbound-call lookup, the dossier, the gateway's mirrored directory, the snapshot); `searchBucket` returns `orders` FIRST, or every order files under Active with nothing erroring. An empty Orders folder under a chart pick or a stage filter is correct — those rows come from the snapshot |
+| A CAH / PO / tracking number finds nothing in System Search | §5.35 — `rulesLiteral`'s order branch + `ORDER_IDENTIFIER_COLS`. It is on BOTH paths because CAH (10 digits) and tracking (12) arrive as PHONE queries while a PO (`MM-<itemId>-<date>`) arrives as a one-word NAME query; a multi-word query keeps its AND and deliberately does not match identifiers. The results are in the **Orders** folder, so an empty Active tab with "Found in: Orders" is the expected landing. ⚠️ Never move the rule into `phoneRulesLiteral` — that is the same-number pass, and a 10-digit CAH number would pull a stranger's order onto a patient |
 | A Search row opens the wrong screen, or a different one from Oversight | §7 — `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` is the one rule; it must send the same `?mv=` / `manager` / `escalated` params `OversightTab.handlePatientClick` sends |
 | The Communications tab's composer or profile spinner is off screen | §7 — the host tab needs `h-screen overflow-hidden`, not `min-h-screen`: `min-h-0` cannot bound a parent with no definite height, so a long conversation list grows the document to ~48,000px. ⚠️ Reproducing it needs a REAL list — a couple of conversations fit inside 100vh and the two layouts are pixel-identical |
 | The Escalations tab is missing from System Management | §7 — commented out 2026-09-10 with its header count chip, not deleted; `?tab=escalations` falls through to Search on purpose. Uncomment the `TabBtn` and the `EscalationView` block in `SystemMgmtPage.tsx`. Escalations are worked in Oversight's manager columns meanwhile |

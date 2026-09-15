@@ -99,6 +99,43 @@ export const ORDERS_SEARCH_BOARD: BoardDef = {
   extraColumnIds: Object.values(ORDER_SEARCH_COLS),
 };
 
+/**
+ * The columns that identify an ORDER rather than the patient on it — what a rep
+ * has in front of them when somebody rings about a package (Josh, 2026-09-15).
+ *
+ * The same set the Orders page's own search matches (`workflow.orderMatchesQuery`
+ * — name · phone · CAH · PO · all five tracking · item id), so a number that
+ * finds an order on one screen finds it on the other. The item id is not a
+ * column and needs none: the PO Number **contains** it (`MM-<itemId>-<yyyymmdd>`,
+ * verified live), so a `contains_text` on the digits reaches it anyway.
+ *
+ * ⚠️ These are SEARCHED but not FETCHED — deliberately absent from
+ * `ORDER_SEARCH_COLS`. Monday does the matching server-side, so pulling six
+ * more columns onto every order row would buy nothing a rep reads: the row
+ * already names the order by date, group and CAH number.
+ *
+ * ⚠️ All five tracking columns, not just the first. An order that ships in two
+ * boxes carries a second number, and a rep pastes whichever one the patient
+ * read out to them.
+ */
+export const ORDER_IDENTIFIER_COLS: readonly string[] = [
+  COL.cahOrderNumber,
+  COL.poNumber,
+  COL.tracking1,
+  COL.tracking2,
+  COL.tracking3,
+  COL.tracking4,
+  COL.tracking5,
+];
+
+/**
+ * The identifier columns a TYPED query should also match on this board — and
+ * none at all on every other, which is what keeps this rule from leaking.
+ */
+export function orderIdentifierColumns(board: { boardId: number }): readonly string[] {
+  return isOrderRow(board) ? ORDER_IDENTIFIER_COLS : [];
+}
+
 export interface OrderRowInput {
   groupId: string;
   orderStatus: string;

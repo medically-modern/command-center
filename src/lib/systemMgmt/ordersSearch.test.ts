@@ -8,13 +8,22 @@
  * that separation is the whole design and nothing else would notice it moving.
  */
 import { describe, it, expect } from "vitest";
-import { BOARDS, LIVE_SEARCH_BOARDS, searchColumnIds } from "./mondayApi";
+import {
+  BOARDS,
+  LIVE_SEARCH_BOARDS,
+  liveSearchRules,
+  phoneRulesLiteral,
+  rulesLiteral,
+  searchColumnIds,
+} from "./mondayApi";
 import {
   ORDERS_BOARD_ID,
   ORDERS_SEARCH_BOARD,
+  ORDER_IDENTIFIER_COLS,
   ORDER_SEARCH_COLS,
   compareOrdersNewestFirst,
   isOrderRow,
+  orderIdentifierColumns,
   orderRowRouting,
   orderSearchStage,
   orderSearchSubtitle,
@@ -187,5 +196,93 @@ describe("isOrderRow", () => {
   it("keys on the board, the one fact that cannot be edited on the item", () => {
     expect(isOrderRow({ boardId: ORDERS_BOARD_ID })).toBe(true);
     expect(isOrderRow({ boardId: 18410601299 })).toBe(false);
+  });
+});
+
+/**
+ * "Make CAH and tracking numbers searchable there" (Josh, 2026-09-15).
+ *
+ * ⚠️ The real values straddle `liveSearchRules`' digits-vs-name split, which is
+ * why the rule has to be on both paths. Measured off the live board the same
+ * day: CAH `1120085378` (10 digits) and FedEx tracking `526783026915` (12) are
+ * PHONE queries; PO `MM-12660776179-20260729` is a one-word NAME query. Cover
+ * one path only and half of what a rep pastes finds nothing, silently.
+ */
+describe("searching an order by its own number", () => {
+  const orders = ORDERS_SEARCH_BOARD;
+  const insurance = BOARDS.find((b) => b.boardId === 18410601299)!;
+  const literalFor = (q: string, board = orders) => {
+    const rules = liveSearchRules(q);
+    if (!rules) throw new Error(`"${q}" is too short to search`);
+    return rulesLiteral(board, rules);
+  };
+
+  it("finds a CAH number, which arrives as a digits query", () => {
+    const lit = literalFor("1120085378");
+    expect(lit).toContain(ORDER_SEARCH_COLS.cahOrderNumber);
+    expect(lit).toContain('compare_value: ["1120085378"]');
+    // The phone columns stay in: the same ten digits could be a phone number,
+    // and the rep does not have to tell us which they are holding.
+    expect(lit).toContain(orders.phoneColId);
+    expect(lit).toContain("operator: or");
+  });
+
+  it("finds a tracking number, including a second package's", () => {
+    const lit = literalFor("526783026915");
+    for (const col of ORDER_IDENTIFIER_COLS) expect(lit, col).toContain(col);
+  });
+
+  it("finds a PO number, which arrives as a one-word NAME query", () => {
+    // `MM-12660776179-20260729` is not all digits, so it takes the other path.
+    const rules = liveSearchRules("MM-12660776179-20260729");
+    expect(rules).toEqual({ kind: "name", terms: ["MM-12660776179-20260729"] });
+    const lit = rulesLiteral(orders, rules!);
+    expect(lit).toContain("operator: or");
+    expect(lit).toContain('compare_value: ["MM-12660776179-20260729"]');
+    // …and still matches the patient's name, or a one-word name search would
+    // have stopped working on this board.
+    expect(lit).toContain('column_id: "name"');
+  });
+
+  it("reaches the item id through the PO number rather than a column of its own", () => {
+    // The PO is `MM-<itemId>-<yyyymmdd>`, so the digits are inside it.
+    expect(literalFor("12660776179")).toContain(ORDER_IDENTIFIER_COLS[1]);
+  });
+
+  it("keeps a MULTI-word query ANDed on names — an identifier has no space", () => {
+    const lit = literalFor("jose delgado");
+    expect(lit).toContain("operator: and");
+    expect(lit).not.toContain(ORDER_SEARCH_COLS.cahOrderNumber);
+  });
+
+  it("changes nothing on any other board", () => {
+    for (const b of BOARDS) {
+      expect(orderIdentifierColumns(b), b.boardName).toEqual([]);
+    }
+    const lit = literalFor("1120085378", insurance);
+    expect(lit).toBe(phoneRulesLiteral(insurance, ["1120085378"]));
+    expect(lit).not.toContain(ORDER_SEARCH_COLS.cahOrderNumber);
+  });
+
+  it("⚠️ NEVER lets the same-number pass match an identifier", () => {
+    /* `phoneRulesLiteral` is what the same-number pass asks with, and that pass
+       means "the other records belonging to THIS PERSON's number". A CAH number
+       is ten digits exactly as a phone number is, so an identifier rule here
+       would let one patient's number pull in a stranger's order and file it
+       under their name. The widening belongs to the TYPED query alone. */
+    const lit = phoneRulesLiteral(orders, ["5555550100"]);
+    for (const col of ORDER_IDENTIFIER_COLS) expect(lit, col).not.toContain(col);
+    expect(lit).toContain(orders.phoneColId);
+  });
+
+  it("searches the identifiers without fetching them", () => {
+    // Monday matches server-side, so pulling six more columns onto every order
+    // row would buy nothing a rep reads. CAH is the one exception: the row
+    // prints it, so it is in the READ set for that reason, not this one.
+    const read = searchColumnIds(orders);
+    for (const col of ORDER_IDENTIFIER_COLS) {
+      if (col === ORDER_SEARCH_COLS.cahOrderNumber) continue;
+      expect(read, col).not.toContain(col);
+    }
   });
 });
