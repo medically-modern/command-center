@@ -38,36 +38,25 @@
  * 2026-09-09) — see `supplyLengthOptions`.
  */
 
-export interface PayerCap {
-  /** Maximum infusion sets (and cartridges) this payer will pay for in one order. */
-  cap: number;
-  /** The payer family we matched, or null when we fell through to the default. */
-  payerLabel: string | null;
-}
-
-interface CapRule {
-  match: RegExp;
-  label: string;
-  cap: number;
-}
-
 /**
- * First match wins.
- *
- * ⚠️ Anthem is `anthem.*commercial`, NOT `anthem` — the board carries
- * "Anthem BCBS Medicare", "Anthem BCBS Medicaid (JLJ)" and "Anthem BCBS
- * Low-Cost (JLJ)" alongside "Anthem BCBS Commercial", and only Commercial is a
- * 9. There is deliberately NO generic BCBS rule: "BCBS TN/FL/WY" are 3.
+ * ⚠️ **THE CAP TABLE MOVED TO `lib/shared/infusionCap.ts` (2026-09-15) and is
+ * re-exported here, never copied.** Final Profile Confirmation now checks the
+ * same numbers (checkPack C31), and Welcome Call is where they are SET while
+ * Final Confirm is where they are CHECKED — so two copies drifting would mean
+ * one stage offering a quantity the next one complains about, with no move that
+ * satisfies both. The shared module also carries the CareCentrix referral route
+ * and the pair-TOTAL rule; read its header for why "carecentrix" does not
+ * displace Horizon and Cigna.
  */
-export const PAYER_CAP_RULES: CapRule[] = [
-  { match: /anthem.*commercial/i, label: "Anthem Commercial", cap: 9 },
-  { match: /horizon/i, label: "Horizon", cap: 9 },
-  { match: /cigna/i, label: "Cigna", cap: 9 },
-  { match: /aetna/i, label: "Aetna", cap: 4 },
-];
-
-/** What every unrecognised payer gets. Conservative on purpose. */
-export const DEFAULT_INFUSION_CAP = 3;
+export {
+  PAYER_CAP_RULES,
+  DEFAULT_INFUSION_CAP,
+  payerInfusionCap,
+  infusionSetCap,
+  infusionSetTotal,
+  payerCapNote,
+} from "@/lib/shared/infusionCap";
+export type { PayerCap, InfusionTotalVerdict } from "@/lib/shared/infusionCap";
 
 /**
  * What Qty 1 pre-fills to when a set is picked (Brandon, 2026-09-09).
@@ -82,22 +71,6 @@ export const DEFAULT_INFUSION_CAP = 3;
  * physically ships, not a UI default. "Medicaid should stick to 3 boxes."
  */
 export const DEFAULT_INFUSION_QTY = 3;
-
-/** How many infusion sets (or cartridges) this payer allows per order. */
-export function payerInfusionCap(primaryInsurance: string): PayerCap {
-  const primary = primaryInsurance ?? "";
-  for (const rule of PAYER_CAP_RULES) {
-    if (rule.match.test(primary)) return { cap: rule.cap, payerLabel: rule.label };
-  }
-  return { cap: DEFAULT_INFUSION_CAP, payerLabel: null };
-}
-
-/** The sentence shown under the infusion quantities. */
-export function payerCapNote({ cap, payerLabel }: PayerCap): string {
-  return payerLabel
-    ? `${payerLabel} caps infusion sets and cartridges at ${cap} per order.`
-    : `Defaults to ${cap} per order for this payer — can be lowered, not raised.`;
-}
 
 /* ─── Supply length ─── */
 

@@ -3830,6 +3830,80 @@ lose the same row. **Final Confirm never blocks Send**, so this only ever remove
 3. **The columns** — `text_mm28a3xt` / `text_mm282cy5` on Welcome Call, already in
    `finalConfirm/mondayApi.ts` `READ_COLUMN_IDS`. The SPA never writes them; `automate-dvs` owns them.
 
+### 5.32g C31 — the infusion-set quantities must ADD UP to within the cap (Sep 2026)
+Brandon, 2026-09-15: *"it should flag if insuion sets add up to more than 3 as a warning. If it's
+Aetna, it's ok if it's 4. If it's carecentrix or anthem commercial, it's ok if its 9. Everything
+else should only be 3 total."*
+
+**Nothing checked the TOTAL.** Welcome Call draws the cap under each quantity field on its own
+(`WelcomeCallForm`'s `CapNote` on Qty Inf. 1, Qty Inf. 2 and Qty Cartridge), and
+`infusionSelection.infusionQtyPlan` compares the pair only against the ORDER total, never against
+the cap. So on a default-cap payer a rep could put **3 in each slot** and pass every control in the
+app while ordering six boxes the payer pays three of. `C31_INFUSION_QTY_OVER_CAP` is that sum.
+
+⚠️⚠️ **CARECENTRIX IS NOT A PAYER — it is the Referral SOURCE**, `color_mm1w5wxr` label 3. Primary
+Insurance `color_mm1x157j` carries 29 labels and **not one of them is CareCentrix**, so the note
+names a second DIMENSION rather than restating the payer list.
+
+⚠️ **The two notes AGREE; the later one is not a revision.** Read naively, 2026-09-15 drops Horizon
+and Cigna from 9 to 3 — reversing Brandon's own 2026-09-09 decision to raise Cigna from 3 to 9
+(§5.31), six days old. Measured instead: **all 33** CareCentrix-referral patients on the live
+Welcome Call board carry Primary Insurance = **Horizon BCBS**, with no other payer once.
+CareCentrix administers Horizon's DME benefit, so "carecentrix" and "horizon" name ONE population
+and the September 9th list stands. Horizon and Cigna keep their 9; CareCentrix is added as an
+independent route to 9.
+> **It costs nothing either way today.** Over the **197** live rows carrying a quantity, *both*
+> readings flag **exactly zero** patients: 192 order 3, two order 4 (Aetna Commercial and Anthem
+> BCBS Commercial — both cap-raised), and the single 5 is Sean Dayton (`12583677009`), Horizon
+> **and** a CareCentrix referral, so covered by either route. **13** rows use a second set at all.
+> The check is preventive, not a backlog. Tell Brandon the Horizon/Cigna reading if he meant the
+> narrower list.
+
+**ONE module, re-exported rather than copied — `lib/shared/infusionCap.ts`** (+ tests).
+`welcomeCall/payerRules` re-exports the cap table it used to own, and `finalConfirm/checkPack`
+imports the same thing. ⚠️ A per-slice copy is the §5.7/§5.17 hand-synced hazard with a specific
+cost here: Welcome Call is where the quantity is **set** and Final Confirm is where it is
+**checked**, so two tables drifting means one stage offering a number the next one complains about,
+with **no move that satisfies both** — the dead end §5.10/§5.20/§5.31c/§5.32c each record reversing.
+Same pattern as `shared/monitorPurchaseDate.ts` (§5.14).
+
+**The rule.** `infusionSetCap(primaryInsurance, referralSource)` takes the **higher** of the two
+dimensions — each is an independent statement that this order may carry that many, so a CareCentrix
+referral on an unrecognised payer is a 9 and an Anthem Commercial patient referred by a doctor is
+still a 9. `infusionSetTotal(qty1, qty2, primary, source)` returns `{total, cap, payerLabel, over}`.
+⚠️ Still PATTERNS, not board labels: `anthem.*commercial` never `anthem` (the other three Anthem
+plans are 3), no generic BCBS rule (TN/FL/WY are 3), and an unrecognised payer **and** an
+unrecognised referral source both fall to 3 — a cap set too HIGH is the dangerous direction.
+⚠️ **Sets only — cartridges are deliberately not summed in.** Brandon named the sets, and Qty
+Cartridge is a separate order line already capped in its own right; folding it in would be a
+different claim about a different line.
+
+**Welcome Call's own cap note now reads the referral source too**, through the same call. Zero live
+delta (every CareCentrix patient is already Horizon), and it is what stops the two stages disagreeing.
+
+⚠️ **AMBER**, matching its `C14` siblings on these very fields and Brandon's "as a warning" — and
+Final Confirm blocks nothing regardless. The quantities are editable right there, which is why the
+check belongs at this stage.
+⚠️ **Runs on SPLIT profiles**, like C27 and unlike the C14 quantity rows: `getSplitOverrides` gives
+each half a coherent Serving, so the supplies half carries the real quantities and nothing about
+splitting an order makes six sets payable. Gated on `pumpishInServing`, so a quantity on a CGM-only
+profile stays `C14_PUMP_QTY_ON_CGM`'s row — two rows about one pair of numbers is how a check pack
+gets ignored (§5.17).
+
+⚠️ **The check-pack suite's "clean profile" fixtures were ordering 10 sets.** Ten was an arbitrary
+"a quantity is present" filler from before any cap existed, and C31 correctly reports it as over
+Anthem Commercial's 9 — so the fixture asserting ZERO findings was describing an order no payer
+pays for and no live patient has ever had (the board's maximum is 5; nobody has ever ordered 9).
+All ten filler quantities are **3** now. The fixture was wrong, not the check.
+
+**Keep-in-agreement:**
+1. **The rule** — `lib/shared/infusionCap.ts` (+ `infusionCap.test.ts`, whose payer and referral
+   strings are the live label sets of `color_mm1x157j` and `color_mm1w5wxr`).
+2. **The two consumers** — `welcomeCall/payerRules` re-export → `WelcomeCallForm`'s `CapNote`
+   (per field) · `finalConfirm/checkPack` C31 (the pair total). Never re-copy the table.
+3. **The columns** — `numeric_mm1xv7wr` / `numeric_mm1xkq3b` and `color_mm1w5wxr`, all already in
+   `finalConfirm/mondayApi.ts` `READ_COLUMN_IDS`.
+
 ### 5.33 The two insurance pickers read their labels from the board (Sep 2026)
 Brandon added the payer **"Health Plans Inc (PHCS)"** (label id **159**) to Monday and expected it
 in the Command Center. It wasn't: **Primary Insurance `color_mm1xg10n`** and **General Insurance
@@ -5199,6 +5273,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Humana patient's Same-or-Similar was never asked / a product sits in Skip SoS Products | §5.32c — `benefitsDerive.sosRequiredDespiteAuth`. Auth = Required defers the check for every payer EXCEPT Humana; keyed on primary insurance (the secondary column has no Humana label). An auth-required Humana product with no entry derives `""`, which holds the stage — never `"skip"` |
 | The patient's phone is wrong and a rep can't fix it | §5.32d — editable on **Auth Outstanding only**, via `BenefitsPatientHeader`'s opt-in `onSavePhone`. The refusal fires BEFORE the write (`planPhoneWrite` skips what it can't parse, so an unchecked save is green and empty); the write goes straight to the board, never into the overlay. Not a route back to the retired Edit-profile dialog — §7 |
 | The auth-expiry warning keeps popping up on Medicaid supplies | §5.32f — `lib/shared/dvsClaim.ts`. A **paid** A4230/A4232 claim silences the C18 expiry row on that line; a `Denied`, an `ERROR` or the legacy `Yes` deliberately does not, and neither does a blank. Still firing on a patient whose claim paid ⇒ check the primary matches `/medicaid/i` or the secondary is NY Medicaid. ⚠️ Never re-gate this on `hcpcRules.suppliesRouteToMedicaid` — its payer set omits `United Medicaid` |
+| Infusion sets add up to more than the payer allows | §5.32g — `lib/shared/infusionCap.ts`. C31 sums **Qty Inf. 1 + Qty Inf. 2** against `infusionSetCap(primary, referralSource)`; cartridges are a separate line and are not summed in. ⚠️ CareCentrix is the Referral SOURCE, not a payer — all 33 live CareCentrix patients are Horizon BCBS, which is why that route ADDS to the payer list rather than replacing Horizon and Cigna. Welcome Call's per-field cap note reads the same module, so never re-copy the table |
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |

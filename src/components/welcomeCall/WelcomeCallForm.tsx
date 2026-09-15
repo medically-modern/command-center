@@ -29,7 +29,7 @@ import { IntakeMessages } from "@/components/profile/IntakeMessages";
 // is why it needs the wrapper below rather than being a plain drop-in.
 import "@/pages/profile/redesign.css";
 import "@/pages/profile/intake.css";
-import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions, DEFAULT_INFUSION_QTY } from "@/lib/welcomeCall/payerRules";
+import { infusionSetCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions, DEFAULT_INFUSION_QTY } from "@/lib/welcomeCall/payerRules";
 import { InsuranceBlock, AuthBlock, OopBlock } from "@/components/welcomeCall/InsuranceAuthSection";
 import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
 import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
@@ -348,7 +348,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
   // EFFECTIVE payer, so they react as the rep corrects insurance on the call.
   const effectivePrimary = patient.primaryInsuranceEdited ?? patient.primaryInsurance;
   const effectiveSecondary = patient.secondaryInsuranceEdited ?? patient.secondaryInsurance;
-  const infusionCap = payerInfusionCap(effectivePrimary);
+  // ⚠️ Referral source as well as payer — a CareCentrix referral is a 9 in its
+  // own right (Brandon, 2026-09-15). One rule with Final Confirm's C31, so the
+  // stage that SETS the quantity and the stage that CHECKS it cannot disagree.
+  const infusionCap = infusionSetCap(effectivePrimary, patient.referralSource);
   const supplyNote = supplyLengthNote(effectivePrimary, effectiveSecondary);
   const frequency = frequencyState({
     boardLabel: patient.orderFrequency,

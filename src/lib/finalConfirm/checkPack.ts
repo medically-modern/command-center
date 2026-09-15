@@ -41,6 +41,7 @@ import {
   type OrderLine,
 } from "@/lib/shared/servingLines";
 import { dvsClaimPaid } from "@/lib/shared/dvsClaim";
+import { infusionSetTotal } from "@/lib/shared/infusionCap";
 
 /** Anchor field for each Next Order Date finding (C29). */
 const NEXT_ORDER_DATE_FIELD: Record<OrderLine, keyof Patient> = {
@@ -530,6 +531,46 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
     qtyInf1: p.qtyInf1,
     qtyInf2: p.qtyInf2,
   };
+
+// C31 — the two set quantities ADD UP to more than this order may carry
+  // (Brandon, 2026-09-15: *"it should flag if insuion sets add up to more than
+  // 3 as a warning. If it's Aetna, it's ok if it's 4. If it's carecentrix or
+  // anthem commercial, it's ok if its 9. Everything else should only be 3
+  // total"*).
+  //
+  // ⚠️ Nothing checked the TOTAL before. Welcome Call draws the cap under each
+  // quantity field on its own, and `infusionQtyPlan` compares the pair only
+  // against the order total — so 3 + 3 = 6 passed every control in the app on
+  // a payer that pays three.
+  //
+  // ⚠️ The cap reads the referral SOURCE as well as the payer, because
+  // CareCentrix is not a payer at all (`lib/shared/infusionCap.ts` has the
+  // board evidence). Same module Welcome Call's own cap note uses, so the
+  // stage that sets the number and this one cannot disagree about it.
+  //
+  // ⚠️ AMBER, matching its C14 siblings on these very fields, and Brandon's
+  // "as a warning". Final Confirm blocks nothing either way — the quantities
+  // are editable right here, which is why the check belongs at this stage.
+  //
+  // ⚠️ Runs on SPLIT profiles too, for C27's reason below: getSplitOverrides
+  // gives each half a coherent Serving, so the supplies half carries the real
+  // quantities and nothing about splitting an order makes six sets payable.
+  //
+  // ⚠️ Gated on the supplies being served, so a quantity on a CGM-only profile
+  // stays C14_PUMP_QTY_ON_CGM's alone. Two rows about one pair of numbers is
+  // how a check pack gets ignored (§5.17).
+  if (pumpishInServing) {
+    const inf = infusionSetTotal(p.qtyInf1, p.qtyInf2, primary, p.referralSource);
+    if (inf.over) {
+      add({
+        id: "C31_INFUSION_QTY_OVER_CAP", severity: "amber", field: "qtyInf1",
+        title: `Infusion sets total ${inf.total} — over the ${inf.cap} allowed`,
+        detail: inf.payerLabel
+          ? `Qty Inf. 1 + Qty Inf. 2 come to ${inf.total}. ${inf.payerLabel} pays for ${inf.cap} per order.`
+          : `Qty Inf. 1 + Qty Inf. 2 come to ${inf.total}. This payer pays for ${inf.cap} per order.`,
+      });
+    }
+  }
 
   // C27 — a pump DEVICE on a profile whose Serving does not sell one.
   // This is the Bradan French check. It deliberately runs on split profiles

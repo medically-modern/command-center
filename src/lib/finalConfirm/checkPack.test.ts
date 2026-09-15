@@ -87,16 +87,16 @@ describe("checkPack — insurance", () => {
 });
 
 describe("checkPack — serving & product", () => {
-  scenario("Split suppression", { serving: "Insulin Pump", orderHandling: "Separate", cgmType: "Not Serving", cgmCoveragePath: "Not Serving", pumpType: "t:slim", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 0, qtyInf1: "10", subscriptionType: "Supplies", address: "1 Main St, Albany, NY 12203" }, [], ["C14_CGM_NOT_SERVING", "C16_CGM_PATH", "C13_SERVING_VS_REQUEST"]);
-  scenario("t:slim x Mio", { serving: "Insulin Pump", pumpType: "t:slim", infusionSet1: 'Mio Advance Clear 9mm 23"', infusionSet1Index: 102, qtyInf1: "10" }, ["C24_SET_INCOMPATIBLE"]);
-  scenario("iLet x AutoSoft", { serving: "Insulin Pump", pumpType: "iLet", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 0, qtyInf1: "10" }, ["C24_SET_INCOMPATIBLE"]);
-  scenario("iLet + Contact ok", { serving: "Insulin Pump", pumpType: "iLet", infusionSet1: 'Contact 6mm 23"', infusionSet1Index: 13, qtyInf1: "10" }, [], ["C24_SET_INCOMPATIBLE"]);
+  scenario("Split suppression", { serving: "Insulin Pump", orderHandling: "Separate", cgmType: "Not Serving", cgmCoveragePath: "Not Serving", pumpType: "t:slim", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 0, qtyInf1: "3", subscriptionType: "Supplies", address: "1 Main St, Albany, NY 12203" }, [], ["C14_CGM_NOT_SERVING", "C16_CGM_PATH", "C13_SERVING_VS_REQUEST"]);
+  scenario("t:slim x Mio", { serving: "Insulin Pump", pumpType: "t:slim", infusionSet1: 'Mio Advance Clear 9mm 23"', infusionSet1Index: 102, qtyInf1: "3" }, ["C24_SET_INCOMPATIBLE"]);
+  scenario("iLet x AutoSoft", { serving: "Insulin Pump", pumpType: "iLet", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 0, qtyInf1: "3" }, ["C24_SET_INCOMPATIBLE"]);
+  scenario("iLet + Contact ok", { serving: "Insulin Pump", pumpType: "iLet", infusionSet1: 'Contact 6mm 23"', infusionSet1Index: 13, qtyInf1: "3" }, [], ["C24_SET_INCOMPATIBLE"]);
   // The 5" rule is one-way: 5" implies Mobi, Mobi does NOT imply 5". Both
   // tubing lengths on a Mobi are silent (Brandon, 2026-08-10).
-  scenario("Mobi + 23in ok", { serving: "Insulin Pump", pumpType: "Mobi", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 0, qtyInf1: "10" }, [], ["C24_MOBI_TUBING", "C24_FIVE_INCH_NOT_MOBI", "C24_SET_INCOMPATIBLE"]);
-  scenario("Mobi + 5in ok", { serving: "Insulin Pump", pumpType: "Mobi", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "10" }, [], ["C24_MOBI_TUBING", "C24_SET_INCOMPATIBLE"]);
-  scenario("t:slim x 5in", { serving: "Insulin Pump", pumpType: "t:slim", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "10" }, ["C24_FIVE_INCH_NOT_MOBI"], ["C24_SET_INCOMPATIBLE"]);
-  scenario("780G x 5in", { serving: "Insulin Pump", pumpType: "Minimed 780G", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "10" }, ["C24_SET_INCOMPATIBLE"]);
+  scenario("Mobi + 23in ok", { serving: "Insulin Pump", pumpType: "Mobi", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 0, qtyInf1: "3" }, [], ["C24_MOBI_TUBING", "C24_FIVE_INCH_NOT_MOBI", "C24_SET_INCOMPATIBLE"]);
+  scenario("Mobi + 5in ok", { serving: "Insulin Pump", pumpType: "Mobi", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "3" }, [], ["C24_MOBI_TUBING", "C24_SET_INCOMPATIBLE"]);
+  scenario("t:slim x 5in", { serving: "Insulin Pump", pumpType: "t:slim", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "3" }, ["C24_FIVE_INCH_NOT_MOBI"], ["C24_SET_INCOMPATIBLE"]);
+  scenario("780G x 5in", { serving: "Insulin Pump", pumpType: "Minimed 780G", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "3" }, ["C24_SET_INCOMPATIBLE"]);
   scenario("Sub mismatch", { cgmTypeIndex: 6, cgmType: "Dexcom G7", serving: "CGM", subscriptionType: "Supplies", primaryInsurance: "Cigna" }, ["C15_SUBSCRIPTION_MISMATCH"]);
 });
 
@@ -367,6 +367,64 @@ describe("checkPack — C18 expiry is moot once the DVS supply claim has paid", 
 });
 
 /**
+ * C31 — the infusion-set quantities ADD UP to more than the order may carry
+ * (Brandon, 2026-09-15). Welcome Call draws the cap under each quantity field
+ * separately and `infusionQtyPlan` compares the pair only against the order
+ * total, so 3 + 3 = 6 passed every control in the app.
+ */
+describe("checkPack — C31 infusion sets over the cap", () => {
+  const OVER = "C31_INFUSION_QTY_OVER_CAP";
+  /** Both slots filled on a supplies-serving profile. */
+  const sets = (over: Partial<Patient>): Partial<Patient> => ({
+    serving: "Insulin Pump", pumpType: "t:slim",
+    infusionSet1: "AutoSoft XC", infusionSet1Index: 1,
+    infusionSet2: "AutoSoft 90", infusionSet2Index: 2,
+    qtyInf1: "3", qtyInf2: "3",
+    ...over,
+  });
+
+  scenario("3 + 3 on a default payer fires",
+    sets({ primaryInsurance: "Humana" }), [OVER]);
+
+  scenario("3 alone on a default payer is silent",
+    sets({ primaryInsurance: "Humana", infusionSet2: "", infusionSet2Index: null, qtyInf2: "" }),
+    [], [OVER]);
+
+  // The three 9-payers and Aetna's 4 — Brandon's own list, unchanged.
+  scenario("3 + 3 on Anthem Commercial is silent",
+    sets({ primaryInsurance: "Anthem BCBS Commercial" }), [], [OVER]);
+  scenario("3 + 3 on Horizon is silent",
+    sets({ primaryInsurance: "Horizon BCBS" }), [], [OVER]);
+  scenario("3 + 3 on Cigna is silent",
+    sets({ primaryInsurance: "Cigna" }), [], [OVER]);
+  scenario("2 + 2 on Aetna is silent, 3 + 2 fires",
+    sets({ primaryInsurance: "Aetna Commercial", qtyInf1: "2", qtyInf2: "2" }), [], [OVER]);
+  scenario("Aetna at 5 fires",
+    sets({ primaryInsurance: "Aetna Commercial", qtyInf1: "3", qtyInf2: "2" }), [OVER]);
+
+  // ⚠️ CareCentrix is the REFERRAL SOURCE, and it is the second dimension the
+  // cap reads — a payer-only rule would flag this order.
+  scenario("a CareCentrix referral is silent on an otherwise-default payer",
+    sets({ primaryInsurance: "Humana", referralSource: "CareCentrix" }), [], [OVER]);
+
+  scenario("another referral source does not raise the cap",
+    sets({ primaryInsurance: "Humana", referralSource: "Tandem" }), [OVER]);
+
+  // ⚠️ Scoped to profiles that actually serve supplies — a quantity on a
+  // CGM-only profile is C14_PUMP_QTY_ON_CGM's row, not a second one here.
+  scenario("a CGM-only profile is C14's, not C31's",
+    sets({ serving: "CGM", primaryInsurance: "Humana", cgmType: "Dexcom G7" }),
+    ["C14_PUMP_QTY_ON_CGM"], [OVER]);
+
+  // ⚠️ Runs on splits, like C27: the supplies half carries the real quantities.
+  scenario("a split supplies half still fires",
+    sets({ primaryInsurance: "Humana", orderHandling: "Separate" }), [OVER]);
+
+  scenario("no quantities at all is silent",
+    { serving: "Insulin Pump", pumpType: "t:slim", primaryInsurance: "Humana" }, [], [OVER]);
+});
+
+/**
  * Retired at Final Confirm (Brandon, 2026-09-02) — the rows that popped up on
  * nearly every profile. Cost-sharing is the Welcome Call's conversation and
  * still renders there (Benefits card + OopEstimateCard); repeating it here
@@ -473,14 +531,21 @@ describe("checkPack — C25/C26 Cardinal address format", () => {
 });
 
 describe("checkPack — silence guards", () => {
+  // ⚠️ The filler quantity in these fixtures is **3**, not the 10 they carried
+  // until 2026-09-15. Ten was an arbitrary "a quantity is present" value from
+  // before any cap existed, and C31 correctly reports it as over Anthem
+  // Commercial's 9 — so a fixture claiming to be CLEAN was ordering more sets
+  // than any payer pays for, and more than any live patient has ever had (the
+  // board's maximum is 5, and nobody has ever ordered 9). The fixture was wrong,
+  // not the check.
   // Both clean fixtures carry a CLINIC address as well as the patient's: C26
   // (added 2026-08-18) reads a blank clinic address as an amber, because
   // Cardinal validates doctorInfo.address on every order and blocks a blank
   // one at submit. "Clean" has to mean clean for the order too.
-  scenario("Clean profile", { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None", doctorPhone: "5185559876", nextOrderDateSensors: "2026-09-01", nextOrderDateSupplies: "2026-09-01" }, [], ["C11_CGM_ONLY_MEDICAID", "C24_SET_INCOMPATIBLE", "C14_CGM_NOT_SERVING", "C15_SUBSCRIPTION_MISMATCH", "C1_HOST_STATE", "C22_ADDRESS_CAPS"]);
+  scenario("Clean profile", { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "3", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None", doctorPhone: "5185559876", nextOrderDateSensors: "2026-09-01", nextOrderDateSupplies: "2026-09-01" }, [], ["C11_CGM_ONLY_MEDICAID", "C24_SET_INCOMPATIBLE", "C14_CGM_NOT_SERVING", "C15_SUBSCRIPTION_MISMATCH", "C1_HOST_STATE", "C22_ADDRESS_CAPS"]);
 
   it("a clean commercial profile produces no findings at all", () => {
-    const clean: Partial<Patient> = { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None", doctorPhone: "5185559876", nextOrderDateSensors: "2026-09-01", nextOrderDateSupplies: "2026-09-01", pos: "Home" };
+    const clean: Partial<Patient> = { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "3", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None", doctorPhone: "5185559876", nextOrderDateSensors: "2026-09-01", nextOrderDateSupplies: "2026-09-01", pos: "Home" };
     expect(runFinalChecks({ ...basePatient(), ...clean })).toEqual([]);
   });
 });
