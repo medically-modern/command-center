@@ -1,16 +1,21 @@
 /**
- * ⚠️⚠️ DEAD ON THE WELCOME CALL PAGE FROM 2026-09-11 — ZERO LIVE IMPORTERS.
+ * The Welcome Call out-of-pocket estimate. It is mounted by
+ * `InsuranceAuthSection.OopBlock` — i.e. inside the FORM's Authorizations
+ * section, under "Out of Pocket" — and by nothing else.
  *
- * Brandon asked for the out-of-pocket row to come off the top of the page
- * ("get rid of the next 3 rows"), so `WelcomeCallPage` no longer mounts this.
- * The out-of-pocket STEP still exists — it is `InsuranceAuthSection.OopBlock`,
- * inside the form's Insurance section, which is where the rep works it.
- *
- * Kept rather than deleted because two comments in `lib/finalConfirm/checkPack`
- * cite it by name when explaining why the check pack does not repeat the
- * benefits figures, and because the estimator behind it is live elsewhere.
- * Editing THIS file changes nothing on screen — the same trap §5.11 records for
- * `profile/StediPanel.tsx`, which carries the same banner for the same reason.
+ * ⚠️ It was DEAD from 2026-09-11 to 2026-09-15. Brandon's screen pass ("get rid
+ * of the next 3 rows") took it off the top of the page, and for those four days
+ * nothing on Welcome Call quoted a number: the rep typed one into "Confirmed
+ * amount from calculator" by hand, with the calculator button beside it inert.
+ * Josh put it back (2026-09-15) in the Insurance section rather than at the top,
+ * so the estimate sits beside the field recording what was actually quoted.
+ * ⚠️ Two comments in `lib/finalConfirm/checkPack` cite this component BY NAME
+ * when arguing that the check pack need not repeat the benefits figures
+ * (C20/C21, retired 2026-09-02). That argument is only true while this renders,
+ * so un-mounting it again silently re-opens the gap those rows used to cover.
+ * ⚠️ `PAYER_RATE_SCHEDULE` is hand-synced with the Railway financial backend and
+ * nothing checks for drift (§5.7) — these numbers are as current as the last
+ * time somebody reconciled the two by hand.
  */
 import { useMemo } from "react";
 import { Card } from "@/components/ui/card";

@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { Calculator } from "lucide-react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
+import { OopEstimateCard } from "@/components/welcomeCall/OopEstimateCard";
 import type { CallIntake } from "@/lib/welcomeCall/callIntake";
 import {
   SECONDARY_TYPES,
@@ -370,14 +371,23 @@ function AuthFact({ label, value }: { label: string; value: string }) {
 /* ── Block C ───────────────────────────────────────────────────────────── */
 
 export function OopBlock({
+  patient,
   intake,
   onChange,
 }: {
+  patient: Patient;
   intake: CallIntake;
   onChange: (next: CallIntake) => void;
 }) {
   return (
     <div className="space-y-4">
+      {/* The estimate itself (Josh, 2026-09-15 — put back after four days with
+          nothing on this page quoting a number). It renders HERE rather than as
+          a row at the top of the page, so it sits beside the field that records
+          what the rep actually quoted. `OopEstimateCard` returns null when it
+          has no primary insurance or serving to work from, and swaps itself for
+          a routing note on CareCentrix. */}
+      <OopEstimateCard patient={patient} />
       <p className="text-sm text-muted-foreground">
         Benefit details aren&apos;t shown here. Open the calculator to confirm what the patient owes.
       </p>

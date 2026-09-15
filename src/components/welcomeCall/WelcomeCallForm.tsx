@@ -1256,7 +1256,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground mb-3">
             Out of Pocket
           </p>
-          <OopBlock intake={intake} onChange={setIntake} />
+          <OopBlock patient={patient} intake={intake} onChange={setIntake} />
         </div>
       </FormSection>
 

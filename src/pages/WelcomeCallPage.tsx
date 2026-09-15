@@ -412,11 +412,13 @@ const WelcomeCallPage = () => {
                     onFieldChange={handleFieldChange}
                     onSaveSecondaryInsurance={(_label, index) => sendSecondaryInsuranceToMonday(selected.id, index)}
                   />
-                  {/* ⚠️ OopEstimateCard was removed from this page (Brandon,
-                      2026-09-11 — one of the three rows to delete). The
-                      out-of-pocket step lives in the form's Insurance section
-                      as `OopBlock`; the component is still in the tree and
-                      still used by nothing else here. */}
+                  {/* ⚠️ The out-of-pocket estimate is deliberately NOT a row on
+                      this page — Brandon, 2026-09-11, "get rid of the next 3
+                      rows". It renders one level down, inside the form's
+                      Authorizations section as part of
+                      `InsuranceAuthSection.OopBlock` (Josh, 2026-09-15), beside
+                      the confirmed-amount field. Do not re-mount
+                      `OopEstimateCard` here: it would render twice. */}
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} onResetWelcomeCallText={handleResetWelcomeCallText} onProposeStuck={() => setProposeOpen(true)} />
                   {/* Order dates moved INTO Subscription & Logistics (form
                       section 7) on 2026-09-09 — Brandon: "under the cards, in
