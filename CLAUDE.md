@@ -3712,6 +3712,52 @@ editor beside it — refusing one would be a control with no passing move, and t
 already in the read set and already written by every Insurance send.
 
 
+### 5.32e An entered Last Bill Date is NEVER erased — the app used one and deleted it (Sep 2026)
+Josh, 2026-09-15: *"NEVER EVER should something be deleted, it should of written to the
+sensors bill date column."*
+
+**Hope Hebb, Insurance `13041022056`, 2026-09-14 12:50 PM ET.** Humana required an auth for
+A4239. The rep entered the sensors last bill date **04/27/2026**, and ONE `/send` transaction
+(gateway audit — this is invisible on the board) wrote:
+- `date_mm35f5j1` **Sensors Next Order Date = 2026-07-26** — which is `04/27 + 90`, so the date
+  was unquestionably in the form state, and
+- `date_mm59ejs2` **CGM Sensors SoS Last Bill = `{}`** — an explicit blank.
+
+**The app computed with the date and deleted it in the same breath.** Two sends later
+(12:56, 12:58) the derived next-order date went too, because the page had re-hydrated from the
+column it had just blanked — `mondayMapping` reads `sosEntry: "billed"` off those very columns,
+so an erasure is self-propagating. The answer survived only in the call notes. Welcome Call then
+computed her sensors reorder from the **MONITOR's** date (`presentDates(sensors, monitor)` takes
+either), and Final Confirm had a rep type today's date over that by hand.
+
+**The cause, and why it read as reasonable:** both gates in `samantha/mondayWrite`'s Benefits SoS
+facts block carried **`st.auth !== "required"`**, implementing spec §1's *"any previously entered
+date/units are ignored while Auth = Required"*. ⚠️ **Ignoring a fact for the VERDICT and deleting
+it from the RECORD are different things, and only the first was ever asked for.** Removed from
+`isBilledFact` AND from `neverChecked` — a "never billed" answer was being discarded the same way,
+and that one feeds §5.14's monitor purchase date, so an auth-required monitor lost its real date
+*and* its never-billed answer and fell through to the **fabricated rolling 24-month placeholder**.
+
+⚠️ **The removal is strictly additive.** `derivedSos` short-circuits on `auth === "required"`
+**before it reads any fact**, so the deferral, the Skip SoS dropdown, `trackedCards` and the stage
+routing are byte-identical — only the record is kept. And a rep clearing both fields still sets
+`sosEntry: ""` (`BenefitsPanel` line ~202), which still clears the column, so **correcting a wrong
+date keeps working** — this is not a one-way write.
+
+**The other two writers were audited the same day and are correct — do not "align" them:**
+| Writer | Behaviour | Verdict |
+|---|---|---|
+| `samantha/mondayWrite` Benefits SoS facts | blanked an entered date on a pending auth | **was the bug** |
+| `samantha/mondayWrite` Auth Outstanding recheck | clears ONLY on a positive `sosEntry === "never"`; explicitly never touches other products | correct |
+| `samantha/mondayWrite` `nodCodes` | a LOCAL copy that drops a skipped product's date from next-order math — the column is untouched | correct (spec §1, the half that was wanted) |
+| `finalConfirm/mondayWrite` `lastBillDateEntries` | writes page state; a blank means the rep cleared the box (§5.32) | correct |
+| `finalConfirm/workflow` split overrides | route CGM facts to the sensors half, pump facts to the supplies half | correct |
+| `welcomeCall` | **reads only** — never writes a last-bill column | correct |
+
+**Pinned by `samantha/sosFactsPreserved.test.ts`** — a source scan (the `listColumns.test.ts`
+convention), verified to fail when either condition is restored. A regression here is silent on
+every surface: green toast, green page, empty column.
+
 ### 5.33 The two insurance pickers read their labels from the board (Sep 2026)
 Brandon added the payer **"Health Plans Inc (PHCS)"** (label id **159**) to Monday and expected it
 in the Command Center. It wasn't: **Primary Insurance `color_mm1xg10n`** and **General Insurance
@@ -5077,6 +5123,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Last Bill Date reads "—" on Welcome Call / Final Confirm for a patient we have billed | §5.32 — one family since 2026-09-15: the "<product> SoS Last Bill" columns. Check the Insurance item's SoS column; if it is blank too, the product was parked in **Skip SoS Products** at Benefits (Humana + auth required, worked before §5.32c reached prod, is the known case — Josephine Neal, Tammy Turpin) and the date is in the Benefits call notes. Write it into the SoS date + units on BOTH boards; the hop only fires at item creation |
 | Something still names a legacy `date_mm33…` Last Bill Date column, or a Final Confirm Last Bill box behaves oddly | §5.32 — those ten columns are retired and out of the code; the Final Confirm box IS the SoS column now (read + written, blank clears). `lastBillDisplay.test.ts` pins `COL.lastBillDate` to the SoS ids. On the board they are to be retitled "(retired)" and hidden, never deleted |
 | A phone/caregiver answer isn't saving, or a status write silently did nothing | §5.31d — `lib/welcomeCall/phoneSlots.ts`. The write value is the label **id** (Patient 7 · Caregiver 4 · Yes 1 · No 2), not the display index, and a bad id is dropped with no error. A blank Can Text is unknown, never a No |
+| A last bill date a rep entered isn't on the board (and a next-order date exists that could only have come from it) | §5.32e — the Benefits send used to blank the SoS column whenever that product's auth was pending. Confirm with the gateway audit (`/audit.json?key=…&item=<id>&all=1`), NOT the board: a blank write leaves no activity-log entry worth reading and the derived next-order date is the fingerprint. `sosFactsPreserved.test.ts` guards the fix; the Auth Outstanding recheck's clear is legitimate and stays |
 | A Humana patient's Same-or-Similar was never asked / a product sits in Skip SoS Products | §5.32c — `benefitsDerive.sosRequiredDespiteAuth`. Auth = Required defers the check for every payer EXCEPT Humana; keyed on primary insurance (the secondary column has no Humana label). An auth-required Humana product with no entry derives `""`, which holds the stage — never `"skip"` |
 | The patient's phone is wrong and a rep can't fix it | §5.32d — editable on **Auth Outstanding only**, via `BenefitsPatientHeader`'s opt-in `onSavePhone`. The refusal fires BEFORE the write (`planPhoneWrite` skips what it can't parse, so an unchecked save is green and empty); the write goes straight to the board, never into the overlay. Not a route back to the retired Edit-profile dialog — §7 |
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |

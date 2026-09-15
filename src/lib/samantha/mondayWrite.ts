@@ -801,8 +801,29 @@ export async function sendPatientToMonday(
     // every billed product (even derived-Clear), cleared otherwise so stale
     // facts never linger. Since 2026-09-15 the ONLY last-bill family: the
     // legacy Not-Clear-flag columns are retired (shared/lastBillDate.ts).
-    // Facts are ignored while the product's auth is pending (spec §1), and
-    // the whole family is untouched on the failed-check path (handoff §4).
+    // The whole family is untouched on the failed-check path (handoff §4).
+    //
+    // ⚠️⚠️ AN ENTERED LAST BILL DATE IS NEVER DISCARDED — and it WAS, until
+    // 2026-09-15. Both gates below carried `st.auth !== "required"`, reading
+    // spec §1's "any previously entered date/units are ignored while Auth =
+    // Required" as licence to write a BLANK over the date the rep had just
+    // typed. Ignoring a fact for the VERDICT and erasing it from the RECORD
+    // are different things, and only the first was ever asked for.
+    //   Hope Hebb, Insurance 13041022056, 2026-09-14 12:50 PM ET (gateway
+    // audit): Humana required an auth for A4239, the rep entered the sensors
+    // last bill 04/27/2026, and ONE transaction wrote `date_mm59ejs2: {}`
+    // while — from that very date — computing and writing Sensors Next Order
+    // Date = 07/26/2026 (04/27 + 90). The app used the date and erased it in
+    // the same breath. Two sends later the derived date went too, because the
+    // page had re-hydrated from the column it had just blanked. The answer
+    // survived only in the call notes, and Welcome Call then fell back to the
+    // MONITOR's date for the sensors reorder (§5.22's missed-reorder class).
+    //   Removing the auth condition is strictly additive: `derivedSos` returns
+    // "skip" on `auth === "required"` BEFORE it looks at any fact, so the
+    // deferral, the Skip SoS dropdown and the stage routing are unchanged —
+    // only the record is kept. A rep clearing both fields still sets
+    // `sosEntry: ""` (BenefitsPanel), which still clears the column, so
+    // correcting a wrong date keeps working.
     const ALL_CODE_IDS = Object.keys(PRODUCT_CODE_TO_PRODUCT_ID) as ProductCodeId[];
     const servedCids = new Set(entries.map((e) => e.cid));
     if (!universalNegative)
@@ -812,7 +833,6 @@ export async function sendPatientToMonday(
       const isBilledFact =
         servedCids.has(cid) &&
         st?.sosEntry === "billed" &&
-        st.auth !== "required" &&
         !!st.lastBillDate;
       const dateVal = isBilledFact ? st!.lastBillDate! : "";
       tasks.push({
@@ -831,7 +851,9 @@ export async function sendPatientToMonday(
       // "No Billing History" checkbox — the rep's answer for ALL payers
       // (the Medicare A&B rollups remain the derived special case). Written
       // checked/cleared every send, so it always matches the current answer.
-      const neverChecked = servedCids.has(cid) && st?.sosEntry === "never" && st.auth !== "required";
+      // (No `auth !== "required"` here either — same rule: an answer the rep
+      // gave is recorded, whether or not the verdict is deferred.)
+      const neverChecked = servedCids.has(cid) && st?.sosEntry === "never";
       tasks.push({
         label: `SoS No Billing History: ${productId}`,
         columnId: COL.sosNeverBilled[productId],
