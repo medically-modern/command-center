@@ -176,6 +176,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     sosNeverBilledMonitor: !!txt(COL.sosNeverBilledMonitor),
     sosLastBillMonitor: txt(COL.sosLastBillMonitor),
     sosLastBillSensors: txt(COL.sosLastBillSensors),
+    sosUnitsSensors: txt(COL.sosUnitsSensors),
     sosLastBillIp: txt(COL.sosLastBillIp),
     sosLastBillInfusionSet: txt(COL.sosLastBillInfusionSet),
     sosLastBillCartridge: txt(COL.sosLastBillCartridge),

@@ -4,6 +4,11 @@
 
 import type { CallIntake } from "./callIntake";
 import { etToday } from "@/lib/masheke/etDate";
+import {
+  computeNextOrderDate,
+  hasMedicaidPolicy,
+  type NextOrderCadence,
+} from "@/lib/shared/nextOrderCadence";
 
 export interface Patient {
   id: string;
@@ -209,6 +214,9 @@ export interface Patient {
    *  `*LastBillDate` fields that used to sit beside these were a Not-Clear flag
    *  and are retired (shared/lastBillDate.ts has the audit). */
   sosLastBillSensors: string;
+  /** CGM Sensors SoS Units — 1 or 2 units is a 30/60-day supply, so it is a
+   *  cadence input, not just a record (shared/nextOrderCadence.ts). */
+  sosUnitsSensors: string;
   sosLastBillIp: string;
   sosLastBillInfusionSet: string;
   sosLastBillCartridge: string;
@@ -597,26 +605,26 @@ function ymdLocal(d: Date): string {
 }
 
 /**
- * Compute a product's next order date the way the Welcome Call UI shows it:
- * the latest last-bill date + 90 days, or today when there is no last-bill date.
- * Lives here (not in the component) so the display and the send path share one
- * source of truth — the value on screen is exactly what gets written to Monday.
+ * Compute a served line's next order date from its last-bill history.
+ *
+ * ⚠️ **This used to be a flat +90 days for every product and every payer, and
+ * to return TODAY when there was no last-bill history at all.** Both are gone:
+ * the rule now lives in `shared/nextOrderCadence.ts`, is the same one the
+ * Insurance stage applies at Benefits, and returns `""` when it has nothing to
+ * compute from. `nextOrderCadence.ts` records what that cost on the live
+ * boards; the short version is that a blank is a gap a rep can see and fill
+ * while "today" is a cadence that looks real and is not.
+ *
+ * ⚠️ `cadence` is REQUIRED, and that is the point — the bug was three lines
+ * sharing one rule, so tsc now makes every call site say which line it is
+ * computing. Same reasoning as `SupplyLengthField`'s required `options`
+ * (CLAUDE.md §5.31): a guarantee that lives in the type system cannot rot.
  */
-export function computeNextOrder(lastBillDates: string[]): string {
-  const dates = lastBillDates
-    .filter(Boolean)
-    .map((d) => {
-      const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
-    })
-    .filter((d): d is Date => d !== null);
-
-  if (dates.length === 0) return ymdLocal(new Date());
-
-  // Use the latest last bill date
-  const latest = dates.reduce((a, b) => (a > b ? a : b));
-  latest.setDate(latest.getDate() + 90);
-  return ymdLocal(latest);
+export function computeNextOrder(
+  lastBillDates: string[],
+  cadence: NextOrderCadence,
+): string {
+  return computeNextOrderDate(lastBillDates, cadence);
 }
 
 /**
@@ -631,34 +639,65 @@ export function effectiveNextOrder(
   edited: string | null,
   mondayDate: string,
   lastBillDates: string[],
+  cadence: NextOrderCadence,
 ): string {
-  return (edited || mondayDate || computeNextOrder(lastBillDates)).slice(0, 10);
+  return (edited || mondayDate || computeNextOrder(lastBillDates, cadence)).slice(0, 10);
 }
 
 /**
  * Decide what to write to one product's Next Order Date column on Send, or
  * `null` to skip the write.
  *
- * MM-1042: a product that is NOT being served must never receive the
- * "today" default that `computeNextOrder([])` produces for an empty
- * last-bill history. When a line isn't served its date must be empty, so we
- * honor an explicit rep edit if there is one and otherwise clear a stale
- * board value (skipping the write when the board is already empty). Served
- * lines keep the existing edit → Monday value → computed-default resolution.
+ * MM-1042: a product that is NOT being served must never receive a computed
+ * default. When a line isn't served its date must be empty, so we honor an
+ * explicit rep edit if there is one and otherwise clear a stale board value
+ * (skipping the write when the board is already empty). Served lines keep the
+ * existing edit → Monday value → computed-default resolution.
+ *
+ * ⚠️ A SERVED line with no last-bill history now resolves to `""`, and `""`
+ * returns `null` here — **skip, never clear**. That is deliberate: having no
+ * basis to compute a date is not evidence that the date on the board is wrong,
+ * and a rep's own entry reaches this through `edited`. Acting only on positive
+ * evidence is the same rule `pendingAdvance` and the patient directory's
+ * `isOrphanRow` follow (CLAUDE.md §9 / §5.29).
  */
 export function resolveNextOrderWrite(args: {
   served: boolean;
   edited: string | null;
   mondayDate: string;
   lastBillDates: string[];
+  cadence: NextOrderCadence;
 }): string | null {
   const current = args.mondayDate.slice(0, 10);
   if (!args.served) {
     const target = (args.edited ?? "").slice(0, 10);
     return target !== current ? target : null;
   }
-  const effective = effectiveNextOrder(args.edited, args.mondayDate, args.lastBillDates);
+  const effective = effectiveNextOrder(args.edited, args.mondayDate, args.lastBillDates, args.cadence);
   return effective && effective !== current ? effective : null;
+}
+
+/**
+ * The cadence inputs for one patient's three order lines, read off the
+ * patient rather than assembled at each call site — the send path and the
+ * card must agree, and two hand-built copies are how they drift.
+ */
+export function nextOrderCadences(p: {
+  primaryInsurance: string;
+  primaryInsuranceEdited?: string | null;
+  secondaryInsurance: string;
+  secondaryInsuranceEdited?: string | null;
+  sosUnitsSensors?: string;
+}): Record<"insulin_pump" | "sensors" | "supplies", NextOrderCadence> {
+  const primary = (p.primaryInsuranceEdited ?? p.primaryInsurance) || "";
+  const secondary = (p.secondaryInsuranceEdited ?? p.secondaryInsurance) || "";
+  const isMedicare = isOriginalMedicare(primary);
+  const isMedicaid = hasMedicaidPolicy(primary, secondary);
+  return {
+    insulin_pump: { line: "insulin_pump", isMedicare },
+    sensors: { line: "sensors", units: p.sosUnitsSensors },
+    supplies: { line: "supplies", isMedicaid },
+  };
 }
 
 /* ─── Validation for Send to Monday ─── */

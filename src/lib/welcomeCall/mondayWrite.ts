@@ -11,13 +11,14 @@ import { appendIntakeToNotes } from "./callIntake";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
 import { assertTextLikeFits } from "../shared/longText";
 import { expectedPos, POS_INDEX } from "../shared/pos";
-import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
+import { resolveNextOrderWrite, nextOrderCadences, servingIncludesCgm, servingIncludesPump } from "./workflow";
 import { infusionSetWriteAction } from "./infusionSelection";
 import { coercePumpQty } from "@/lib/shared/servingLines";
 import { coerceMonitorQty } from "@/lib/shared/monitorQty";
 import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "./orderFrequency";
 import { phoneSlotsFor, caregiverFor, phoneSlotWrites, caregiverConsentJustGiven, caregiverConsentNote } from "./phoneSlots";
 import type { Patient } from "./workflow";
+import type { NextOrderCadence } from "@/lib/shared/nextOrderCadence";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -351,6 +352,9 @@ export async function sendPatientToMonday(
   // only since 2026-09-15 — shared/lastBillDate.ts records why.
   const presentDates = (...ds: Array<string | undefined>) =>
     ds.map((d) => (d ?? "").trim()).filter(Boolean);
+  // One cadence per line, built from the patient once — the card builds the
+  // same three and the two must not drift (shared/nextOrderCadence.ts).
+  const cadences = nextOrderCadences(p);
   const nextOrderDateWrites: {
     label: string;
     columnId: string;
@@ -358,13 +362,17 @@ export async function sendPatientToMonday(
     mondayDate: string;
     lastBillDates: string[];
     served: boolean;
+    cadence: NextOrderCadence;
   }[] = [
-    { label: "IP Next Order Date", columnId: COL.ipNextOrderDate, edited: p.ipNextOrderDateEdited, mondayDate: p.ipNextOrderDate, lastBillDates: presentDates(p.sosLastBillIp), served: pumpServed },
-    { label: "Sensors Next Order Date", columnId: COL.sensorsNextOrderDate, edited: p.sensorsNextOrderDateEdited, mondayDate: p.sensorsNextOrderDate, lastBillDates: presentDates(p.sosLastBillSensors, p.sosLastBillMonitor), served: cgmServed },
-    { label: "Supplies Next Order Date", columnId: COL.suppliesNextOrderDate, edited: p.suppliesNextOrderDateEdited, mondayDate: p.suppliesNextOrderDate, lastBillDates: presentDates(p.sosLastBillInfusionSet, p.sosLastBillCartridge), served: pumpServed },
+    { label: "IP Next Order Date", columnId: COL.ipNextOrderDate, edited: p.ipNextOrderDateEdited, mondayDate: p.ipNextOrderDate, lastBillDates: presentDates(p.sosLastBillIp), served: pumpServed, cadence: cadences.insulin_pump },
+    // ⚠️ The SENSORS bill only. This used to fall back to the CGM MONITOR's
+    // date, which dates a 90-day consumable off a five-year device — the wrong
+    // reorder Hope Hebb got once her sensors date had been erased (§5.32e).
+    { label: "Sensors Next Order Date", columnId: COL.sensorsNextOrderDate, edited: p.sensorsNextOrderDateEdited, mondayDate: p.sensorsNextOrderDate, lastBillDates: presentDates(p.sosLastBillSensors), served: cgmServed, cadence: cadences.sensors },
+    { label: "Supplies Next Order Date", columnId: COL.suppliesNextOrderDate, edited: p.suppliesNextOrderDateEdited, mondayDate: p.suppliesNextOrderDate, lastBillDates: presentDates(p.sosLastBillInfusionSet, p.sosLastBillCartridge), served: pumpServed, cadence: cadences.supplies },
   ];
   for (const w of nextOrderDateWrites) {
-    const value = resolveNextOrderWrite({ served: w.served, edited: w.edited, mondayDate: w.mondayDate, lastBillDates: w.lastBillDates });
+    const value = resolveNextOrderWrite({ served: w.served, edited: w.edited, mondayDate: w.mondayDate, lastBillDates: w.lastBillDates, cadence: w.cadence });
     if (value === null) continue;
     // An empty result means "clear this date". This module's writeDate always
     // sends { date: ... }, which Monday does NOT treat as a clear — the empty

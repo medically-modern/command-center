@@ -1,5 +1,6 @@
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { SERVING_OPTIONS, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
+import { SERVING_OPTIONS, formatDateMDY, isCrossSell, effectiveNextOrder, nextOrderCadences } from "@/lib/welcomeCall/workflow";
+import type { NextOrderCadence } from "@/lib/shared/nextOrderCadence";
 import { isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { CallScheduledChip } from "@/components/welcomeCall/CallScheduledChip";
 import { servedOrderLines } from "@/lib/shared/servingLines";
@@ -65,6 +66,7 @@ function HeaderChip({ tone, children }: { tone: "sky" | "amber"; children: React
 function SmartNextOrderField({
   label,
   lastBillDates,
+  cadence,
   mondayDate,
   editedDate,
   editedField,
@@ -72,6 +74,7 @@ function SmartNextOrderField({
 }: {
   label: string;
   lastBillDates: string[];
+  cadence: NextOrderCadence;
   mondayDate: string;
   editedDate: string | null;
   editedField: keyof Patient;
@@ -80,7 +83,7 @@ function SmartNextOrderField({
   // Single source of truth with the send path: effectiveNextOrder is exactly
   // what sendPatientToMonday writes, so the date on screen — including the
   // computed default — is what lands on the board, no edit needed.
-  const effectiveDate = effectiveNextOrder(editedDate, mondayDate, lastBillDates);
+  const effectiveDate = effectiveNextOrder(editedDate, mondayDate, lastBillDates, cadence);
 
   const match = effectiveDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const today = new Date();
@@ -332,13 +335,20 @@ export function NextOrderDatesCard({
   const ipLastBill = (patient.sosLastBillIp ?? "").trim();
   const infusionSetLastBill = (patient.sosLastBillInfusionSet ?? "").trim();
   const cartridgeLastBill = (patient.sosLastBillCartridge ?? "").trim();
+  // Same three cadences the send path builds, from the same helper.
+  const cadences = nextOrderCadences(patient);
 
   const rows = [
     served.sensors && {
       key: "sensors",
       label: "Sensors",
-      lastBill: sensorsLastBill || monitorLastBill,
-      lastBillDates: [sensorsLastBill, monitorLastBill],
+      // ⚠️ The SENSORS bill only — never `|| monitorLastBill`. Showing the
+      // monitor's date under "Last Bill Date" on the Sensors line told a rep we
+      // had billed sensors when we had not, and feeding it to the cadence dates
+      // a 90-day consumable off a five-year device (shared/nextOrderCadence.ts).
+      lastBill: sensorsLastBill,
+      lastBillDates: [sensorsLastBill],
+      cadence: cadences.sensors,
       mondayDate: patient.sensorsNextOrderDate,
       editedDate: patient.sensorsNextOrderDateEdited,
       editedField: "sensorsNextOrderDateEdited" as keyof Patient,
@@ -348,6 +358,7 @@ export function NextOrderDatesCard({
       label: "Insulin Pump",
       lastBill: ipLastBill,
       lastBillDates: [ipLastBill],
+      cadence: cadences.insulin_pump,
       mondayDate: patient.ipNextOrderDate,
       editedDate: patient.ipNextOrderDateEdited,
       editedField: "ipNextOrderDateEdited" as keyof Patient,
@@ -363,6 +374,7 @@ export function NextOrderDatesCard({
           .sort()
           .pop() ?? "",
       lastBillDates: [infusionSetLastBill, cartridgeLastBill],
+      cadence: cadences.supplies,
       mondayDate: patient.suppliesNextOrderDate,
       editedDate: patient.suppliesNextOrderDateEdited,
       editedField: "suppliesNextOrderDateEdited" as keyof Patient,
@@ -372,6 +384,7 @@ export function NextOrderDatesCard({
     label: string;
     lastBill: string;
     lastBillDates: string[];
+    cadence: NextOrderCadence;
     mondayDate: string;
     editedDate: string | null;
     editedField: keyof Patient;
@@ -422,6 +435,7 @@ export function NextOrderDatesCard({
           <SmartNextOrderField
             label="Next Order Date"
             lastBillDates={r.lastBillDates}
+            cadence={r.cadence}
             mondayDate={r.mondayDate}
             editedDate={r.editedDate}
             editedField={r.editedField}
