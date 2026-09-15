@@ -253,6 +253,41 @@ function SelectField({
   );
 }
 
+/** A value that is EDITED elsewhere on this page, echoed here for context.
+ *
+ *  ⚠️ Deliberately NOT a control, and it must stay that way. Two controls
+ *  writing one column is how they drift apart — §5.31c deleted the duplicate
+ *  Secondary Insurance select on Welcome Call for exactly that reason, and
+ *  §5.31d the banner's second phone editor. This renders the same `patient`
+ *  field the real control below is bound to, so it cannot go stale.
+ *
+ *  Blank renders as an em-dash rather than an empty row: on this stage a blank
+ *  Serving is a real state (it is trusted only when KNOWN — §5.22), and an
+ *  invisible field would read as "not applicable" instead of "nobody set it". */
+function ReferenceValue({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2 min-w-0">
+      {icon && (
+        <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
+          {icon}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
+        <p className="text-sm font-semibold truncate" title={value || undefined}>{value || "—"}</p>
+      </div>
+    </div>
+  );
+}
+
 function CollapsibleSection({
   title,
   defaultOpen,
@@ -919,6 +954,28 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
           }}
           suppressWarning
         />
+      </Card>
+
+      {/* Order context — a READ-ONLY echo of Request Type + Serving, which stay
+          editable in "Product & Order Info" further down (Josh, 2026-09-15:
+          *"keep request and serving where they are, but just have duplicate
+          display above insurance ... so i have full context before
+          reviewing"*). It sits HERE because the insurance review underneath
+          only means anything once you know what was asked for and what we are
+          actually serving — the pair that decides which products the auth,
+          SoS and cost rows below are even about (§5.22).
+          ⚠️ Read-only on purpose; see ReferenceValue's header. */}
+      <Card className="p-4">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2 mb-3">
+          <Package className="h-3.5 w-3.5" /> Order Context
+          <span className="font-normal normal-case tracking-normal text-[11px] text-muted-foreground/80">
+            — edit under Product &amp; Order Info
+          </span>
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ReferenceValue label="Request Type" value={patient.requestType} icon={<Package className="h-4 w-4" />} />
+          <ReferenceValue label="Serving" value={patient.serving} icon={<Package className="h-4 w-4" />} />
+        </div>
       </Card>
 
       {/* Insurance */}
