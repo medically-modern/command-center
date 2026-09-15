@@ -74,27 +74,12 @@ export const COL = {
   /** "Monitor Purchase Date" (text) — MM/YYYY, Original-Medicare-only, the CGM
    *  twin of the pump date above. Auto-derived; see shared/monitorPurchaseDate.ts. */
   monitorPurchaseDate: "text_mm6693sn",
-  /** Per-product monitor SoS facts, copied from the Insurance board by the
-   *  create-item automation 7918324247 — the inputs to Monitor Purchase Date.
-   *  Deliberately the per-product columns rather than the "Never billed CGM"
-   *  rollup, which conflates sensors with the monitor and can never be un-set
-   *  (CLAUDE.md §10 / audit B5). */
+  /** "CGM Monitor SoS No Billing History", copied from the Insurance board by
+   *  the create-item automation 7918324247 — with `lastBillDate.monitor` below,
+   *  the inputs to Monitor Purchase Date. Deliberately the per-product column
+   *  rather than the "Never billed CGM" rollup, which conflates sensors with the
+   *  monitor and can never be un-set (CLAUDE.md §10 / audit B5). */
   sosNeverBilledMonitor: "boolean_mm5ad9rm",
-  sosLastBillMonitor: "date_mm599gk8",
-  /** The other four "<product> SoS Last Bill" columns, same automation, same
-   *  family as sosLastBillMonitor above — READ-ONLY here.
-   *  ⚠ These, not the `lastBillDate` map below, hold the last bill date for a
-   *  product whose SoS came back CLEAR. The legacy columns are written by
-   *  Benefits only on "Not Clear" and are cleared otherwise, so they read
-   *  blank for most patients we HAVE billed. See shared/lastBillDate.ts.
-   *  ⚠ This stage must NEVER write these, and must never feed them into the
-   *  legacy columns: date-presence in `lastBillDate` is what
-   *  mondayMapping derives `sosMonitor`/`sosSensors`/… ("Not Clear") from, so
-   *  copying a Clear product's date across would relabel it. */
-  sosLastBillSensors: "date_mm59n1x1",
-  sosLastBillIp: "date_mm593ghh",
-  sosLastBillInfusionSet: "date_mm59jcf5",
-  sosLastBillCartridge: "date_mm59mw5n",
   orderHandling: "color_mm2776fg",
 
   /** "POS" (Office = 0 | Home = 1). Written automatically at Welcome Call from
@@ -138,13 +123,23 @@ export const COL = {
   // "new item created" automation can gate itself with `Split is not Split`.
   split: "color_mm381bgy",
 
-  // Per-product Last Bill Date columns (date — populated when SoS = Not Clear)
+  /** Per-product "<product> SoS Last Bill" — the last-bill date we actually
+   *  hold for each product, copied from the Insurance board by 7918324247 and
+   *  EDITABLE on this stage (the Last Bill Dates card writes them back).
+   *  ⚠ Since 2026-09-15 this map points at the SoS family. It used to name the
+   *  legacy "<product> Last Bill Date" columns (date_mm33vqa0 · date_mm33jsyt ·
+   *  date_mm33kmz4 · date_mm33mw14 · date_mm33rd8n), which were a Not-Clear
+   *  FLAG Benefits wrote only on "Not Clear" — blank for most patients we HAD
+   *  billed, and the thing that made this card read empty. Their data was
+   *  copied into these columns and they are retired on the board;
+   *  shared/lastBillDate.ts has the audit. Never point this map back —
+   *  lastBillDisplay.test.ts pins it. */
   lastBillDate: {
-    monitor: "date_mm33vqa0",
-    sensors: "date_mm33jsyt",
-    insulin_pump: "date_mm33kmz4",
-    infusion_set: "date_mm33mw14",
-    cartridge: "date_mm33rd8n",
+    monitor: "date_mm599gk8",
+    sensors: "date_mm59n1x1",
+    insulin_pump: "date_mm593ghh",
+    infusion_set: "date_mm59jcf5",
+    cartridge: "date_mm59mw5n",
   },
 
   // Calculated Next Order Date columns (read-only display)
@@ -175,9 +170,7 @@ export const READ_COLUMN_IDS = [
   COL.subscriptionType, COL.infusionSet1, COL.qtyInf1,
   COL.infusionSet2, COL.qtyInf2, COL.qtyCartridge, COL.monitorQty, COL.pumpQty,
   COL.medicarePriorPumpDate,
-  COL.monitorPurchaseDate, COL.sosNeverBilledMonitor, COL.sosLastBillMonitor,
-  COL.sosLastBillSensors, COL.sosLastBillIp,
-  COL.sosLastBillInfusionSet, COL.sosLastBillCartridge,
+  COL.monitorPurchaseDate, COL.sosNeverBilledMonitor,
   COL.orderHandling, COL.pos,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,

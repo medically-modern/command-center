@@ -195,6 +195,13 @@ never-billed).
 
 ### 🔴 S2 — CRITICAL: the facts model vs. "date presence = Not Clear" (spec §1)
 
+> **Superseded 2026-09-15.** The legacy `date_mm33*` Last Bill Date columns are retired: their
+> values were copied into the SoS facts columns (35 items, verified legacy-only = 0 on both
+> boards), Final Confirm's presence-derived `sos*` quintet turned out to be read by nothing and
+> was deleted, and its one live consumer (`authExpiryMoot`) measured zero verdict changes on the
+> swap. The SoS facts are the one record. CLAUDE.md §5.32 has the audit. The analysis below is
+> kept as the record of the decision it superseded.
+
 **Old:** rep picks Clear / Not Clear / Skip per product; the Last Bill Date input exists only
 when SoS = Not Clear (`InsurancePanel.tsx:534-551`); the per-product date columns
 (`date_mm33h1qv/332rhq/33qnew/33gj86/33cd87`) are written **only** for not-clear products and

@@ -100,19 +100,9 @@ export interface Patient {
    *  Medicare patients with Monitor Qty 0. Auto-derived from the monitor SoS
    *  facts below. Board col text_mm6693sn. */
   monitorPurchaseDate: string;
-  /** "CGM Monitor SoS No Billing History" (read-only, from the Insurance board). */
+  /** "CGM Monitor SoS No Billing History" (read-only, from the Insurance board).
+   *  With `lastBillDateMonitor` below, the inputs to Monitor Purchase Date. */
   sosNeverBilledMonitor: boolean;
-  /** "CGM Monitor SoS Last Bill" — YYYY-MM-DD or "" (read-only). */
-  sosLastBillMonitor: string;
-  /** The other four "<product> SoS Last Bill" columns — READ-ONLY, display
-   *  only. The real last bill date for a product whose SoS came back Clear;
-   *  the `lastBillDate*` fields below are the Not-Clear date and stay the
-   *  editable, written ones. Resolve the pair with
-   *  shared/lastBillDate.resolveLastBill; never write these back. */
-  sosLastBillSensors: string;
-  sosLastBillIp: string;
-  sosLastBillInfusionSet: string;
-  sosLastBillCartridge: string;
   orderHandling: string;
   orderHandlingIndex: number | null;
   /** Place of Service — "Office" | "Home" | "". Auto-computed and written at
@@ -122,13 +112,14 @@ export interface Patient {
   pos: string;
   posIndex: number | null;
 
-  // SoS & Order Dates (per-product)
-  sosMonitor: string;       // "Clear" | "Not Clear" | ""
-  sosSensors: string;
-  sosIp: string;
-  sosInfusionSet: string;
-  sosCartridge: string;
-  lastBillDateMonitor: string;    // YYYY-MM-DD or ""
+  // Last bill dates (per-product) — each is the product's "<product> SoS Last
+  // Bill" column (COL.lastBillDate), YYYY-MM-DD or "". Editable on this stage
+  // and written back to the SAME column on send. ⚠️ One family since
+  // 2026-09-15: the legacy Not-Clear-flag columns these used to read, and the
+  // `sos*` = "Not Clear" quintet derived from them, are gone — the quintet was
+  // read by nothing, and the flag's one consumer (`checkPack.authExpiryMoot`)
+  // measured zero patients changed on the swap. shared/lastBillDate.ts.
+  lastBillDateMonitor: string;
   lastBillDateSensors: string;
   lastBillDateIp: string;
   lastBillDateInfusionSet: string;
@@ -710,8 +701,6 @@ export function getSplitOverrides(
       monitorPurchaseDate: "",
       lastBillDateSensors: "",
       lastBillDateMonitor: "",
-      sosLastBillSensors: "",
-      sosLastBillMonitor: "",
       nextOrderDateSensors: "",
       // ── Pump/supplies-side fields → explicitly preserve from original
       //    (this profile IS the supplies order, so these keep the originals)
@@ -781,9 +770,6 @@ export function getSplitOverrides(
     lastBillDateIp: "",
     lastBillDateInfusionSet: "",
     lastBillDateCartridge: "",
-    sosLastBillIp: "",
-    sosLastBillInfusionSet: "",
-    sosLastBillCartridge: "",
     nextOrderDateIp: "",
     nextOrderDateSupplies: "",
     // ── Sensor-side fields → explicitly preserve from original ───────
@@ -805,8 +791,6 @@ export function getSplitOverrides(
     pos: original.pos,
     lastBillDateSensors: original.lastBillDateSensors,
     lastBillDateMonitor: original.lastBillDateMonitor,
-    sosLastBillSensors: original.sosLastBillSensors,
-    sosLastBillMonitor: original.sosLastBillMonitor,
     nextOrderDateSensors: original.nextOrderDateSensors,
     // ── New side identity ────────────────────────────────────────────
     servingIndex: SERVING_CGM,

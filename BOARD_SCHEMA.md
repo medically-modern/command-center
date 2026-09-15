@@ -750,22 +750,27 @@
 ### CGM Last Bill Date
 - **ID:** `date_mm33vqa0`
 - **Type:** `date`
+- **Status:** **RETIRED 2026-09-15.** A Not-Clear *flag*, not a billing record — Benefits wrote it only when Same-or-Similar came back Not Clear and cleared it otherwise. Every value was copied into the matching "<product> SoS Last Bill" column and nothing in the app reads or writes it now (CLAUDE.md §5.32). Retitle "(retired)" and hide on the board; do not delete.
 
 ### Sensors Last Bill Date
 - **ID:** `date_mm33jsyt`
 - **Type:** `date`
+- **Status:** **RETIRED 2026-09-15.** A Not-Clear *flag*, not a billing record — Benefits wrote it only when Same-or-Similar came back Not Clear and cleared it otherwise. Every value was copied into the matching "<product> SoS Last Bill" column and nothing in the app reads or writes it now (CLAUDE.md §5.32). Retitle "(retired)" and hide on the board; do not delete.
 
 ### IP Last Bill Date
 - **ID:** `date_mm33kmz4`
 - **Type:** `date`
+- **Status:** **RETIRED 2026-09-15.** A Not-Clear *flag*, not a billing record — Benefits wrote it only when Same-or-Similar came back Not Clear and cleared it otherwise. Every value was copied into the matching "<product> SoS Last Bill" column and nothing in the app reads or writes it now (CLAUDE.md §5.32). Retitle "(retired)" and hide on the board; do not delete.
 
 ### Infusion Set Last Bill Date
 - **ID:** `date_mm33mw14`
 - **Type:** `date`
+- **Status:** **RETIRED 2026-09-15.** A Not-Clear *flag*, not a billing record — Benefits wrote it only when Same-or-Similar came back Not Clear and cleared it otherwise. Every value was copied into the matching "<product> SoS Last Bill" column and nothing in the app reads or writes it now (CLAUDE.md §5.32). Retitle "(retired)" and hide on the board; do not delete.
 
 ### Cartridge Last Bill Date
 - **ID:** `date_mm33rd8n`
 - **Type:** `date`
+- **Status:** **RETIRED 2026-09-15.** A Not-Clear *flag*, not a billing record — Benefits wrote it only when Same-or-Similar came back Not Clear and cleared it otherwise. Every value was copied into the matching "<product> SoS Last Bill" column and nothing in the app reads or writes it now (CLAUDE.md §5.32). Retitle "(retired)" and hide on the board; do not delete.
 
 ### IP Next Order Date
 - **ID:** `date_mm356crn`

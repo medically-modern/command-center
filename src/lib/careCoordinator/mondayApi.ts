@@ -274,7 +274,7 @@ const WC_COLS: string[] = [
   // Calendly mirror uses the same single join for intake — §5.15.
   WC_COL.phone, WC_COL.email, WC_ESCALATION_COL,
   WC_COL.followUp, WC_COL.followUpDate, WC_COL.serving, WC_COL.requestType, WC_COL.pumpQty,
-  WC_COL.ipLastBillDate, WC_COL.medicarePriorPumpDate, WC_COL.callAttempts, WC_COL.doctorName,
+  WC_COL.sosLastBillIp, WC_COL.medicarePriorPumpDate, WC_COL.callAttempts, WC_COL.doctorName,
   WC_COL.primaryInsurance, WC_COL.referralReceivedDate,
   // The card's pills, Doctor / Clinic lines and the text count (Brandon,
   // 2026-09-14). ⚠️ The two coverage-path ids are THIS board's, not Profile
@@ -298,7 +298,10 @@ function toWelcomeCallItem(item: RawItem): WelcomeCallItem {
     serving: text(item, WC_COL.serving),
     requestType: text(item, WC_COL.requestType),
     pumpQty: text(item, WC_COL.pumpQty),
-    ipLastBillDate: text(item, WC_COL.ipLastBillDate),
+    // The pump's "Insulin Pump SoS Last Bill" — the one last-bill family since
+    // 2026-09-15 (shared/lastBillDate.ts). The field keeps the name
+    // `isFirstTimePumpUser` takes.
+    ipLastBillDate: text(item, WC_COL.sosLastBillIp),
     medicarePriorPumpDate: text(item, WC_COL.medicarePriorPumpDate),
     callAttempts: text(item, WC_COL.callAttempts),
     doctorName: text(item, WC_COL.doctorName),

@@ -28,11 +28,9 @@ export const basePatient = (): Patient => {
     "serving", "pumpType", "cgmType", "requestType", "referralType", "referralSource",
     "carecentrixIntakeId", "subscriptionType", "infusionSet1", "qtyInf1",
     "infusionSet2", "qtyInf2", "qtyCartridge", "monitorQty", "pumpQty",
-    "medicarePriorPumpDate", "monitorPurchaseDate", "sosLastBillMonitor", "orderHandling", "pos",
-    // The other four SoS Last Bill columns (§5.32) — read-only display, but the
-    // fixture defaults every Patient field so it keeps compiling as the type grows.
-    "sosLastBillSensors", "sosLastBillIp", "sosLastBillInfusionSet", "sosLastBillCartridge",
-    "sosMonitor", "sosSensors", "sosIp", "sosInfusionSet", "sosCartridge",
+    "medicarePriorPumpDate", "monitorPurchaseDate", "orderHandling", "pos",
+    // The five "<product> SoS Last Bill" dates — the one last-bill family since
+    // 2026-09-15 (§5.32); editable here and written back to the same column.
     "lastBillDateMonitor", "lastBillDateSensors", "lastBillDateIp",
     "lastBillDateInfusionSet", "lastBillDateCartridge",
     "nextOrderDateIp", "nextOrderDateSensors", "nextOrderDateSupplies",

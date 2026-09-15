@@ -164,6 +164,7 @@ export interface WelcomeCallItem {
   serving: string;
   requestType: string;
   pumpQty: string;
+  /** Pump "SoS Last Bill" (YYYY-MM-DD or ""), named for `isFirstTimePumpUser`. */
   ipLastBillDate: string;
   medicarePriorPumpDate: string;
   callAttempts: string;

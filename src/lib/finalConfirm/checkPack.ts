@@ -667,6 +667,14 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
    * what the payer enforces and "we billed it in March" says nothing about
    * September. Medicaid alone would silence a Medicaid patient we have never
    * successfully billed — the case where a stale auth is the only signal there is.
+   *
+   * `lastBill` is the product's "SoS Last Bill" column since 2026-09-15. It used
+   * to be the legacy Not-Clear-flag column, which the audit that retired it found
+   * to be a no-op here: of 324 Medicaid × Auth Valid × has-end-date product-rows
+   * on the live Welcome Call board, not one carried a date in EITHER family
+   * (Medicaid supplies auto-clear and never get an SoS entry), so this silence
+   * has never once fired and the swap changed zero verdicts. The SoS family is
+   * the more honest input anyway — it is literally "have we billed this".
    */
   const authExpiryMoot = (lastBill: string): boolean =>
     medicaidCoverage && !blank(lastBill);

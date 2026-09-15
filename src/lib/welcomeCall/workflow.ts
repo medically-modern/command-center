@@ -168,12 +168,6 @@ export interface Patient {
   oopMaxRemaining: string;
   stediCoinsurance: string;
   stediQmb: string;
-  // Last bill dates (read-only)
-  cgmLastBillDate: string;
-  sensorsLastBillDate: string;
-  ipLastBillDate: string;
-  infusionSetLastBillDate: string;
-  cartridgeLastBillDate: string;
   // Next order dates
   ipNextOrderDate: string;
   sensorsNextOrderDate: string;
@@ -211,9 +205,9 @@ export interface Patient {
   /** "CGM Monitor SoS Last Bill" — YYYY-MM-DD or "". */
   sosLastBillMonitor: string;
   /** The other four "<product> SoS Last Bill" columns — YYYY-MM-DD or "".
-   *  These, not the legacy `*LastBillDate` fields above, hold the date for a
-   *  product whose SoS came back Clear. Resolve the pair through
-   *  `shared/lastBillDate.resolveLastBill`; never read one family alone. */
+   *  The one last-bill family this stage has read since 2026-09-15; the legacy
+   *  `*LastBillDate` fields that used to sit beside these were a Not-Clear flag
+   *  and are retired (shared/lastBillDate.ts has the audit). */
   sosLastBillSensors: string;
   sosLastBillIp: string;
   sosLastBillInfusionSet: string;
@@ -466,6 +460,12 @@ export function formatDateMDY(raw: string): string {
  * ⚠️ Absence of billing history is WEAK evidence: the SoS lookback only reaches
  * so far, and a patient who bought a pump privately has no claim either. It is
  * a prompt, never a gate.
+ *
+ * `ipLastBillDate` is the pump's "Insulin Pump SoS Last Bill" (`sosLastBillIp`
+ * on the Patient) since 2026-09-15. It used to be the legacy pump Last Bill
+ * Date, which held ZERO rows on either board — so the prompt was really just
+ * "no prior pump date on file". The SoS column adds one Completed patient (a
+ * 2022 pump bill) and no live ones; shared/lastBillDate.ts has the audit.
  */
 export function isFirstTimePumpUser(p: {
   serving: string;

@@ -392,6 +392,9 @@ export async function sendPatientToMonday(
     tasks.push({ label: "Notes", columnId: COL.notes, value: p.notes ?? "", fn: () => writeLongText(p.id, COL.notes, p.notes) });
 
   // ─── Last Bill Dates (always write current value) ────────────
+  // These are the "<product> SoS Last Bill" columns — COL.lastBillDate points at
+  // the SoS family since 2026-09-15 (the legacy Not-Clear-flag columns are
+  // retired; shared/lastBillDate.ts). A blank clears, so a rep can un-set one.
   const lastBillDateEntries: { label: string; dateVal: string; colId: string }[] = [
     { label: "CGM Last Bill Date", dateVal: p.lastBillDateMonitor, colId: COL.lastBillDate.monitor },
     { label: "Sensors Last Bill Date", dateVal: p.lastBillDateSensors, colId: COL.lastBillDate.sensors },

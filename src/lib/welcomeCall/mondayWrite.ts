@@ -14,9 +14,6 @@ import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
 import { infusionSetWriteAction } from "./infusionSelection";
 import { coercePumpQty } from "@/lib/shared/servingLines";
-// ⚠️ The next-order default must compute from the SAME date the card shows —
-// see shared/lastBillDate.ts for why one column alone reads blank.
-import { resolveLastBillDates } from "@/lib/shared/lastBillDate";
 import { coerceMonitorQty } from "@/lib/shared/monitorQty";
 import { frequencyState, daysToLabel, ORDER_FREQUENCY_INDEX } from "./orderFrequency";
 import { phoneSlotsFor, caregiverFor, phoneSlotWrites, caregiverConsentJustGiven, caregiverConsentNote } from "./phoneSlots";
@@ -348,6 +345,12 @@ export async function sendPatientToMonday(
   const servingKnown = effServing.trim() !== "";
   const cgmServed = !servingKnown || servingIncludesCgm(effServing);
   const pumpServed = !servingKnown || servingIncludesPump(effServing);
+  // The per-product "SoS Last Bill" dates that are actually present. Blanks are
+  // dropped so an unbilled line reaches computeNextOrder as an empty list ("no
+  // billing history") rather than as a "" it would try to parse. One family
+  // only since 2026-09-15 — shared/lastBillDate.ts records why.
+  const presentDates = (...ds: Array<string | undefined>) =>
+    ds.map((d) => (d ?? "").trim()).filter(Boolean);
   const nextOrderDateWrites: {
     label: string;
     columnId: string;
@@ -356,9 +359,9 @@ export async function sendPatientToMonday(
     lastBillDates: string[];
     served: boolean;
   }[] = [
-    { label: "IP Next Order Date", columnId: COL.ipNextOrderDate, edited: p.ipNextOrderDateEdited, mondayDate: p.ipNextOrderDate, lastBillDates: resolveLastBillDates([{ sos: p.sosLastBillIp, legacy: p.ipLastBillDate }]), served: pumpServed },
-    { label: "Sensors Next Order Date", columnId: COL.sensorsNextOrderDate, edited: p.sensorsNextOrderDateEdited, mondayDate: p.sensorsNextOrderDate, lastBillDates: resolveLastBillDates([{ sos: p.sosLastBillSensors, legacy: p.sensorsLastBillDate }, { sos: p.sosLastBillMonitor, legacy: p.cgmLastBillDate }]), served: cgmServed },
-    { label: "Supplies Next Order Date", columnId: COL.suppliesNextOrderDate, edited: p.suppliesNextOrderDateEdited, mondayDate: p.suppliesNextOrderDate, lastBillDates: resolveLastBillDates([{ sos: p.sosLastBillInfusionSet, legacy: p.infusionSetLastBillDate }, { sos: p.sosLastBillCartridge, legacy: p.cartridgeLastBillDate }]), served: pumpServed },
+    { label: "IP Next Order Date", columnId: COL.ipNextOrderDate, edited: p.ipNextOrderDateEdited, mondayDate: p.ipNextOrderDate, lastBillDates: presentDates(p.sosLastBillIp), served: pumpServed },
+    { label: "Sensors Next Order Date", columnId: COL.sensorsNextOrderDate, edited: p.sensorsNextOrderDateEdited, mondayDate: p.sensorsNextOrderDate, lastBillDates: presentDates(p.sosLastBillSensors, p.sosLastBillMonitor), served: cgmServed },
+    { label: "Supplies Next Order Date", columnId: COL.suppliesNextOrderDate, edited: p.suppliesNextOrderDateEdited, mondayDate: p.suppliesNextOrderDate, lastBillDates: presentDates(p.sosLastBillInfusionSet, p.sosLastBillCartridge), served: pumpServed },
   ];
   for (const w of nextOrderDateWrites) {
     const value = resolveNextOrderWrite({ served: w.served, edited: w.edited, mondayDate: w.mondayDate, lastBillDates: w.lastBillDates });

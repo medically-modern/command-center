@@ -995,7 +995,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 {isFirstTimePumpUser({
                   serving: patient.servingEdited ?? patient.serving,
                   pumpQty: patient.pumpQty,
-                  ipLastBillDate: patient.ipLastBillDate,
+                  ipLastBillDate: patient.sosLastBillIp,
                   medicarePriorPumpDate: patient.medicarePriorPumpDate,
                 }) && (
                   <span

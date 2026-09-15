@@ -1,18 +1,17 @@
 /**
- * Final Confirm READS the SoS Last Bill columns — and must never write one back
- * into the legacy column beside it.
+ * Final Confirm's Last Bill Dates are the "<product> SoS Last Bill" columns —
+ * read from them, written back to them, and NEVER to the retired legacy family.
  *
- * Brandon, 2026-09-10: the Last Bill Dates block was blank for patients we had
- * billed, because it read only the legacy `lastBillDate*` columns, which
- * Benefits clears whenever Same-or-Similar comes back Clear (§5.32).
- *
- * The fix is a CAPTION under the box, not a value inside it, and this file is
- * why. The legacy column's date-PRESENCE is load-bearing twice on this stage:
- *   - `mondayMapping` derives `sosMonitor`/`sosSensors`/… = "Not Clear" from it
- *   - `checkPack.authExpiryMoot` silences C18's auth-expiry warning on it
- * so a send that copied a Clear product's date into the legacy column would
- * relabel the product AND hide a lapsed auth, both silently. These fail if a
- * later change pours the SoS date into the editable field.
+ * History, because the previous version of this file pinned the opposite.
+ * Until 2026-09-15 the five boxes edited the legacy "<product> Last Bill Date"
+ * columns (`date_mm33…`), whose date-PRESENCE Benefits maintained as a Not-Clear
+ * flag, while a caption showed the SoS date beside them (§5.32). The audit that
+ * day found the flag fed a derived `sos*` quintet nothing read, and that its one
+ * live consumer — `checkPack.authExpiryMoot` — changed verdict for ZERO patients
+ * when pointed at the SoS family (of 324 Medicaid × Auth Valid × has-end-date
+ * product-rows on the live board, none carried a date in either column). So the
+ * pair was collapsed: one field, one column. These fail if the `lastBillDate`
+ * map drifts off the SoS ids, or if a send names a legacy id again.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -20,6 +19,16 @@ import { COL } from "./mondayApi";
 import { runFinalChecks } from "./checkPack";
 import { basePatient } from "./checkPack.test";
 import type { Patient } from "./workflow";
+
+/** The retired Welcome Call legacy ids. Nothing in this slice may name them. */
+const LEGACY_WC_IDS = ["date_mm33vqa0", "date_mm33jsyt", "date_mm33kmz4", "date_mm33mw14", "date_mm33rd8n"];
+
+/** Every string leaf in a nested column-id map. */
+function allIds(v: unknown): string[] {
+  if (typeof v === "string") return [v];
+  if (v && typeof v === "object") return Object.values(v as Record<string, unknown>).flatMap(allIds);
+  return [];
+}
 
 interface Task { label: string; columnId: string; value?: unknown }
 const captured: Task[][] = [];
@@ -60,60 +69,74 @@ async function send(p: Partial<Patient>) {
   return byCol;
 }
 
-/** A patient whose sensors SoS came back CLEAR: real date, legacy blank —
- *  Tommy Cole (12854165138) as the live board held him, 2026-09-10. */
-const clearSensors: Partial<Patient> = {
-  lastBillDateSensors: "",
-  sosLastBillSensors: "2025-03-14",
-};
-
-describe("Final Confirm — the SoS last bill date is read, never written back", () => {
-  it("leaves the legacy Sensors column empty when only the SoS column has a date", async () => {
-    // The whole point: a send must not turn a Clear product into Not Clear.
-    expect((await send(clearSensors)).get(COL.lastBillDate.sensors)).toEqual({});
+describe("COL.lastBillDate is the SoS family", () => {
+  it("names the five SoS Last Bill columns", () => {
+    expect(COL.lastBillDate).toEqual({
+      monitor: "date_mm599gk8",
+      sensors: "date_mm59n1x1",
+      insulin_pump: "date_mm593ghh",
+      infusion_set: "date_mm59jcf5",
+      cartridge: "date_mm59mw5n",
+    });
   });
 
-  it("never writes the SoS columns themselves — Benefits owns them", async () => {
-    await send(clearSensors);
-    const written = new Set(captured[0].map((t) => t.columnId));
-    for (const id of [
-      COL.sosLastBillMonitor, COL.sosLastBillSensors, COL.sosLastBillIp,
-      COL.sosLastBillInfusionSet, COL.sosLastBillCartridge,
-    ]) {
-      expect(written.has(id), `${id} must not be written by this stage`).toBe(false);
+  it("no column id anywhere in this slice is a retired legacy id", () => {
+    for (const id of allIds(COL)) {
+      expect(LEGACY_WC_IDS, `${id} is a retired legacy Last Bill Date column`).not.toContain(id);
     }
-  });
-
-  it("still writes a legacy date the rep actually entered", async () => {
-    // Editing the box stays a deliberate act, unchanged — that is the path that
-    // legitimately marks a product Not Clear.
-    const v = await send({ ...clearSensors, lastBillDateSensors: "2026-01-09" });
-    expect(v.get(COL.lastBillDate.sensors)).toEqual({ date: "2026-01-09" });
-  });
-
-  it("still CLEARS a legacy date the rep blanked", async () => {
-    // The caption must never make the box un-clearable — the no-passing-move
-    // dead end §5.10/§5.20 each record reversing.
-    const v = await send({ lastBillDateSensors: "", sosLastBillSensors: "" });
-    expect(v.get(COL.lastBillDate.sensors)).toEqual({});
   });
 });
 
-describe("checkPack still reads the LEGACY column, deliberately", () => {
-  it("a Clear product does not silence the auth-expiry warning", () => {
-    // Widening `authExpiryMoot` to the SoS family would hide genuinely lapsed
-    // auths on Medicaid patients — the dangerous direction (§5.17). Left for
-    // Brandon to decide; pinned here so it cannot drift by accident.
-    const ids = runFinalChecks({
+describe("Final Confirm — the Last Bill Dates card writes the SoS columns", () => {
+  it("writes the rep's sensors date to CGM Sensors SoS Last Bill", async () => {
+    // Tammy Turpin (13016718558) as repaired 2026-09-15: A4239 last billed
+    // 06/25/2026, a date that had sat only in the Benefits call notes.
+    const v = await send({ lastBillDateSensors: "2026-06-25" });
+    expect(v.get("date_mm59n1x1")).toEqual({ date: "2026-06-25" });
+  });
+
+  it("clears it when the rep blanks the box", async () => {
+    // A blank must still be a clear — otherwise the box could never be un-set,
+    // the no-passing-move dead end §5.10/§5.20 each record reversing.
+    const v = await send({ lastBillDateSensors: "" });
+    expect(v.get("date_mm59n1x1")).toEqual({});
+  });
+
+  it("never writes a retired legacy column", async () => {
+    await send({ lastBillDateSensors: "2026-06-25", lastBillDateMonitor: "2023-06-22" });
+    const written = new Set(captured[0].map((t) => t.columnId));
+    for (const id of LEGACY_WC_IDS) expect(written.has(id), `${id} is retired`).toBe(false);
+  });
+});
+
+describe("checkPack.authExpiryMoot reads the SoS last bill", () => {
+  const lapsedSensors = (over: Partial<Patient>) =>
+    runFinalChecks({
       ...basePatient(),
       serving: "CGM",
       cgmType: "Dexcom G7",
-      primaryInsurance: "Fidelis Medicaid",
       sensorsAuthResult: "Auth Valid",
       sensorsAuthId: "A1",
       sensorsAuthEnd: "2025-01-01", // long lapsed
-      ...clearSensors,
+      ...over,
     }).map((f) => f.id);
-    expect(ids).toContain("C18_AUTH_EXPIRED");
+
+  it("a Medicaid patient we HAVE billed does not get the expiry row", () => {
+    // Brandon, 2026-09-02: on ePACES Medicaid a paid claim settles what the
+    // expiry row was asking. The SoS date is that paid claim.
+    expect(lapsedSensors({ primaryInsurance: "Fidelis Medicaid", lastBillDateSensors: "2025-03-14" }))
+      .not.toContain("C18_AUTH_EXPIRED");
+  });
+
+  it("a Medicaid patient we have NEVER billed still does", () => {
+    // The half that must survive: a stale auth is the only signal there is.
+    expect(lapsedSensors({ primaryInsurance: "Fidelis Medicaid", lastBillDateSensors: "" }))
+      .toContain("C18_AUTH_EXPIRED");
+  });
+
+  it("a commercial patient gets the row however well they have billed", () => {
+    // The payer enforces the window; "we billed it in March" says nothing about September.
+    expect(lapsedSensors({ primaryInsurance: "Cigna", lastBillDateSensors: "2025-03-14" }))
+      .toContain("C18_AUTH_EXPIRED");
   });
 });

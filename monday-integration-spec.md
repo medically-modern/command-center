@@ -149,9 +149,10 @@ recheck pending" across reloads. When the rep later records the recheck facts
 derived Clear/Not-Clear moves the product out of Skip into **Not Clear
 Products** (or clean out of both), the facts land in the `sosLastBill` /
 `sosUnits` / `sosNeverBilled` columns (additive — other products' Benefits
-facts are never cleared from this page), and the legacy per-product
-`lastBillDate` columns keep their existing presence-encodes-Not-Clear
-semantics. Rules in `src/lib/samantha/authOutstandingReview.ts`.
+facts are never cleared from this page). The legacy per-product `lastBillDate`
+columns are **retired** (2026-09-15, CLAUDE.md §5.32): the SoS facts are the one
+record, and nothing writes the old family. Rules in
+`src/lib/samantha/authOutstandingReview.ts`.
 
 ## Auth Outstanding daily bucket (2026-07-21, redesign §12)
 

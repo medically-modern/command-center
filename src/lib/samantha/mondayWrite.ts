@@ -439,36 +439,10 @@ export async function sendPatientToMonday(
   });
   }
 
-  // ----- Per-product Last Bill Date (date — when SoS = Not Clear OR Auth = No Auth Needed) -----
-  if (!universalNegative) {
-  for (const { cid, state } of entries) {
-    const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
-    const lastBillDateCol = COL.lastBillDate[productId];
-    const eSos = effectiveSos({ cid, state, isMedicaidSupply: false });
-    // On Auth Outstanding, a hydrated partial save (board label "No Auth
-    // Needed", no local result) counts too — effectiveResult covers it.
-    const noAuthNeeded =
-      context === "authOutstanding"
-        ? effectiveResult(state) === "no-auth-needed"
-        : state?.authOutstandingResult === "no-auth-needed";
-    if ((eSos === "not-clear" || noAuthNeeded) && state?.lastBillDate) {
-      tasks.push({
-        label: `Last Bill Date: ${productId}`,
-        columnId: lastBillDateCol,
-        value: { date: state.lastBillDate! },
-        fn: () => writeDate(p.id, lastBillDateCol, state.lastBillDate!),
-      });
-    } else {
-      // Clear last bill date when neither condition applies
-      tasks.push({
-        label: `Last Bill Date (clear): ${productId}`,
-        columnId: lastBillDateCol,
-        value: {},
-        fn: () => writeDate(p.id, lastBillDateCol, ""),
-      });
-    }
-  }
-  }
+  // (The legacy per-product "Last Bill Date" columns — a Not-Clear FLAG this
+  // send wrote and cleared until 2026-09-15 — are retired. The SoS facts blocks
+  // below, Benefits' and the Auth Outstanding recheck's, are the one record;
+  // shared/lastBillDate.ts has the audit. Nothing may write them again.)
 
   // ----- Calculated Next Order Dates (3 columns) -----
   if (!universalNegative) {
@@ -825,8 +799,8 @@ export async function sendPatientToMonday(
   if (context === "benefits") {
     // Per-product SoS billing facts (D2/D6): the full record — written for
     // every billed product (even derived-Clear), cleared otherwise so stale
-    // facts never linger. Deliberately SEPARATE from the legacy lastBillDate
-    // columns, whose date-presence still encodes "Not Clear" downstream.
+    // facts never linger. Since 2026-09-15 the ONLY last-bill family: the
+    // legacy Not-Clear-flag columns are retired (shared/lastBillDate.ts).
     // Facts are ignored while the product's auth is pending (spec §1), and
     // the whole family is untouched on the failed-check path (handoff §4).
     const ALL_CODE_IDS = Object.keys(PRODUCT_CODE_TO_PRODUCT_ID) as ProductCodeId[];

@@ -191,12 +191,6 @@ export const COL = {
   stediCoinsurance: "text_mm391jq8",
   stediQmb: "text_mm2wms12",
 
-  // Last bill dates (read-only)
-  cgmLastBillDate: "date_mm33vqa0",
-  sensorsLastBillDate: "date_mm33jsyt",
-  ipLastBillDate: "date_mm33kmz4",
-  infusionSetLastBillDate: "date_mm33mw14",
-  cartridgeLastBillDate: "date_mm33rd8n",
   // Next order dates (read-only)
   ipNextOrderDate: "date_mm356crn",
   sensorsNextOrderDate: "date_mm35bdf8",
@@ -222,12 +216,12 @@ export const COL = {
 
   // The other four per-product "SoS Last Bill" columns, same create-item
   // automation (7918324247), same source family as sosLastBillMonitor above.
-  // ⚠ These are the columns that actually hold a last bill date for a product
-  // whose SoS came back CLEAR — the legacy `*LastBillDate` columns above are
-  // written only on "Not Clear" and are cleared otherwise, so they read blank
-  // for most billed patients. `shared/lastBillDate.resolveLastBill` is the one
-  // place that decides between the two; read its header before touching either
-  // family.
+  // ⚠ The ONLY last-bill family this stage reads since 2026-09-15. The legacy
+  // "<product> Last Bill Date" columns (date_mm33vqa0 · date_mm33jsyt ·
+  // date_mm33kmz4 · date_mm33mw14 · date_mm33rd8n) were a Not-Clear FLAG, not a
+  // billing record — written only on "Not Clear", cleared otherwise, so blank
+  // for most billed patients. Their data was copied into these and they are
+  // retired on the board; shared/lastBillDate.ts has the audit. Do not re-add.
   sosLastBillSensors: "date_mm59n1x1",
   sosLastBillIp: "date_mm593ghh",
   sosLastBillInfusionSet: "date_mm59jcf5",
@@ -295,8 +289,6 @@ export const READ_COLUMN_IDS = [
   // rule decided — it was write-only, so the value was invisible in the app.
   COL.pos,
   COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining, COL.stediCoinsurance, COL.stediQmb,
-  COL.cgmLastBillDate, COL.sensorsLastBillDate, COL.ipLastBillDate,
-  COL.infusionSetLastBillDate, COL.cartridgeLastBillDate,
   COL.ipNextOrderDate, COL.sensorsNextOrderDate, COL.suppliesNextOrderDate,
   COL.followUp, COL.followUpDate,
   // Escalation STATUS (read-only). ⚠️ Deliberately NOT wired into `escalated`:

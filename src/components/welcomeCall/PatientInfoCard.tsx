@@ -3,7 +3,7 @@ import { SERVING_OPTIONS, formatDateMDY, isCrossSell, effectiveNextOrder } from 
 import { isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { CallScheduledChip } from "@/components/welcomeCall/CallScheduledChip";
 import { servedOrderLines } from "@/lib/shared/servingLines";
-import { formatLastBill, resolveLastBill } from "@/lib/shared/lastBillDate";
+import { formatLastBill } from "@/lib/shared/lastBillDate";
 import { Input } from "@/components/ui/input";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -183,7 +183,7 @@ export function PatientInfoCard({ patient, onFieldChange, onSaveSecondaryInsuran
             {isFirstTimePumpUser({
               serving: patient.servingEdited ?? patient.serving,
               pumpQty: patient.pumpQty,
-              ipLastBillDate: patient.ipLastBillDate,
+              ipLastBillDate: patient.sosLastBillIp,
               medicarePriorPumpDate: patient.medicarePriorPumpDate,
             }) && <HeaderChip tone="sky">First-time pump user</HeaderChip>}
             {isCrossSell({
@@ -322,16 +322,16 @@ export function NextOrderDatesCard({
     qtyInf2: patient.qtyInf2,
   });
 
-  // ⚠️ Each product's last bill date lives in EITHER of two columns and the
-  // legacy one is blank for most billed patients — see
-  // shared/lastBillDate.ts. Resolve once here so the "Last Bill Date" a rep
-  // reads and the date `computeNextOrder` defaults from are the same value,
-  // and so both agree with what `mondayWrite` writes on send.
-  const monitorLastBill = resolveLastBill(patient.sosLastBillMonitor, patient.cgmLastBillDate);
-  const sensorsLastBill = resolveLastBill(patient.sosLastBillSensors, patient.sensorsLastBillDate);
-  const ipLastBill = resolveLastBill(patient.sosLastBillIp, patient.ipLastBillDate);
-  const infusionSetLastBill = resolveLastBill(patient.sosLastBillInfusionSet, patient.infusionSetLastBillDate);
-  const cartridgeLastBill = resolveLastBill(patient.sosLastBillCartridge, patient.cartridgeLastBillDate);
+  // Each product's last bill date is its "<product> SoS Last Bill" column — the
+  // one family this stage reads since 2026-09-15 (shared/lastBillDate.ts has
+  // the audit that retired the legacy pair). Named once here so the "Last Bill
+  // Date" a rep reads, the date `computeNextOrder` defaults from, and what
+  // `mondayWrite` writes on send are the same value.
+  const monitorLastBill = (patient.sosLastBillMonitor ?? "").trim();
+  const sensorsLastBill = (patient.sosLastBillSensors ?? "").trim();
+  const ipLastBill = (patient.sosLastBillIp ?? "").trim();
+  const infusionSetLastBill = (patient.sosLastBillInfusionSet ?? "").trim();
+  const cartridgeLastBill = (patient.sosLastBillCartridge ?? "").trim();
 
   const rows = [
     served.sensors && {
@@ -404,8 +404,8 @@ export function NextOrderDatesCard({
               ⚠️ `formatLastBill` is STRING SURGERY on the board's naive-ET
               value. Never `new Date(...)` here — it renders the day before in
               any non-ET runtime, and a wrong date reads as authoritative
-              (CLAUDE.md §9). The date itself still comes from `resolveLastBill`,
-              so what a rep reads is what `computeNextOrder` defaults from. */}
+              (CLAUDE.md §9). The date itself is the product's SoS Last Bill
+              column, so what a rep reads is what `computeNextOrder` defaults from. */}
           <div className="flex items-baseline gap-2 flex-wrap">
             <p className="text-sm font-semibold">{r.label}</p>
             <p

@@ -101,27 +101,19 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     monitorPurchaseDate: cv(item, COL.monitorPurchaseDate)?.text ?? "",
     // Checkbox: Monday renders a checked box as non-empty text, blank when clear.
     sosNeverBilledMonitor: !!(cv(item, COL.sosNeverBilledMonitor)?.text ?? ""),
-    sosLastBillMonitor: cv(item, COL.sosLastBillMonitor)?.text ?? "",
-    sosLastBillSensors: cv(item, COL.sosLastBillSensors)?.text ?? "",
-    sosLastBillIp: cv(item, COL.sosLastBillIp)?.text ?? "",
-    sosLastBillInfusionSet: cv(item, COL.sosLastBillInfusionSet)?.text ?? "",
-    sosLastBillCartridge: cv(item, COL.sosLastBillCartridge)?.text ?? "",
     orderHandling: cv(item, COL.orderHandling)?.text ?? "",
     orderHandlingIndex: parseIndex(cv(item, COL.orderHandling)?.value ?? null),
     pos: cv(item, COL.pos)?.text ?? "",
     posIndex: parseIndex(cv(item, COL.pos)?.value ?? null),
 
-    // SoS & Last Bill Dates — derive SoS from whether a last-bill date is populated
+    // Per-product "SoS Last Bill" — the one last-bill family (COL.lastBillDate).
+    // The `sos*` = "Not Clear" quintet that used to be derived from these was
+    // read by nothing and was deleted with the legacy columns (2026-09-15).
     lastBillDateMonitor: cv(item, COL.lastBillDate.monitor)?.text ?? "",
     lastBillDateSensors: cv(item, COL.lastBillDate.sensors)?.text ?? "",
     lastBillDateIp: cv(item, COL.lastBillDate.insulin_pump)?.text ?? "",
     lastBillDateInfusionSet: cv(item, COL.lastBillDate.infusion_set)?.text ?? "",
     lastBillDateCartridge: cv(item, COL.lastBillDate.cartridge)?.text ?? "",
-    sosMonitor: (cv(item, COL.lastBillDate.monitor)?.text ?? "") ? "Not Clear" : "",
-    sosSensors: (cv(item, COL.lastBillDate.sensors)?.text ?? "") ? "Not Clear" : "",
-    sosIp: (cv(item, COL.lastBillDate.insulin_pump)?.text ?? "") ? "Not Clear" : "",
-    sosInfusionSet: (cv(item, COL.lastBillDate.infusion_set)?.text ?? "") ? "Not Clear" : "",
-    sosCartridge: (cv(item, COL.lastBillDate.cartridge)?.text ?? "") ? "Not Clear" : "",
     // Calculated next order dates (read-only)
     nextOrderDateIp: cv(item, COL.nextOrderDate.insulin_pump)?.text ?? "",
     nextOrderDateSensors: cv(item, COL.nextOrderDate.sensors)?.text ?? "",

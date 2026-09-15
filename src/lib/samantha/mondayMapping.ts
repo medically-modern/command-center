@@ -351,27 +351,11 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     codes[codeId]!.sos = "skip";
   }
 
-  // Per-product Last Bill Date — hydrated from the 5 Last Bill Date columns.
-  const LAST_BILL_DATE_COLS: Record<ProductId, string> = {
-    monitor: COL.lastBillDate.monitor,
-    sensors: COL.lastBillDate.sensors,
-    insulin_pump: COL.lastBillDate.insulin_pump,
-    infusion_set: COL.lastBillDate.infusion_set,
-    cartridge: COL.lastBillDate.cartridge,
-  };
-  for (const pk of PRODUCT_KEYS) {
-    const codeId = PRODUCT_KEY_TO_CODE[pk];
-    const dateText = cv(LAST_BILL_DATE_COLS[pk])?.text;
-    if (dateText) {
-      if (!codes[codeId]) codes[codeId] = { status: "pending" } as ProductCodeState;
-      codes[codeId]!.lastBillDate = dateText;
-    }
-  }
-
   // Benefits redesign — per-product SoS billing FACTS (dates + units +
-  // "No Billing History" checkboxes). These are the fuller record: hydrate
-  // them over the legacy lastBillDate (which only exists for Not-Clear
-  // products) and mark the entry "billed" / "never".
+  // "No Billing History" checkboxes): the record, and since 2026-09-15 the only
+  // last-bill family read (the legacy Not-Clear-only `lastBillDate` columns
+  // were copied into these and retired — shared/lastBillDate.ts). Mark the
+  // entry "billed" / "never".
   for (const pk of PRODUCT_KEYS) {
     const codeId = PRODUCT_KEY_TO_CODE[pk];
     const factDate = cv(COL.sosLastBill[pk])?.text;

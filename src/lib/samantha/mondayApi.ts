@@ -131,20 +131,14 @@ export const COL = {
     cartridge: "numeric_mm2w1df3",
   },
 
-  // Per-product Last Bill Date columns (date — populated when SoS = Not Clear)
-  // ⚠ Date PRESENCE here encodes "Not Clear" downstream (Final Confirm derives
-  // its SoS display from it) — keep the Not-Clear-only write rule (decision D2).
-  lastBillDate: {
-    monitor: "date_mm33h1qv",
-    sensors: "date_mm332rhq",
-    insulin_pump: "date_mm33qnew",
-    infusion_set: "date_mm33gj86",
-    cartridge: "date_mm33cd87",
-  },
-
   // Benefits redesign (D2/D6) — per-product SoS billing FACTS. Written for
-  // every billed product (even derived-Clear) so the full history lands on
-  // the board without disturbing the legacy lastBillDate contract above.
+  // every billed product (even derived-Clear): the full history, and since
+  // 2026-09-15 the ONLY last-bill family. The legacy "<product> Last Bill Date"
+  // columns (date_mm33h1qv · date_mm332rhq · date_mm33qnew · date_mm33gj86 ·
+  // date_mm33cd87) were a Not-Clear FLAG — written only on Not Clear, cleared
+  // otherwise — feeding a Final Confirm derivation nothing read. Their data was
+  // copied into these and they are retired on the board (shared/lastBillDate.ts
+  // has the audit). Do not re-add them, read them or write them.
   // Same-named target columns exist on the Welcome Call board; Josh maps
   // them in the Stage Advancer → Complete create-item automation (7918324247).
   sosLastBill: {
@@ -282,12 +276,6 @@ export const READ_COLUMN_IDS = [
   // recorded on Benefits — Not Clear products and Skip-deferred products).
   COL.notClearProducts,
   COL.skipSosProducts,
-  // Per-product Last Bill Date (populated when SoS = Not Clear on Benefits)
-  COL.lastBillDate.monitor,
-  COL.lastBillDate.sensors,
-  COL.lastBillDate.insulin_pump,
-  COL.lastBillDate.infusion_set,
-  COL.lastBillDate.cartridge,
   // Follow Up
     COL.profileSendOffNotes,
     COL.mnWorkflowNotes,

@@ -3470,83 +3470,89 @@ kind. The toggle will often be empty, and that is the board's state, not a broke
 
 
 
-### 5.32 Last Bill Date lives in TWO column families — and Welcome Call read the wrong one (Sep 2026)
+### 5.32 Last Bill Date — one column family; the legacy "Last Bill Date" columns are RETIRED (Sep 2026)
 Brandon, 2026-09-10: *"last bill date for SoS on welcome call — we have 2 diff columns for it
 (`date_mm59n1x1` and `date_mm33jsyt`) — might be issue with other products too, but noticing it
-the most with sensors. Need to make sure it links up properly from insurance board."*
+the most with sensors. Need to make sure it links up properly from insurance board."* Josh,
+2026-09-15: *"we need to make it obsolete so the new column does everything that the old one was
+doing so we can get rid of it. it causes confusion."*
 
-Both the Insurance board and Welcome Call carry **two** per-product last-bill families:
+Both the Insurance board and Welcome Call carried **two** per-product last-bill families:
 
 | | Insurance (sensors) | Welcome Call (sensors) | Written when |
 |---|---|---|---|
-| **LEGACY** "Sensors Last Bill Date" | `date_mm332rhq` | `date_mm33jsyt` | **only** SoS = Not Clear (or Auth = No Auth Needed) — **actively CLEARED otherwise** |
-| **NEW** "CGM Sensors SoS Last Bill" | `date_mm59ejs2` | `date_mm59n1x1` | **every billed product**, Clear included |
+| **LEGACY** "Sensors Last Bill Date" — **RETIRED** | `date_mm332rhq` | `date_mm33jsyt` | **only** SoS = Not Clear (or Auth = No Auth Needed) — **actively CLEARED otherwise** |
+| **"CGM Sensors SoS Last Bill"** — the record | `date_mm59ejs2` | `date_mm59n1x1` | **every billed product**, Clear included |
 
-⚠️ **The hop is NOT broken — do not go looking for a bad mapping.** Create-item automation
-**7918324247** copies all ten dates plus their Units and No-Billing-History siblings,
-source→destination, every pair correct (verified against the live workflow definition
-2026-09-10). Brandon's "make sure it links up properly" was the right instinct pointed one step
-too far downstream: the divergence is created on the **Insurance board, by the write rules**, and
-on that side it is deliberate. `samantha/mondayWrite` maintains the legacy column as a **Not Clear
-flag** — its date PRESENCE is what `finalConfirm/mondayMapping` derives `sosMonitor`/`sosSensors`/…
-from, and what the check pack's `authExpiryMoot` reads — while the SoS family is "the full record …
-without disturbing the legacy lastBillDate contract".
+All ten legacy ids: Insurance `date_mm33h1qv · date_mm332rhq · date_mm33qnew · date_mm33gj86 ·
+date_mm33cd87`, Welcome Call `date_mm33vqa0 · date_mm33jsyt · date_mm33kmz4 · date_mm33mw14 ·
+date_mm33rd8n`. The SoS family they map to: Insurance `date_mm59tx2g · date_mm59ejs2 ·
+date_mm59j483 · date_mm59bzfv · date_mm598y8w`, Welcome Call `date_mm599gk8 · date_mm59n1x1 ·
+date_mm593ghh · date_mm59jcf5 · date_mm59mw5n` (monitor · sensors · pump · sets · cartridges).
 
-So for the **common** case — SoS came back Clear — the real date lands in the new column and the
-legacy one is blanked. Welcome Call read the legacy family alone, so the Last Bill Date row showed
-**"—"** and the next-order-date default had nothing to compute from, while the true date sat one
-column over, unread. Nothing errored.
-> ⚠️ This is also why the Final Confirm Last Bill block looked empty so often. Brandon asked on
-> 2026-09-02 for its five fields to go amber-not-red because they are "empty together on any
-> patient we have not billed yet" — a good number of those were patients we HAD billed.
+**The legacy column was a Not-Clear FLAG, not a billing record.** `samantha/mondayWrite` wrote it
+only when SoS came back Not Clear and cleared it otherwise, so for the common case — Clear — the
+real date landed in the SoS column and the legacy one was blanked. Welcome Call read the legacy
+family alone, so the Last Bill Date row showed **"—"** and the next-order-date default had nothing
+to compute from, while the true date sat one column over. Final Confirm's five editable boxes read
+AND wrote the legacy column, so they were blank for patients we HAD billed (Brandon's 2026-09-02
+"amber not red" ask was really about this). ⚠️ The Insurance→Welcome Call hop **7918324247** copies
+all ten pairs correctly — the divergence was created by the write rule, never by the mapping.
 
-**Measured on the live boards, 2026-09-10.** Insurance, sensors: **46** items carry both dates,
-**28 carry only the new one**, 5 only the legacy. Welcome Call, new-only: **sensors 11**, insulin
-pump 1, infusion sets 1, cartridges 1, monitor 0 — which is exactly why he saw it "the most with
-sensors". Thirteen Welcome Call rows carry only a legacy date (written before the new family
-existed), which is what makes the direction of the fix matter.
+**Retired 2026-09-15, in three steps, each measured on the live boards:**
+1. **Backfill.** Every legacy value was copied into its SoS twin where the twin was blank: **35
+   items** (Welcome Call 20 · Insurance 15; sensors 13 + 5, the rest monitor / sets / cartridges —
+   the insulin-pump legacy column held **zero rows on either board**). Verified after: legacy-only
+   = 0 on all five products, both boards. Units were left blank on backfilled rows — the legacy
+   family never had any, and inventing them is worse than a gap.
+2. **The audit.** The legacy column had exactly **two** live consumers, and neither needed it:
+   - `finalConfirm/checkPack.authExpiryMoot` — Medicaid + a non-blank last bill silences C18's
+     auth-expiry row. Pointed at the SoS family, **zero patients change verdict**: of **324**
+     Medicaid × Auth Valid × has-end-date product-rows on Welcome Call, **not one** carried a date
+     in EITHER family — Medicaid supplies are auto-filled Clear (`isAutoFilledMedicaidSupply`) and
+     never get an SoS entry. ⚠️ Which means the silence Brandon asked for on 9/2 **has never once
+     fired**; tell him. The SoS family is the more honest input anyway — it is literally "have we
+     billed this".
+   - Final Confirm's five editable boxes — they wrote legacy, and `resolveLastBill` then displayed
+     the SoS value OVER the rep's correction. The only four both-set-and-differ rows on either
+     board were exactly this (all Welcome Call sensors, all Completed, none on Insurance — so
+     written on Welcome Call after the hop, by those boxes).
+   - The derived **`sosMonitor`/`sosSensors`/`sosIp`/`sosInfusionSet`/`sosCartridge` = "Not Clear"
+     quintet** — the thing the flag existed to feed — was declared in `finalConfirm/workflow.ts`,
+     derived in `mondayMapping`, initialised in `FinalConfirmPage`, and **read by nothing**.
+     Deleted. ⚠️ A first delta measured against that quintet counted **179** verdict changes;
+     measured against what is actually READ, the number is **zero**. Find the consumer before
+     measuring a delta.
+3. **The code.** Every reader and writer moved to the SoS family and the ten legacy ids left the
+   code. `samantha` no longer writes or reads them (the SoS facts blocks — Benefits' and the Auth
+   Outstanding recheck's — were already the record). `welcomeCall` reads `sosLastBill*` directly;
+   `isFirstTimePumpUser` now takes the pump's SoS date — the legacy pump column had zero rows, so
+   this changes ONE Completed patient (a 2022 pump bill) and no live ones; `careCoordinator` moved
+   with it. `finalConfirm`'s `COL.lastBillDate` map **points at the SoS ids**, so its five
+   `lastBillDateX` fields are read from and written back to the SoS column — one field, one column
+   — and the caption twin (`sosLastBillX`) is gone. `shared/lastBillDate.ts` keeps `formatLastBill`
+   and the audit; `resolveLastBill*` is deleted. `lastBillDisplay.test.ts` pins the map to the SoS
+   ids and fails if any column id in that slice is a legacy id or a send writes one.
 
-Canonical rule: **`lib/shared/lastBillDate.ts`** (`resolveLastBill` / `resolveLastBillDates`, +
-tests whose fixtures are the real board rows). Prefer the SoS column, **fall back** to the legacy
-one — never re-point, or those 13 rows go blank. When both are present they were written from the
-same rep answer and agree (every such pair in the live sample is identical), so the preference only
-ever breaks a tie.
+⚠️ **The Final Confirm box changed meaning, deliberately.** It used to mean "the Not Clear date"
+and now means "the last bill date we hold"; blanking it clears the SoS column. That is what the
+Insurance rep recorded, and it is the column Welcome Call's next-order default reads, so the two
+stages can no longer disagree.
+⚠️ **Do not bring the legacy columns back into the code for any reason** — not as a fallback ("13
+rows only have legacy" was true on 9/10 and is false since the backfill), not as a flag.
 
-⚠️ **READ-ONLY SURFACES ONLY — do not wire this into a control that WRITES a legacy column.**
-Welcome Call never writes them (it reads for display + `resolveNextOrderWrite`'s default), which is
-what makes the fix safe there. **Final Profile Confirmation's Last Bill fields are editable and
-written back on send**, so prefilling them from the SoS column would flip that item's `sos*`
-derivation from `""` to **"Not Clear"** for a product that was Clear, and silence C18's auth-expiry
-warning through `authExpiryMoot`. Left alone deliberately; fixing FC means deciding what those five
-editable fields are FOR, not changing where they read from.
-⚠️ Both consumers resolve through the same helper on purpose: `PatientInfoCard`'s
-`NextOrderDatesCard` and `welcomeCall/mondayWrite`'s `nextOrderDateWrites`. They already had a
-"single source of truth with the send path" rule — the date on screen is the date that gets
-written — and reading the pair in one place and the single column in the other would have broken it
-silently.
+**Monday side (Josh, in the UI — not code):** retitle the ten legacy columns **"(retired)"** and hide
+them, as the notes columns were (§10); never delete. Hop automation 7918324247 still carries the
+five legacy→legacy rows — harmless while the columns exist; clear them when hiding, or capped
+copies keep landing in columns nobody reads. ⚠️ Board automations of that vintage cannot be edited
+through the workflow API (§10) — it is a person in the UI.
 
-**Final Confirm shows the date as a CAPTION, not as the field's value** (2026-09-10). Its five Last
-Bill boxes had the identical blank for the identical patients, but they are **editable and written
-back**, so the fix could not be the same one. Pouring the SoS date into the input breaks three
-things at once: `mondayWrite` writes that field straight into the LEGACY column, so a Clear product
-would **relabel itself Not Clear** on the next send; that same presence silences C18's auth-expiry
-warning via `authExpiryMoot`, hiding a genuinely lapsed auth; and the box could never be **cleared**
-(blanking it would fall back to the SoS date and spring straight back — §5.10/§5.20's no-passing-move
-dead end). So the input keeps meaning *the Not Clear date*, a muted line under it says
-*"Billed 2025-03-14 — Same-or-Similar came back clear, so this box is empty"*, and the amber
-missing-input ring stands down. ⚠️ That ring change is the real answer to Brandon's 2026-09-02 ask:
-he read those five fields as "empty on any patient we have not billed yet", and a good number were
-patients we HAD billed. ⚠️ The caption prints the **raw YYYY-MM-DD** — Monday's dates are naive ET
-and the container is UTC, so parsing one to "format" it renders a day out (§9). ⚠️ The five new
-fields are **read-only and never written** (`lastBillDisplay.test.ts` pins that, and is verified to
-fail when the legacy write is pointed at them); they follow their legacy twin through
-`getSplitOverrides`, or a supplies-only half would caption a sensors date it does not serve.
-
-**Known, not fixed:** `authExpiryMoot` reads the legacy column as a proxy for *"have we
-successfully billed this product"*, which the SoS family answers properly. Pointing it at the SoS
-column would be more correct semantically and would **widen** the silencing of auth-expiry
-warnings — the dangerous direction (§5.17), so it needs Brandon's call, not a refactor. As it
-stands it over-warns, which is safe.
+**Why it kept biting (Josephine Neal, Tammy Turpin — both 2026-09-15):** both Humana, both worked
+in prod BEFORE §5.32c reached it (prod synced 9/3 → 9/15 at 10:29 AM ET), so Auth = Required
+deferred the sensors SoS, the fields greyed out, and the date went into the Benefits call notes.
+Both repaired by hand into the SoS date + units on BOTH boards (the hop fires only at item
+creation, so an Insurance write alone never reaches an existing Welcome Call item). With §5.32c
+live in prod, Send is held until the date + units are entered.
 
 ### 5.32b C30 — a blank doctor phone is flagged at Final Confirm (Sep 2026)
 Brandon, same day: *"blank doctor phone should be flagged in final profile confirmation — right
@@ -4938,8 +4944,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |
 | "Auto. Texts" reads 0 for somebody we definitely texted | §5.24 — it counts **only** the intake form's 30-minute + 24-hour nudges (`numeric_mm67822b`). A rep's own text and both link families deliberately do not move it |
 | A patient's text thread looks empty, or stops ~30 days back | §5.27 — RingCentral retains ~30 days and answers **200 with an empty list**, which looks identical to "never texted". `GET /messaging/archive-health`, then `services/monday-gateway/smsArchive.mjs` |
-| A Last Bill Date reads "—" on Welcome Call for a patient we have billed | §5.32 — there are TWO column families and the legacy one is blank whenever SoS came back **Clear**. `lib/shared/lastBillDate.ts` resolves the pair. The Insurance→WC hop (automation 7918324247) is correct on all ten pairs — do not go looking there |
-| Final Confirm's Last Bill box is blank but captions a date underneath | §5.32 — working as intended. The box is the **Not Clear** date (editable, written back, and what `sos*` / `authExpiryMoot` key off); the caption is what we actually billed. Do not merge them — `lastBillDisplay.test.ts` says why |
+| A Last Bill Date reads "—" on Welcome Call / Final Confirm for a patient we have billed | §5.32 — one family since 2026-09-15: the "<product> SoS Last Bill" columns. Check the Insurance item's SoS column; if it is blank too, the product was parked in **Skip SoS Products** at Benefits (Humana + auth required, worked before §5.32c reached prod, is the known case — Josephine Neal, Tammy Turpin) and the date is in the Benefits call notes. Write it into the SoS date + units on BOTH boards; the hop only fires at item creation |
+| Something still names a legacy `date_mm33…` Last Bill Date column, or a Final Confirm Last Bill box behaves oddly | §5.32 — those ten columns are retired and out of the code; the Final Confirm box IS the SoS column now (read + written, blank clears). `lastBillDisplay.test.ts` pins `COL.lastBillDate` to the SoS ids. On the board they are to be retitled "(retired)" and hidden, never deleted |
 | A phone/caregiver answer isn't saving, or a status write silently did nothing | §5.31d — `lib/welcomeCall/phoneSlots.ts`. The write value is the label **id** (Patient 7 · Caregiver 4 · Yes 1 · No 2), not the display index, and a bad id is dropped with no error. A blank Can Text is unknown, never a No |
 | A Humana patient's Same-or-Similar was never asked / a product sits in Skip SoS Products | §5.32c — `benefitsDerive.sosRequiredDespiteAuth`. Auth = Required defers the check for every payer EXCEPT Humana; keyed on primary insurance (the secondary column has no Humana label). An auth-required Humana product with no entry derives `""`, which holds the stage — never `"skip"` |
 | The patient's phone is wrong and a rep can't fix it | §5.32d — editable on **Auth Outstanding only**, via `BenefitsPatientHeader`'s opt-in `onSavePhone`. The refusal fires BEFORE the write (`planPhoneWrite` skips what it can't parse, so an unchecked save is green and empty); the write goes straight to the board, never into the overlay. Not a route back to the retired Edit-profile dialog — §7 |
