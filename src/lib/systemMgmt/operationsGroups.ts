@@ -53,6 +53,9 @@ export const ROLE_GROUPS: RoleGroup[] = [
     roleIds: [
       "inSystemReferrals", "doctorAppointments", "patientQuestions",
       "fax", "subscription", "updateClinicals", "assignedPatients",
+      // Orders (§5.35) — a task tile beside Subscription: its bar is the
+      // orders waiting to be placed, not a pipeline stage of its own.
+      "orders",
     ],
   },
 ];

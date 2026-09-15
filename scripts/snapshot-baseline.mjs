@@ -115,6 +115,16 @@ const PROF_IN_SYSTEM_COL = "color_mm2xe7r8";       // Already In System (role sp
 
 const SUB_BOARD   = 18407459988;
 const SUB_GROUP   = "topics";
+// Orders (CLAUDE.md SS5.35) — the New Order Board. The count is the orders
+// WAITING TO BE PLACED: the Order group's items whose Order Status reads
+// "Order". "Process Claim" is placed, "On Hold" is snoozed, "Ordered" is the
+// transient hand-off to Cardinal — none is work. Mirrors useRoleCounts.ts and
+// lib/orders/sidebarList's "To place" section (SS5.8 counting contract —
+// change all three together).
+const ORDERS_BOARD = 18405457690;
+const ORDERS_ORDER_GROUP = "group_mm18v6n3";
+const ORDERS_STATUS_COL = "status";
+const ORDERS_TO_PLACE_LABEL = "Order";
 
 /* ── Patient Questions (inbox over TWO boards) ─────────────
  * Mirrors lib/patientQuestions/mondayApi.ts `fetchPatientQuestions` +
@@ -470,6 +480,13 @@ async function countSubscription() {
   return { count: items.length, ids: items.map((i) => i.id) };
 }
 
+/** Orders waiting to be placed — see the ORDERS_* constants. */
+async function countOrders() {
+  const items = await fetchGroupItems(ORDERS_BOARD, ORDERS_ORDER_GROUP, [ORDERS_STATUS_COL]);
+  const toPlace = items.filter((i) => (i.cols[ORDERS_STATUS_COL] ?? "").trim() === ORDERS_TO_PLACE_LABEL);
+  return { count: toPlace.length, ids: toPlace.map((i) => i.id) };
+}
+
 /* ── Patient Questions ─────────────────────────────────────
  * Ported from lib/patientQuestions/*.ts — see the constants block above for
  * the SS5.8 keep-in-agreement rule. */
@@ -700,6 +717,7 @@ async function main() {
     profileResult,
     scheduledCallsResult,
     subscriptionResult,
+    ordersResult,
     systemMgmtCount,
     patientQuestionsCount,
   ] = await Promise.all([
@@ -713,6 +731,7 @@ async function main() {
     countProfile(),
     countScheduledCalls(),
     countSubscription(),
+    countOrders(),
     countEscalations(),
     countPatientQuestions(),
   ]);
@@ -731,6 +750,7 @@ async function main() {
     // Update Clinicals reads the SAME Subscription group as `subscription`
     // (useRoleCounts derives both from one fetch) — not a copy-paste slip.
     updateClinicals: subscriptionResult.count,
+    orders: ordersResult.count,
     patientQuestions: patientQuestionsCount,
     systemMgmt: systemMgmtCount,
   };
@@ -746,6 +766,7 @@ async function main() {
     ...profileResult.ids,
     subscription: subscriptionResult.ids,
     updateClinicals: [...subscriptionResult.ids],
+    orders: ordersResult.ids,
   };
 
   const baseline = {

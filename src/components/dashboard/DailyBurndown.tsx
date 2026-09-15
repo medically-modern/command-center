@@ -195,7 +195,11 @@ export function DailyBurndown({
   // has no Monday stage at all — no board, no group, no queue — so its bar
   // would always render empty and read as "nothing to do today" rather than as
   // a tool you open when you need it.
-  const TASK_ROLE_IDS = new Set(["updateClinicals", "subscription", "assignedPatients"]);
+  // Orders joins them for the Subscription reason: one item per order on a
+  // board of ~1,480, opened to look a patient's order up. Its badge is the
+  // orders waiting to be placed (§5.35) — a real number, but not a queue the
+  // processor works from here while the role is observation-only.
+  const TASK_ROLE_IDS = new Set(["updateClinicals", "subscription", "assignedPatients", "orders"]);
 
   // When an explicit order is provided (processor SOP sequence), sort by it and
   // show position numbers; otherwise keep canonical config order.

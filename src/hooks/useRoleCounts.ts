@@ -85,6 +85,16 @@ const PROF_INTAKE_ESC_COL = "color_mm5zww42";
 const PROF_ESCALATED_LABELS = ["Manager Escalation Required", "Final Escalation Required"];
 const SUB_BOARD_ID = 18407459988;
 const SUB_GROUP_ID = "topics";
+// Orders (§5.35) — the New Order Board. The count is the orders WAITING TO BE
+// PLACED: the Order group's items whose Order Status reads "Order". Placed
+// orders ("Process Claim"), snoozed ones ("On Hold") and the transient
+// "Ordered" are not work for anybody. Mirrors lib/orders/sidebarList's
+// "To place" section and BOTH baseline generators (§5.8 counting contract —
+// change together). Ids inline for the code-splitting reason above.
+const ORDERS_BOARD_ID = 18405457690;
+const ORDERS_ORDER_GROUP_ID = "group_mm18v6n3";
+const ORDERS_STATUS_COL = "status";
+const ORDERS_TO_PLACE_LABEL = "Order";
 
 // ── Column ids used for "active view" filtering ──
 // Masheke
@@ -752,6 +762,18 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             { subscription: 0, updateClinicals: 0 },
             { subscription: subIds, updateClinicals: [...subIds] },
           );
+        })(),
+      );
+    }
+
+    if (need("orders")) {
+      boardTasks.push(
+        (async () => {
+          const items = await fetchBoardGroupItemsLight(ORDERS_BOARD_ID, ORDERS_ORDER_GROUP_ID, [ORDERS_STATUS_COL]);
+          const toPlace = items.filter((i) => (i.cols[ORDERS_STATUS_COL] ?? "").trim() === ORDERS_TO_PLACE_LABEL);
+          // No escalation on this board: the escalated count is 0, so the
+          // "all" filter's active + escalated sum stays honest.
+          merge({ orders: toPlace.length }, { orders: 0 }, { orders: toPlace.map((i) => i.id) });
         })(),
       );
     }

@@ -57,6 +57,8 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | **Subscription Board - Updated** | `18407459988` | `subscription` role + one source for Patient Questions. |
 | **Secondary Claims Board** | `18413019028` | Second source for Patient Questions inbox. |
 | **MM Doctor Database** | `18142847597` | NPI → doctor record + Doctor Notes (`shared/doctorDb.ts`). Separate from patient boards. |
+| **New Order Board** | `18405457690` | `orders` role (§5.35) — **read-only**. One item per ORDER (a patient has one per reorder), created by the Welcome Call order automations (§5.22b), placed on the board by a human flipping **Order Status `status` → "Ordered"**, then driven by `cardinal-api-poller` (API Status `color_mm3zm9hm`, CAH Order Number, tracking, delivery, invoice, POD files). Groups: *Order → Returns → Accepted / Partial → Shipped/Delivered → Cancelled*. ⚠️ The group lags the API Status; read the status first. |
+| **Cardinal SKU Tracker** | `18420366344` | Every SKU we order at Cardinal — live price, `Qty Avail`, `PROD Status` (Available · Backordered · Restricted · Inactive), scraped daily at 9:05 ET by the Cardinal poller's `skuwatch`. Read by the Welcome Call stock pills (§5.31b) and, in full, by the `orders` role's stock table (§5.35). The `Run Log` group's one row is the last-run headline, not a SKU. |
 
 **Column IDs are the contract.** Every `lib/<role>/mondayMapping.ts` maps domain fields to
 Monday column IDs (`color_…`, `text_…`, `date_…`, `dropdown_…`). If a column is renamed on
@@ -3937,6 +3939,134 @@ It used to toggle off locally only, so the column stayed at "Send" and a re-pres
 value onto itself — no status change, automation 7918318033 never fired, the button read "Queued"
 again and no text went out. The §9 advancer-no-op class, one column over.
 
+### 5.35 Orders — the New Order Board and the Cardinal SKU Tracker in one place (Sep 2026)
+Josh, 2026-09-15: *"a new role that displays the info on the new order board and cardinal sku
+tracker, all in one place … more like the subscription board but for orders … this is only for
+observation, but someday we will flip the switch on letting them order from this ui (they'd just
+flip to 'ordered' — that does it) — just not today … often they will be using this to search
+patients asking statuses."* Role id **`orders`**, route **`/orders`**, a **task tile** beside
+Subscription (`DailyBurndown` `TASK_ROLE_IDS`); slice `lib/orders/*`, `hooks/orders/*`,
+`components/orders/*`, `pages/OrdersPage.tsx`. **READ-ONLY. Nothing on the page writes to
+Monday.** The one write the slice knows how to make sits dark — see *the switch* below.
+
+**The board, as it behaves (verified from the ten workflows + six webhooks, 2026-09-15).** One
+item = one ORDER; a create-item workflow (7917933994) stamps Order Date = today and **Order Status
+`status` = "Order"**, three more default the quantities (cartridges from the infusion sets, sensors
+per CGM type). From there it is a machine-driven board with ONE manual step:
+
+| step | who | what |
+|---|---|---|
+| Order Status **"Order"** | — | webhook 610148313 runs the advisory **Pre-Check** (`color_mm5bh2az` + detail) |
+| **→ "Ordered"** | **a human, on the board** | webhook 595100182 hands the item to `cardinal-api-poller`, which submits it and writes API Status, CAH Order Number, PO Number, the raw request/response, holds; workflow 7921060784 flips the status straight on to **"Process Claim"** — "Ordered" is transient |
+| "Process Claim" | automation | 7920451241 moves it to *Accepted / Partial* unless API Status is already SHIPPED/Delivered (7919401900 → *Shipped/Delivered*); webhook 562945440 fires the claims side |
+| API Status → SHIPPED | poller + 7920451305 | *Accepted / Partial* → *Shipped/Delivered* — ⚠️ **SHIPPED only**, so an order that goes Partially Shipped → Delivered stays in *Accepted / Partial* (11 live rows) |
+| "On Hold" | a human | a SNOOZE: 7919939752 flips it back to "Order" at 8:15 AM ET on the day **Order Date** arrives — so Order Date doubles as the return date |
+| Returns / Cancelled | a human | moved by hand; the return statuses are set by hand |
+
+Census 2026-09-15 (1,477 rows): Order **7** (5 to place, 2 on hold) · Returns 6 · Accepted /
+Partial **101** (39 partially shipped, ~24 on hold, 14 booking errors, 11 delivered-but-not-moved) ·
+Shipped/Delivered **1,361** (of which **609 carry no API Status at all** — placed before the poller
+existed) · Cancelled 2. Human activity in the week of 9/8, one user: **116 flips to "Ordered"**,
+12 back to "Order", the Cardinal columns cleared to null before a retry (8×), 3 On Hold/Order Date
+snoozes, member id / doctor address / auth id fixes, return statuses, one note, 14 deletes.
+That is the whole job the page observes.
+
+⚠️ **THE GROUP IS NOT THE STAGE — API STATUS IS, for a placed order.** `workflow.orderStage`:
+Cancelled/Returns groups and the return statuses first; then the pre-placement statuses (Stuck ·
+On Hold · **Order → `toPlace`** · Ordered → `placing`); then, for "Process Claim"/"Paid Cash",
+Cardinal's verdict — Delivered → `delivered`, SHIPPED/Partially Shipped → `shipped`, hold/error/
+accepted/backordered → `inProgress`; a **blank** API Status is `shipped` only in the
+Shipped/Delivered group (the pre-poller rows) and `inProgress` anywhere else. Pinned in
+`workflow.test.ts` with the two live shapes that would otherwise mislabel.
+
+⚠️ **Cardinal's answer is three columns, and the label alone lies.** A live row reads API Status
+**"Warning"** while Hold Reason `text_mm486hh7` says "Credit Check Failure" and API Message carries
+the hold sentence. `cardinalStatus(apiStatus, holdReason, apiMessage)` reads all three, turns the
+five hold sentences ("Order has been put on hold, Hold reason: X, …", "HOLD RELEASED; Another Hold
+applied … Hold Reason: Y") into **"On hold — X"**, and prints an unrecognised label **verbatim**
+(§5.20's rule). ⚠️ A Hold Reason only ever UPGRADES an unshipped verdict — the poller never clears
+the column, so delivered orders still carry the hold that once delayed them. The slim list carries
+`apiMessage` precisely so a sidebar row and the open order reach the same verdict.
+
+**Two-tier read (§5.25's shape).** `LIST_COLUMN_IDS` (~35 columns) for every order on the board,
+paged at 500 (three round trips), every **60s**, hidden-tab polls skipped — the sidebar, the overview
+and the stock view's "open orders" counts render from it. The open order is `fetchOrderById` at full
+width **plus its assets** (the seven file columns become View buttons), refreshed silently with each
+poll. A list row is stamped `partial` and is never rendered as the open order (`useOrders.test.tsx`);
+`listColumns.test.ts` scans every list-side source so a field read off a row is in the slim set.
+⚠️ `fetchOrders` THROWS on a mid-pagination failure instead of returning the pages it got — every
+other `fetchGroupItems` in this app swallows that (`catch { break }`), which is fine for a queue and
+wrong for a page whose overview COUNTS what it fetched. A failed poll keeps the previous list and
+raises the `StaleDataNotice`. Nothing is cached in localStorage (the §5.25 quota failure); a
+module-scope copy gives the instant repaint within a session.
+
+**The sidebar** (`lib/orders/sidebarList.ts`): *To place* (oldest first, "Placing" riding along) ·
+*On hold* (return date) · *Placed · in progress* (rose flags first, then oldest) · *Shipped* ·
+*Delivered* (newest first, **capped at the most recent 75** — `deliveredHidden` says how many more;
+a search or "Show all" lifts the cap) · Returns · Stuck · Other · Cancelled (collapsed). The search
+box matches every token against name, last-ten phone digits, CAH order number, PO number, all five
+tracking numbers and the item id — the page's whole reason to exist. Landing with nothing selected
+is deliberate: there is no first patient to auto-open on 1,480 orders, so the empty pane is the
+**overview** (stage tiles, "needs a person", Cardinal stock alerts with open-order counts).
+
+**Attention (`orderFlags`)**: rose = hold · booking error · needs review · deleted · product not
+for sale at Cardinal · substitution request failed; amber = backordered · substitution needed ·
+an unclean pre-check (to-place only); sky = partially shipped · substitution sent. ⚠️ The
+availability dropdowns (`dropdown_mm4wdmdd` Backordered · `dropdown_mm4waxqn` Inactive) are written
+by a daily sweep on EVERY order, delivered ones included, so they only flag while the order is still
+open — a delivered order whose set later went on backorder is not that patient's problem.
+
+**What was ordered ↔ what Cardinal can ship** (`lib/orders/skuJoin.ts` + tests). The order board
+records products as labels with a quantity each; the tracker has one row per SKU grouped by family.
+The join is BY NAME through `infusionStock.stockKey` and is **verified, not assumed** — the test
+holds every live label of both boards (23 infusion sets, 9 CGM types, 4 pumps/cartridges) and the
+one spelling gap (`Mio Advance Clear 9 mm 23"` vs the tracker's `9mm`). ⚠️ **Receivers are named by
+their sensor**: the order board has no receiver column (Qty: CGM Monitor is the quantity, CGM Type
+says which reader) and the tracker names its rows `<sensor(s)> → <receiver>` ("Dexcom G7 / G7 15-Day
+→ G7 Receiver"), so the left side is parsed as aliases and matched as a SUFFIX ("FreeStyle Libre 3
+Plus" ends with "Libre 3 Plus"). Simplera Sync and Guardian 4 have no receiver row (the 780G is the
+receiver) and correctly join to nothing. A product with a blank quantity is NOT a line (§5.22b:
+blank means never set). Each line carries `stockVerdict`'s pill — status decides, the count explains
+(§5.31b). The stock view (`?view=stock`) is the whole tracker by family with **open orders per SKU**,
+the last-run headline from the Run Log row, and a staleness warning past `STOCK_STALE_DAYS`.
+`skuTrackerApi.fetchSkuTracker` reads the full row (the Welcome Call `stockApi` keeps its three
+columns) under the same incident guards; both hooks are 30-minute-TTL module stores.
+
+**The count** — `orders` = the Order group's items whose Order Status reads **"Order"**: orders
+waiting to be placed. Three places, §5.8's contract: `useRoleCounts` (`ORDERS_*`),
+`scripts/snapshot-baseline.mjs` `countOrders`, `services/baseline-cron/index.mjs` `countOrders` —
+and the sidebar's *To place* section, minus the transient "Ordered". The Operations tab reads
+"not connected" until the first cron after deploy; `operationsGroups.ts` places the role under
+*Other*.
+
+**⚠️ THE SWITCH — `lib/orders/config.ts` `ORDERING_FROM_COMMAND_CENTER = false`.** The write is
+built and dark: `mondayWrite.markOrdered` re-reads Order Status and writes label id **1** only when
+the column reads "Order" (`canMarkOrdered`: "Process Claim" is already placed, "Ordered" is in
+flight, "On Hold" is deliberately not — a rep should never be able to place an order TWICE or place
+a snoozed one). No verified-write transaction is needed: the app writes no sibling data first, the
+whole payload Cardinal receives is already on the item. `OrderHeaderCard` renders "Mark as Ordered"
+(with a confirm) only behind the flag; while it is off the banner says the order is placed on the
+board, with the link. `orderingSwitch.test.ts` pins the flag at false — **flipping it is a
+decision, and the test failing is the reminder to read this first**: (1) confirm webhook 595100182
+is still the poller's trigger on `status` = 1; (2) confirm 7921060784 still moves Ordered → Process
+Claim; (3) decide whether the app should also clear the Cardinal columns on a retry (the board's
+human does that by hand before re-flipping — the app does not, and a re-flip on an item at "Process
+Claim" is refused); (4) update the test and this section.
+
+**Deliberately not built:** notes are display-only (the role is observation — the composer is a
+one-line add via the Subscription `NotesPanel` pattern when wanted); the New Order board is **not**
+in `systemMgmt/mondayApi` `BOARDS` (Search, the directory mirror, Profile Status and the dossier
+would all follow — `directoryCoverage.test.ts` / `profileStatus.test.ts` would need the ids), so
+System Management's Search does not return orders — the page's own search does; no Oversight
+charts (it is not a pipeline stage); no Profile Status badge (the board has no escalation column —
+the page wears its own stage and Cardinal pills instead).
+
+**Keep-in-agreement:**
+1. **Column ids** — `lib/orders/mondayApi.ts` `COL` (+ `LIST_COLUMN_IDS`, pinned by `listColumns.test.ts`).
+2. **Stage rule** — `workflow.orderStage` ⇄ the sidebar sections ⇄ the count's "Order" test (three files above).
+3. **Names** — `skuJoin.test.ts`'s label lists ⇄ the live Infusion Set / CGM Type / Pump columns and the tracker's rows. Re-run the comparison when either board grows a label.
+4. **Automation ids** in the table above — re-verify with `list_automations` before changing what a status write is expected to trigger.
+
 ## 6. Patient flow across boards (the big picture)
 
 ```
@@ -4995,6 +5125,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Welcome Call rep's Propose Stuck says the board has no "Final Escalation Required" label / a manager can't escalate to Final | §5.34 — that label EXISTS since 2026-09-14 (id **2**, working_orange, read back from `settings_str`), so `assertEscalationLabelExists` firing means it was deleted or deactivated on the board since, or the 5-minute label cache is stale right after a board change (the guard drops the cache on a miss, so a retry re-reads). Check `color_mm1x7997`'s `settings_str` on board `18410804557`; if the id is no longer 2, correct `welcomeCall/mondayApi` `ESCALATION_INDEX.final` + every reader listed in §5.34's keep-in-agreement — never by inference. Re-adding it needs the two-step colour swap §5.34 records (Monday refuses duplicate colours and derives a new label's id from its colour) |
 | An escalated Welcome Call / Final Confirm patient is in no Oversight column, or the sidebar and burndown disagree | §5.34 — `escalated` is read off the board (index 0) since 2026-09-14 and `proposedStuck` is index 2; both leave the rep's list and count (`welcomeCall`/`finalConfirm` `sidebarList`, `useRoleCounts`, both baselines) and land in the Welcome Call section's Manager Intervention / Final Decisions charts. A patient in NO column fails `columnExclusivity.test.ts` |
 | The Welcome Call Text shows "Queued" but the patient never got a second text | §5.34 / the 2026-09-14 audit — the trigger fires on a status CHANGE, so re-pressing Send onto a column already at "Send" is a no-op. Press the Queued button once to reset it on the board (`mondayWrite.resetWelcomeCallText`), then Send |
+| "Where is this patient's order?" / an order shows the wrong stage | §5.35 — `/orders`, search the sidebar (name · phone · CAH # · PO · tracking). Stage is `lib/orders/workflow.ts` `orderStage`: **API Status first**, group second — a Delivered order can still sit in *Accepted / Partial*, and 609 pre-poller rows have no API Status. `cardinalStatus` reads API Status + Hold Reason + API Message together |
+| The Orders tile count looks wrong / says "not connected" | §5.35 — it is the Order group's items at Order Status "Order" (waiting to be placed), in `useRoleCounts` + both baseline generators; "not connected" until the first 9 AM cron after the role shipped |
+| A product line reads "Not on the SKU tracker" / a stock pill is grey | §5.35 — `lib/orders/skuJoin.ts` joins BY NAME (`stockKey`); receivers match the sensor label as a suffix of the tracker row's left side. Re-run `skuJoin.test.ts`'s comparison against the live labels; a Medtronic sensor has no receiver row by design |
+| Somebody wants to place orders from the Command Center | §5.35 — `lib/orders/config.ts` `ORDERING_FROM_COMMAND_CENTER`, the write is `mondayWrite.markOrdered` (refuses anything not at "Order"). Read the four-point checklist there before flipping; `orderingSwitch.test.ts` will fail until updated |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---

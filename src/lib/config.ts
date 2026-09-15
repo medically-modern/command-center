@@ -63,6 +63,14 @@ export const ROLES: RoleConfig[] = [
   { id: "welcomeCall",    label: "Welcome Call",     color: "bg-teal-500",    icon: "Phone",          route: "/welcome-call"     },
   { id: "finalConfirm",   label: "Final Profile Confirmation", color: "bg-lime-500", icon: "ShieldCheck", route: "/final-confirm" },
   { id: "subscription",   label: "Subscription",       color: "bg-rose-500",    icon: "RefreshCw",      route: "/subscription"     },
+  // Orders — the New Order Board (18405457690) and the Cardinal SKU Tracker in
+  // one place (§5.35). A task tile like Subscription, not a burndown bar: one
+  // item per ORDER, and reps open it to answer "where is this patient's
+  // order?" rather than to burn a queue down. READ-ONLY today — orders are
+  // still placed on the board; the tile's count is the orders waiting to be
+  // placed (Order group, Order Status "Order"), which is the number that will
+  // become a queue when the ordering switch (lib/orders/config.ts) is flipped.
+  { id: "orders",         label: "Orders",             color: "bg-teal-700",    icon: "PackageSearch",  route: "/orders"           },
   { id: "updateClinicals", label: "Update Clinicals",   color: "bg-fuchsia-500", icon: "FileUp",         route: "/update-clinicals" },
   // Communications — every way a patient reaches the MM line (calls,
   // voicemail, texts, inbound faxes) with their Command Center profile beside
