@@ -27,17 +27,68 @@ import { CalendarPlus, ChevronDown, ChevronUp, ExternalLink, MessageSquare, Note
 
 import { PatientContact } from "@/components/masheke/mmKit";
 import { fetchItemNotes } from "@/lib/careCoordinator/mondayApi";
+import {
+  PILL_GRID_TEMPLATE, PILL_SLOTS, pillTone, shortLabel,
+  type PillSlots, type PillTone,
+} from "@/lib/careCoordinator/pills";
 import { cn } from "@/lib/utils";
 
-/** A gray pill. Blank values never reach here — the caller filters them. */
-export function Pill({ children, title }: { children: ReactNode; title?: string }) {
+const PILL_TONE: Record<PillTone, string> = {
+  neutral: "border-border bg-background text-foreground",
+  green: "border-[color:var(--mm-green)] bg-[color:var(--mm-green-12)] text-foreground",
+  yellow: "border-amber-400 bg-amber-100 text-amber-950 dark:bg-amber-950/50 dark:text-amber-100",
+  red: "border-rose-300 bg-rose-100 text-rose-950 dark:bg-rose-950/50 dark:text-rose-100",
+};
+
+/** A pill. Blank values never reach here — `PillRow` renders an em dash instead. */
+export function Pill({ children, title, tone = "neutral" }: { children: ReactNode; title?: string; tone?: PillTone }) {
   return (
     <span
       title={title}
-      className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium leading-tight text-foreground whitespace-nowrap"
+      className={cn(
+        "inline-block max-w-full truncate rounded-full border px-[7px] py-0.5 text-[11px] font-medium leading-tight",
+        PILL_TONE[tone],
+      )}
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * The pill row — one labelled column per field, in a fixed order.
+ *
+ * ⚠️ **EVERY SLOT RENDERS, BLANK OR NOT.** That is the whole point: the old row
+ * dropped blanks and flex-wrapped what was left, so the pills slid left and no
+ * two cards lined up. A slot with no value is a faint em dash under a dimmed
+ * caption, which keeps the columns registered card to card AND tells the
+ * coordinator the field is empty rather than missing.
+ *
+ * ⚠️ Welcome Call cards pass no `status`, so column 8 is genuinely empty there
+ * — no pill and no "Form" caption. A Welcome Call patient has no web form, so
+ * a dash would imply one they never filled in.
+ */
+export function PillRow({ slots }: { slots: PillSlots }) {
+  return (
+    <div className="grid items-start gap-x-1" style={{ gridTemplateColumns: PILL_GRID_TEMPLATE }}>
+      {PILL_SLOTS.map((slot) => {
+        const value = (slots[slot.key] ?? "").trim();
+        // A slot the card does not carry at all is left out entirely; a slot it
+        // carries but has no value for shows the dash. `undefined` vs `""`.
+        if (slots[slot.key] === undefined && slot.key === "status") return null;
+        return (
+          <div key={slot.key} className="flex min-w-0 flex-col items-start gap-0.5" style={{ gridColumnStart: slot.column }}>
+            {value
+              ? <Pill title={`${slot.field}: ${value}`} tone={pillTone(slot.key, value)}>{shortLabel(value)}</Pill>
+              : <span className="px-2 py-[3px] text-[11px] leading-snug text-muted-foreground/50">—</span>}
+            <span className={cn(
+              "max-w-full truncate pl-2 text-[9.5px] leading-none uppercase tracking-wide text-muted-foreground",
+              !value && "opacity-45",
+            )}>{slot.caption}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -96,8 +147,8 @@ export function PatientCard({
   clinic?: string;
   /** The right-hand time or "N days". */
   when: ReactNode;
-  /** Already filtered of blanks. */
-  pills: string[];
+  /** One entry per labelled column; a blank string renders the em dash. */
+  pills: PillSlots;
   attempts: number;
   texts: number;
   phone: string;
@@ -127,9 +178,14 @@ export function PatientCard({
         {when}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {pills.map((p, i) => <Pill key={`${i}:${p}`}>{p}</Pill>)}
-        <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-muted-foreground tabular-nums">
+      {/* ⚠️ The counters take a FIXED width so the pill grid is the same width
+          on every card. Left to size themselves, a two-digit attempt count
+          would shift every column on that one row. */}
+      <div className="mt-2 flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <PillRow slots={pills} />
+        </div>
+        <span className="flex w-[4.75rem] shrink-0 items-center justify-end gap-3 pt-0.5 text-xs text-muted-foreground tabular-nums">
           <span className="inline-flex items-center gap-1" title="Call attempts">
             <Phone className="h-3.5 w-3.5" aria-hidden />
             <span className="sr-only">Call attempts</span>

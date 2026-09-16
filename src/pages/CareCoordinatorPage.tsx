@@ -55,10 +55,13 @@ import { cn } from "@/lib/utils";
 
 import { useBoardPoll } from "@/hooks/careCoordinator/useBoardPoll";
 import { useWelcomeCallBookings } from "@/hooks/careCoordinator/useWelcomeCallBookings";
-import { fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUP_IDS } from "@/lib/careCoordinator/mondayApi";
 import {
-  intakeBuckets, nextUp, summarize, toScheduledCall, welcomeCallBuckets, READY_AFTER_HOURS,
-  type Horizon, type IntakeLead, type WelcomeCallItem,
+  fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUPS, INTAKE_FORM_GROUP_IDS,
+} from "@/lib/careCoordinator/mondayApi";
+import {
+  intakeBuckets, matchesFormFilter, nextUp, summarize, toScheduledCall, welcomeCallBuckets,
+  FORM_FILTERS, FORM_FILTER_LABEL, READY_AFTER_HOURS,
+  type FormFilter, type Horizon, type IntakeLead, type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
 import { PipelineColumn, Section } from "@/components/careCoordinator/PipelineColumn";
 import {
@@ -84,9 +87,15 @@ function useNow(): { nowMinutes: number; nowMs: number } {
 
 const fmtN = (n: number) => n.toLocaleString();
 
-/** What the booking-link dialog was opened FOR. */
+/**
+ * What the booking-link dialog was opened FOR.
+ *
+ * `locked` is set by a patient's card, where the card itself has already
+ * decided which call this is; the header's own button leaves it false and
+ * keeps the picker (Brandon, 2026-09-16).
+ */
 type LinkTarget =
-  | { kind: BookingKind; name?: string; phone?: string; email?: string }
+  | { kind: BookingKind; locked: boolean; name?: string; phone?: string; email?: string }
   | null;
 
 export default function CareCoordinatorPage() {
@@ -105,16 +114,39 @@ export default function CareCoordinatorPage() {
   const welcomeEmails = useMemo(() => (welcome.data ?? []).map((w) => w.email), [welcome.data]);
   const bookings = useWelcomeCallBookings(welcomeEmails);
 
+  /**
+   * Partial / Complete / All over the Patient Intake column (Brandon,
+   * 2026-09-16).
+   *
+   * ⚠️ Applied BEFORE bucketing, not after, so the column's own counts — the
+   * Today/Future header, each section's total — describe what is on screen.
+   * Filtering the rendered lists alone would leave a header promising rows the
+   * filter had just removed.
+   *
+   * ⚠️ The footer's "not shown" counts move with it too, and that is correct:
+   * they are the honest account of THIS column, and a filtered column really
+   * is excluding fewer patients.
+   */
+  const [formFilter, setFormFilter] = useState<FormFilter>("all");
+  const intakeLeads = useMemo(
+    () => (intake.data ?? []).filter((l) => matchesFormFilter(l, formFilter, INTAKE_FORM_GROUPS)),
+    [intake.data, formFilter],
+  );
+
   const ctx = useMemo(() => ({ today, nowMinutes, nowMs }), [today, nowMinutes, nowMs]);
   const intakeB = useMemo(
-    () => intakeBuckets(intake.data ?? [], { ...ctx, formGroupIds: INTAKE_FORM_GROUP_IDS }),
-    [intake.data, ctx],
+    () => intakeBuckets(intakeLeads, { ...ctx, formGroupIds: INTAKE_FORM_GROUP_IDS }),
+    [intakeLeads, ctx],
   );
   const welcomeB = useMemo(
     () => welcomeCallBuckets(welcome.data ?? [], ctx, bookings.byEmail),
     [welcome.data, ctx, bookings.byEmail],
   );
   const summary = useMemo(() => summarize(intakeB, welcomeB), [intakeB, welcomeB]);
+  // ⚠️ The strip reads the UNFILTERED list on purpose. It is the day's
+  // schedule, not a view of this column, and the mirror rows are also what
+  // give a Calendly intake booking its monday item id — narrowing them would
+  // silently drop "Open" links from calls the filter has nothing to do with.
   const scheduleCalls = useMemo<ScheduledCall[]>(() => (intake.data ?? []).map(toScheduledCall), [intake.data]);
 
   /** Today / Future per column. Default Today, always (Brandon). */
@@ -124,9 +156,9 @@ export default function CareCoordinatorPage() {
   /** Booking-link dialog. */
   const [link, setLink] = useState<LinkTarget>(null);
   const linkForIntake = useCallback((lead: IntakeLead) =>
-    setLink({ kind: "intake", name: lead.name, phone: lead.phone, email: lead.email }), []);
+    setLink({ kind: "intake", locked: true, name: lead.name, phone: lead.phone, email: lead.email }), []);
   const linkForWelcome = useCallback((item: WelcomeCallItem) =>
-    setLink({ kind: "welcome", name: item.name, phone: item.phone, email: item.email }), []);
+    setLink({ kind: "welcome", locked: true, name: item.name, phone: item.phone, email: item.email }), []);
 
   /** The strip hands back a ready route — it knows which board a block belongs to. */
   const openFromGrid = useCallback((href: string) => navigate(href), [navigate]);
@@ -154,6 +186,7 @@ export default function CareCoordinatorPage() {
         open={link !== null}
         onOpenChange={(v) => { if (!v) setLink(null); }}
         defaultKind={link?.kind ?? "intake"}
+        lockKind={link?.locked ?? false}
         patientName={link?.name}
         phone={link?.phone}
         email={link?.email}
@@ -183,7 +216,7 @@ export default function CareCoordinatorPage() {
 
           <div className="ml-auto flex items-center gap-1.5">
             <button
-              onClick={() => setLink({ kind: "intake" })}
+              onClick={() => setLink({ kind: "intake", locked: false })}
               title="Send someone a Calendly booking link"
               className="flex items-center gap-1 rounded-md bg-sky-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
             >
@@ -230,6 +263,7 @@ export default function CareCoordinatorPage() {
             horizon={intakeHorizon}
             onHorizon={setIntakeHorizon}
             progress={intake.progress}
+            controls={<FormFilterToggle value={formFilter} onChange={setFormFilter} />}
             footer={
               <IntakeFooter
                 imported={ex.imported} nurturing={ex.nurturing} sendNow={ex.sendNow}
@@ -305,9 +339,14 @@ export default function CareCoordinatorPage() {
 /**
  * The two sections of a column under one horizon.
  *
- * Scheduled carries its own switch — "today only" vs "tomorrow+ too" (Brandon)
- * — which only means something while the column is on Today; on Future the
- * section is the future bookings and the switch is not drawn.
+ * ⚠️ There used to be a second switch in here — "Today only" vs "Tomorrow+
+ * too" on the Scheduled section — and it is gone (Brandon, 2026-09-16: "Only
+ * have the today/future toggle on top, get rid of the today only tomorrow +
+ * too below it on both sides"). One toggle now decides both sections, so
+ * Today means today and Future means everything after it, with no second
+ * control quietly widening one of them. It was also what made the two columns
+ * drift out of alignment: the switch drew only under Today, so flipping a
+ * column to Future changed the height of its Scheduled bar.
  */
 function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled }: {
   horizon: Horizon;
@@ -315,38 +354,38 @@ function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled }: 
   scheduledFuture: React.ReactElement[];
   unscheduled: React.ReactElement[];
 }) {
-  const [withUpcoming, setWithUpcoming] = useState(false);
-  const scheduled = horizon === "future"
-    ? scheduledFuture
-    : withUpcoming ? [...scheduledToday, ...scheduledFuture] : scheduledToday;
+  const scheduled = horizon === "future" ? scheduledFuture : scheduledToday;
   return (
     <>
-      <Section
-        title="Scheduled"
-        count={scheduled.length}
-        tone="scheduled"
-        extra={horizon === "today" ? (
-          <div className="flex rounded-md border bg-background p-0.5 text-[11px]" role="group" aria-label="Scheduled — which days">
-            {([false, true] as const).map((v) => (
-              <button
-                key={String(v)}
-                type="button"
-                onClick={() => setWithUpcoming(v)}
-                aria-pressed={withUpcoming === v}
-                className={cn("rounded px-2 py-0.5 font-medium", withUpcoming === v ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent")}
-              >
-                {v ? "Tomorrow+ too" : "Today only"}
-              </button>
-            ))}
-          </div>
-        ) : undefined}
-      >
+      <Section title="Scheduled" count={scheduled.length} tone="scheduled">
         {scheduled}
       </Section>
       <Section title="Unscheduled" count={unscheduled.length} tone="unscheduled">
         {unscheduled}
       </Section>
     </>
+  );
+}
+
+/** Brandon's Partial / Complete / All filter, on the Patient Intake column. */
+function FormFilterToggle({ value, onChange }: { value: FormFilter; onChange: (v: FormFilter) => void }) {
+  return (
+    <div className="flex rounded-md border bg-background p-0.5 text-[11px]" role="group" aria-label="Filter by web form">
+      {FORM_FILTERS.map((f) => (
+        <button
+          key={f}
+          type="button"
+          onClick={() => onChange(f)}
+          aria-pressed={value === f}
+          className={cn(
+            "rounded px-2 py-0.5 font-medium",
+            value === f ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent",
+          )}
+        >
+          {FORM_FILTER_LABEL[f]}
+        </button>
+      ))}
+    </div>
   );
 }
 

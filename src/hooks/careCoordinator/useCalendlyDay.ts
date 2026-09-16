@@ -1,5 +1,12 @@
 /**
- * One Eastern day's welcome-call bookings, for the schedule grid.
+ * One Eastern day's Calendly bookings — BOTH kinds — for the schedule grid.
+ *
+ * ⚠️ It asked for welcome calls alone until 2026-09-16, because intake calls
+ * had a monday mirror and welcome calls did not. The mirror turned out to drop
+ * bookings silently (it joins on the invitee's email inside the two DTC form
+ * groups — §5.15), so Calendly is now the source of truth for both and the
+ * mirror is the fallback (`scheduleEntries.mergeSchedule`). The gateway route
+ * already accepted `kinds=intake,welcome`; only this hook was narrower.
  *
  * ⚠️ Behind each read sit one Calendly `/scheduled_events` call plus one
  * `/scheduled_events/{id}/invitees` call PER booking, against the same Calendly
@@ -31,6 +38,9 @@ const TTL_MS = 60_000;
 
 interface Entry { at: number; bookings: CalendlyBooking[]; error: string | null }
 
+/** Both kinds, always. A day read costs the same round trip either way. */
+const KINDS: ("intake" | "welcome")[] = ["intake", "welcome"];
+
 const cache = new Map<string, Entry>();
 const inflight = new Map<string, Promise<Entry>>();
 
@@ -42,7 +52,7 @@ async function load(date: string, force: boolean): Promise<Entry> {
   if (running) return running;
 
   const p = (async () => {
-    const res = await fetchCalendlyDay(date, ["welcome"]);
+    const res = await fetchCalendlyDay(date, KINDS);
     const entry: Entry = { at: Date.now(), bookings: res.bookings, error: res.error };
     // ⚠️ Only a good read is cached. Caching a failure pins the grid empty for
     // a minute after a blip and makes Refresh look broken.
@@ -59,6 +69,16 @@ export interface CalendlyDayState {
   bookings: CalendlyBooking[];
   loading: boolean;
   error: string | null;
+  /**
+   * Has a read for THIS day come back at all?
+   *
+   * ⚠️ Load-bearing, not cosmetic. The grid renders Calendly when the read
+   * succeeded and the monday mirror when it did not, and before the first
+   * answer lands `bookings` is `[]` with no error — indistinguishable from a
+   * genuinely empty day. Without this the strip would blink empty on every
+   * page load instead of showing the mirror while Calendly is asked.
+   */
+  loaded: boolean;
   /** False in a build with no gateway — the grid says so rather than showing
    *  an empty welcome-call day it has no way to fill. */
   available: boolean;
@@ -70,6 +90,7 @@ export function useCalendlyDay(date: string, enabled: boolean): CalendlyDayState
     () => ({ bookings: [], error: null }),
   );
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   /** Guards against a slow read for a day the coordinator has already paged
    *  away from painting over the day they are now looking at — the same
    *  bind-to-what-was-open rule `useDeliveryRecheck` needs (§5.5). */
@@ -83,11 +104,14 @@ export function useCalendlyDay(date: string, enabled: boolean): CalendlyDayState
       if (want.current !== date) return;
       setState({ bookings: entry.bookings, error: entry.error });
       setLoading(false);
+      setLoaded(true);
     });
   }, [date, enabled]);
 
   useEffect(() => {
-    if (!enabled) { want.current = ""; setState({ bookings: [], error: null }); setLoading(false); return; }
+    if (!enabled) { want.current = ""; setState({ bookings: [], error: null }); setLoading(false); setLoaded(false); return; }
+    // A new day has not been answered for yet, whatever the last one said.
+    setLoaded(false);
     run(false);
   }, [run, enabled]);
 
@@ -96,6 +120,7 @@ export function useCalendlyDay(date: string, enabled: boolean): CalendlyDayState
   return {
     bookings: state.bookings,
     loading,
+    loaded,
     error: state.error,
     available: calendlyDayAvailable(),
     refetch,

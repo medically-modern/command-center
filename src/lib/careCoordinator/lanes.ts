@@ -17,3 +17,38 @@ export function laneFor<T extends { start: number; end: number }>(blocks: T[]): 
     return { ...b, lane };
   });
 }
+
+/**
+ * A booked name split over two lines — first name above, surname below.
+ *
+ * Brandon, 2026-09-16: "the first name in the middle and the last name at the
+ * bottom. Stacking the name means each line only has to fit one word, which is
+ * what makes short calls readable." A 10-minute call is 40px wide at 240px an
+ * hour, so one word per line is the difference between a legible chip and an
+ * ellipsis.
+ *
+ * Everything after the first token is the surname, so "Lisa Nelson Rivera"
+ * keeps both surnames on the lower line rather than losing one.
+ */
+export function splitName(name: string): { first: string; last: string } {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { first: "", last: "" };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
+}
+
+/**
+ * Where the strip should be scrolled to when it opens, in pixels.
+ *
+ * Brandon: "it scrolls so the view starts one hour before now. You'd always
+ * see the last hour and the next 4–5 hours." Clamped at zero so an early
+ * morning never scrolls backwards past the start of the day.
+ */
+export function initialScrollLeft(
+  nowMinutes: number,
+  startMinutes: number,
+  pxPerHour: number,
+  leadMinutes = 60,
+): number {
+  const from = nowMinutes - leadMinutes - startMinutes;
+  return Math.max(0, (from / 60) * pxPerHour);
+}

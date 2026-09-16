@@ -8,18 +8,24 @@
  * link is the whole hand-off.
  *
  * Brandon's card content (2026-09-14), verbatim where it could be:
- *  · Intake:  Doctor / Clinic from the PROVIDED form columns; pills
- *             Completed|Partial (unscheduled only) · Request Type · General
- *             Insurance · Insulin Pump Coverage Path · CGM Coverage Path;
- *             counts = Call Attempts · Auto. Texts.
+ *  · Intake:  Doctor / Clinic from the PROVIDED form columns; pills Request
+ *             Type · Insurance · Insulin Pump Coverage Path · CGM Coverage
+ *             Path · Completed|Partial (unscheduled only); counts = Call
+ *             Attempts · Auto. Texts.
  *  · Welcome: Doctor / Clinic from the verified block (this board has no
- *             "provided" columns); pills Request Type · Primary Insurance
- *             (the board has no General Insurance — Josh, 2026-09-14) ·
- *             Insulin Pump Coverage Path · CGM Coverage Path · Referral
- *             Source; counts = Call Attempts · Welcome Call Text sent (0/1).
- * Blank pills are not shown.
+ *             "provided" columns); the same four pills, Primary Insurance in
+ *             the insurance slot (the board has no General Insurance — Josh,
+ *             2026-09-14) and no Form slot; counts = Call Attempts · Welcome
+ *             Call Text sent (0/1).
+ *
+ * ⚠️ Rebuilt 2026-09-16: the pills are a FIXED, LABELLED GRID now, not a
+ * flex-wrapped list of whatever was non-blank, so they line up card to card
+ * (`lib/careCoordinator/pills.ts`). A blank slot renders a faint em dash
+ * rather than disappearing — which is what used to make every row different.
+ * Referral Source left the Welcome Call pills with that rebuild.
  */
 import { displayTime } from "@/lib/scheduledCalls/workflow";
+import { intakeInsurance, type PillSlots } from "@/lib/careCoordinator/pills";
 import { INTAKE_FORM_GROUPS, NOTES_COLUMN } from "@/lib/careCoordinator/mondayApi";
 import {
   autoTexts, formCompletion, formatDaysSince, shortMonthDay, welcomeCallTexts,
@@ -28,9 +34,6 @@ import {
 import { PatientCard } from "./PatientCard";
 
 const FROM = "from=care-coordinator";
-
-const pills = (values: (string | null | undefined)[]): string[] =>
-  values.map((v) => (v ?? "").trim()).filter(Boolean);
 
 /** The right-hand time for a scheduled box: `x:xx` today, `MM/DD x:xx` otherwise. */
 function ScheduledWhen<T>({ entry, muted }: { entry: ScheduledEntry<T>; muted: boolean }) {
@@ -52,11 +55,20 @@ function DaysSince({ createdAt, today }: { createdAt: string; today: string }) {
 
 /* ── Intake ─────────────────────────────────────────────────── */
 
-function intakePills(lead: IntakeLead, withCompletion: boolean): string[] {
-  return pills([
-    withCompletion ? formCompletion(lead, INTAKE_FORM_GROUPS) : null,
-    lead.requestType, lead.generalInsurance, lead.ipCoveragePath, lead.cgmCoveragePath,
-  ]);
+/**
+ * ⚠️ `status` is `""` rather than absent on an unscheduled card and ABSENT on a
+ * scheduled one — `PillRow` tells those apart. A booked patient may already sit
+ * in Profile Clean-Up, where they are neither Completed nor Partial, so a dash
+ * there would claim a form state the row no longer has.
+ */
+function intakePills(lead: IntakeLead, withCompletion: boolean): PillSlots {
+  return {
+    requestType: lead.requestType,
+    insurance: intakeInsurance(lead),
+    ipPath: lead.ipCoveragePath,
+    cgmPath: lead.cgmCoveragePath,
+    ...(withCompletion ? { status: formCompletion(lead, INTAKE_FORM_GROUPS) ?? "" } : {}),
+  };
 }
 
 const intakeNotes = (lead: IntakeLead) => ({ itemId: lead.id, columnId: NOTES_COLUMN.intake, label: "Profile Send Off notes" });
@@ -112,8 +124,16 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink }: {
 
 /* ── Welcome Call ───────────────────────────────────────────── */
 
-function welcomePills(item: WelcomeCallItem): string[] {
-  return pills([item.requestType, item.primaryInsurance, item.ipCoveragePath, item.cgmCoveragePath, item.referralSource]);
+/** ⚠️ No `status`: a Welcome Call patient never filled in the web form, so an
+ *  em dash under a "Form" caption would imply one they skipped. Referral Source
+ *  left the pills with the rebuild (Brandon, 2026-09-16). */
+function welcomePills(item: WelcomeCallItem): PillSlots {
+  return {
+    requestType: item.requestType,
+    insurance: item.primaryInsurance,
+    ipPath: item.ipCoveragePath,
+    cgmPath: item.cgmCoveragePath,
+  };
 }
 
 /** Clinic Address is the well-filled one on this board (30 of 31 live rows);

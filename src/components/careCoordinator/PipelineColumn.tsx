@@ -27,10 +27,23 @@ import type { ColumnSummary, Horizon } from "@/lib/careCoordinator/workflow";
 
 const PAGE = 12;
 
-/** The two greens (Brandon: "2 diff shaded colors of green (med mod colors)"). */
+/**
+ * The two greens (Brandon: "2 diff shaded colors of green (med mod colors)").
+ *
+ * Scheduled is the SOLID Medically Modern green with white text from
+ * 2026-09-16 — it was the 12% tint, which read as barely distinguishable from
+ * Unscheduled. Its count chip has to move with it: `bg-foreground/80
+ * text-background` is a dark chip on a light bar, and on solid green it came
+ * out as a near-black blob.
+ */
 const SECTION_TONE = {
-  scheduled: "bg-[color:var(--mm-green-12)] border-[color:var(--mm-mint-ring)]",
+  scheduled: "bg-[color:var(--mm-green)] text-white border-[color:var(--mm-green)]",
   unscheduled: "bg-[color:var(--mm-mint)] border-[color:var(--mm-mint-ring)]",
+} as const;
+
+const COUNT_TONE = {
+  scheduled: "bg-white/25 text-white",
+  unscheduled: "bg-foreground/80 text-background",
 } as const;
 
 export function Section({
@@ -64,7 +77,11 @@ export function Section({
 
   return (
     <div className="space-y-2">
-      <div className={cn("flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5", SECTION_TONE[tone])}>
+      {/* ⚠️ `min-h` is not decoration: the header used to carry a control on
+          one horizon and not the other, so switching Today ↔ Future changed
+          this bar's height and the two columns stopped lining up (Brandon,
+          2026-09-16). The control is gone, and the floor keeps it that way. */}
+      <div className={cn("flex min-h-[34px] w-full items-center gap-2 rounded-md border px-2.5 py-1.5", SECTION_TONE[tone])}>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -73,7 +90,7 @@ export function Section({
         >
           {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />}
           <span className="text-[12px] font-bold uppercase tracking-[0.15em]">{title}</span>
-          <span className="rounded-full bg-foreground/80 px-1.5 text-[10px] font-semibold text-background tabular-nums">{count}</span>
+          <span className={cn("rounded-full px-1.5 text-[10px] font-semibold tabular-nums", COUNT_TONE[tone])}>{count}</span>
         </button>
         {extra}
       </div>
@@ -103,7 +120,7 @@ export const COLUMN_ACCENT = {
 } as const;
 
 export function PipelineColumn({
-  title, accent, summary, horizon, onHorizon, children, footer, progress, notice,
+  title, accent, summary, horizon, onHorizon, children, footer, progress, notice, controls,
 }: {
   title: string;
   accent: keyof typeof COLUMN_ACCENT;
@@ -118,6 +135,16 @@ export function PipelineColumn({
   progress?: LoadProgress | null;
   /** An amber line under the header — a read that could not be completed. */
   notice?: ReactNode;
+  /**
+   * An optional control on the legend row — the Patient Intake column's
+   * Partial / Complete / All filter.
+   *
+   * ⚠️ It rides the legend row rather than getting a row of its own so that a
+   * column WITH a filter and a column WITHOUT one are the same height and
+   * their section bars line up. Brandon reported the heights drifting on
+   * 2026-09-16 and this is the same class of fault.
+   */
+  controls?: ReactNode;
 }) {
   return (
     <section className="flex min-w-0 flex-col rounded-2xl border bg-muted/50 p-3 sm:p-4 dark:bg-muted/20" aria-label={title}>
@@ -152,6 +179,16 @@ export function PipelineColumn({
           })}
         </div>
       </header>
+      {/* The legend Brandon asked for — the green left edge on a card is the
+          one piece of state with no words on it — plus whatever filter this
+          column carries. One row, always drawn, so the columns stay level. */}
+      <div className="mb-3 flex min-h-[26px] flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <i className="inline-block h-3.5 w-1 rounded-sm bg-[color:var(--mm-green)]" aria-hidden />
+          Green edge = a call has been attempted
+        </p>
+        {controls}
+      </div>
       {progress && <LoadBar progress={progress} label={title} />}
       {notice}
       <div className="space-y-4">{children}</div>

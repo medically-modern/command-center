@@ -114,6 +114,10 @@ export interface IntakeLead {
   dupCheckResult: string;
   state: string;
   generalInsurance: string;
+  /** Photo of card · Entered manually · Not provided, from the web form. */
+  insuranceProvidedVia: string;
+  /** The carrier typed in behind a General Insurance of "Other". */
+  insuranceOther: string;
   calendlyEventUri: string;
   /** What the PATIENT typed on the form — never the verified doctor (§5.20). */
   providedDoctorName: string;
@@ -505,6 +509,37 @@ export function formCompletion(
   if (lead.groupId === groups.completed) return "Completed";
   if (lead.groupId === groups.partial) return "Partial";
   return null;
+}
+
+/** Which half of the DTC form queue the Patient Intake column is showing. */
+export type FormFilter = "all" | "completed" | "partial";
+
+export const FORM_FILTERS: readonly FormFilter[] = ["all", "completed", "partial"];
+
+export const FORM_FILTER_LABEL: Record<FormFilter, string> = {
+  all: "All",
+  completed: "Complete",
+  partial: "Partial",
+};
+
+/**
+ * Brandon's Partial / Complete / All filter (2026-09-16), over the group the
+ * row sits in — the same fact the card's own pill reads, so the filter and the
+ * pill can never disagree about which half a patient is in.
+ *
+ * ⚠️ A row in neither form group (a booked patient already advanced to Profile
+ * Clean-Up) is Completed nor Partial, so it drops out of BOTH narrow filters.
+ * That is the honest answer — its form state is genuinely no longer either —
+ * and it is why "All" is the default rather than one of the two.
+ */
+export function matchesFormFilter(
+  lead: Pick<IntakeLead, "groupId">,
+  filter: FormFilter,
+  groups: { partial: string; completed: string },
+): boolean {
+  if (filter === "all") return true;
+  const completion = formCompletion(lead, groups);
+  return filter === "completed" ? completion === "Completed" : completion === "Partial";
 }
 
 /**

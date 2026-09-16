@@ -28,6 +28,7 @@ const lead = (over: Partial<IntakeLead> = {}): IntakeLead => ({
   intakeCallComplete: "", intakeEscalation: "", referralType: "Patient", referralSource: "Patient",
   alreadyInSystem: "", followUp: "", followUpDate: "", dupCheckResult: "", state: "NY",
   generalInsurance: "Anthem", calendlyEventUri: "",
+  insuranceProvidedVia: "Entered manually", insuranceOther: "",
   providedDoctorName: "Dr. Provided", providedClinicPhone: "5555550100",
   ipCoveragePath: "", cgmCoveragePath: "Insulin",
   ...over,

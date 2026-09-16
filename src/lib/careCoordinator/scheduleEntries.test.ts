@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 
 import {
-  emailIndex, entriesFor, etPartsOf, intakeEntry, welcomeEntry,
+  ASSUMED_DURATION_MIN, bookingLinker, calendlyEntry, durationOf, emailIndex, entriesFor,
+  etPartsOf, eventUriIndex, intakeEntry, mergeSchedule, welcomeEntry,
   type ScheduleEntry,
 } from "./scheduleEntries";
 import type { CalendlyBooking } from "./calendlyDay";
@@ -128,5 +129,124 @@ describe("the day-view rules work on merged entries", () => {
   it("drops a canceled intake booking but keeps a Calendly one (only active are returned)", () => {
     const canceled = intakeEntry(call({ id: "x", bookingStatus: "Canceled" }));
     expect(callsOn([canceled, ...entries], "2026-09-10").map((e) => e.key)).not.toContain("intake:x");
+  });
+});
+
+describe("durationOf", () => {
+  it("measures the real length of a Calendly booking", () => {
+    expect(durationOf("2026-09-10T18:00:00Z", "2026-09-10T18:10:00Z")).toBe(10);
+    expect(durationOf("2026-09-10T18:40:00Z", "2026-09-10T19:00:00Z")).toBe(20);
+  });
+
+  it("falls back to ten minutes rather than zero for anything unmeasurable", () => {
+    // ⚠️ A zero-width block is an invisible appointment — the one failure the
+    // strip exists to prevent. Any degenerate pair gets the assumed length.
+    expect(durationOf("", "")).toBe(ASSUMED_DURATION_MIN);
+    expect(durationOf("2026-09-10T18:00:00Z", "nonsense")).toBe(ASSUMED_DURATION_MIN);
+    expect(durationOf("2026-09-10T18:10:00Z", "2026-09-10T18:00:00Z")).toBe(ASSUMED_DURATION_MIN);
+  });
+});
+
+describe("calendlyEntry", () => {
+  it("renders an INTAKE booking and links it to the monday row", () => {
+    const e = calendlyEntry(booking({ kind: "intake", eventName: "Intake Call" }), () => "999");
+    expect(e.kind).toBe("intake");
+    expect(e.href).toBe("/unverified-referrals?patientId=999&from=care-coordinator");
+    expect(e.callDate).toBe("2026-09-10");
+    expect(e.callTime).toBe("14:00:00");
+  });
+
+  it("renders a booking we cannot identify, with no link", () => {
+    const e = calendlyEntry(booking(), () => null);
+    expect(e.href).toBeNull();
+    expect(e.name).toBe("Welcome Patient");
+  });
+
+  it("takes its width from Calendly's own start and end", () => {
+    const e = calendlyEntry(booking({
+      startTime: "2026-09-10T18:40:00Z", endTime: "2026-09-10T19:00:00Z",
+    }), () => null);
+    expect(e.durationMin).toBe(20);
+  });
+});
+
+describe("bookingLinker", () => {
+  const mirror = [{ id: "m1", email: "Pat@Example.com", calendlyEventUri: "https://api.calendly.com/scheduled_events/ABC" }];
+  const link = bookingLinker({
+    intakeByUri: eventUriIndex(mirror),
+    intakeByEmail: emailIndex(mirror),
+    welcomeByEmail: emailIndex([{ id: "w1", email: "wc1@example.com" }]),
+  });
+
+  it("matches an intake booking on its event URI, whatever address it was booked under", () => {
+    // The URI join is the better one precisely because it survives a patient
+    // booking under a second address — the failure that put a real booking on
+    // no board row at all (§5.15).
+    expect(link(booking({
+      kind: "intake",
+      eventUri: "https://api.calendly.com/scheduled_events/abc/",
+      email: "somebody-else@gmail.com",
+    }))).toBe("m1");
+  });
+
+  it("falls back to the email when the row never got a URI", () => {
+    expect(link(booking({ kind: "intake", eventUri: "", email: "pat@example.com" }))).toBe("m1");
+  });
+
+  it("returns null for an intake booking on neither join", () => {
+    expect(link(booking({ kind: "intake", eventUri: "x", email: "nobody@example.com" }))).toBeNull();
+  });
+
+  it("never uses the intake indexes for a welcome booking", () => {
+    // Same URI, welcome kind: the welcome board carries no URI column at all,
+    // so matching one here would open an intake chart on a welcome call.
+    expect(link(booking({ kind: "welcome", eventUri: "https://api.calendly.com/scheduled_events/ABC", email: "x@y.com" }))).toBeNull();
+    expect(link(booking({ kind: "welcome", email: "WC1@example.com" }))).toBe("w1");
+  });
+});
+
+describe("mergeSchedule", () => {
+  const cal = calendlyEntry(booking(), () => null);
+  const mir = intakeEntry(call());
+
+  it("shows EXACTLY what Calendly returned when the read succeeded", () => {
+    // Josh, 2026-09-16. The mirror is not merged in alongside: a mirror row
+    // Calendly did not return is a cancelled or rescheduled booking whose
+    // webhook we missed, and showing it sends a coordinator to ring somebody
+    // who called off.
+    const out = mergeSchedule({ calendly: [cal], mirror: [mir], calendlyOk: true });
+    expect(out.entries).toEqual([cal]);
+    expect(out.fellBackToMirror).toBe(false);
+  });
+
+  it("shows an empty day as empty rather than reaching for the mirror", () => {
+    const out = mergeSchedule({ calendly: [], mirror: [mir], calendlyOk: true });
+    expect(out.entries).toEqual([]);
+    expect(out.fellBackToMirror).toBe(false);
+  });
+
+  it("falls back to the mirror when Calendly cannot be read", () => {
+    const out = mergeSchedule({ calendly: [], mirror: [mir], calendlyOk: false });
+    expect(out.entries).toEqual([mir]);
+    expect(out.fellBackToMirror).toBe(true);
+  });
+
+  it("reports no fallback when there is nothing to fall back to", () => {
+    expect(mergeSchedule({ calendly: [], mirror: [], calendlyOk: false }).fellBackToMirror).toBe(false);
+  });
+});
+
+describe("eventUriIndex", () => {
+  it("ignores case and a trailing slash", () => {
+    const ix = eventUriIndex([{ id: "a", calendlyEventUri: "https://API.calendly.com/scheduled_events/Z1/" }]);
+    expect(ix.get("https://api.calendly.com/scheduled_events/z1")).toBe("a");
+  });
+
+  it("POISONS a URI two rows share instead of picking one", () => {
+    const ix = eventUriIndex([
+      { id: "a", calendlyEventUri: "https://api.calendly.com/scheduled_events/z1" },
+      { id: "b", calendlyEventUri: "https://api.calendly.com/scheduled_events/z1" },
+    ]);
+    expect(ix.get("https://api.calendly.com/scheduled_events/z1")).toBeNull();
   });
 });

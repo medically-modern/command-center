@@ -42,13 +42,30 @@ type Mode = "text" | "email";
 const digits = (s: string) => s.replace(/\D/g, "");
 
 export default function BookingLinkDialog({
-  open, onOpenChange, patientName, phone, email, defaultKind = "intake",
+  open, onOpenChange, patientName, phone, email, defaultKind = "intake", lockKind = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  /** Which call the dropdown opens on. The Care Coordinator's Welcome Call
+  /** Which call the dialog opens on. The Care Coordinator's Welcome Call
    *  cards pass "welcome"; everything else is the intake call, as before. */
   defaultKind?: BookingKind;
+  /**
+   * Hide the call-type picker and send `defaultKind`, full stop.
+   *
+   * Brandon, 2026-09-16: "If you click booking link from the patient intake
+   * side, it defaults to the intake language; if you click booking link from
+   * the welcome call side, it defaults to the welcome call language; can then
+   * get rid of the dropdown for which call." Which call it is, is already
+   * settled by WHICH CARD was clicked — so on a card the choice is a way to
+   * get it wrong and nothing else. The header's own Booking link button keeps
+   * the picker (his "keep the booking link in top right corner and keep the
+   * drop-down"), because it is opened with no patient in hand.
+   *
+   * ⚠️ The call type is still shown, as a line of text. Removing the control
+   * is not the same as removing the confirmation: a rep about to text a
+   * patient needs to see which link is going out.
+   */
+  lockKind?: boolean;
   /** Optional prefill. The Care Coordinator header opens this with no patient in hand and
    *  passes nothing, so it behaves exactly as before. Patient Intake opens it
    *  from a record already on screen — making the rep retype the name and
@@ -196,19 +213,28 @@ export default function BookingLinkDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Which call — the link in the message swaps with it (Brandon, 2026-09-14). */}
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium">Which call</span>
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as BookingKind)}
-              className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm"
-            >
-              {(Object.keys(BOOKING_KIND_LABEL) as BookingKind[]).map((k) => (
-                <option key={k} value={k}>{BOOKING_KIND_LABEL[k]}</option>
-              ))}
-            </select>
-          </label>
+          {/* Which call — the link in the message swaps with it (Brandon, 2026-09-14).
+              On a patient's card the card has already answered this, so it is
+              stated rather than asked (Brandon, 2026-09-16). */}
+          {lockKind ? (
+            <p className="text-sm">
+              <span className="mb-1 block font-medium">Which call</span>
+              <span className="text-muted-foreground">{BOOKING_KIND_LABEL[kind]}</span>
+            </p>
+          ) : (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium">Which call</span>
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as BookingKind)}
+                className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm"
+              >
+                {(Object.keys(BOOKING_KIND_LABEL) as BookingKind[]).map((k) => (
+                  <option key={k} value={k}>{BOOKING_KIND_LABEL[k]}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="flex gap-2">
             {(["text", "email"] as Mode[]).map((m) => (
               <button

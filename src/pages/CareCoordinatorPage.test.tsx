@@ -42,7 +42,7 @@ const intake = (over: Partial<IntakeLead>): IntakeLead => ({
   requestType: "CGM", pumpNeed: "", reasonForInquiry: "Denied by insurance", proceedPreference: "Wants a call first",
   scheduledCallTime: "", bookingStatus: "", intakeCallComplete: "", intakeEscalation: "", referralType: "Patient",
   referralSource: "Patient", alreadyInSystem: "", followUp: "", followUpDate: "", dupCheckResult: "", state: "NY",
-  generalInsurance: "Anthem", calendlyEventUri: "",
+  generalInsurance: "Anthem", insuranceProvidedVia: "Entered manually", insuranceOther: "", calendlyEventUri: "",
   providedDoctorName: "Dr. Okafor", providedClinicPhone: "5555550100", ipCoveragePath: "", cgmCoveragePath: "Insulin",
   ...over,
 });
@@ -156,15 +156,19 @@ describe("CareCoordinatorPage", () => {
     expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
   });
 
-  it("switching a column to Future shows its future lists, and the Scheduled switch adds tomorrow+", async () => {
+  it("switching a column to Future shows its future lists, and there is NO second switch", async () => {
     mount();
     const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
     await within(intakeCol).findByText("Marcus Delaney");
 
-    // "Tomorrow+ too" on the Scheduled section brings the later booking in.
-    fireEvent.click(within(intakeCol).getByRole("button", { name: "Tomorrow+ too" }));
-    expect(within(intakeCol).getByText("Priya Natarajan")).toBeInTheDocument();
-    expect(within(intakeCol).getByText("Marcus Delaney")).toBeInTheDocument();
+    // ⚠️ Brandon, 2026-09-16: "get rid of the today only tomorrow + too below
+    // it on both sides". One toggle decides both sections. Its absence is also
+    // what keeps the two columns level — it drew only under Today, so a column
+    // on Future had a shorter Scheduled bar than its neighbour.
+    expect(within(intakeCol).queryByRole("button", { name: "Tomorrow+ too" })).toBeNull();
+    expect(within(intakeCol).queryByRole("button", { name: "Today only" })).toBeNull();
+    // Today means today: tomorrow's booking is not quietly folded in.
+    expect(within(intakeCol).queryByText("Priya Natarajan")).toBeNull();
 
     // Future: the later booking and the pushed lead; today's are gone.
     const groupings = within(intakeCol).getByRole("group", { name: /Patient Intake — Today or Future/ });
@@ -173,8 +177,27 @@ describe("CareCoordinatorPage", () => {
     expect(within(intakeCol).getByText("Theo Marsh")).toBeInTheDocument();
     expect(within(intakeCol).queryByText("Marcus Delaney")).toBeNull();
     expect(within(intakeCol).queryByText("Eleanor Boyd")).toBeNull();
-    // The today/tomorrow+ switch is meaningless on Future and is not drawn.
-    expect(within(intakeCol).queryByRole("button", { name: "Tomorrow+ too" })).toBeNull();
+  });
+
+  it("filters Patient Intake by Partial / Complete / All, counts included", async () => {
+    mount();
+    const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
+    await within(intakeCol).findByText("Eleanor Boyd");
+    const filter = within(intakeCol).getByRole("group", { name: "Filter by web form" });
+
+    // Only the Patient Intake column carries it.
+    const welcomeCol = screen.getByRole("region", { name: "Welcome Call" });
+    expect(within(welcomeCol).queryByRole("group", { name: "Filter by web form" })).toBeNull();
+
+    // Eleanor Boyd is a COMPLETED form, so Partial must drop her.
+    fireEvent.click(within(filter).getByRole("button", { name: "Partial" }));
+    expect(within(intakeCol).queryByText("Eleanor Boyd")).toBeNull();
+
+    fireEvent.click(within(filter).getByRole("button", { name: "Complete" }));
+    expect(within(intakeCol).getByText("Eleanor Boyd")).toBeInTheDocument();
+
+    fireEvent.click(within(filter).getByRole("button", { name: "All" }));
+    expect(within(intakeCol).getByText("Eleanor Boyd")).toBeInTheDocument();
   });
 
   it("the card carries Brandon's content and nothing else", async () => {
@@ -184,9 +207,15 @@ describe("CareCoordinatorPage", () => {
     const card = name.closest("article")!;
     // Doctor / Clinic from the PROVIDED columns.
     expect(card).toHaveTextContent("Doctor: Dr. Okafor · Clinic: 5555550100");
-    // Pills: Completed (group) · Request Type · General Insurance · CGM path (IP path blank, hidden).
+    // ⚠️ Brandon's fixed grid (2026-09-16): every slot renders, in this order,
+    // with its caption, and a blank one is a faint em dash rather than nothing.
+    // The captions lining up card to card IS the feature.
+    const captions = Array.from(card.querySelectorAll("span.uppercase")).map((e) => e.textContent);
+    expect(captions).toEqual(["Request type", "Insurance", "Pump path", "CGM path", "Form"]);
     const pillText = Array.from(card.querySelectorAll("span.rounded-full")).map((e) => e.textContent);
-    expect(pillText).toEqual(["Completed", "CGM", "Anthem", "Insulin"]);
+    expect(pillText).toEqual(["CGM", "Anthem", "Insulin", "Completed"]);
+    // Pump path is blank on this fixture, so its slot holds the dash.
+    expect(card).toHaveTextContent("—");
     // Days since intake, no hours, no "waiting".
     expect(card).toHaveTextContent(/3 days/);
     expect(card).not.toHaveTextContent(/waiting/);
@@ -206,11 +235,17 @@ describe("CareCoordinatorPage", () => {
     expect(booked.className).toMatch(/bg-slate-200/);
     expect(card.className).not.toMatch(/bg-slate-200/);
 
-    // Welcome Call card: Referral Source pill, Primary Insurance in the insurance slot, text 0/1.
+    // Welcome Call card: Primary Insurance in the insurance slot, text 0/1, and
+    // ⚠️ NO Referral Source (Brandon dropped it, 2026-09-16) and NO Form slot —
+    // a Welcome Call patient never filled in the web form, so an em dash under
+    // a "Form" caption would imply one they skipped.
     const wcCol = screen.getByRole("region", { name: "Welcome Call" });
     const wcCard = (await within(wcCol).findByText("Amara Nwosu")).closest("article")!;
     const wcPills = Array.from(wcCard.querySelectorAll("span.rounded-full")).map((e) => e.textContent);
-    expect(wcPills).toEqual(["Insulin Pump", "Medicare A&B", "OOW Pump", "Tandem"]);
+    expect(wcPills).toEqual(["Insulin Pump", "Medicare A&B", "OOW Pump"]);
+    expect(wcCard).not.toHaveTextContent("Tandem");
+    const wcCaptions = Array.from(wcCard.querySelectorAll("span.uppercase")).map((e) => e.textContent);
+    expect(wcCaptions).toEqual(["Request type", "Insurance", "Pump path", "CGM path"]);
     expect(wcCard).toHaveTextContent("Doctor: Dr. Kaminski · Clinic: 1 Main St, Albany, NY 12207");
     expect(within(wcCard).getByTitle("Automated texts")).toHaveTextContent("1");
   });
@@ -227,13 +262,27 @@ describe("CareCoordinatorPage", () => {
     expect(fetchItemNotes.mock.calls[0]).toEqual(["booked", "text_mm389fs"]);
   });
 
-  it("opens the booking-link dialog on the right call for each column", async () => {
+  it("opens the booking-link dialog on the right call for each column, with NO picker", async () => {
     mount();
     const wcCol = await screen.findByRole("region", { name: "Welcome Call" });
     const wcCard = (await within(wcCol).findByText("Amara Nwosu")).closest("article")!;
     fireEvent.click(within(wcCard).getByRole("button", { name: /Booking Link/ }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("combobox")).toHaveValue("welcome");
+    // ⚠️ Brandon, 2026-09-16: the card has already answered "which call", so on
+    // a card the dropdown is a way to get it wrong and nothing else. It is
+    // STATED instead — removing the control is not the same as removing the
+    // confirmation that a welcome-call link is what's about to go out.
+    expect(within(dialog).queryByRole("combobox")).toBeNull();
+    expect(dialog).toHaveTextContent("Welcome call");
     expect((within(dialog).getByRole("textbox", { name: /Message/ }) as HTMLTextAreaElement).value).toContain("records-medicallymodern/welcome-call");
+  });
+
+  it("keeps the picker on the header's own Booking link button", async () => {
+    mount();
+    // That one is opened with no patient in hand, so the choice is real
+    // (Brandon: "keep the booking link in top right corner and keep the drop-down").
+    fireEvent.click(await screen.findByRole("button", { name: /Booking link/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("combobox")).toHaveValue("intake");
   });
 });

@@ -154,6 +154,12 @@ const INTAKE_COLS: string[] = [
   PROFILE_COL.referralType, PROFILE_COL.referralSource, PROFILE_COL.alreadyInSystem,
   PROFILE_COL.followUp, PROFILE_COL.followUpDate, PROFILE_COL.dupCheckResult,
   PROFILE_COL.formState, PROFILE_COL.generalInsurance,
+  // ⚠️ How the patient gave us their insurance, and the free-text carrier
+  // behind a "Other" pick. Without these the Insurance pill is BLANK for the
+  // ~18 live rows that answered with a photo of their card — which is exactly
+  // what Brandon reported on Debra Collins (2026-09-16): "we want the user to
+  // see that they provided insurance info, but it's not showing as a pill".
+  PROFILE_COL.formInsuranceVia, PROFILE_COL.formInsuranceOther,
   // The card's Doctor / Clinic lines and its pills (Brandon, 2026-09-14) — the
   // PROVIDED columns, i.e. what the patient typed on the form, never the
   // verified doctor (§5.20).
@@ -191,6 +197,8 @@ function toIntakeLead(item: RawItem): IntakeLead {
     dupCheckResult: text(item, PROFILE_COL.dupCheckResult),
     state: text(item, PROFILE_COL.formState),
     generalInsurance: text(item, PROFILE_COL.generalInsurance),
+    insuranceProvidedVia: text(item, PROFILE_COL.formInsuranceVia),
+    insuranceOther: text(item, PROFILE_COL.formInsuranceOther),
     calendlyEventUri: text(item, SCHED_COL.calendlyEventUri),
     providedDoctorName: text(item, PROFILE_COL.formProvidedDoctorName),
     providedClinicPhone: text(item, PROFILE_COL.formProvidedClinicPhone),
