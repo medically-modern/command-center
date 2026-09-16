@@ -54,6 +54,11 @@ export const PAYER_RATE_SCHEDULE: Record<string, PayerRates> = {
   "MagnaCare": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
   "UMR": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
   "Oregon Care": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
+  // Fidelis NJ (added 2026-09-16). No negotiated rates on file yet, so every
+  // rate is null and the estimator returns {ok:false} rather than a number
+  // built on another plan's rates — the same state 8 existing payers are in.
+  // Fill these in from the contract when we have it.
+  "Fidelis NJ": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
 };
 
 // ─── Supply HCPC groups (determines unit calculation) ────────────────────────

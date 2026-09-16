@@ -30,6 +30,7 @@ export type PrimaryInsurance =
   | "Fidelis Low-Cost"
   | "Fidelis Commercial"
   | "Fidelis Medicare"
+  | "Fidelis NJ"
   // Anthem / BCBS
   | "Anthem BCBS Medicare"
   | "Anthem BCBS Commercial"
@@ -107,6 +108,9 @@ const SUPPLY_HCPC_GROUP_BY_PAYER: Record<PrimaryInsurance, "A" | "B" | "C"> = {
   "Fidelis Medicaid":           "A",
   "Fidelis Low-Cost":           "A",
   "Fidelis Commercial":         "A",
+  // Fidelis NJ is a COMMERCIAL plan (Josh, 2026-09-16), so it bills the same
+  // A4230/A4232 pair as the other non-Medicare Fidelis plans.
+  "Fidelis NJ":                 "A",
   "Anthem BCBS Commercial":     "A",
   "Anthem BCBS Medicaid (JLJ)": "A",
   "Anthem BCBS Low-Cost (JLJ)": "A",
@@ -244,7 +248,7 @@ export function resolveHcpcs(
 // ─────────────────────────────────────────────────────────────────────
 
 export const PRIMARY_INSURANCE_OPTIONS: PrimaryInsurance[] = [
-  "Fidelis Medicaid", "Fidelis Low-Cost", "Fidelis Commercial", "Fidelis Medicare",
+  "Fidelis Medicaid", "Fidelis Low-Cost", "Fidelis Commercial", "Fidelis Medicare", "Fidelis NJ",
   "Anthem BCBS Medicare", "Anthem BCBS Commercial",
   "Anthem BCBS Medicaid (JLJ)", "Anthem BCBS Low-Cost (JLJ)",
   "Horizon BCBS", "BCBS TN", "BCBS FL", "BCBS WY",
@@ -300,6 +304,7 @@ export const PRIMARY_INSURANCE_INDEX: Record<PrimaryInsurance, number> = {
   "Fidelis Medicare": 108,
   "Anthem BCBS Low-Cost (JLJ)": 109,
   "Fidelis CHP": 110,
+  "Fidelis NJ": 151,
   "United Low-Cost": 10,  // maps to United Commercial on the board
 } as Record<PrimaryInsurance, number>;
 

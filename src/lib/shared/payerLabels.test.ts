@@ -18,10 +18,33 @@ import { PRIMARY_INSURANCE_INDEX as INSURANCE_FALLBACK } from "../samantha/hcpcR
  * mirror; re-read the boards before changing any of them.
  */
 const LIVE = {
-  welcomeCall: { 7: "Health Plans Inc (PHCS)", 108: "Fidelis Medicare" },
-  insurance: { 7: "Health Plans Inc (PHCS)", 108: "Fidelis Medicare" },
-  medicalEvaluation: { 7: "Fidelis Medicare", 108: "Health Plans Inc (PHCS)" },
-  subscription: { 106: "United Low-Cost", 159: "Health Plans Inc (PHCS)" },
+  welcomeCall: { 7: "Health Plans Inc (PHCS)", 108: "Fidelis Medicare", 151: "Fidelis NJ" },
+  insurance: { 7: "Health Plans Inc (PHCS)", 108: "Fidelis Medicare", 151: "Fidelis NJ" },
+  medicalEvaluation: { 7: "Fidelis Medicare", 108: "Health Plans Inc (PHCS)", 152: "Fidelis NJ" },
+  subscription: { 106: "United Low-Cost", 108: "Fidelis NJ", 159: "Health Plans Inc (PHCS)" },
+} as const;
+
+/**
+ * The index ONE payer occupies on each of the eight columns it lives on, read
+ * back after creating it on 2026-09-16. Six different numbers for one label.
+ *
+ * ⚠️ This is the whole argument for reading the board. Monday assigns an index
+ * when a label is CREATED, from the lowest free slot on THAT column, so the
+ * number is a property of the column's history and never of the payer. Four of
+ * the eight happening to agree is a coincidence of their histories, and it is
+ * exactly what makes "the index is 151" a tempting and wrong thing to carry
+ * between boards. A write to an index the column does not have is dropped at
+ * HTTP 200 with nothing in the logs.
+ */
+const FIDELIS_NJ_INDEX = {
+  profileSendOffPrimary: 151,
+  profileSendOffGeneral: 17,
+  medicalEvaluation: 152,
+  insurance: 151,
+  welcomeCall: 151,
+  subscription: 108,
+  newOrder: 154,
+  secondaryClaims: 6,
 } as const;
 
 describe("the payer board registry", () => {
@@ -89,6 +112,22 @@ describe("the hardcoded fallbacks mirror their own board", () => {
 
   it("agrees with the Insurance board on the two contested indexes", () => {
     expect(INSURANCE_FALLBACK[LIVE.insurance[108] as never]).toBe(108);
+  });
+
+  it("carries Fidelis NJ at the index ITS OWN board assigned", () => {
+    expect(labelAt(WC_FALLBACK, FIDELIS_NJ_INDEX.welcomeCall)).toBe("Fidelis NJ");
+    expect(labelAt(FC_FALLBACK, FIDELIS_NJ_INDEX.welcomeCall)).toBe("Fidelis NJ");
+    expect(labelAt(SUB_FALLBACK, FIDELIS_NJ_INDEX.subscription)).toBe("Fidelis NJ");
+    expect(INSURANCE_FALLBACK["Fidelis NJ" as never]).toBe(FIDELIS_NJ_INDEX.insurance);
+  });
+
+  /* One payer, eight columns, six different numbers — the reason nothing may
+     copy an index from one board's table to another. */
+  it("proves one payer does not have one index", () => {
+    const distinct = new Set(Object.values(FIDELIS_NJ_INDEX));
+    expect(distinct.size).toBe(6);
+    expect(FIDELIS_NJ_INDEX.insurance).not.toBe(FIDELIS_NJ_INDEX.medicalEvaluation);
+    expect(FIDELIS_NJ_INDEX.subscription).not.toBe(FIDELIS_NJ_INDEX.welcomeCall);
   });
 
   it("offers the Subscription labels a rep could previously read but never set", () => {

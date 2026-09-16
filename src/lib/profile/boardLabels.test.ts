@@ -191,14 +191,15 @@ describe("payerOptions", () => {
  * What moving these two pickers from the hardcoded maps to the board actually
  * CHANGES on screen. Pinned deliberately: the point of the change is one new
  * payer, and anything else that appears or disappears is a UI change nobody
- * asked for. Board label sets read live on 2026-09-11.
+ * asked for. Board label sets read live on 2026-09-16 (re-read when "Fidelis
+ * NJ" was added to all eight payer columns; before that, 2026-09-11).
  */
 describe("the picker delta from reading the board", () => {
   const BOARD_GENERAL = [
     "Aetna", "Anthem / BCBS", "Cigna", "Fidelis", "Medicare A&B", "Medicaid",
     "NYSHIP Empire", "UMR", "Wellcare", "United Healthcare", "Humana",
     "MagnaCare", "Midlands Choice", "Stedi", "Cash Pay", "Other",
-    "Health Plans Inc (PHCS)",
+    "Health Plans Inc (PHCS)", "Fidelis NJ",
   ];
   const BOARD_PRIMARY = [
     "Fidelis Medicaid", "Fidelis Low-Cost", "Medicare A&B", "NYSHIP",
@@ -208,7 +209,7 @@ describe("the picker delta from reading the board", () => {
     "UMR", "Anthem BCBS Medicaid (JLJ)", "Fidelis Commercial",
     "Anthem BCBS Commercial", "Anthem BCBS Medicare", "Stedi",
     "Anthem BCBS Low-Cost (JLJ)", "United Low-Cost", "Fidelis Medicare",
-    "Health Plans Inc (PHCS)",
+    "Health Plans Inc (PHCS)", "Fidelis NJ",
   ];
   const delta = (board: string[], hardcoded: string[], columnId: string) => {
     const shown = payerOptions(columnId, board);
@@ -218,6 +219,10 @@ describe("the picker delta from reading the board", () => {
     };
   };
 
+  /* Fidelis NJ is in BOTH the board list and the hardcoded fallback, so it is
+     neither an appearance nor a disappearance — which is the point: adding a
+     payer to the board and to the fallback together changes nothing on screen
+     beyond that payer being selectable. */
   it("General Insurance gains the new payer and Cash Pay, and loses nothing", () => {
     expect(delta(BOARD_GENERAL, Object.keys(GENERAL_INSURANCE_INDEX), COL.generalInsurance))
       .toEqual({ appears: ["Cash Pay", "Health Plans Inc (PHCS)"], disappears: [] });

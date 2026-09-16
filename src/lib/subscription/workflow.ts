@@ -272,6 +272,7 @@ export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 9, label: "Anthem BCBS Low-Cost (JLJ)" },
   { index: 106, label: "United Low-Cost" },
   { index: 159, label: "Health Plans Inc (PHCS)" },
+  { index: 108, label: "Fidelis NJ" },
 ];
 
 export const SECONDARY_INSURANCE_OPTIONS = [

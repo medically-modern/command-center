@@ -211,7 +211,7 @@ export const PRIMARY_INSURANCE_INDEX: Record<string, number> = {
   "Oregon Care": 101, "UMR": 102, "Anthem BCBS Medicaid (JLJ)": 103,
   "Fidelis Commercial": 104, "Anthem BCBS Commercial": 105,
   "Anthem BCBS Medicare": 106, "Stedi": 107, "Anthem BCBS Low-Cost (JLJ)": 108,
-  "United Low-Cost": 109, "Fidelis Medicare": 110,
+  "United Low-Cost": 109, "Fidelis Medicare": 110, "Fidelis NJ": 151,
 };
 
 export const GENERAL_INSURANCE_INDEX: Record<string, number> = {
@@ -226,7 +226,7 @@ export const GENERAL_INSURANCE_INDEX: Record<string, number> = {
   // board's "Other" label (the slot the old "Horizon BCBS" was renamed into),
   // so this is a picker change only: no board edit, and no patient to migrate
   // — nothing on the board was set to Stedi when this was swapped.
-  "Other": 15,
+  "Other": 15, "Fidelis NJ": 17,
 };
 
 // Live board labels (checked 2026-07): 0=NY Medicaid, 1=Medicare Supplement, 3=None.

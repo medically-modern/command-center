@@ -1,4 +1,13 @@
-# Insurance label audit — six boards, five code tables, one routing table
+# Insurance label audit — eight columns, five code tables, one routing table
+
+> ## ⚠️ Read §10 first — this document's body is the **2026-08-10** snapshot
+>
+> §10 (2026-09-16) supersedes it on three things: the board inventory is **eight
+> payer columns, not six**; the Profile Send Off, Welcome Call, Insurance and
+> Subscription pickers now read their labels **live from the board**, so the
+> code tables below are FALLBACKS; and §8's checklist has been reissued there.
+> Everything else in the body was re-verified live on 2026-09-16 and still holds
+> — including all six copy gaps and the `BCBS Wyoming` order blocker.
 
 Current as of **2026-08-10**. Every board fact below was read from the live
 `settings_str` via the Monday API on that date, and every code fact from the files
@@ -484,3 +493,173 @@ are bugs:
 
 Widening the scope later means working the full §8 checklist, not just adding four
 more board labels.
+
+
+---
+
+## 10. 2026-09-16 — two live bugs fixed, and **Fidelis NJ** added
+
+Josh: *"app should always be synced with monday board"* — then *"add a new
+primary insurance called 'Fidelis NJ' everywhere"*. Every board fact below was
+read from the live `settings_str` on **2026-09-16**.
+
+### 10.1 The bug adding a payer had already caused
+
+Insurance and Welcome Call had **no index 7**. Both
+`welcomeCall/workflow.ts` and `finalConfirm/workflow.ts` carried
+`{ index: 7, label: "United Healthcare Commercial" }` — a label on **no board**,
+an app-only phantom, probably a stale spelling of `United Commercial` (10).
+Monday drops a write to a non-existent index, so it had always been a silent
+no-op.
+
+**"Health Plans Inc (PHCS)" was created into slot 7 on both boards on
+2026-09-11.** From that moment a rep picking "United Healthcare Commercial" in
+Final Profile Confirmation's Primary Insurance select wrote `{index: 7}` and the
+board stored **Health Plans Inc (PHCS)** — a real, wrong payer, green toast, then
+carried to Subscription and Order by label text.
+
+`pos.test.ts` could not catch it: it asserts Welcome Call and Final Confirm agree
+with **each other**, and both carried the identical wrong row.
+
+### 10.2 The second finding — ME is not Insurance/Welcome Call
+
+Same column id `color_mm1x157j`, three boards, and the two contested slots are
+**exactly swapped**:
+
+| index | Medical Evaluation | Insurance + Welcome Call |
+|---|---|---|
+| 7 | Fidelis Medicare | **Health Plans Inc (PHCS)** |
+| 108 | **Health Plans Inc (PHCS)** | Fidelis Medicare |
+
+ME's `Fidelis Medicare` was created at 7 long before the others', so PHCS took
+108 there and 7 here. Latent — nothing in the SPA writes ME's payer column and
+the hops copy by label TEXT — but sharing a column id is exactly what makes
+folding the three into one table look reasonable.
+
+### 10.3 The fix: read the board you are writing to
+
+`lib/shared/payerLabels.ts` + `hooks/shared/usePayerOptions.ts`, on top of the
+board-parameterised `shared/statusOptions.ts`. Final Confirm and Subscription
+render the live list; the Insurance send resolves its index with
+`resolvePayerIndex`. **The index travels WITH the option**, so a live list yields
+a live index and a fallback yields the fallback's — they can never be sourced
+from different places. ME is deliberately NOT registered, and
+`payerLabels.test.ts` pins the divergence.
+
+Hardcoded tables stay as fallbacks (softer than `statusOptions.ts`'s
+disable-the-control rule, for §5.33's reason: a disabled payer picker stops a
+stage dead). All were re-verified and corrected — Subscription also gained
+`United Low-Cost` (106) and `Health Plans Inc (PHCS)` (159), which a rep could
+read on a patient but never set.
+
+### 10.4 The board inventory is EIGHT columns
+
+The body's §1 lists six. It misses **Profile Send Off's General Insurance** and
+the **Secondary Claims Primary Payor**, both of which a payer must reach.
+
+There are also three payer columns on **DTC Intake** (`18392794310`) that no
+audit has ever covered — `color_mkxkpx71` "Primary Insurance (Payer Name)",
+`color_mm1gdfjy` "Primary Insurance Final" and `color_mm164qr0` "Primary
+Insurance". The first hops into Profile Send Off's **General** Insurance via
+`josh-monday-automations/automations/raw-intake-to-sendoff.js` `LABEL_ALIASES`
+(fuzzy, with a substring fallback). Deliberately **out of scope** for Fidelis NJ
+(Josh, 2026-09-16).
+
+### 10.5 Fidelis NJ — decisions and the indexes Monday assigned
+
+Josh, 2026-09-16: **Commercial** · Cardinal **Managed Medicaid, direct** (age
+ignored, so no DOB can block an order) · **the 8 pipeline columns**.
+
+| Board | Column | Fidelis NJ |
+|---|---|---|
+| Profile Send Off | `color_mm1xg10n` Primary Insurance | **151** |
+| Profile Send Off | `color_mm24ap4j` General Insurance | **17** |
+| Medical Evaluation | `color_mm1x157j` | **152** |
+| Insurance | `color_mm1x157j` | **151** |
+| Welcome Call | `color_mm1x157j` | **151** |
+| Subscription | `color_mm254qxj` | **108** |
+| New Order | `color_mm18jhq5` | **154** |
+| Secondary Claims | `color_mm3a93ek` Primary Payor | **6** |
+
+⚠️ **One payer, eight columns, SIX different indexes.** Four landing on 151 is a
+coincidence of those columns' histories. Pinned by `payerLabels.test.ts`.
+
+Because the label contains neither `medicaid` nor `medicare`, every substring
+rule treats it as commercial — which is correct here, and is why the string was
+checked against the answer before it was created.
+
+**Code:** `hcpcRules` (union · `SUPPLY_HCPC_GROUP_BY_PAYER` = **A** ·
+options · index 151) · the three `PRIMARY_INSURANCE_OPTIONS` tables ·
+`profile/mondayMapping` (both maps) · `oopEstimator.PAYER_RATE_SCHEDULE` (all
+rates **null** — no contract on file, so the estimator returns `{ok:false}`
+rather than a number built on another plan's rates; the 9th payer in that state)
+· `cardinal-api/src/insurancemap.js` + a `transform.test.js` case.
+
+Not touched, correctly: `pos.ts` `BCBS_FAMILY` (not a Blue) · `payerRules` /
+`infusionCap` (unrecognised ⇒ the conservative cap of 3) ·
+`SUPPLIES_NEED_NY_MEDICAID_SECONDARY` (commercial) · `priority.ts` (default
+tier).
+
+### 10.6 How the labels were created, and why not another way
+
+`change_column_value` with `create_labels_if_missing` on ONE item in a terminal
+group, then that item restored to its exact prior value — the §9 procedure.
+**Verified first that no automation TRIGGERS on the payer column** on any of the
+seven boards; the one exception is Subscription, which has four, so that write
+used a non-Medicaid row in *Not Active Patients* and only the
+any-change automation (`7918346881` → Calculate Financials) fired. It
+round-tripped back to blank on its own and the row is byte-identical.
+
+⚠️ **`update_status_column` is still not an option**, re-probed on a throwaway
+board the same day: passing only the new label returns *"Unable to delete a label
+already in use"* — `settings.labels` is a **full replace** — and passing the
+complete set with any colour change returns *"request to change default status
+label color"*. `UpdateStatusLabelInput`'s `index` is the label **id**, not its
+display position, so §9.1's warning stands: a replace rewrites
+`labels_positions_v2` and the curated order on Profile Send Off, Subscription and
+Order cannot be written back through the API.
+
+### 10.7 The checklist, reissued
+
+Supersedes §8.
+
+**Decide first — these are business decisions, not data entry.**
+1. **The exact string.** `medicaid` / `medicare` in the label changes behaviour
+   through ~8 substring rules. The string IS logic.
+2. **Scope.** Partial scope is fine if recorded (CDPHP is Subscription + Order
+   only); unrecorded partial scope reads as an oversight later.
+3. **Cardinal type** — `Medicare` / `Medicare Advantage` / `Managed Medicaid`,
+   `direct` or DOB-`split`. Without it the order is blocked at the gate.
+4. **HCPC supply group** A/B/C — tsc will force this once the union grows.
+5. **Is it a Blue?** Then `pos.ts` `BCBS_FAMILY`, the `HOST` map, and
+   claims-ui-tool's `bcbsSubmitGuard` payer IDs.
+
+**Boards — all eight in §10.4.** Read `settings_str` back for the index Monday
+actually assigned, per column. Never infer it, and never carry one board's index
+to another.
+
+**Code** — `hcpcRules` (4 places) · `welcomeCall` / `finalConfirm` /
+`subscription` `PRIMARY_INSURANCE_OPTIONS` · `profile/mondayMapping` (2 maps) ·
+`oopEstimator.PAYER_RATE_SCHEDULE` + its 5 membership sets ·
+`profile/oopEstimate`'s parallel sets · `pos.ts` · `priority.ts` ·
+`profile/primaryInsurance.carrierFromPayer` · `cardinal-api/insurancemap.js`.
+
+**Elsewhere, and still hand-maintained:**
+- ⚠️ **`claims-ui-tool` carries a SECOND full copy of `hcpcRules.ts`** — the same
+  `PrimaryInsurance` union — plus `bcbsSubmitGuard.ts`'s clearinghouse payer IDs
+  (Anthem NY `803`, Horizon NJ `11345`, BCBS TN `SB890`, BCBS WY `53767`).
+  Nobody has been keeping it in step. **Not updated for Fidelis NJ.**
+- ⚠️ **`stedi-monday-integration`** holds `insurance_rules.py`, the
+  `STATUS_INDEX_MAP` that writes Claims Primary Payor **by index** (so Fidelis NJ
+  must be **6** there, not 151) and the `PAYER_ID_MAP` that resolves the 837
+  trading-partner ID. **This session's GitHub credential cannot reach that repo**,
+  so it is NOT updated and nobody has verified PHCS landed there either.
+- `automate-dvs` `app/cob.py`: a payer that can be a patient's OTHER coverage on
+  a Medicaid DVS claim must score against ePACES's own fixed `DROPDOWN_PAYERS`
+  list, or `map_to_dropdown` returns `""` and the claim is blocked. Add a
+  `_PAYER_ALIASES` entry if its eligibility name shares no token.
+- The **DTC intake form** carries its own patient-facing carrier list
+  (`INSURANCE_PROVIDER_OPTS` + `labelMap.js`), mirrored byte-identically in
+  `mm-track-widget/intake-form.html`. It maps to **General** Insurance and is
+  deliberately brand-level, not plan-level — a new *plan* usually needs nothing
+  there.
