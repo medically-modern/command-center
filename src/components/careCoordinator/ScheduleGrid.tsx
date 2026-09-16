@@ -35,7 +35,7 @@
  * footnote says so rather than implying one (§5.15: "fix the copy, not the
  * gate").
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 
 import {
@@ -172,23 +172,56 @@ export function ScheduleGrid({
   const untimed = todays.filter((c) => minutesOfDay(c.callTime) === null);
   const nowVisible = isToday && nowMinutes >= startMin && nowMinutes <= startMin + spanMin;
 
+  const scroller = useRef<HTMLDivElement>(null);
+
+  /**
+   * `nowMinutes` for the anchor, without making the anchor a dependency.
+   *
+   * The page re-renders every 30s as the clock ticks. Re-anchoring on that
+   * would yank the strip out from under a coordinator who had scrolled
+   * somewhere else, so the anchor reads the CURRENT minute through a ref and
+   * only ever fires on load, on a day change, and on "Today".
+   */
+  const nowRef = useRef(nowMinutes);
+  nowRef.current = nowMinutes;
+
+  /**
+   * Put the red now-line on screen, an hour in from the left edge.
+   *
+   * ⚠️ **VERIFIED, not fired and forgotten.** The browser clamps `scrollLeft`
+   * to `scrollWidth - clientWidth`, so a value set before the container has
+   * been laid out — `clientWidth` is 0 on a cold load until the first layout
+   * pass — lands short and NOTHING ever puts it right: the strip opens at
+   * 7 AM and the coordinator has to go hunting for the line. So this reads
+   * back what actually took and retries on the next frame while it is still
+   * short of what the element can do. Bounded at three attempts; a target
+   * beyond the scrollable width (an evening past the strip's 8 PM end) is
+   * satisfied by the clamp itself and stops immediately.
+   */
+  const anchorOnNow = useCallback(() => {
+    const target = initialScrollLeft(nowRef.current, startMin, PX_PER_HOUR);
+    const apply = (left: number) => {
+      const el = scroller.current;
+      if (!el) return;
+      el.scrollLeft = target;
+      const reachable = Math.min(target, Math.max(0, el.scrollWidth - el.clientWidth));
+      if (left > 0 && el.scrollLeft < reachable - 1) {
+        requestAnimationFrame(() => apply(left - 1));
+      }
+    };
+    apply(3);
+  }, [startMin]);
+
   /**
    * Open on the hour before now.
    *
    * `useLayoutEffect` so the jump happens before paint — scrolling visibly
    * from 7 AM to lunchtime on every load reads as the page being broken.
-   * Re-runs whenever the day changes, including a click on "Today".
    */
-  const scroller = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    el.scrollLeft = isToday ? initialScrollLeft(nowMinutes, startMin, PX_PER_HOUR) : 0;
-    // nowMinutes deliberately omitted: this is where the view OPENS, and
-    // re-scrolling every 30s would yank the strip out from under a coordinator
-    // who had scrolled somewhere else.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewDate, isToday, startMin]);
+    if (isToday) anchorOnNow();
+    else if (scroller.current) scroller.current.scrollLeft = 0;
+  }, [viewDate, isToday, anchorOnNow]);
 
   /** Nothing from Calendly — either it could not be read, or there is no gateway. */
   const calendlyProblem = day.available ? Boolean(day.error) : true;
@@ -222,10 +255,15 @@ export function ScheduleGrid({
           <button aria-label="Previous day" onClick={() => setViewDate((d) => addCalendarDaysIso(d, -1))} className="rounded-md border p-1.5 hover:bg-accent">
             <ChevronLeft className="h-4 w-4" />
           </button>
+          {/* ⚠️ NOT disabled on today. It used to be, which left a coordinator
+              who had scrolled off to the morning with no way back to the red
+              line short of reloading — and "jump back to now" is the whole
+              job this button does once the strip scrolls (Brandon, 2026-09-16:
+              "when the page loads, or when you click Today"). */}
           <button
-            onClick={() => setViewDate(today)}
-            disabled={isToday}
-            className={cn("rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent", isToday && "opacity-50")}
+            onClick={() => { setViewDate(today); anchorOnNow(); }}
+            title={isToday ? "Jump back to now" : "Go to today"}
+            className="rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"
           >
             Today
           </button>

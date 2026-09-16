@@ -2782,6 +2782,19 @@ block carries **three lines** — time, first name, surname (`splitName`) — at
 ⚠️ `MIN_BLOCK_PX = 24` is not the old floor readmitted: at 240px/hour it is six minutes, under
 anything Calendly books, so it never fires on real data and only stops a malformed pair rendering a
 zero-width, unclickable appointment.
+⚠️ **The anchor is VERIFIED, not fired and forgotten** (Josh, 2026-09-16: *"make sure on page load
+that the calendar opens to the red line time of day"*). The browser clamps `scrollLeft` to
+`scrollWidth - clientWidth`, so a value set before the container has been laid out — `clientWidth`
+is 0 on a cold load until the first layout pass — lands SHORT and nothing ever puts it right: the
+strip opens at 7 AM and the coordinator goes hunting for the line. `anchorOnNow` reads back what
+took and retries on the next frame while it is still short of what the element can do, bounded at
+three attempts; a target past the scrollable width (an evening beyond the strip's 8 PM end) is
+satisfied by the clamp and stops at once. It reads `nowMinutes` through a **ref** so the 30s clock
+tick cannot re-anchor and yank the strip out from under somebody who had scrolled elsewhere.
+⚠️ **"Today" is no longer disabled on today** — it is the jump-back-to-now control, which is the
+whole job it does once the strip scrolls. Disabled, a coordinator who scrolled to the morning had
+no way back short of a reload. Measured live at 1920/1440/1100 wide: anchored on load with the line
+241px in at every width, and restored to the same pixel by Today after scrolling to 0.
 ⚠️ The hour ticks live INSIDE the scroll container with the blocks, or the two slide out of register.
 
 **Volume is ~nothing today and that is the board's state, not a broken read** — three mirrored
