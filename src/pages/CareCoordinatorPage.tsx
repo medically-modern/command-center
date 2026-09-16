@@ -40,7 +40,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, HeartHandshake, Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, HeartHandshake, Loader2, Plus, RefreshCw } from "lucide-react";
 
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { useAccessContext } from "@/components/AccessProvider";
@@ -296,20 +296,7 @@ export default function CareCoordinatorPage() {
             horizon={welcomeHorizon}
             onHorizon={setWelcomeHorizon}
             progress={welcome.progress}
-            notice={
-              // ⚠️ A failed Calendly read is not "nobody is booked". Every
-              // patient falls to Unscheduled while this shows, so it has to.
-              (bookings.error || !bookings.available) ? (
-                <p role="status" className="mb-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                  <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
-                  <span>
-                    {bookings.available
-                      ? `Couldn't check Calendly for welcome-call bookings, so Scheduled may be incomplete. ${bookings.error}`
-                      : "Welcome-call bookings need the gateway, which isn't configured in this build — Scheduled can't be filled."}
-                  </span>
-                </p>
-              ) : null
-            }
+            notice={<WelcomeBookingsNotice bookings={bookings} />}
             footer={
               <WelcomeFooter withManager={welcomeB.withManager} proposedStuck={welcomeB.proposedStuck} />
             }
@@ -364,6 +351,40 @@ function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled }: 
         {unscheduled}
       </Section>
     </>
+  );
+}
+
+/**
+ * What the Welcome Call column can say about its bookings.
+ *
+ * ⚠️ **AN UNFINISHED READ IS NOT "NOBODY IS BOOKED" EITHER**, and until
+ * 2026-09-16 this only covered a FAILED one. Welcome calls exist in Calendly
+ * alone, so every patient falls to Unscheduled until that read lands — and the
+ * read cannot even start before the board read finishes, because the addresses
+ * to ask about come from it. Measured against a slow gateway the same day: the
+ * column sat at **Scheduled 0 · Unscheduled 15** with no notice at all, four
+ * booked patients listed as people to ring, one of them five minutes out. That
+ * is the same hole `useCalendlyDay.loaded` closed on the strip; `ready` is this
+ * hook's version of it and the page simply never read it.
+ *
+ * Three states, never two: checking · could not check · fine.
+ */
+function WelcomeBookingsNotice({ bookings }: { bookings: ReturnType<typeof useWelcomeCallBookings> }) {
+  const checking = bookings.available && !bookings.ready && !bookings.error;
+  if (!checking && !bookings.error && bookings.available) return null;
+
+  const Icon = checking ? Loader2 : AlertTriangle;
+  const text = checking
+    ? "Checking Calendly for welcome-call bookings — Scheduled isn't filled in yet."
+    : bookings.available
+      ? `Couldn't check Calendly for welcome-call bookings, so Scheduled may be incomplete. ${bookings.error}`
+      : "Welcome-call bookings need the gateway, which isn't configured in this build — Scheduled can't be filled.";
+
+  return (
+    <p role="status" className="mb-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+      <Icon className={cn("mt-px h-3.5 w-3.5 shrink-0", checking && "animate-spin")} aria-hidden />
+      <span>{text}</span>
+    </p>
   );
 }
 

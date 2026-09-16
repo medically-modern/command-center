@@ -2856,6 +2856,70 @@ Files: `lib/careCoordinator/{scheduleEntries,pills,lanes,workflow}.ts` (+ tests)
 cards,PipelineColumn}.tsx`, `components/scheduledCalls/BookingLinkDialog.tsx`,
 `pages/CareCoordinatorPage.tsx` (+ test).
 
+### 5.30d The 2026-09-16 page audit — two fixes, and the one that is still open
+A full pass over the Care Coordinator page (code, then rendered in a browser against a 26-row
+intake / 18-row Welcome Call fixture, then the failure modes). Everything below was found by
+RENDERING it; two of the three had been reasoned about and missed.
+
+**Fixed.**
+1. ⚠️ **`useWelcomeCallBookings.ready` latched true before a single address had been asked
+   about.** The board read lands first and the address list comes OUT of it, so the hook is
+   mounted with an empty list, takes its no-addresses branch and set a plain boolean. Measured
+   against a slow gateway: the Welcome Call column sat at **Scheduled 0 · Unscheduled 15 with no
+   notice**, four booked patients listed as people to ring, one of them five minutes out — the
+   §5.30b/§5.31e rule ("a read that has not finished is not 'nobody is booked'") one step
+   earlier than the rule covers. `ready` is per-KEY now, exactly as `useCalendlyDay.loaded` is
+   per-DAY, and `WelcomeBookingsNotice` renders three states: checking · could not check · fine.
+   `useWelcomeCallBookings.test.tsx` pins it (verified to fail on the latching version).
+2. ⚠️ **The Unscheduled section bar was invisible in dark mode.** `--mm-mint` is
+   `oklch(0.973 …)`, a near-white, with **no `.dark` override**, and that bar was the one place
+   in the app using it without also setting a text colour — so the label inherited
+   `text-foreground` and rendered `rgb(241,245,248)` on it. Every other `--mm-mint` user
+   (`FaxStatusChip`, `orders/pills`, `mmKit`) pairs it with `--mm-teal`; this one now does too,
+   and its count chip drops `bg-foreground/80 text-background`, which inverts. `columnNotices.test.ts`
+   fails on any `foreground`/`background` colour in that block.
+
+⚠️⚠️ **STILL OPEN — the strip and the Patient Intake column disagree about who is booked.**
+The 2026-09-16 work made the STRIP read Calendly with the mirror as backup (§5.30c) and the
+**Welcome Call column** read Calendly (`useWelcomeCallBookings`). `intakeBuckets` was not
+touched: it still decides Scheduled vs Unscheduled from `liveBooking(lead)`, i.e. the monday
+mirror alone. Both directions were reproduced on one screen at one moment:
+ · a Calendly intake booking the mirror never caught shows on the strip while the patient sits
+   under **Unscheduled** in the column below — *Josh's original report, one level down*;
+ · a mirror row Calendly no longer has (cancelled or rescheduled with a missed webhook) is
+   absent from the strip and still listed under **Scheduled**, which is the "ring somebody who
+   called off" failure `mergeSchedule`'s own doc warns about.
+⚠️ **It is not a one-line fix, and the cost is why it was left for a decision.** The column's
+Scheduled spans arbitrary future days, so the day route cannot answer it; the patient-shaped
+route that could — `POST /calendly/patients` — builds its window index with
+`readDay(d, "welcome")` and is **welcome-only** (`calendlyPatient.mjs` `buildIndex`). Widening it
+to both kinds costs no extra `/scheduled_events` calls but one `/invitees` call per intake
+booking per day of the window, every `CALENDLY_PATIENT_TTL_MS` — on the same rate-limited
+Calendly account the patient intake form books through (INCIDENT_2026-08-20's shape). That is a
+gateway change and a load decision, not a UI change.
+
+**Checked and correct, so don't re-investigate:** column heights track each other exactly through
+the Today/Future toggle and the form filter (2907/2907 · 821/821 · 356/356 px); the pill grid is
+registered card to card (every card's slots at the same four x-positions, the Form track reserved
+and empty where a card carries no `status`); no horizontal page overflow at 1600/1280/1100/900;
+passed bookings render muted; `laneFor` puts back-to-back calls in one lane and a real overlap in
+two; the now-anchor lands on the clamp (`scrollLeft === scrollWidth - clientWidth`) and Today
+re-anchors; every failure mode (Calendly day read down · `/calendly/patients` down · empty boards)
+renders its own amber line and nothing pretends to be an empty day; no console errors in any state.
+
+**Known and deliberate, not bugs:** a 10-minute block at `PX_PER_HOUR = 240` is 40px, i.e. **32px
+of text** — measured, that fits `Li · Ana · Dan · Jose · Sean` and nothing longer, so most names
+are an ellipsis on both lines with the full name in the `title`. Brandon's "40px fits a stacked
+name" is not true of real names; fitting a median first name needs ~306 px/hour and the longest
+live surname ~850. Raising it narrows how much of the day is on screen, so it is a trade, not a
+fix. Also: `pills.SHORT` covers the **General** Insurance vocabulary (`Anthem / BCBS`) but not the
+Welcome Call board's **Primary** Insurance one, so `Anthem BCBS Commercial` and its three siblings
+truncate there; `scheduleEntries`' `entriesFor` / `ScheduleSource` / `welcomeEntry` and `Section`'s
+`extra` prop are dead (tests only); `careCoordinator/mondayApi` retypes `color_mm1x7997` instead of
+importing `WC_COL.escalation`, against its own header rule; and `BookingLinkDialog`'s field labelled
+"First name" is seeded with the FULL name (the greeting takes the first token, Calendly's prefill
+wants the whole thing) — pre-existing, cosmetic.
+
 ### 5.31 Welcome Call order rules — caps, 75 days, and "can we send a monitor?" (Sep 2026)
 Four decisions from Brandon's 2026-09-09 notes, landed together because they all key off
 Primary Insurance or the Same-or-Similar columns. **No board change; app only.**
@@ -5757,6 +5821,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A booking didn't show up in Scheduled Calls | §5.15 — the mirror joins on the invitee's EMAIL. `lib/scheduledCalls/bookingLink.ts` (the prefill), then dtc-mm-form `server/src/booking.js` |
 | Booked-call queue / the 10-min reminder | `lib/scheduledCalls/workflow.ts` + `components/careCoordinator/ScheduleGrid.tsx` (the grid, on `pages/CareCoordinatorPage.tsx`) + `components/scheduledCalls/ScheduledCallHost.tsx` (§5.15, §5.30) |
 | A booked call is missing from the day strip | §5.30c — the strip reads **Calendly**, so check `GET /calendly/day/health` on the gateway then `/api/calendly/health` on dtc-mm-form; an amber line means it fell back to the monday mirror, which only ever holds intake calls the §5.15 email join caught. A block with no "Open" is a booking whose invitee address is on no board row — expected, not broken. The 10-minute reminder still reads the MIRROR, so it can be silent for a call the strip shows |
+| A patient is on the day strip but the Patient Intake column calls them Unscheduled (or the reverse) | §5.30d — **known and open.** The strip and the Welcome Call column read Calendly; `intakeBuckets` still reads the monday mirror (`liveBooking`), so the two halves of the page can disagree in both directions. Fixing it needs the gateway's `calendlyPatient.buildIndex` widened past `readDay(d, "welcome")`, which costs an `/invitees` call per intake booking per window day — a load decision, not a UI change |
+| The Welcome Call column says "Scheduled 0" for a moment on load | §5.30d — correct since 2026-09-16 only if the amber "Checking Calendly" line is showing with it. No line and Scheduled 0 means `useWelcomeCallBookings.ready` has gone back to latching on the first (empty) address list — `useWelcomeCallBookings.test.tsx` pins it |
 | A patient who clearly gave us insurance shows no Insurance pill | §5.30c — `lib/careCoordinator/pills.ts` `intakeInsurance`. A card photo reads "Card on file"; **"Not provided"** is deliberately blank. If it is blank for somebody who sent a photo, check `color_mm5zv5pa` is still in `INTAKE_COLS` |
 | The Welcome Call "Call scheduled" chip is missing or says it couldn't check | §5.31e — the chip needs the patient's **Email** on the board; that is the only join Calendly gives us. "Couldn't check" means the window read failed (a partial window is deliberately never reported as "not booked") — check `GET /calendly/patient/health` on the gateway, then `/api/calendly/health` on dtc-mm-form. No chip at all means no booking in the window, which is the normal case |
 | A welcome call isn't on the schedule grid / a booking has no "Open" | §5.30b — the grid reads Calendly through the gateway, not monday. Check `GET /calendly/day` on the gateway, then `/api/calendly/health` on dtc-mm-form (it reports the welcome event type and whether the day route is enabled). No "Open" means the invitee's email is on no **Welcome Call group** row — the same single join the intake mirror uses; the block is meant to render without a link |

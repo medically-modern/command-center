@@ -36,14 +36,24 @@ const PAGE = 12;
  * text-background` is a dark chip on a light bar, and on solid green it came
  * out as a near-black blob.
  */
+/**
+ * ⚠️ BOTH tones set their own TEXT colour, and that is not decoration.
+ * `--mm-mint` is a near-white (`oklch(0.973 …)`) with no `.dark` override, so a
+ * bar that lets the label inherit `text-foreground` renders near-white on
+ * near-white in dark mode — the word "UNSCHEDULED" simply vanished, measured
+ * 2026-09-16 at `rgb(241,245,248)` on that mint. Every other `--mm-mint` user
+ * in the app (`FaxStatusChip`, `orders/pills`, `mmKit`) pairs it with
+ * `--mm-teal` for exactly this reason; this one had been the exception.
+ */
 const SECTION_TONE = {
   scheduled: "bg-[color:var(--mm-green)] text-white border-[color:var(--mm-green)]",
-  unscheduled: "bg-[color:var(--mm-mint)] border-[color:var(--mm-mint-ring)]",
+  unscheduled: "bg-[color:var(--mm-mint)] text-[color:var(--mm-teal)] border-[color:var(--mm-mint-ring)]",
 } as const;
 
 const COUNT_TONE = {
   scheduled: "bg-white/25 text-white",
-  unscheduled: "bg-foreground/80 text-background",
+  // Same rule: fixed colours, never `foreground`/`background`, which invert.
+  unscheduled: "bg-[color:var(--mm-teal)] text-white",
 } as const;
 
 export function Section({
