@@ -1340,6 +1340,47 @@ substring: "Answered Not Accepted" is a MISSED call that contains "answered".
 endpoints and a header renders for every patient a rep clicks through. That's the deliberate trade
 behind the button showing no missed-count badge until it's opened.
 
+**Recordings can be DOWNLOADED, not just played** (Josh, 2026-09-16 — *"all of the calls today i
+want the option to download them"*). Rule: **`lib/callHistory/recordingDownload.ts`** (+ tests);
+a per-call ⤓ beside Play in `CallHistoryButton`, a **Download all (N)** in its footer, and in the
+Comms Hub Phone tab a per-row ⤓ plus a **Today** filter pill and a **Download N** that saves
+exactly what the list is currently showing.
+
+⚠️⚠️ **RINGCENTRAL DELETES RECORDINGS AT 90 DAYS, AND THE CALL-LOG ROW SURVIVES THE PURGE.**
+Measured against the live account 2026-09-16 and it is a cliff, not a slope: 88–90 days ago **9/9**
+connected calls still had audio, 90–92 days ago **0/126**, and every sample beyond that is 0. An
+aged-out call therefore renders exactly like one that was never recorded — same row, same duration,
+no Play button, nothing saying the audio existed last week. **Nothing in the app can fetch it
+back.** At ~69 recorded calls and **~5.6 hours of audio per business day** (weekday average, same
+date), that is roughly 1,400 calls a month rolling off the back edge. This is §5.27's shape one
+system over — texts had a 30-day window and got `smsArchive.mjs`; calls have a 90-day one and have
+no archive, so today the only thing standing between a call and deletion is somebody pressing
+Download inside the window. A server-side archive is the real fix and is **not built**.
+
+⚠️ **Auto-recording is ON for both directions and every user, so inside the window "no audio" means
+the call never connected.** Same audit: **760/774** connected calls recorded (inbound 215/221,
+outbound 545/553), **0/476** unconnected. Do not go looking for a per-user or per-direction setting
+to explain a gap — 38% of call-log ROWS are missed · voicemail · hang up · wrong number · busy, and
+inbound absorbs nearly all of them, so counting raw rows makes inbound look badly under-recorded
+(44% connected vs outbound's 74%) when the two are in fact identical. Count connected calls.
+
+⚠️ **Bulk download is PACED, and the pacing is correctness.** `rcLimiter` budgets RingCentral at
+`maxPerCallerPerWindow: 40`/60s and sheds background polling above 70% of a global 90, so an
+unpaced loop over a day of calls is refused part-way **and** starves every other rep's inbox poll —
+INCIDENT_2026-08-20's shape with a download button on it. `DEFAULT_GAP_MS` (2.5s ≈ 24/min) holds it
+under both ceilings; a refusal waits and retries once, then records the failure and carries on,
+because a batch abandoned over one file leaves the rep believing they have the other sixty.
+⚠️ Sequential is also the only version that WORKS: browsers throttle or silently drop a burst of
+simultaneous downloads, so a parallel one appears to succeed and saves a fraction of the files.
+⚠️ The extension comes from the blob's own media type (`extensionFor`), never assumed — recordings
+are MP3 on most accounts and WAV on some, per-account, so a hardcoded `.mp3` yields a file that
+won't open exactly where it is wrong. Filenames are
+`2026-09-16_1226ET_Charmaine-Brooks_outbound_6m33s.mp3` — ET like every other timestamp on these
+boards (§5.15), date first so a folder sorts chronologically, and `slug()` makes a path separator
+unrepresentable.
+⚠️ `isEtToday` backs BOTH the Today pill and the filename, so a batch labelled "today" and the
+files it writes cannot disagree across midnight.
+
 **Two external dependencies, both of which fail silently as "no data":**
 - **`ReadCallLog`** on the RingCentral app record, or the call-log 403s. The SPA names that
   permission in the error rather than surfacing a bare 403 (§5.13 — RC permissions fail one at a
@@ -5816,6 +5857,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
 | A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
+| A recording won't play, or a call has no Play/⤓ at all | §5.16 — first check the call's AGE: RingCentral deletes recordings at **90 days** and keeps the log row, so an old call looks identical to one never recorded and the audio is unrecoverable. Inside 90 days, no audio means the call never connected (auto-recording is on for both directions, measured 760/774). A 403 on download is the `ReadCallRecording` permission |
+| A bulk download stopped part-way | §5.16 — `lib/callHistory/recordingDownload.ts`. The run is paced at ~24/min against `rcLimiter`'s 40-per-caller budget and retries a throttled file once; the toast reports how many failed. Closing the tab ends it — whatever already saved is kept |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
 | A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Since the 2026-09-03 cutover the six live notes columns are uncapped `text`, so this now means a column still `long_text` (Request Message `long_text_mm4cnw52`, the Escalation Notes, the two Insurance call logs) — `columnType.isCappedColumn` asks the board. Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |

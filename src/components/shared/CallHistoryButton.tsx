@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Download,
   Loader2,
   Phone,
   PhoneIncoming,
@@ -25,6 +26,7 @@ import {
   RefreshCw,
   Voicemail,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { fetchPatientCallHistory, fetchRecordingBlobUrl } from "@/lib/fax/ringcentralApi";
@@ -33,6 +35,13 @@ import {
   summarizeCalls,
   type PatientCall,
 } from "@/lib/callHistory/callHistory";
+import {
+  downloadRecording,
+  downloadRecordings,
+  estimateMinutes,
+  withRecordings,
+  type BulkProgress,
+} from "@/lib/callHistory/recordingDownload";
 
 /** Per-recording playback state, keyed by call id. */
 interface AudioState {
@@ -85,6 +94,11 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon }: {
   const [err, setErr] = useState<string | null>(null);
   const [calls, setCalls] = useState<PatientCall[]>([]);
   const [audio, setAudio] = useState<Record<string, AudioState>>({});
+  /** Per-call download spinner, keyed by call id. Separate from `audio` so a
+   *  rep can save a recording they are already listening to. */
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [bulk, setBulk] = useState<BulkProgress | null>(null);
+  const cancelBulk = useRef<AbortController | null>(null);
   /** Blob URLs we minted, so they can be released rather than leaked. */
   const blobs = useRef<string[]>([]);
 
@@ -126,6 +140,61 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon }: {
       setAudio((a) => ({ ...a, [call.id]: { url } }));
     } catch (e) {
       setAudio((a) => ({ ...a, [call.id]: { err: e instanceof Error ? e.message : String(e) } }));
+    }
+  };
+
+  /** Save one recording. The filename carries the patient's name and the ET
+   *  date/time, so a folder of them is readable without opening any. */
+  const save = async (call: PatientCall) => {
+    if (!call.recording || saving[call.id]) return;
+    setSaving((s) => ({ ...s, [call.id]: true }));
+    try {
+      const name = await downloadRecording(call, { who: display });
+      toast.success(`Saved ${name}`);
+    } catch (e) {
+      toast.error(`Couldn't download that recording. ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving((s) => ({ ...s, [call.id]: false }));
+    }
+  };
+
+  /**
+   * Save every recording in this history.
+   *
+   * ⚠️ Paced, not parallel — see `recordingDownload`. Browsers drop a burst of
+   * simultaneous downloads and the gateway budgets RingCentral per caller, so
+   * the honest version is slow and says so up front rather than appearing to
+   * work and saving a fraction of the files.
+   */
+  const saveAll = async () => {
+    const recorded = withRecordings(calls);
+    if (!recorded.length || bulk) return;
+    const mins = estimateMinutes(recorded.length);
+    if (
+      !window.confirm(
+        `Download ${recorded.length} recording${recorded.length === 1 ? "" : "s"}` +
+          `${display ? ` for ${display}` : ""}?\n\n` +
+          `They save one at a time and take about ${mins} minute${mins === 1 ? "" : "s"}. ` +
+          `Keep this window open until it finishes.`,
+      )
+    ) {
+      return;
+    }
+    const ctl = new AbortController();
+    cancelBulk.current = ctl;
+    setBulk({ done: 0, total: recorded.length, ok: 0, failed: 0 });
+    try {
+      const res = await downloadRecordings(recorded, {
+        nameFor: () => display,
+        onProgress: setBulk,
+        signal: ctl.signal,
+      });
+      if (res.cancelled) toast.info(`Stopped. ${res.ok} saved.`);
+      else if (res.failures.length) toast.warning(`Saved ${res.ok}. ${res.failures.length} couldn't be downloaded.`);
+      else toast.success(`Saved ${res.ok} recording${res.ok === 1 ? "" : "s"}.`);
+    } finally {
+      setBulk(null);
+      cancelBulk.current = null;
     }
   };
 
@@ -199,21 +268,39 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon }: {
                       >
                         {callOutcomeLabel(c)}
                       </span>
-                      {c.recording && !a.url && (
-                        <button
-                          type="button"
-                          onClick={() => void play(c)}
-                          disabled={a.loading}
-                          className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[color:var(--mm-teal)] hover:bg-muted/60 disabled:opacity-50"
-                          title="Play recording"
-                        >
-                          {a.loading ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Play className="h-3.5 w-3.5" />
+                      {c.recording && (
+                        <span className="flex shrink-0 items-center gap-0.5">
+                          {!a.url && (
+                            <button
+                              type="button"
+                              onClick={() => void play(c)}
+                              disabled={a.loading}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[color:var(--mm-teal)] hover:bg-muted/60 disabled:opacity-50"
+                              title="Play recording"
+                            >
+                              {a.loading ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Play className="h-3.5 w-3.5" />
+                              )}
+                              Play
+                            </button>
                           )}
-                          Play
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => void save(c)}
+                            disabled={!!saving[c.id] || !!bulk}
+                            className="inline-flex items-center rounded-md p-1.5 text-[color:var(--mm-teal)] hover:bg-muted/60 disabled:opacity-50"
+                            title="Download recording"
+                            aria-label="Download recording"
+                          >
+                            {saving[c.id] ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Download className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </span>
                       )}
                     </div>
                     {a.url && <audio controls autoPlay src={a.url} className="mt-2 w-full h-9" />}
@@ -235,7 +322,29 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon }: {
           >
             <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} /> Refresh
           </button>
-          <span className="text-[11px] text-muted-foreground">Last 12 months</span>
+          <div className="flex items-center gap-3">
+            {summary.recorded > 0 &&
+              (bulk ? (
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Saving {bulk.done}/{bulk.total}
+                  <button
+                    onClick={() => cancelBulk.current?.abort()}
+                    className="font-semibold text-foreground hover:underline"
+                  >
+                    Stop
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => void saveAll()}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[color:var(--mm-teal)] hover:bg-muted/60"
+                >
+                  <Download className="h-3 w-3" /> Download all ({summary.recorded})
+                </button>
+              ))}
+            <span className="text-[11px] text-muted-foreground">Last 12 months</span>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

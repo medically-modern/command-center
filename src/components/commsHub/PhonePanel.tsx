@@ -11,8 +11,9 @@
  * `callConnected` is the shared rule; reading `result` by eye here is what once
  * flashed "Missed" at the person who had just answered.
  */
-import { useMemo } from "react";
-import { Loader2, MailOpen, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Voicemail } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Download, Loader2, MailOpen, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Voicemail } from "lucide-react";
+import { toast } from "sonner";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -20,6 +21,15 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { callConnected, isVoicemail, type RcCallLogRecord } from "@/lib/callHistory/callHistory";
+import {
+  downloadRecording,
+  downloadRecordings,
+  estimateMinutes,
+  isEtToday,
+  withRecordings,
+  type BulkProgress,
+  type DownloadableCall,
+} from "@/lib/callHistory/recordingDownload";
 import { contactKey } from "@/lib/contactState/contactState";
 import type { VoicemailRecord } from "@/lib/fax/ringcentralApi";
 import { fmtPhone } from "@/lib/assignedPatients/format";
@@ -41,6 +51,11 @@ interface CallRow {
   connected: boolean;
   voicemail: boolean;
   durationSec: number;
+  /** The audio, where RingCentral kept it. Absent for a call that never
+   *  connected — and for every call over 90 days old, which is when
+   *  RingCentral deletes the recording and keeps the log row (see
+   *  `lib/callHistory/recordingDownload`). */
+  recording?: { id: string; contentUri: string };
 }
 
 function toRows(records: RcCallLogRecord[]): CallRow[] {
@@ -61,6 +76,14 @@ function toRows(records: RcCallLogRecord[]): CallRow[] {
         connected: callConnected(r),
         voicemail: isVoicemail(r),
         durationSec: Number(r.duration ?? 0),
+        // Parent first, then the legs — a claimed (forwarded) call records on
+        // the leg that carried the audio, not on the parent (§5.16).
+        recording: (() => {
+          const rec =
+            (r.recording?.contentUri ? r.recording : undefined) ??
+            (r.legs ?? []).map((l) => l.recording).find((x) => x?.contentUri);
+          return rec?.contentUri ? { id: String(rec.id ?? ""), contentUri: String(rec.contentUri) } : undefined;
+        })(),
       };
     })
     .filter((r) => r.key.length === 10)
@@ -83,6 +106,20 @@ export function callLabel(r: { voicemail: boolean; inbound: boolean; connected: 
   if (r.voicemail) return "Left voicemail";
   if (r.inbound) return r.connected ? "They called" : "Missed their call";
   return "We called";
+}
+
+/** A list row in the shape the downloader wants. Keeps the adapter in one
+ *  place so the Phone tab and the per-patient Calls pop-up name their files
+ *  identically. */
+function toDownloadable(r: CallRow): DownloadableCall {
+  return {
+    id: r.id,
+    startTime: r.at,
+    direction: r.inbound ? "Inbound" : "Outbound",
+    durationSec: r.durationSec,
+    otherNumber: r.phone,
+    recording: r.recording,
+  };
 }
 
 function mmss(sec: number): string {
@@ -161,6 +198,18 @@ export function PhonePanel({
   naming?: { done: number; total: number };
 }) {
   const rows = useMemo(() => toRows(calls ?? []), [calls]);
+  /**
+   * "Today" is LOCAL state, deliberately.
+   *
+   * The list covers 14 days, and the thing a rep actually asks for is today's
+   * calls (Josh, 2026-09-16). Nothing outside this panel needs to know the
+   * filter is on, so lifting it to the page would only add a prop that has to
+   * be threaded through the hub for no behaviour.
+   */
+  const [todayOnly, setTodayOnly] = useState(false);
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [bulk, setBulk] = useState<BulkProgress | null>(null);
+  const cancelBulk = useRef<AbortController | null>(null);
   const missedCount = useMemo(() => rows.filter((r) => r.inbound && !r.connected).length, [rows]);
   const unheardCount = useMemo(() => (voicemails ?? []).filter((v) => !v.read).length, [voicemails]);
 
@@ -183,11 +232,75 @@ export function PhonePanel({
         // "Missed" is an INBOUND call nobody answered. An outbound call that
         // went unanswered is not a missed call — nobody was trying to reach us.
         if (missedOnly && !(r.inbound && !r.connected)) return false;
+        if (todayOnly && !isEtToday(r.at)) return false;
         if (!q) return true;
         return r.label.toLowerCase().includes(q) || (digits.length >= 3 && r.key.includes(digits));
       }),
-    [labelled, missedOnly, q, digits],
+    [labelled, missedOnly, todayOnly, q, digits],
   );
+
+  /** Every recording in the list as currently filtered — which is what the
+   *  bulk button offers, so what it will save is exactly what is on screen. */
+  const downloadable = useMemo(() => withRecordings(shownCalls.map(toDownloadable)), [shownCalls]);
+  /** id → the name the row shows, so a saved file is named after the person
+   *  rather than their number wherever we resolved one. */
+  const labelById = useMemo(
+    () => new Map(shownCalls.map((r) => [r.id, r.source === "number" ? undefined : r.label] as const)),
+    [shownCalls],
+  );
+
+  const saveOne = async (r: CallRow & { label: string; source: NameSource }) => {
+    if (!r.recording || saving[r.id]) return;
+    setSaving((s) => ({ ...s, [r.id]: true }));
+    try {
+      const name = await downloadRecording(toDownloadable(r), {
+        who: r.source === "number" ? undefined : r.label,
+      });
+      toast.success(`Saved ${name}`);
+    } catch (e) {
+      toast.error(`Couldn't download that recording. ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving((s) => ({ ...s, [r.id]: false }));
+    }
+  };
+
+  /**
+   * Save every recording currently listed.
+   *
+   * ⚠️ The confirm names the count and the time it will take because the run is
+   * PACED — one file at a time, ~24 a minute (`recordingDownload`). A rep who
+   * is not told that closes the tab half way and loses the rest.
+   */
+  const saveAll = async () => {
+    if (!downloadable.length || bulk) return;
+    const mins = estimateMinutes(downloadable.length);
+    const scope = todayOnly ? "today's" : "the listed";
+    if (
+      !window.confirm(
+        `Download ${downloadable.length} of ${scope} recordings?\n\n` +
+          `They save one at a time and take about ${mins} minute${mins === 1 ? "" : "s"}. ` +
+          `Keep this tab open until it finishes.`,
+      )
+    ) {
+      return;
+    }
+    const ctl = new AbortController();
+    cancelBulk.current = ctl;
+    setBulk({ done: 0, total: downloadable.length, ok: 0, failed: 0 });
+    try {
+      const res = await downloadRecordings(downloadable, {
+        nameFor: (c) => labelById.get(c.id),
+        onProgress: setBulk,
+        signal: ctl.signal,
+      });
+      if (res.cancelled) toast.info(`Stopped. ${res.ok} saved.`);
+      else if (res.failures.length) toast.warning(`Saved ${res.ok}. ${res.failures.length} couldn't be downloaded.`);
+      else toast.success(`Saved ${res.ok} recording${res.ok === 1 ? "" : "s"}.`);
+    } finally {
+      setBulk(null);
+      cancelBulk.current = null;
+    }
+  };
 
   const shownVoicemails = useMemo(
     () =>
@@ -224,7 +337,7 @@ export function PhonePanel({
         onReload={onReload}
         note={naming && <NamingProgress done={naming.done} total={naming.total} />}
         extra={
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <FilterPill active={mode === "calls"} onClick={() => onMode("calls")}>
               Calls
             </FilterPill>
@@ -232,6 +345,35 @@ export function PhonePanel({
               Voicemail
               {!!unheardCount && <span className="ml-1 tabular-nums">{unheardCount}</span>}
             </FilterPill>
+            {mode === "calls" && (
+              <>
+                <FilterPill active={todayOnly} onClick={() => setTodayOnly(!todayOnly)}>
+                  Today
+                </FilterPill>
+                {bulk ? (
+                  <span className="inline-flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Saving {bulk.done}/{bulk.total}
+                    <button
+                      onClick={() => cancelBulk.current?.abort()}
+                      className="font-semibold text-foreground hover:underline"
+                    >
+                      Stop
+                    </button>
+                  </span>
+                ) : (
+                  !!downloadable.length && (
+                    <button
+                      onClick={() => void saveAll()}
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-[color:var(--mm-teal)] hover:bg-muted/60"
+                      title="Download every recording in this list"
+                    >
+                      <Download className="h-3 w-3" /> Download {downloadable.length}
+                    </button>
+                  )
+                )}
+              </>
+            )}
           </div>
         }
       />
@@ -258,13 +400,20 @@ export function PhonePanel({
               const missed = r.inbound && !r.connected;
               const Icon = missed ? PhoneMissed : r.inbound ? PhoneIncoming : PhoneOutgoing;
               return (
-                <button
+                // ⚠️ A <div> wrapping two buttons, not one button: the download
+                // control cannot be nested inside the row's own button, and
+                // hiding it behind a right-click would make it a thing found by
+                // accident (§5.28's "New text" lesson).
+                <div
                   key={r.id}
-                  onClick={() => onSelectCall({ phone: r.phone, at: r.at, voicemail: r.voicemail })}
                   className={cn(
-                    "flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2.5 text-left hover:bg-muted/40",
+                    "group flex items-center border-b border-border/60",
                     r.key === selectedKey && "bg-muted/70",
                   )}
+                >
+                <button
+                  onClick={() => onSelectCall({ phone: r.phone, at: r.at, voicemail: r.voicemail })}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3 pr-1 text-left hover:bg-muted/40"
                 >
                   <Initials
                     // "" when the label is the number itself — `Initials` then
@@ -301,6 +450,22 @@ export function PhonePanel({
                   </span>
                   <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{listTime(r.at)}</span>
                 </button>
+                {r.recording && (
+                  <button
+                    onClick={() => void saveOne(r)}
+                    disabled={!!saving[r.id] || !!bulk}
+                    className="mr-2 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted/60 hover:text-[color:var(--mm-teal)] disabled:opacity-40"
+                    title="Download recording"
+                    aria-label="Download recording"
+                  >
+                    {saving[r.id] ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                )}
+                </div>
               );
             })}
           </>

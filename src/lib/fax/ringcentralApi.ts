@@ -419,7 +419,15 @@ export async function fetchRcContentBlobUrl(contentUri: string): Promise<string>
   return URL.createObjectURL(blob);
 }
 
-export async function fetchRecordingBlobUrl(contentUri: string): Promise<string> {
+/**
+ * The recording's BYTES, with RingCentral's own content type intact.
+ *
+ * Split out of `fetchRecordingBlobUrl` for the download path, which needs two
+ * things a blob: URL has already thrown away — the media type (recordings are
+ * MP3 on most accounts and WAV on some, so the file extension is derived from
+ * this rather than assumed) and the ability to name the file at save time.
+ */
+export async function fetchRecordingBlob(contentUri: string): Promise<Blob> {
   if (!contentUri) throw new Error("No recording attached to this call");
   const res = await rcFetch(contentUri);
   if (!res.ok) {
@@ -428,10 +436,19 @@ export async function fetchRecordingBlobUrl(contentUri: string): Promise<string>
         "RingCentral rejected the recording download (403). The app record is probably missing the ReadCallRecording permission.",
       );
     }
+    // The gateway budgets RingCentral per caller (rcLimiter). A bulk download
+    // that trips it gets a refusal, not a RingCentral error, and the caller
+    // retries rather than treating the recording as missing.
+    if (res.status === 429 || res.status === 503) {
+      throw new Error("RingCentral is rate-limiting right now — this one will be retried.");
+    }
     throw new Error(`RingCentral recording download failed (${res.status})`);
   }
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
+  return res.blob();
+}
+
+export async function fetchRecordingBlobUrl(contentUri: string): Promise<string> {
+  return URL.createObjectURL(await fetchRecordingBlob(contentUri));
 }
 
 export interface InboundFax {
