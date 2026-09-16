@@ -4489,6 +4489,98 @@ filter shows an empty Orders folder, correctly.
    verbatim, so a change in either repo fails the build rather than showing a rep the wrong email.
 6. **Search** — `lib/systemMgmt/ordersSearch.ts` `ORDERS_SEARCH_BOARD` mirrors this slice's `GROUPS` / `GROUP_TITLES` / `COL`, and re-uses `workflow.orderStage` rather than restating it. It must stay OUT of `BOARDS` (`ordersSearch.test.ts` asserts both halves). `ORDER_IDENTIFIER_COLS` ⇄ `workflow.orderMatchesQuery`'s haystack — the two searches should match the same numbers.
 
+### 5.36 MR status — the app sets the rung, the board counts it down (Sep 2026)
+Brandon, 2026-09-15: *"when she updates MR, and updates the MR Expiry date, it's no
+triggering the MR status back to MR Valid (it's staying MR Expired)"*.
+
+**The Subscription board's MR column could only ever go DOWN.** Five date-arrival
+automations drive **MR `color_mktyr8xg`** off **MN Expiry `date_mkp09gra`**, and every one
+of them steps the status one rung closer to expired:
+
+| id | fires | sets MR to |
+|---|---|---|
+| 637032587 | 30 days before MN Expiry, 12:00 ET | MR <30 Days |
+| 637036882 | 20 days before, 12:00 ET | MR <20 Days |
+| 637037259 | 10 days before, 12:00 ET | MR <10 Days |
+| 637038815 | 5 days before, 12:00 ET | MR <5 Days |
+| 637034292 | on MN Expiry, 11:00 ET | MR Expired |
+
+⚠️ **Nothing put it back.** No active automation on that board writes **MR Valid** — the
+only two that ever did are deactivated (561485921, and 561485962 which fired at item
+creation) — and the SPA never wrote the column at all: `COL.mr` was read-only in every
+slice, and `workflow.MR_STATUS_OPTIONS` was exported and used by nothing. So refreshing a
+patient's records fixed the DATE and left the STATUS: pushing MN Expiry six months out
+re-arms the ladder, but the next rung to fire is the −30-day one **five months later**,
+which sets "MR <30 Days". The patient sat on MR Expired for five months and then jumped
+straight to "<30 Days", **never passing through MR Valid at all**.
+> Confirmed from the MR column's own activity log, 1 Aug–16 Sep: **28 automation writes
+> (12 × <30 Days · 8 × <10 · 3 × Expired · 3 × <20 · 2 × <5), not one to MR Valid.** The only
+> two writes to MR Valid in the window were **Brandon, by hand** — one of them at 9:08 PM on
+> 9/15, a minute before he sent the message. Board-wide the damage is visible: ~400 of the
+> first 500 rows read "MR Expired".
+
+**`/update-clinicals`' Update Visit Date save now writes both** —
+`lib/subscription/mrStatus.ts` (the rule, tested) + `mondayWrite.saveVisitDateVerified`.
+The card already computed visit date + 6 months and wrote MN Expiry; it now writes the rung
+that date implies alongside it, and the automations carry it down from there.
+
+⚠️ **THE FULL LADDER, not just MR Valid.** The ask was "set MR Valid when the new date is
+more than 30 days out", which covers the everyday case — a recent visit plus six months is
+always well past 30. But a visit more than five months old lands INSIDE the ladder, and the
+rungs it has already passed will never fire for the new date either: a 25-day expiry would
+sit on "MR Expired" for five days and then jump to "<20 Days", the same skip one size down.
+`mrRungForExpiry` writes what the date actually implies. Boundaries match the automations
+exactly — at 30 days out the −30 rung has fired, so **30 reads "<30 Days" and only 31+ reads
+Valid**.
+
+⚠️ **MN Expiry is the DATA, MR is the TRIGGER** — hence a verified write with MR as
+`stageColumnId`, held back until MN Expiry is confirmed indexed. Two independent reasons:
+**webhook 637064239** is *"when `color_mktyr8xg` changes, send a webhook"*, so the MR write
+wakes an external consumer, and Monday returns 200 on a write BEFORE the value is indexed
+(§5.2) — firing MR first hands that consumer an item still carrying the OLD expiry. And a
+half-failure must leave the safer state: date-first means a failed date write claims nothing,
+where the reverse would assert a patient's records are current on a row whose expiry never
+moved. ⚠️ The consumer of that webhook is **outside this repo** (the column id appears in no
+service here) and Monday's API does not expose the URL — find it before changing what MR
+writes mean.
+
+⚠️ **No `expectedText` on the MR task, deliberately.** That field opts a column into §9's
+advancer no-op guard, which REFUSES the send when the column already holds the target. Right
+for an advancer whose automation must fire; wrong here — writing "MR Valid" onto a row
+already reading MR Valid is a reconciliation we are happy to let Monday discard, not a
+failure to report. Which is also why the write is **unconditional** rather than skipping a
+same-value case off the poll: a same-value status write is inert (no change, no activity-log
+entry, no webhook, §9), so writing every time is self-correcting and carries no staleness
+hazard.
+
+⚠️ **The label ids are read off the live board and must never be inferred** —
+`MR_STATUS_INDEX` = `<30 Days` **0** · `Valid` **1** · `Expired` **2** · `<20 Days` **3** ·
+`<10 Days` **4** · `<5 Days` **6** · `Invalid` **7** (`settings_str`, 2026-09-16). Note the
+ladder is not sequential: Monday assigns a label's id at creation from the lowest free slot,
+and a write to an id the column does not have is **dropped at HTTP 200 with nothing in the
+logs** — which here would look exactly like the bug being fixed. Sixth column this applies to
+(§5.12 · §5.20 · §5.31c · §5.31d · §5.33). `mrStatus.test.ts` pins them.
+⚠️ **MR Invalid is written by nothing and held by nobody** (live check 2026-09-16: zero rows).
+It is a human judgement, not a date-derived state, so this rule neither writes it nor
+special-cases it — a refreshed visit date overwrites it like any other value. Revisit if it
+ever starts being used.
+
+**Not backfilled.** The ~400 rows already stranded on MR Expired self-heal on their next
+visit-date save. A backfill is safe in principle — these automations trigger on date arrival,
+not on the status — but it is a bulk write against live PHI rows, it would fire webhook
+637064239 once per row, and nobody has asked for one (§5.22b's posture).
+
+**Keep-in-agreement:**
+1. **The ids** — `lib/subscription/mrStatus.ts` `MR_STATUS_INDEX` ⇄ `workflow.MR_STATUS_OPTIONS`
+   ⇄ the live `color_mktyr8xg` `settings_str` (`mrStatus.test.ts` holds all three).
+2. **The ladder** — `mrRungForExpiry`'s boundaries ⇄ the five automation ids above. Re-verify
+   with `list_automations` before changing either; an offset changed on the board and not here
+   puts a patient on a rung the board is about to overwrite.
+3. **The write** — `mondayWrite.saveVisitDateVerified` (MR last, behind verification) ⇄
+   `pages/UpdateClinicalsPage.tsx` `VisitDateCard`, whose preview line reads the same rule so
+   it cannot promise a status the save does not write. `saveVisitDate.test.ts` pins the order
+   and is verified to fail when MR stops being held back.
+
 ## 6. Patient flow across boards (the big picture)
 
 ```
@@ -5526,6 +5618,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
+| A patient's Medical Records still read "MR Expired" after new records went in | §5.36 — `lib/subscription/mrStatus.ts` (the rung rule) → `mondayWrite.saveVisitDateVerified`. The board's five automations only count DOWN and nothing there writes **MR Valid**, so before 2026-09-16 the only fix was by hand. If it recurs: check the Update Visit Date save actually ran (it writes MN Expiry AND MR), then that `MR_STATUS_INDEX` still matches `color_mktyr8xg`'s live `settings_str` — a stale id is dropped at HTTP 200 with nothing in the logs |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |
 | An infusion set is missing from the dropdown, or its stock pill is wrong | §5.31b — `lib/welcomeCall/infusionSelection.ts` filters by pump compatibility and excludes the other slot's set; `withCurrentSelection` means a value the BOARD holds is always shown, so a genuinely absent option was filtered. Stock is `stockApi` → `infusionStock`: "No stock data" means no tracker row for that label (re-run the name-join audit), "Stock unknown" means either a stale stamp or a row with no readable quantity — neither is a shortage |

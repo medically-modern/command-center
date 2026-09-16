@@ -13,7 +13,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/subscription/useMondayPatients";
 import { formatDateMDY } from "@/lib/subscription/workflow";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
-import { COL, writeDate } from "@/lib/subscription/mondayApi";
+import { saveVisitDateVerified } from "@/lib/subscription/mondayWrite";
+import { mrRungForExpiry } from "@/lib/subscription/mrStatus";
 // Medical Necessity (masheke) board — second patient source
 import {
   fetchGroupItems as mnFetchGroupItems,
@@ -252,7 +253,17 @@ function ClinicalsSidebar({
 
 /* ── Visit Date updater — SUBSCRIPTION BOARD ONLY ──
       MN Expiry (date_mkp09gra) = Visit Date + 6 months. Restored June 2026;
-      only rendered for subscription rows. ─────────────────── */
+      only rendered for subscription rows.
+
+      ⚠️ IT ALSO SETS THE MR STATUS NOW (2026-09-16). Until then this card
+      wrote MN Expiry and nothing else, and the board's five MR automations
+      only ever count DOWN — so refreshing a patient's records left MR reading
+      "MR Expired" for the ~5 months until the −30-day rung fired, and it never
+      passed through "MR Valid" at all. Brandon reported it on 2026-09-15 a
+      minute after fixing one by hand. `mrStatus.mrRungForExpiry` picks the
+      rung the new date implies and `mondayWrite.saveVisitDateVerified` writes
+      both, MR last, behind read-back verification — see both files for why the
+      order is load-bearing. ─────────────────── */
 
 function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: () => void }) {
   const [visitDate, setVisitDate] = useState("");
@@ -265,12 +276,22 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
     return d.toISOString().slice(0, 10);
   }, [visitDate]);
 
+  // Same rule the save writes, so the line under the input cannot promise a
+  // status the write does not produce.
+  const previewRung = useMemo(() => mrRungForExpiry(previewExpiry), [previewExpiry]);
+
   const handleSave = async () => {
     if (!visitDate || !previewExpiry) return;
     setSaving(true);
     try {
-      await writeDate(patient.id, COL.mnExpiry, previewExpiry);
-      toast.success(`MN Expiry updated to ${formatDateMDY(previewExpiry)}`);
+      await saveVisitDateVerified(patient.id, previewExpiry);
+      // Name the status in the toast. It is the half a rep cannot predict —
+      // the date is on screen already, the rung it lands on is the answer to
+      // "did this actually un-expire them?".
+      toast.success(
+        `MN Expiry updated to ${formatDateMDY(previewExpiry)}`,
+        previewRung ? { description: `Medical Records set to ${previewRung.label}.` } : undefined,
+      );
       setVisitDate("");
       onSaved();
     } catch (e) {
@@ -289,7 +310,7 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
         Update Visit Date
       </p>
       <p className="text-[11px] text-muted-foreground mb-3">
-        Enter the most recent appointment / visit date — MN Expiry is set to that date + 6 months.
+        Enter the most recent appointment / visit date — MN Expiry is set to that date + 6 months, and the Medical Records status is set to match it.
       </p>
       <div className="flex items-end gap-3 flex-wrap">
         <div>
@@ -300,7 +321,9 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
             className="h-9 w-48 bg-background"
           />
           <p className="text-[11px] text-muted-foreground mt-1 h-4">
-            {previewExpiry ? `New MN Expiry: ${formatDateMDY(previewExpiry)}` : ""}
+            {previewExpiry
+              ? `New MN Expiry: ${formatDateMDY(previewExpiry)}${previewRung ? ` · MR → ${previewRung.label}` : ""}`
+              : ""}
           </p>
         </div>
         <Button

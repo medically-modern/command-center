@@ -3,6 +3,7 @@ import { executeWritesWithVerification, type WriteProgressPhase } from "../share
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 import type { Patient } from "./workflow";
+import { mrRungForExpiry } from "./mrStatus";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -228,4 +229,78 @@ export async function sendPatientToMonday(
  */
 export async function sendNotesToMonday(itemId: string, notes: string): Promise<void> {
   await writeLongText(itemId, COL.subscriptionNotes, notes);
+}
+
+/**
+ * Update Clinicals' "Update Visit Date" save: push MN Expiry out, and set the
+ * MR status the new date implies.
+ *
+ * The MR half is the fix for Brandon's 2026-09-15 report — see
+ * `mrStatus.ts` for why the board could never do it alone (its five
+ * automations only ever count DOWN, and nothing on it sets MR Valid).
+ *
+ * ⚠️ MN EXPIRY IS THE DATA, MR IS THE TRIGGER — hence the verified write with
+ * MR as `stageColumnId`, which is what holds it back until MN Expiry is
+ * confirmed indexed. Two independent reasons, either alone sufficient:
+ *
+ *  1. Webhook 637064239 on this board is "when `color_mktyr8xg` changes, send
+ *     a webhook" — so the MR write fires an external consumer, and Monday
+ *     returns 200 on a column write BEFORE the value is indexed (§5.2). Firing
+ *     MR first hands that consumer an item still carrying the OLD MN Expiry:
+ *     the exact stale-sibling read the protocol exists to prevent.
+ *  2. A half-failure must leave the safer state. Date first means a failed
+ *     date write claims nothing; if the date lands and the status write fails,
+ *     the row is where it is today — expiry pushed, status stale — which is no
+ *     worse than before this function existed. The other order would assert
+ *     that a patient's records are current on a row whose expiry never moved.
+ *
+ * ⚠️ NO `expectedText` on the MR task, deliberately. That field opts a column
+ * into the §9 advancer no-op guard, which REFUSES the send when the column
+ * already reads the target. Right for a stage advancer whose automation must
+ * fire; wrong here — writing "MR Valid" onto a row already reading MR Valid is
+ * a reconciliation we are happy to no-op, not a failure to report. Monday
+ * silently discards the same-value write and no webhook fires.
+ */
+export async function saveVisitDateVerified(
+  itemId: string,
+  expiryYmd: string,
+): Promise<void> {
+  const rung = mrRungForExpiry(expiryYmd);
+
+  const tasks: WriteTask[] = [
+    {
+      label: "MN Expiry",
+      columnId: COL.mnExpiry,
+      value: { date: expiryYmd },
+      fn: () => writeDate(itemId, COL.mnExpiry, expiryYmd),
+    },
+  ];
+
+  // No readable date ⇒ no status claim (mrStatus.mrRungForExpiry returns null).
+  // The date write still runs; we just do not guess a rung from a value we
+  // could not parse.
+  if (rung) {
+    tasks.push({
+      label: "MR",
+      columnId: COL.mr,
+      value: { index: rung.index },
+      fn: () => writeStatusIndex(itemId, COL.mr, rung.index),
+    });
+  }
+
+  const failures = await executeWritesWithVerification({
+    itemId,
+    boardId: String(BOARD_ID),
+    label: "Update Clinicals — visit date",
+    tasks,
+    stageColumnId: rung ? [COL.mr] : [],
+    executeWithRetry,
+    readColumns: readColumnTexts,
+  });
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} column(s) failed after retries. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
+    );
+  }
 }
