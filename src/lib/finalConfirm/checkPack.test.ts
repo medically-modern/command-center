@@ -425,14 +425,18 @@ describe("checkPack — C31 infusion sets over the cap", () => {
 });
 
 /**
- * Retired at Final Confirm (Brandon, 2026-09-02) — the rows that popped up on
- * nearly every profile. Cost-sharing is the Welcome Call's conversation and
- * still renders there (Benefits card + OopEstimateCard); repeating it here
+ * Retired at Final Confirm (Brandon, 2026-09-02; the CareCentrix row followed
+ * on Josh's call, 2026-09-16) — the rows asking a rep to act on a conversation
+ * that finished a stage ago. Cost-sharing is the Welcome Call's conversation
+ * and still renders there (Benefits card + OopEstimateCard); repeating it here
  * asked a rep to act on something the stage cannot act on. Pinned as SILENCE
  * so nobody re-ports them the way C5 was ported in.
  */
 describe("checkPack — retired cost-sharing rows stay retired", () => {
-  const RETIRED = ["C20_NO_COST_DATA", "C21_ZERO_OOP_EXPECTED", "C5_MEDICARE_NO_SECONDARY"];
+  const RETIRED = [
+    "C20_NO_COST_DATA", "C21_ZERO_OOP_EXPECTED", "C21_CARECENTRIX",
+    "C5_MEDICARE_NO_SECONDARY",
+  ];
 
   // The exact profile from Brandon's screenshot: Medicare A&B, no secondary,
   // no cost data — it carried C5 and C20 together.
@@ -443,10 +447,13 @@ describe("checkPack — retired cost-sharing rows stay retired", () => {
   scenario("Medicaid backstop no longer announces $0 OOP",
     { primaryInsurance: "Medicare A&B", secondaryInsurance: "NY Medicaid", memberId2: "AB12345C" }, [], RETIRED);
 
-  // CareCentrix survives: a per-referral routing rule, not a cost-sharing
-  // readout, and it fires on a slice of profiles rather than on all of them.
-  scenario("CareCentrix pricing note survives",
-    { referralSource: "CareCentrix" }, ["C21_CARECENTRIX"], RETIRED);
+  // CareCentrix went the same way. Welcome Call already enforces it by
+  // construction — `OopEstimateCard` replaces the entire calculator with
+  // "contact carecentrix directly for their OOP costs", so the rep is never
+  // shown a number to quote. Restating that at Final Confirm reaches somebody
+  // who is off the call.
+  scenario("CareCentrix pricing note is not repeated here",
+    { referralSource: "CareCentrix" }, [], RETIRED);
 });
 
 describe("checkPack — POS (C23)", () => {

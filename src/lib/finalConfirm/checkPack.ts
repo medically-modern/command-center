@@ -853,40 +853,44 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
     }
   }
 
-  /* ── D. Cost / benefits ───────────────────────────────────────────────
+  /* ── D. Cost / benefits — EMPTY, and deliberately so ──────────────────
    *
    * ⚠️ COST-SHARING IS A WELCOME CALL CONCERN, NOT A FINAL CONFIRM ONE
-   * (Brandon, 2026-09-02). Two checks were retired from this section rather
-   * than downgraded, because the problem was not their severity:
+   * (Brandon, 2026-09-02; extended to the last row by Josh, 2026-09-16).
+   * All three checks that lived here were RETIRED rather than downgraded,
+   * because the problem was never their severity:
    *
    *  - `C20_NO_COST_DATA` — "coinsurance, deductible and OOP max are all blank,
    *    the OOP conversation may not have happened."
    *  - `C21_ZERO_OOP_EXPECTED` — "Medicaid backstop on file, expect $0 OOP,
    *    don't quote cost-sharing."
+   *  - `C21_CARECENTRIX` — "CareCentrix referral — confirm pricing with
+   *    CareCentrix directly (standing rule)."
    *
-   * Both are instructions for a conversation that has already finished by the
-   * time a profile reaches this stage. Welcome Call is where they belong and
-   * where they still live: `welcomeCall/PatientInfoCard` renders the Benefits
-   * card (Deductible · Deductible Remaining · Coinsurance % · OOP Max Remaining,
-   * with its own "No benefits data yet." line) and `welcomeCall/OopEstimateCard`
-   * quotes the number — while the rep is on the phone and can act on it. Final
-   * Confirm cannot; it just prints the same two rows on nearly every profile.
-   * Medicare A&B with no secondary is the population that carried BOTH at once,
-   * which is what made the pack read as noise.
+   * Every one of them is an instruction for a conversation that has already
+   * finished by the time a profile reaches this stage. Welcome Call is where
+   * they belong and where they all still live: `welcomeCall/PatientInfoCard`
+   * renders the Benefits card (Deductible · Deductible Remaining ·
+   * Coinsurance % · OOP Max Remaining, with its own "No benefits data yet."
+   * line) and `welcomeCall/OopEstimateCard` quotes the number — while the rep
+   * is on the phone and can act on it. Final Confirm cannot.
    *
-   * The CareCentrix note below survives on purpose. It is not a cost-sharing
-   * readout — it is a per-referral routing rule ("this one is priced elsewhere"),
-   * it fires on a small slice of profiles rather than on every one, and Brandon's
-   * ask was specifically about the rows that always pop up.
+   * ⚠️ The CareCentrix row was kept back in September on the argument that it
+   * is a routing rule rather than a cost readout, and that it fires on a slice
+   * of profiles rather than on all of them. Both halves are true and neither
+   * mattered: Welcome Call ALREADY says it, and says it harder. For a
+   * CareCentrix patient `OopEstimateCard` does not print an estimate at all —
+   * it replaces the whole calculator with an amber "Carecentrix patients have
+   * to contact carecentrix directly for their OOP costs." A rep cannot quote a
+   * number they are never shown, so by Final Confirm the rule has already been
+   * enforced by construction and this row could only repeat it to somebody who
+   * is no longer on the call. Do not re-add it here; if the rule ever needs
+   * restating, restate it where the price is quoted.
+   *
+   * There is nothing left in this section. It is kept as a tombstone so the
+   * next reader finds the reasoning instead of the gap — the three ids above
+   * are pinned as SILENCE in `checkPack.test.ts`.
    */
-
-  if (p.referralSource === "CareCentrix") {
-    add({
-      id: "C21_CARECENTRIX", severity: "info", field: "referralSource",
-      title: "CareCentrix pricing",
-      detail: "CareCentrix referral — confirm pricing with CareCentrix directly (standing rule).",
-    });
-  }
 
   /* ── E. Demographics & downstream ─────────────────────────────────── */
 

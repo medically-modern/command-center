@@ -9,10 +9,15 @@
  * amount from calculator" by hand, with the calculator button beside it inert.
  * Josh put it back (2026-09-15) in the Insurance section rather than at the top,
  * so the estimate sits beside the field recording what was actually quoted.
- * ⚠️ Two comments in `lib/finalConfirm/checkPack` cite this component BY NAME
- * when arguing that the check pack need not repeat the benefits figures
- * (C20/C21, retired 2026-09-02). That argument is only true while this renders,
+ * ⚠️ `lib/finalConfirm/checkPack` cites this component BY NAME when arguing
+ * that the check pack need not repeat the benefits figures (C20/C21, retired
+ * 2026-09-02 and 2026-09-16). That argument is only true while this renders,
  * so un-mounting it again silently re-opens the gap those rows used to cover.
+ * ⚠️ The CareCentrix branch below is now the ONLY place in the app that says
+ * "price this one through CareCentrix" — `C21_CARECENTRIX` was removed from
+ * Final Confirm on 2026-09-16 (Josh) precisely BECAUSE this branch says it
+ * where it can be acted on. Deleting the branch does not just lose a note; it
+ * hands the rep our own estimate for a patient we do not price.
  * ⚠️ `PAYER_RATE_SCHEDULE` is hand-synced with the Railway financial backend and
  * nothing checks for drift (§5.7) — these numbers are as current as the last
  * time somebody reconciled the two by hand.
