@@ -21,7 +21,7 @@ import { resolve } from "node:path";
 
 const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 
-describe("the Welcome Call column's booking notice", () => {
+describe("the columns' booking notices", () => {
   const page = read("src/pages/CareCoordinatorPage.tsx");
 
   it("reads `ready`, so an unfinished Calendly read is not rendered as 'nobody is booked'", () => {
@@ -34,6 +34,26 @@ describe("the Welcome Call column's booking notice", () => {
   it("still says so when the read FAILED, and when there is no gateway at all", () => {
     expect(page).toMatch(/bookings\.error/);
     expect(page).toMatch(/bookings\.available/);
+  });
+
+  it("gives BOTH columns a notice — the intake one names its fallback", () => {
+    // Patient Intake has somewhere to fall back to (the monday mirror) and the
+    // Welcome Call column does not, so the two sentences must differ: telling a
+    // coordinator "Scheduled isn't filled in yet" would be false on a column
+    // that is showing the mirror's bookings.
+    expect(page).toMatch(/function IntakeBookingsNotice/);
+    expect(page).toMatch(/function WelcomeBookingsNotice/);
+    expect(page).toMatch(/mirrored onto monday/);
+    expect(page).toMatch(/notice=\{<IntakeBookingsNotice/);
+    expect(page).toMatch(/notice=\{<WelcomeBookingsNotice/);
+  });
+
+  it("asks Calendly for BOTH kinds, and names the kind at each call site", () => {
+    // One index, two columns. An unnamed kind would put one column's
+    // appointments in the other's Scheduled list.
+    expect(page).toMatch(/useCalendlyBookings\(welcomeEmails, "welcome"\)/);
+    expect(page).toMatch(/useCalendlyBookings\(intakeEmails, "intake"\)/);
+    expect(page).toMatch(/calendly: intakeCalendly/);
   });
 });
 

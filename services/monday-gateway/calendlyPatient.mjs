@@ -26,6 +26,7 @@
 import { verifyGoogleIdentity } from "./auth.mjs";
 import { readDay } from "./calendlyDay.mjs";
 import {
+  BOOKING_KINDS,
   DEFAULT_WINDOW_DAYS,
   etDateString,
   indexByEmail,
@@ -34,6 +35,7 @@ import {
   MAX_LOOKUP_EMAILS,
   normalizeEmail,
   pickBooking,
+  requireKind,
   windowDates,
 } from "./calendlyPatientRules.mjs";
 
@@ -86,19 +88,43 @@ async function mapWithLimit(items, limit, fn) {
   return out;
 }
 
+/**
+ * ⚠️ **BOTH KINDS SINCE 2026-09-16** — it read `"welcome"` alone, which is what
+ * left the Care Coordinator's Patient Intake column deciding Scheduled vs
+ * Unscheduled off the monday MIRROR while the strip above it and the Welcome
+ * Call column beside it read Calendly. The two halves of one screen then
+ * disagreed about who was booked, in both directions (CLAUDE.md §5.30d).
+ *
+ * The cost is bounded and smaller than it looks: `readDay` caches on
+ * `date + kinds`, so asking for `"intake,welcome"` here now shares TODAY's
+ * entry with the day strip instead of duplicating it. What it adds is the
+ * intake half of the other window days — one `/invitees` call per intake
+ * booking, and the board carried three mirrored bookings in its whole history.
+ */
 async function buildIndex() {
   const from = etDateString();
   const dates = windowDates(from, WINDOW_DAYS);
-  const days = await mapWithLimit(dates, CONCURRENCY, (d) => readDay(d, "welcome"));
+  const days = await mapWithLimit(dates, CONCURRENCY, (d) => readDay(d, "intake,welcome"));
 
   // ⚠️ Every day has to have answered. See the header: a hole in the window is
   // silent, and reads as "no appointment".
   const failed = days.find((d) => !d.ok);
   if (failed) return { ok: false, error: failed.error || "calendly read failed" };
-  const unresolved = days.flatMap((d) => d.unresolved ?? []);
-  if (unresolved.length) {
-    const why = unresolved.map((u) => `${u.kind} (${u.error})`).join("; ");
-    return { ok: false, error: `Calendly could not resolve: ${why}` };
+
+  /**
+   * ⚠️ Unresolved is tracked PER KIND, not as one flag over the window.
+   *
+   * A kind whose event type Calendly could not resolve contributes no bookings,
+   * so answering for it would be "nobody is booked" on a day that may be full.
+   * But failing the WHOLE index for it would take the welcome-call column down
+   * because the intake event type broke, and vice versa — one feature's outage
+   * becoming two. So each kind carries its own verdict and each route checks
+   * only the kind it was asked about.
+   */
+  const unresolved = new Map();
+  for (const u of days.flatMap((d) => d.unresolved ?? [])) {
+    const k = String(u?.kind ?? "").trim().toLowerCase();
+    if (k && !unresolved.has(k)) unresolved.set(k, u.error || "could not resolve");
   }
 
   return {
@@ -106,10 +132,17 @@ async function buildIndex() {
     entry: {
       at: Date.now(),
       byEmail: indexByEmail(days.flatMap((d) => d.bookings ?? [])),
+      unresolved,
       from,
       through: dates[dates.length - 1],
     },
   };
+}
+
+/** The "we could not check THIS kind" sentence, or null when it is answerable. */
+function unresolvedReason(entry, kind) {
+  const why = entry.unresolved?.get(kind);
+  return why ? `Calendly could not resolve: ${kind} (${why})` : null;
 }
 
 async function currentIndex() {
@@ -139,7 +172,11 @@ export function registerCalendlyPatient({ app }) {
       ok: true,
       windowDays: WINDOW_DAYS,
       ttlMs: INDEX_TTL_MS,
+      kinds: BOOKING_KINDS,
       indexed: index ? index.byEmail.size : 0,
+      // Which kinds this index can actually answer for — a kind listed here
+      // returns 502 rather than an empty answer (see `unresolvedReason`).
+      unresolved: index ? Object.fromEntries(index.unresolved ?? []) : {},
       builtAt: index ? new Date(index.at).toISOString() : null,
       through: index?.through ?? null,
     });
@@ -154,6 +191,17 @@ export function registerCalendlyPatient({ app }) {
     const who = await verifyGoogleIdentity(req.headers["x-mm-auth"]);
     if (!who?.email) return res.status(401).json({ ok: false, error: "Sign in required" });
 
+    // ⚠️ Defaults to `welcome`, which is what this route has always meant (the
+    // §5.31e Welcome Call chip is its only caller). The index holds both kinds
+    // now, so a kind-blind answer here would put an INTAKE appointment under a
+    // "Call scheduled" chip on the Welcome Call page.
+    let kind;
+    try {
+      kind = requireKind(req.query.kind ?? "welcome");
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: e.message });
+    }
+
     const email = normalizeEmail(req.query.email);
     if (!looksLikeEmail(email)) {
       // ⚠️ 400, never a cheerful `{booking: null}`. "We have no address for this
@@ -167,9 +215,12 @@ export function registerCalendlyPatient({ app }) {
       if (!built.ok) return res.status(502).json({ ok: false, error: built.error });
 
       const { entry } = built;
-      const booking = pickBooking(entry.byEmail.get(email) ?? []);
+      const why = unresolvedReason(entry, kind);
+      if (why) return res.status(502).json({ ok: false, error: why });
+      const booking = pickBooking(entry.byEmail.get(email) ?? [], kind);
       res.json({
         ok: true,
+        kind,
         booking,
         // So the caller can say what was actually looked at rather than implying
         // "ever" — a booking past this date is outside the window, not absent.
@@ -197,6 +248,13 @@ export function registerCalendlyPatient({ app }) {
     const who = await verifyGoogleIdentity(req.headers["x-mm-auth"]);
     if (!who?.email) return res.status(401).json({ ok: false, error: "Sign in required" });
 
+    let kind;
+    try {
+      kind = requireKind(req.body?.kind ?? "welcome");
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: e.message });
+    }
+
     const emails = req.body?.emails;
     if (!Array.isArray(emails)) {
       return res.status(400).json({ ok: false, error: "emails[] is required" });
@@ -209,9 +267,12 @@ export function registerCalendlyPatient({ app }) {
       const built = await currentIndex();
       if (!built.ok) return res.status(502).json({ ok: false, error: built.error });
       const { entry } = built;
+      const why = unresolvedReason(entry, kind);
+      if (why) return res.status(502).json({ ok: false, error: why });
       res.json({
         ok: true,
-        bookings: lookupMany(entry.byEmail, emails),
+        kind,
+        bookings: lookupMany(entry.byEmail, emails, kind),
         from: entry.from,
         through: entry.through,
       });

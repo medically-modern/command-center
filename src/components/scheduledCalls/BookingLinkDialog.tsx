@@ -252,12 +252,19 @@ export default function BookingLinkDialog({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
+            {/* ⚠️ The patient's FULL name, not their first — the field is
+                seeded with the whole thing from their row and does two jobs:
+                the message says "Hi <first token>", and the link carries the
+                name into Calendly's own `name` prefill, which is what holds
+                the invitee to the record we know them by (§5.15). It was
+                labelled "First name", so a coordinator tidying it down to
+                "Jane" would have weakened the prefill to be polite. */}
             <label className="text-sm">
-              <span className="mb-1 block font-medium">First name <span className="font-normal text-muted-foreground">(optional)</span></span>
+              <span className="mb-1 block font-medium">Patient name <span className="font-normal text-muted-foreground">(optional)</span></span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Jane"
+                placeholder="Jane Okafor"
                 className="w-full rounded-md border px-2.5 py-1.5 text-sm"
               />
             </label>

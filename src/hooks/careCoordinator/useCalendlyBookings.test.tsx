@@ -13,14 +13,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 
-const fetchWelcomeCallBookings = vi.fn();
+const fetchPatientBookings = vi.fn();
 
 vi.mock("@/lib/welcomeCall/calendlyBooking", () => ({
   welcomeCallBookingAvailable: () => true,
-  fetchWelcomeCallBookings: (...a: unknown[]) => fetchWelcomeCallBookings(...(a as [])),
+  fetchPatientBookings: (...a: unknown[]) => fetchPatientBookings(...(a as [])),
 }));
 
-import { useWelcomeCallBookings } from "./useWelcomeCallBookings";
+import { useCalendlyBookings } from "./useCalendlyBookings";
 
 const booking = (email: string) => ({
   eventUri: "u", eventName: "Medically Modern Welcome Call",
@@ -28,15 +28,15 @@ const booking = (email: string) => ({
   name: "A Patient", email, timezone: "America/New_York", rescheduleUrl: "",
 });
 
-describe("useWelcomeCallBookings", () => {
-  beforeEach(() => { fetchWelcomeCallBookings.mockReset(); });
+describe("useCalendlyBookings", () => {
+  beforeEach(() => { fetchPatientBookings.mockReset(); });
 
   it("is NOT ready for a real address list just because the empty one resolved", async () => {
     let resolve!: (v: unknown) => void;
-    fetchWelcomeCallBookings.mockReturnValue(new Promise((r) => { resolve = r; }));
+    fetchPatientBookings.mockReturnValue(new Promise((r) => { resolve = r; }));
 
     // Mounted before the board read lands: no addresses yet.
-    const { result, rerender } = renderHook(({ emails }) => useWelcomeCallBookings(emails), {
+    const { result, rerender } = renderHook(({ emails }) => useCalendlyBookings(emails, "welcome"), {
       initialProps: { emails: [] as string[] },
     });
     await waitFor(() => expect(result.current.ready).toBe(true)); // nothing to ask, nothing pending
@@ -53,22 +53,49 @@ describe("useWelcomeCallBookings", () => {
   });
 
   it("stays ready across a poll that returns the same addresses in another order", async () => {
-    fetchWelcomeCallBookings.mockResolvedValue({ ok: true, bookings: new Map(), error: null, through: null });
-    const { result, rerender } = renderHook(({ emails }) => useWelcomeCallBookings(emails), {
+    fetchPatientBookings.mockResolvedValue({ ok: true, bookings: new Map(), error: null, through: null });
+    const { result, rerender } = renderHook(({ emails }) => useCalendlyBookings(emails, "welcome"), {
       initialProps: { emails: ["b@example.com", "a@example.com"] },
     });
     await waitFor(() => expect(result.current.ready).toBe(true));
-    const calls = fetchWelcomeCallBookings.mock.calls.length;
+    const calls = fetchPatientBookings.mock.calls.length;
 
     rerender({ emails: ["a@example.com", "b@example.com"] });
     expect(result.current.ready).toBe(true);
-    expect(fetchWelcomeCallBookings.mock.calls.length).toBe(calls);
+    expect(fetchPatientBookings.mock.calls.length).toBe(calls);
   });
 
   it("a FAILED read is not ready either — the map is empty and must not read as 'nobody is booked'", async () => {
-    fetchWelcomeCallBookings.mockResolvedValue({ ok: false, bookings: new Map(), error: "gateway could not reach Calendly", through: null });
-    const { result } = renderHook(() => useWelcomeCallBookings(["w@example.com"]));
+    fetchPatientBookings.mockResolvedValue({ ok: false, bookings: new Map(), error: "gateway could not reach Calendly", through: null });
+    const { result } = renderHook(() => useCalendlyBookings(["w@example.com"], "welcome"));
     await waitFor(() => expect(result.current.error).toBe("gateway could not reach Calendly"));
     expect(result.current.ready).toBe(false);
+  });
+});
+
+describe("useCalendlyBookings — the kind is part of the read", () => {
+  it("asks for the kind it was given, and never shares an answer across kinds", async () => {
+    fetchPatientBookings.mockReset();
+    fetchPatientBookings.mockResolvedValue({ ok: true, bookings: new Map(), error: null, through: "2026-10-06" });
+
+    const emails = ["p@example.com"];
+    const a = renderHook(() => useCalendlyBookings(emails, "intake"));
+    await waitFor(() => expect(a.result.current.ready).toBe(true));
+    const b = renderHook(() => useCalendlyBookings(emails, "welcome"));
+    await waitFor(() => expect(b.result.current.ready).toBe(true));
+
+    // ⚠️ Two reads, not one coalesced into the other. The module-scope
+    // in-flight key carries the kind; without it the intake column's request
+    // would satisfy the welcome column's and each would render the other's
+    // appointments.
+    expect(fetchPatientBookings.mock.calls.map((c) => c[1])).toEqual(["intake", "welcome"]);
+  });
+
+  it("carries `through`, so the caller can tell 'outside the window' from 'not booked'", async () => {
+    fetchPatientBookings.mockReset();
+    fetchPatientBookings.mockResolvedValue({ ok: true, bookings: new Map(), error: null, through: "2026-10-06" });
+    const { result } = renderHook(() => useCalendlyBookings(["q@example.com"], "intake"));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.through).toBe("2026-10-06");
   });
 });

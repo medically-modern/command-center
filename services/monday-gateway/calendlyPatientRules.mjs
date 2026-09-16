@@ -123,7 +123,36 @@ export function indexByEmail(bookings) {
 }
 
 /**
- * Which of a patient's bookings the chip should show.
+ * The kinds this index holds, and the one every lookup must name.
+ *
+ * ⚠️ **THE INDEX HOLDS BOTH KINDS SINCE 2026-09-16, SO NO LOOKUP MAY BE
+ * KIND-BLIND.** It was welcome-only, and a caller that simply picked "the
+ * patient's next booking" was therefore correct by accident. Now that intake
+ * bookings sit in the same map, a kind-blind pick would show a Welcome Call
+ * chip an INTAKE appointment — a different call, at a different stage, with a
+ * different person on the phone — and nothing would error. Hence: `kind` is
+ * required, and an absent or unknown one THROWS rather than defaulting. A
+ * throw is a 502 with a sentence in it; a default is a wrong appointment on
+ * somebody's screen.
+ */
+export const BOOKING_KINDS = Object.freeze(["intake", "welcome"]);
+
+export function requireKind(kind) {
+  const k = String(kind ?? "").trim().toLowerCase();
+  if (!BOOKING_KINDS.includes(k)) {
+    throw new Error(`kind must be one of ${BOOKING_KINDS.join(", ")} (got ${JSON.stringify(kind)})`);
+  }
+  return k;
+}
+
+/** Just this kind's bookings, in the order they were indexed. */
+export function ofKind(bookings, kind) {
+  const k = requireKind(kind);
+  return (bookings ?? []).filter((b) => String(b?.kind ?? "").trim().toLowerCase() === k);
+}
+
+/**
+ * Which of a patient's bookings OF THAT KIND the caller should show.
  *
  * The soonest one that has not finished yet — including one in progress, since
  * a rep looking at this screen mid-call wants the time confirmed rather than
@@ -131,8 +160,8 @@ export function indexByEmail(bookings) {
  * window's own start bounds to today: "their call was at 9 this morning" is
  * information; a booking from last month is not, and cannot be in here anyway.
  */
-export function pickBooking(bookings, nowIso = new Date().toISOString()) {
-  const list = [...(bookings ?? [])].sort((a, b) =>
+export function pickBooking(bookings, kind, nowIso = new Date().toISOString()) {
+  const list = ofKind(bookings, kind).sort((a, b) =>
     String(a.startTime).localeCompare(String(b.startTime)));
   if (!list.length) return null;
   const now = String(nowIso);
@@ -152,14 +181,15 @@ export function pickBooking(bookings, nowIso = new Date().toISOString()) {
  */
 export const MAX_LOOKUP_EMAILS = 500;
 
-export function lookupMany(byEmail, emails, nowIso = new Date().toISOString(), cap = MAX_LOOKUP_EMAILS) {
+export function lookupMany(byEmail, emails, kind, nowIso = new Date().toISOString(), cap = MAX_LOOKUP_EMAILS) {
+  const k = requireKind(kind);
   const out = {};
   let n = 0;
   for (const raw of Array.isArray(emails) ? emails : []) {
     const key = normalizeEmail(raw);
     if (!looksLikeEmail(key) || key in out) continue;
     if (n >= cap) break;
-    out[key] = pickBooking(byEmail.get(key) ?? [], nowIso);
+    out[key] = pickBooking(byEmail.get(key) ?? [], k, nowIso);
     n += 1;
   }
   return out;

@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 
 import {
-  ASSUMED_DURATION_MIN, bookingLinker, calendlyEntry, durationOf, emailIndex, entriesFor,
-  etPartsOf, eventUriIndex, intakeEntry, mergeSchedule, welcomeEntry,
+  ASSUMED_DURATION_MIN, bookingLinker, calendlyEntry, durationOf, emailIndex,
+  etPartsOf, eventUriIndex, intakeEntry, mergeSchedule,
   type ScheduleEntry,
 } from "./scheduleEntries";
 import type { CalendlyBooking } from "./calendlyDay";
@@ -66,8 +66,17 @@ describe("emailIndex", () => {
   });
 });
 
-describe("welcomeEntry", () => {
+/**
+ * The welcome half of `calendlyEntry`. It used to go through a `welcomeEntry`
+ * wrapper; that wrapper had no call sites outside this file once the grid
+ * started asking Calendly for both kinds, so the tests call the real function.
+ */
+describe("calendlyEntry — a welcome booking", () => {
   const lookup = (m: Map<string, string | null>) => (e: string) => m.get(e.trim().toLowerCase()) ?? null;
+  const welcomeEntry = (
+    b: Parameters<typeof calendlyEntry>[0],
+    byEmail: (email: string) => string | null,
+  ) => calendlyEntry({ ...b, kind: "welcome" }, (x) => byEmail(x.email));
 
   it("converts to Eastern and links to the matched chart", () => {
     const ix = emailIndex([{ id: "w9", email: "wc1@example.com" }]);
@@ -93,20 +102,13 @@ describe("welcomeEntry", () => {
   });
 });
 
-describe("entriesFor", () => {
-  const i = [intakeEntry(call())];
-  const w = [welcomeEntry(booking(), () => null)];
-
-  it("filters to one source or merges both", () => {
-    expect(entriesFor("intake", i, w)).toEqual(i);
-    expect(entriesFor("welcome", i, w)).toEqual(w);
-    expect(entriesFor("both", i, w)).toHaveLength(2);
-  });
-});
-
 describe("the day-view rules work on merged entries", () => {
   // The reason `isLiveBooking`/`callsOn`/`dayView` were widened to BookedSlot
   // rather than copied: one set of sequencing rules for both sources.
+  const welcomeEntry = (
+    b: Parameters<typeof calendlyEntry>[0],
+    byEmail: (email: string) => string | null,
+  ) => calendlyEntry({ ...b, kind: "welcome" }, (x) => byEmail(x.email));
   const entries: ScheduleEntry[] = [
     intakeEntry(call({ id: "morning", callTime: "09:00:00" })),
     welcomeEntry(booking(), () => null),                                   // 14:00 ET

@@ -29,7 +29,16 @@ export interface BoardPoll<T> {
    * SHOWN — see `visible` below; the bar renders straight off this.
    */
   progress: LoadProgress | null;
-  refetch: () => void;
+  /**
+   * Re-read now, and RESOLVE when that read settles.
+   *
+   * ⚠️ The promise is the point: `loading` above is "until the FIRST read
+   * settles", so a caller that drove a spinner off it would show nothing at all
+   * for a Refresh the coordinator pressed — and a button that looks like it did
+   * nothing gets pressed again. Coalesced, so it resolves with whatever read is
+   * already in flight rather than starting a second pass over 1,700 rows.
+   */
+  refetch: () => Promise<void>;
 }
 
 /**
@@ -117,6 +126,6 @@ export function useBoardPoll<T>(
   return {
     data, loading, error, lastOkAt, progress,
     // A Refresh the coordinator pressed is worth showing; the 60s tick is not.
-    refetch: () => { visible.current = true; void run(); },
+    refetch: () => { visible.current = true; return run() ?? Promise.resolve(); },
   };
 }

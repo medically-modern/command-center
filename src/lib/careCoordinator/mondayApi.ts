@@ -271,10 +271,16 @@ export async function fetchChaseItems(onPage?: PageReport): Promise<ChaseItem[]>
 
 /* ── Welcome Call group ──────────────────────────────────────── */
 
-/** Welcome Call's Escalation column. The same id as Medical Evaluation's (the
- *  board was duplicated from it) — and since 2026-09-14 the same three rungs
- *  (welcomeCall/mondayApi ESCALATION_INDEX, §5.34). Read as index AND text. */
-const WC_ESCALATION_COL = "color_mm1x7997";
+/**
+ * Welcome Call's Escalation column — the same id as Medical Evaluation's (the
+ * board was duplicated from it), and since 2026-09-14 the same three rungs
+ * (welcomeCall/mondayApi ESCALATION_INDEX, §5.34). Read as index AND text.
+ *
+ * ⚠️ IMPORTED, not retyped. It was a literal here until 2026-09-16, against
+ * this file's own header rule — the one thing that makes a column renamed in
+ * the welcomeCall slice renamed here too.
+ */
+const WC_ESCALATION_COL = WC_COL.escalation;
 
 const WC_COLS: string[] = [
   // Email is here for ONE reason: it is the only join between a Calendly

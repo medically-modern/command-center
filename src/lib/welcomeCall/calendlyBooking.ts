@@ -18,6 +18,7 @@
  * from that shared index.
  */
 import { MONDAY_GATEWAY_BASE, mondayIdentityHeaders } from "@/lib/shared/mondayEndpoint";
+import type { BookingKind } from "@/lib/scheduledCalls/bookingLink";
 
 export interface WelcomeCallBooking {
   eventUri: string;
@@ -72,7 +73,13 @@ export async function fetchWelcomeCallBooking(email: string): Promise<BookingLoo
   }
 
   try {
-    const url = `${MONDAY_GATEWAY_BASE}/calendly/patient?email=${encodeURIComponent(addr)}`;
+    // ⚠️ `kind` is NAMED, never left to the route's default. The gateway's
+    // window index has held BOTH kinds since 2026-09-16 (the Care Coordinator's
+    // Patient Intake column reads Calendly too, §5.30d), and this chip is on
+    // the WELCOME CALL page: a kind-blind answer would put a patient's intake
+    // appointment under "Call scheduled" there — a different call, at a
+    // different stage, with a different person on the phone.
+    const url = `${MONDAY_GATEWAY_BASE}/calendly/patient?email=${encodeURIComponent(addr)}&kind=welcome`;
     const res = await fetch(url, { headers: { ...mondayIdentityHeaders() } });
     const json = (await res.json().catch(() => null)) as {
       ok?: boolean;
@@ -106,13 +113,42 @@ export interface BookingsLookup {
 }
 
 /**
- * Many patients' welcome calls in ONE request — the Care Coordinator
- * dashboard's read (§5.30). `POST /calendly/patients` answers every address
- * from the gateway's shared window index, so a column of forty patients costs
- * one round trip and no extra Calendly reads. Blank addresses are dropped
- * before sending: they can never be answered.
+ * The gateway refuses more than this many addresses in one request, so the
+ * caller chunks rather than being refused (`calendlyPatient.mjs`
+ * MAX_LOOKUP_EMAILS — keep the two in step).
+ *
+ * ⚠️ **THE PATIENT INTAKE COLUMN EXCEEDS IT ROUTINELY.** That column reads
+ * ~1,750 rows (Partial Leads alone was 1,718 on 2026-09-10), most of them DTC
+ * form leads that carry an address, so an unchunked request comes back **400
+ * "at most 500 emails per request"** and the whole column falls back to the
+ * monday mirror — the very thing Calendly-first was meant to stop. The Welcome
+ * Call column is forty rows and would never have shown it.
  */
-export async function fetchWelcomeCallBookings(emails: string[]): Promise<BookingsLookup> {
+const BATCH = 500;
+
+/** Chunks run a few at a time: the gateway answers every one of them from the
+ *  same in-memory index, so this costs round trips, never Calendly reads. */
+const BATCH_CONCURRENCY = 3;
+
+/**
+ * Many patients' bookings OF ONE KIND — the Care Coordinator dashboard's read
+ * (§5.30). `POST /calendly/patients` answers every address from the gateway's
+ * shared window index, so a column of forty patients costs one round trip and
+ * no extra Calendly reads; a column of two thousand costs four.
+ *
+ * ⚠️ **`kind` is required and there is no default.** Both of this page's
+ * columns call it — intake and welcome — against the SAME index, and one
+ * patient can legitimately hold both an intake call and a welcome call. An
+ * unnamed kind would put one column's appointments in the other's Scheduled
+ * list, which is a plausible wrong answer rather than a visible failure. The
+ * gateway throws on a missing kind for the same reason.
+ *
+ * ⚠️ **ALL OR NOTHING.** One failed chunk fails the whole lookup. A merged
+ * partial answer is indistinguishable from "those patients have nothing
+ * booked", which is the answer a coordinator acts on by not ringing anybody —
+ * the same rule the gateway applies to a partial window (§5.31e).
+ */
+export async function fetchPatientBookings(emails: string[], kind: BookingKind): Promise<BookingsLookup> {
   const empty = new Map<string, WelcomeCallBooking | null>();
   if (!welcomeCallBookingAvailable()) {
     return { ok: false, bookings: empty, error: "No gateway is configured in this build.", through: null };
@@ -120,11 +156,34 @@ export async function fetchWelcomeCallBookings(emails: string[]): Promise<Bookin
   const list = Array.from(new Set(emails.map((e) => (e ?? "").trim().toLowerCase()).filter((e) => e.includes("@"))));
   if (!list.length) return { ok: true, bookings: empty, error: null, through: null };
 
+  const chunks: string[][] = [];
+  for (let i = 0; i < list.length; i += BATCH) chunks.push(list.slice(i, i + BATCH));
+
+  const merged = new Map<string, WelcomeCallBooking | null>();
+  let through: string | null = null;
+
+  for (let i = 0; i < chunks.length; i += BATCH_CONCURRENCY) {
+    const wave = await Promise.all(
+      chunks.slice(i, i + BATCH_CONCURRENCY).map((c) => fetchOneBatch(c, kind)),
+    );
+    for (const res of wave) {
+      if (!res.ok) return { ok: false, bookings: empty, error: res.error, through: null };
+      for (const [k, v] of res.bookings) merged.set(k, v);
+      // Every chunk is answered from ONE index build, so these agree; taking
+      // the first non-null is enough and cannot mix two windows.
+      through = through ?? res.through;
+    }
+  }
+  return { ok: true, bookings: merged, error: null, through };
+}
+
+async function fetchOneBatch(list: string[], kind: BookingKind): Promise<BookingsLookup> {
+  const empty = new Map<string, WelcomeCallBooking | null>();
   try {
     const res = await fetch(`${MONDAY_GATEWAY_BASE}/calendly/patients`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...mondayIdentityHeaders() },
-      body: JSON.stringify({ emails: list }),
+      body: JSON.stringify({ emails: list, kind }),
     });
     const json = (await res.json().catch(() => null)) as {
       ok?: boolean;

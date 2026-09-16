@@ -37,9 +37,6 @@ import type { CalendlyBooking } from "./calendlyDay";
 
 export type ScheduleKind = "intake" | "welcome";
 
-/** Which sources the grid is showing. The grid's toggle picks one of these. */
-export type ScheduleSource = ScheduleKind | "both";
-
 /**
  * How long a block is when we have no end time to measure.
  *
@@ -175,14 +172,6 @@ export function calendlyEntry(
   };
 }
 
-/** Kept for callers that only ever hand this function welcome bookings. */
-export function welcomeEntry(
-  b: CalendlyBooking,
-  itemIdForEmail: (email: string) => string | null,
-): ScheduleEntry {
-  return calendlyEntry({ ...b, kind: "welcome" }, (x) => itemIdForEmail(x.email));
-}
-
 /**
  * Key → board item id, for the two joins that link a booking to a chart.
  *
@@ -277,15 +266,4 @@ export function mergeSchedule(input: {
 }): ScheduleMerge {
   if (input.calendlyOk) return { entries: input.calendly, fellBackToMirror: false };
   return { entries: input.mirror, fellBackToMirror: input.mirror.length > 0 };
-}
-
-/** Both sources merged, filtered to what the toggle is showing. */
-export function entriesFor(
-  source: ScheduleSource,
-  intake: ScheduleEntry[],
-  welcome: ScheduleEntry[],
-): ScheduleEntry[] {
-  if (source === "intake") return intake;
-  if (source === "welcome") return welcome;
-  return [...intake, ...welcome];
 }

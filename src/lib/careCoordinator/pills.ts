@@ -71,10 +71,33 @@ const SHORT: Record<string, string> = {
   "Insulin Pump + CGM": "Pump + CGM",
   "1st Pump >6M Diagnosed": "1st Pump >6M",
   "1st Pump <6M Diagnosed": "1st Pump <6M",
-  "United Healthcare": "UHC",
-  "Anthem / BCBS": "Anthem/BCBS",
   "Health Plans Inc (PHCS)": "PHCS",
   "Neither Applies": "Neither",
+
+  // ⚠️ TWO PAYER VOCABULARIES REACH THIS SLOT, not one. Patient Intake cards
+  // carry **General** Insurance (`color_mm24ap4j`, the coarse bucket) and
+  // Welcome Call cards carry **Primary** Insurance (`color_mm1x157j`, the named
+  // plan) — different columns, different labels. Until 2026-09-16 only the
+  // first was here, so every Anthem plan on the Welcome Call column rendered as
+  // "Anthem BCBS Co…". Both lists are below, and the full value is always in
+  // the pill's `title`, which is what makes shortening safe at all.
+  // General Insurance:
+  "Anthem / BCBS": "Anthem/BCBS",
+  "United Healthcare": "UHC",
+  // Primary Insurance (welcomeCall/workflow PRIMARY_INSURANCE_OPTIONS):
+  "Anthem BCBS Commercial": "Anthem Comm.",
+  "Anthem BCBS Medicare": "Anthem Mcare",
+  "Anthem BCBS Medicaid (JLJ)": "Anthem Mcaid",
+  "Anthem BCBS Low-Cost (JLJ)": "Anthem Low-Cost",
+  "United Healthcare Commercial": "UHC Comm.",
+  "United Commercial": "United Comm.",
+  "United Medicare": "United Mcare",
+  "United Medicaid": "United Mcaid",
+  "Fidelis Commercial": "Fidelis Comm.",
+  "Fidelis Medicare": "Fidelis Mcare",
+  "Fidelis Medicaid": "Fidelis Mcaid",
+  "Aetna Commercial": "Aetna Comm.",
+  "Aetna Medicare": "Aetna Mcare",
 };
 
 export function shortLabel(value: string): string {

@@ -188,6 +188,9 @@ export interface WelcomeCallItem {
 
 /* ── Small shared helpers ────────────────────────────────────── */
 
+/** The one join Calendly gives us, normalised (§5.31e). */
+const emailKey = (e: string) => (e ?? "").trim().toLowerCase();
+
 const ymd = (v: string | null | undefined): string => (v ?? "").trim().slice(0, 10);
 
 /** Whole days from `a` to `b` (YYYY-MM-DD each). Positive when b is later. */
@@ -452,7 +455,28 @@ export interface Booking {
   time: string;
 }
 
-/** The live Calendly booking on a lead, or null (none, or canceled). */
+/**
+ * What Calendly said about a column's patients — and, crucially, whether it
+ * said anything at all.
+ *
+ * `ready` false means the read has not come back (or failed): the map is then
+ * empty and MUST NOT be read as "nobody is booked" (§5.30b). `through` is the
+ * last day the window actually covered, so a booking beyond it is OUTSIDE what
+ * was looked at rather than absent from it.
+ */
+export interface CalendlyLookup {
+  ready: boolean;
+  /** Normalised email → booking, or null for "asked, nothing booked". */
+  byEmail: WelcomeBookingMap;
+  through: string | null;
+}
+
+export const NO_CALENDLY: CalendlyLookup = { ready: false, byEmail: new Map(), through: null };
+
+/** Which source decided a lead's booking — for the card and for the tests. */
+export type BookingSource = "calendly" | "mirror";
+
+/** The monday MIRROR's booking on a lead, or null (none, or canceled). */
 export function liveBooking(lead: Pick<IntakeLead, "scheduledCallTime" | "bookingStatus">): Booking | null {
   const raw = (lead.scheduledCallTime ?? "").trim();
   if (!raw) return null;
@@ -462,6 +486,65 @@ export function liveBooking(lead: Pick<IntakeLead, "scheduledCallTime" | "bookin
   const [date, time = ""] = raw.split(/\s+/);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   return { date, time: time ? (time.length === 5 ? `${time}:00` : time) : "" };
+}
+
+/**
+ * **Is this intake patient booked? — CALENDLY FIRST, THE MONDAY MIRROR AS THE
+ * FALLBACK** (Josh, 2026-09-16: "intake should also have calendly primary and
+ * monday fallback").
+ *
+ * The strip above this column and the Welcome Call column beside it already
+ * read Calendly; this one read the mirror alone, so the two halves of one
+ * screen disagreed about who was booked — in BOTH directions, reproduced on
+ * one render (CLAUDE.md §5.30d):
+ *  · a Calendly intake booking the mirror never caught (it joins on the
+ *    invitee's email inside the two DTC form groups, §5.15) put the patient on
+ *    the strip AND under "Unscheduled" here — Josh's original report;
+ *  · a mirror row Calendly no longer has — a cancel or a reschedule whose
+ *    webhook we missed — kept the patient under "Scheduled", which is the
+ *    "ring somebody who called off" failure `mergeSchedule` exists to prevent.
+ *
+ * Five branches, and each one falls back on POSITIVE EVIDENCE only — the same
+ * rule `dossier.nameMatchAccepted` and `patientDirectory.isOrphanRow` follow.
+ * Calendly's silence only counts against a booking where Calendly was actually
+ * in a position to speak:
+ *
+ *  1. the read has not come back ⇒ **mirror** (an unfinished read is not "not
+ *     booked", and the column must still show something);
+ *  2. the lead has no email ⇒ **mirror** — email is the ONLY join Calendly
+ *     gives us, so it was never asked about this patient (§5.31e);
+ *  3. the address is not in the answer at all ⇒ **mirror**, same reason;
+ *  4. Calendly has a booking ⇒ **Calendly**, and the mirror is ignored;
+ *  5. Calendly says nothing ⇒ unbooked — UNLESS the mirror's booking is past
+ *     the last day the window covered, which is outside what was looked at
+ *     rather than absent from it.
+ */
+export function intakeBooking(
+  lead: Pick<IntakeLead, "email" | "scheduledCallTime" | "bookingStatus">,
+  calendly: CalendlyLookup = NO_CALENDLY,
+): { booking: Booking | null; source: BookingSource; calendlyBooking?: WelcomeCallBooking } {
+  const mirror = () => ({ booking: liveBooking(lead), source: "mirror" as const });
+  if (!calendly.ready) return mirror();
+
+  const email = emailKey(lead.email);
+  if (!email) return mirror();
+  if (!calendly.byEmail.has(email)) return mirror();
+
+  const hit = calendly.byEmail.get(email) ?? null;
+  if (hit) {
+    const { date, time } = etPartsOf(hit.startTime);
+    return date
+      ? { booking: { date, time }, source: "calendly", calendlyBooking: hit }
+      : mirror();
+  }
+
+  // Asked, and nothing booked in the window. Only the part of the mirror the
+  // window could not have seen survives that.
+  const beyond = liveBooking(lead);
+  if (beyond && calendly.through && beyond.date > calendly.through) {
+    return { booking: beyond, source: "mirror" };
+  }
+  return { booking: null, source: "calendly" };
 }
 
 /** Did this patient ever touch the DTC form? The Drop-off Step is written by
@@ -490,6 +573,9 @@ export interface IntakeBuckets extends ColumnBuckets<IntakeLead> {
 export interface IntakeContext extends BucketContext {
   /** The two DTC form groups — an UNSCHEDULED lead must still be in one. */
   formGroupIds: readonly string[];
+  /** What Calendly said about these patients. Omit and the column falls back to
+   *  the monday mirror exactly as it did before 2026-09-16. */
+  calendly?: CalendlyLookup;
 }
 
 /** Automated nudges actually sent — the form's 30-minute and 24-hour texts,
@@ -565,10 +651,12 @@ export function intakeBuckets(leads: IntakeLead[], ctx: IntakeContext): IntakeBu
   for (const lead of leads) {
     if (isIntakeEscalated(lead)) { withManager++; continue; }
 
-    const booking = liveBooking(lead);
+    const { booking, calendlyBooking } = intakeBooking(lead, ctx.calendly ?? NO_CALENDLY);
     if (booking && booking.date >= ctx.today) {
       const { when, minutesUntil } = classifyBooking(booking.date, booking.time, ctx);
-      const entry: ScheduledEntry<IntakeLead> = { item: lead, date: booking.date, time: booking.time, when, minutesUntil };
+      const entry: ScheduledEntry<IntakeLead> = {
+        item: lead, date: booking.date, time: booking.time, when, minutesUntil, booking: calendlyBooking,
+      };
       (booking.date === ctx.today ? scheduledToday : scheduledFuture).push(entry);
       continue;
     }
@@ -715,8 +803,6 @@ export function welcomeCallTexts(item: Pick<WelcomeCallItem, "welcomeCallText">)
  * (a failed read is not "nobody is booked").
  */
 export type WelcomeBookingMap = ReadonlyMap<string, WelcomeCallBooking | null>;
-
-const emailKey = (e: string) => (e ?? "").trim().toLowerCase();
 
 export function welcomeCallBuckets(
   items: WelcomeCallItem[],

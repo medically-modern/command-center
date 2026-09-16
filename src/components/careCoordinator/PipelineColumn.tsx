@@ -57,15 +57,13 @@ const COUNT_TONE = {
 } as const;
 
 export function Section({
-  title, count, children, defaultOpen = true, tone, extra,
+  title, count, children, defaultOpen = true, tone,
 }: {
   title: string;
   count: number;
   children: ReactNode[];
   defaultOpen?: boolean;
   tone: keyof typeof SECTION_TONE;
-  /** A control on the header row — the Scheduled section's today/tomorrow+ switch. */
-  extra?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [shown, setShown] = useState(PAGE);
@@ -102,7 +100,6 @@ export function Section({
           <span className="text-[12px] font-bold uppercase tracking-[0.15em]">{title}</span>
           <span className={cn("rounded-full px-1.5 text-[10px] font-semibold tabular-nums", COUNT_TONE[tone])}>{count}</span>
         </button>
-        {extra}
       </div>
       {open && count === 0 && (
         <div className="rounded-lg border border-dashed px-3 py-3 text-center text-xs text-muted-foreground">Nobody here right now.</div>

@@ -54,14 +54,14 @@ import { nowMinutesEt, type ScheduledCall } from "@/lib/scheduledCalls/workflow"
 import { cn } from "@/lib/utils";
 
 import { useBoardPoll } from "@/hooks/careCoordinator/useBoardPoll";
-import { useWelcomeCallBookings } from "@/hooks/careCoordinator/useWelcomeCallBookings";
+import { useCalendlyBookings } from "@/hooks/careCoordinator/useCalendlyBookings";
 import {
   fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUPS, INTAKE_FORM_GROUP_IDS,
 } from "@/lib/careCoordinator/mondayApi";
 import {
   intakeBuckets, matchesFormFilter, nextUp, summarize, toScheduledCall, welcomeCallBuckets,
   FORM_FILTERS, FORM_FILTER_LABEL, READY_AFTER_HOURS,
-  type FormFilter, type Horizon, type IntakeLead, type WelcomeCallItem,
+  type CalendlyLookup, type FormFilter, type Horizon, type IntakeLead, type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
 import { PipelineColumn, Section } from "@/components/careCoordinator/PipelineColumn";
 import {
@@ -110,9 +110,24 @@ export default function CareCoordinatorPage() {
   const intake = useBoardPoll(fetchIntakeLeads, POLL_MS, "intake");
   const welcome = useBoardPoll(fetchWelcomeCallItems, POLL_MS, "welcome");
 
-  /** Every Welcome Call patient's booking, one gateway request (§5.31e). */
+  /**
+   * Every patient's booking, ONE gateway request per column (§5.31e, §5.30d).
+   *
+   * ⚠️ **BOTH columns ask Calendly, and they ask for different KINDS.** They
+   * share the gateway's one window index, so the second column costs a round
+   * trip to the gateway and no extra Calendly reads at all. Before 2026-09-16
+   * only the Welcome Call column asked and Patient Intake read the monday
+   * mirror alone, which is how the strip and the column below it came to
+   * disagree about who was booked.
+   */
   const welcomeEmails = useMemo(() => (welcome.data ?? []).map((w) => w.email), [welcome.data]);
-  const bookings = useWelcomeCallBookings(welcomeEmails);
+  const bookings = useCalendlyBookings(welcomeEmails, "welcome");
+  const intakeEmails = useMemo(() => (intake.data ?? []).map((l) => l.email), [intake.data]);
+  const intakeBookings = useCalendlyBookings(intakeEmails, "intake");
+  const intakeCalendly = useMemo<CalendlyLookup>(
+    () => ({ ready: intakeBookings.ready, byEmail: intakeBookings.byEmail, through: intakeBookings.through }),
+    [intakeBookings.ready, intakeBookings.byEmail, intakeBookings.through],
+  );
 
   /**
    * Partial / Complete / All over the Patient Intake column (Brandon,
@@ -135,8 +150,8 @@ export default function CareCoordinatorPage() {
 
   const ctx = useMemo(() => ({ today, nowMinutes, nowMs }), [today, nowMinutes, nowMs]);
   const intakeB = useMemo(
-    () => intakeBuckets(intakeLeads, { ...ctx, formGroupIds: INTAKE_FORM_GROUP_IDS }),
-    [intakeLeads, ctx],
+    () => intakeBuckets(intakeLeads, { ...ctx, formGroupIds: INTAKE_FORM_GROUP_IDS, calendly: intakeCalendly }),
+    [intakeLeads, ctx, intakeCalendly],
   );
   const welcomeB = useMemo(
     () => welcomeCallBuckets(welcome.data ?? [], ctx, bookings.byEmail),
@@ -170,8 +185,23 @@ export default function CareCoordinatorPage() {
     [welcome.data],
   );
 
-  const refreshAll = () => { intake.refetch(); welcome.refetch(); bookings.refetch(); };
-  const anyLoading = intake.loading || welcome.loading;
+  /**
+   * Refresh: the two board reads AND both Calendly lookups.
+   *
+   * ⚠️ `refreshing` is its own flag, not `intake.loading || welcome.loading`.
+   * Those are "until the FIRST read settles" by design (`useBoardPoll`), so
+   * they are false forever after the page has loaded — the spin animation on
+   * this button could only ever have fired once, on a press nobody makes. A
+   * Refresh that looks like it did nothing gets pressed again.
+   */
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshAll = useCallback(() => {
+    setRefreshing(true);
+    bookings.refetch();
+    intakeBookings.refetch();
+    void Promise.allSettled([intake.refetch(), welcome.refetch()]).finally(() => setRefreshing(false));
+  }, [bookings, intakeBookings, intake, welcome]);
+  const anyLoading = intake.loading || welcome.loading || refreshing;
 
   const user = getUser();
   const who = access.type === "processor" ? access.profile.name || user?.name || user?.email : user?.name || user?.email;
@@ -263,6 +293,7 @@ export default function CareCoordinatorPage() {
             horizon={intakeHorizon}
             onHorizon={setIntakeHorizon}
             progress={intake.progress}
+            notice={<IntakeBookingsNotice bookings={intakeBookings} />}
             controls={<FormFilterToggle value={formFilter} onChange={setFormFilter} />}
             footer={
               <IntakeFooter
@@ -369,7 +400,7 @@ function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled }: 
  *
  * Three states, never two: checking · could not check · fine.
  */
-function WelcomeBookingsNotice({ bookings }: { bookings: ReturnType<typeof useWelcomeCallBookings> }) {
+function WelcomeBookingsNotice({ bookings }: { bookings: ReturnType<typeof useCalendlyBookings> }) {
   const checking = bookings.available && !bookings.ready && !bookings.error;
   if (!checking && !bookings.error && bookings.available) return null;
 
@@ -379,6 +410,35 @@ function WelcomeBookingsNotice({ bookings }: { bookings: ReturnType<typeof useWe
     : bookings.available
       ? `Couldn't check Calendly for welcome-call bookings, so Scheduled may be incomplete. ${bookings.error}`
       : "Welcome-call bookings need the gateway, which isn't configured in this build — Scheduled can't be filled.";
+
+  return (
+    <p role="status" className="mb-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+      <Icon className={cn("mt-px h-3.5 w-3.5 shrink-0", checking && "animate-spin")} aria-hidden />
+      <span>{text}</span>
+    </p>
+  );
+}
+
+/**
+ * The same three states for Patient Intake — with one difference that matters.
+ *
+ * ⚠️ This column has a FALLBACK and the Welcome Call column does not: a failed
+ * or unfinished Calendly read leaves it showing the monday mirror's bookings
+ * (`workflow.intakeBooking`), which is a real answer, just an older and
+ * lossier one. So the sentence says what is on screen — "showing the bookings
+ * mirrored onto monday" — rather than the Welcome Call column's "Scheduled
+ * isn't filled in yet", which would be false here.
+ */
+function IntakeBookingsNotice({ bookings }: { bookings: ReturnType<typeof useCalendlyBookings> }) {
+  const checking = bookings.available && !bookings.ready && !bookings.error;
+  if (!checking && !bookings.error && bookings.available) return null;
+
+  const Icon = checking ? Loader2 : AlertTriangle;
+  const text = checking
+    ? "Checking Calendly — Scheduled is showing the bookings mirrored onto monday until it answers."
+    : bookings.available
+      ? `Couldn't read Calendly, so Scheduled is showing the bookings mirrored onto monday — a booking made under an address the board doesn't hold won't be here. ${bookings.error}`
+      : "Calendly needs the gateway, which isn't configured in this build — Scheduled is showing the bookings mirrored onto monday.";
 
   return (
     <p role="status" className="mb-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">

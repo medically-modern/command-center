@@ -7,7 +7,9 @@ import {
   lookupMany,
   MAX_LOOKUP_EMAILS,
   normalizeEmail,
+  ofKind,
   pickBooking,
+  requireKind,
   windowDates,
 } from "./calendlyPatientRules.mjs";
 
@@ -132,14 +134,14 @@ describe("pickBooking", () => {
     const picked = pickBooking([
       booking({ startTime: "2026-09-20T18:00:00Z", endTime: "2026-09-20T18:10:00Z" }),
       booking({ startTime: "2026-09-15T18:00:00Z", endTime: "2026-09-15T18:10:00Z" }),
-    ], now);
+    ], "welcome", now);
     expect(picked.startTime).toBe("2026-09-15T18:00:00Z");
   });
 
   it("keeps showing a call that is IN PROGRESS", () => {
     // The rep is most likely on it. Hiding it the moment it starts is exactly
     // when the time is worth confirming.
-    const picked = pickBooking([booking()], now);
+    const picked = pickBooking([booking()], "welcome", now);
     expect(picked.startTime).toBe("2026-09-12T18:00:00.000000Z");
   });
 
@@ -147,13 +149,13 @@ describe("pickBooking", () => {
     const picked = pickBooking([
       booking({ startTime: "2026-09-12T13:00:00Z", endTime: "2026-09-12T13:10:00Z" }),
       booking({ startTime: "2026-09-12T09:00:00Z", endTime: "2026-09-12T09:10:00Z" }),
-    ], now);
+    ], "welcome", now);
     expect(picked.startTime).toBe("2026-09-12T13:00:00Z");
   });
 
   it("is null when there is nothing", () => {
-    expect(pickBooking([], now)).toBeNull();
-    expect(pickBooking(undefined, now)).toBeNull();
+    expect(pickBooking([], "welcome", now)).toBeNull();
+    expect(pickBooking(undefined, "welcome", now)).toBeNull();
   });
 });
 
@@ -165,7 +167,7 @@ describe("lookupMany — the dashboard's batch (§5.30)", () => {
   const now = "2026-09-10T12:00:00Z";
 
   it("answers every real address once, null for nothing booked, and skips non-addresses", () => {
-    const out = lookupMany(idx, ["NejwaNegash@gmail.com ", "two@example.com", "nobody@example.com", "", "not an email", "two@example.com"], now);
+    const out = lookupMany(idx, ["NejwaNegash@gmail.com ", "two@example.com", "nobody@example.com", "", "not an email", "two@example.com"], "welcome", now);
     expect(Object.keys(out)).toEqual(["nejwanegash@gmail.com", "two@example.com", "nobody@example.com"]);
     expect(out["nejwanegash@gmail.com"].startTime).toBe("2026-09-12T18:00:00.000000Z");
     expect(out["two@example.com"].startTime).toBe("2026-09-13T15:00:00Z");
@@ -174,7 +176,62 @@ describe("lookupMany — the dashboard's batch (§5.30)", () => {
 
   it("caps the answer and tolerates a non-array", () => {
     const many = Array.from({ length: MAX_LOOKUP_EMAILS + 5 }, (_, i) => `p${i}@example.com`);
-    expect(Object.keys(lookupMany(idx, many, now)).length).toBe(MAX_LOOKUP_EMAILS);
-    expect(lookupMany(idx, undefined, now)).toEqual({});
+    expect(Object.keys(lookupMany(idx, many, "welcome", now)).length).toBe(MAX_LOOKUP_EMAILS);
+    expect(lookupMany(idx, undefined, "welcome", now)).toEqual({});
+  });
+});
+
+/**
+ * The index has held BOTH kinds since 2026-09-16 (the Patient Intake column
+ * needs Calendly too — CLAUDE.md §5.30d), so every lookup has to name one.
+ *
+ * ⚠️ The danger is not a crash, it is a plausible wrong answer: one patient can
+ * hold an intake call AND a welcome call, and a kind-blind pick would put the
+ * intake appointment under a "Call scheduled" chip on the Welcome Call page —
+ * a different call, at a different stage, with a different person on the phone.
+ * So a missing or unknown kind THROWS. A throw is a 502 with a sentence in it;
+ * a default is a wrong appointment on somebody's screen.
+ */
+describe("kinds", () => {
+  const now = "2026-09-10T12:00:00Z";
+  const both = indexByEmail([
+    booking({ kind: "welcome", startTime: "2026-09-20T18:00:00Z", endTime: "2026-09-20T18:10:00Z" }),
+    booking({ kind: "intake", startTime: "2026-09-12T14:00:00Z", endTime: "2026-09-12T14:10:00Z" }),
+  ]);
+
+  it("requires one, and refuses anything else", () => {
+    expect(requireKind("Welcome")).toBe("welcome");
+    expect(requireKind(" intake ")).toBe("intake");
+    for (const bad of [undefined, null, "", "both", "Welcome Call", 3]) {
+      expect(() => requireKind(bad)).toThrow(/kind must be one of/);
+    }
+  });
+
+  it("filters a patient's bookings to the kind asked for", () => {
+    const list = both.get("nejwanegash@gmail.com");
+    expect(list).toHaveLength(2);
+    expect(ofKind(list, "intake").map((b) => b.startTime)).toEqual(["2026-09-12T14:00:00Z"]);
+    expect(ofKind(list, "welcome").map((b) => b.startTime)).toEqual(["2026-09-20T18:00:00Z"]);
+  });
+
+  it("picks within the kind, never the patient's soonest booking overall", () => {
+    // The intake call is sooner. Asking for the welcome call must still answer
+    // the welcome call — this is the whole reason `kind` is not optional.
+    expect(pickBooking(both.get("nejwanegash@gmail.com"), "welcome", now).startTime)
+      .toBe("2026-09-20T18:00:00Z");
+    expect(pickBooking(both.get("nejwanegash@gmail.com"), "intake", now).startTime)
+      .toBe("2026-09-12T14:00:00Z");
+  });
+
+  it("answers null for a patient who has the OTHER kind booked and not this one", () => {
+    const welcomeOnly = indexByEmail([booking({ kind: "welcome" })]);
+    expect(lookupMany(welcomeOnly, ["nejwanegash@gmail.com"], "intake", now))
+      .toEqual({ "nejwanegash@gmail.com": null });
+  });
+
+  it("treats a booking with no kind as neither — never as the one being asked for", () => {
+    const untyped = indexByEmail([booking({ kind: undefined })]);
+    expect(lookupMany(untyped, ["nejwanegash@gmail.com"], "welcome", now))
+      .toEqual({ "nejwanegash@gmail.com": null });
   });
 });
