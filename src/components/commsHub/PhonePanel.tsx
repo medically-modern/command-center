@@ -407,64 +407,74 @@ export function PhonePanel({
                 <div
                   key={r.id}
                   className={cn(
-                    "group flex items-center border-b border-border/60",
+                    // The hover lives on the WRAPPER, not the inner button, or
+                    // the row stops highlighting under the download control —
+                    // which reads as the row having gone dead there.
+                    "flex items-center border-b border-border/60 hover:bg-muted/40",
                     r.key === selectedKey && "bg-muted/70",
                   )}
                 >
-                <button
-                  onClick={() => onSelectCall({ phone: r.phone, at: r.at, voicemail: r.voicemail })}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3 pr-1 text-left hover:bg-muted/40"
-                >
-                  <Initials
-                    // "" when the label is the number itself — `Initials` then
-                    // falls back to the last two digits rather than reading
-                    // "(5" out of "(815) 523-7259".
-                    name={r.source === "number" ? "" : r.label}
-                    phone={r.phone}
-                    tone={missed ? "bg-rose-500/15 text-rose-600 dark:text-rose-400" : undefined}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium" title={fmtPhone(r.phone)}>
-                      {r.label}
-                    </span>
-                    {/* ⚠️ One non-wrapping line. What happened and how long it
-                        lasted come FIRST and never clip; the number trails and
-                        truncates, because it is the least useful half once the
-                        name resolves — and it was the wrap that made this row
-                        hard to read at all. */}
-                    <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground">
-                      <Icon className={cn("h-3 w-3 shrink-0", missed && "text-rose-500")} />
-                      <span className={cn("shrink-0", missed && "text-rose-600 dark:text-rose-400")}>
-                        {callLabel(r)}
-                      </span>
-                      {r.connected && r.durationSec > 0 && (
-                        <span className="shrink-0 tabular-nums">· {mmss(r.durationSec)}</span>
-                      )}
-                      {/* The number stays visible: a rep reads back the number
-                          they are about to dial, and a list of names alone
-                          can't be checked. */}
-                      {r.source !== "number" && (
-                        <span className="truncate tabular-nums">· {fmtPhone(r.phone)}</span>
-                      )}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{listTime(r.at)}</span>
-                </button>
-                {r.recording && (
                   <button
-                    onClick={() => void saveOne(r)}
-                    disabled={!!saving[r.id] || !!bulk}
-                    className="mr-2 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted/60 hover:text-[color:var(--mm-teal)] disabled:opacity-40"
-                    title="Download recording"
-                    aria-label="Download recording"
-                  >
-                    {saving[r.id] ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Download className="h-3.5 w-3.5" />
+                    onClick={() => onSelectCall({ phone: r.phone, at: r.at, voicemail: r.voicemail })}
+                    // ⚠️ Keeps the row's original right padding when there is no
+                    // download control, so the timestamp does not sit at two
+                    // different distances from the edge depending on whether
+                    // RingCentral happened to keep that call's audio.
+                    className={cn(
+                      "flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3 text-left",
+                      r.recording ? "pr-1" : "pr-3",
                     )}
+                  >
+                    <Initials
+                      // "" when the label is the number itself — `Initials` then
+                      // falls back to the last two digits rather than reading
+                      // "(5" out of "(815) 523-7259".
+                      name={r.source === "number" ? "" : r.label}
+                      phone={r.phone}
+                      tone={missed ? "bg-rose-500/15 text-rose-600 dark:text-rose-400" : undefined}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium" title={fmtPhone(r.phone)}>
+                        {r.label}
+                      </span>
+                      {/* ⚠️ One non-wrapping line. What happened and how long it
+                          lasted come FIRST and never clip; the number trails and
+                          truncates, because it is the least useful half once the
+                          name resolves — and it was the wrap that made this row
+                          hard to read at all. */}
+                      <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground">
+                        <Icon className={cn("h-3 w-3 shrink-0", missed && "text-rose-500")} />
+                        <span className={cn("shrink-0", missed && "text-rose-600 dark:text-rose-400")}>
+                          {callLabel(r)}
+                        </span>
+                        {r.connected && r.durationSec > 0 && (
+                          <span className="shrink-0 tabular-nums">· {mmss(r.durationSec)}</span>
+                        )}
+                        {/* The number stays visible: a rep reads back the number
+                            they are about to dial, and a list of names alone
+                            can't be checked. */}
+                        {r.source !== "number" && (
+                          <span className="truncate tabular-nums">· {fmtPhone(r.phone)}</span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{listTime(r.at)}</span>
                   </button>
-                )}
+                  {r.recording && (
+                    <button
+                      onClick={() => void saveOne(r)}
+                      disabled={!!saving[r.id] || !!bulk}
+                      className="mr-2 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-background hover:text-[color:var(--mm-teal)] disabled:opacity-40"
+                      title="Download recording"
+                      aria-label="Download recording"
+                    >
+                      {saving[r.id] ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  )}
                 </div>
               );
             })}
