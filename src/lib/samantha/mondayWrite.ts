@@ -7,6 +7,7 @@
 
 import { writeStatusIndex, writeLongText, writeDropdownIds, writeDropdownLabels, writeText, writeDate, writeNumber, writeCheckbox, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, readColumnTexts, BOARD_ID, COL } from "./mondayApi";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
+import { resolvePayerIndex } from "../shared/payerLabels";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX } from "./hcpcRules";
 import type { PrimaryInsurance } from "./hcpcRules";
 import {
@@ -1224,8 +1225,23 @@ export async function sendPatientToMonday(
     });
   }
   // Primary Insurance (status column)
+  //
+  // ⚠️ Resolve the index from the LIVE Insurance board, never from a hardcoded
+  // map (2026-09-16). This send re-writes the payer it just read off the item,
+  // so a wrong index does not fail — it overwrites a correct value with another
+  // real payer and reports success. `PRIMARY_INSURANCE_INDEX` is the fallback
+  // for a board we cannot reach, and it carried exactly that hazard until this
+  // change: `United Healthcare Commercial: 7` named no label on any board, and
+  // slot 7 on this board became "Health Plans Inc (PHCS)" on 2026-09-11.
+  //
+  // ⚠️ A label neither source can resolve is SKIPPED, not guessed. On this path
+  // that is always correct: the value came off the item, so the column already
+  // holds it and writing nothing preserves it. A payer newly added on Monday
+  // lands here until it reaches the fallback map, and skipping is exactly right
+  // for it.
   if (p.primaryInsurance) {
-    const idx = PRIMARY_INSURANCE_INDEX[p.primaryInsurance as PrimaryInsurance];
+    const live = await resolvePayerIndex('insurance', p.primaryInsurance);
+    const idx = live ?? PRIMARY_INSURANCE_INDEX[p.primaryInsurance as PrimaryInsurance];
     if (idx !== undefined) {
       tasks.push({
         label: 'Primary Insurance',

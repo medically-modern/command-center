@@ -10,6 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Pencil } from "lucide-react";
+import { usePayerOptions } from "@/hooks/shared/usePayerOptions";
 import { AddressAutocomplete } from "@/components/welcomeCall/AddressAutocomplete";
 import type { AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
@@ -243,6 +244,19 @@ function DaysToOrderField({ value }: { value: string }) {
 }
 
 export function PatientInfoCard({ patient, onFieldChange }: Props) {
+  /**
+   * Primary Insurance options come from the SUBSCRIPTION board, live — its
+   * `color_mm254qxj` numbers its labels independently of every other board,
+   * so a table copied from anywhere else is wrong here (§5.33;
+   * `lib/shared/payerLabels.ts`). The index travels with the option, so the
+   * value written is always sourced from the same list the rep read.
+   */
+  const payers = usePayerOptions("subscription");
+  const primaryInsuranceOptions = payers.optionsFor(
+    PRIMARY_INSURANCE_OPTIONS,
+    patient.primaryInsurance,
+    patient.primaryInsuranceIndex,
+  );
   return (
     <div className="space-y-4">
       {/* Top row: Name + DOB + Status + Phone */}
@@ -329,7 +343,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <EditableStatusSelect
               label="Primary Insurance"
-              options={PRIMARY_INSURANCE_OPTIONS}
+              options={primaryInsuranceOptions}
               currentLabel={patient.primaryInsurance}
               editedIndex={patient.primaryInsuranceEdited}
               editedField="primaryInsuranceEdited"

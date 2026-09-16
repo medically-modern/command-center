@@ -254,7 +254,23 @@ export const PRIMARY_INSURANCE_OPTIONS: PrimaryInsurance[] = [
   "Cigna", "Humana", "Wellcare", "Midlands Choice", "MagnaCare", "UMR", "Oregon Care",
 ];
 
-/** Monday status-column index for each Primary Insurance label. */
+/**
+ * Monday status-column index for each Primary Insurance label, on the
+ * **Insurance** board (`color_mm1x157j`, board `18410601299`).
+ *
+ * ⚠️ **FALLBACK ONLY since 2026-09-16.** `samantha/mondayWrite` resolves the
+ * index from the live board (`shared/payerLabels.resolvePayerIndex`) and only
+ * consults this map when the board cannot be reached. Verified against the live
+ * `settings_str` 2026-09-16.
+ *
+ * ⚠️ The same column id on **Medical Evaluation** numbers its labels
+ * differently — 7 and 108 are swapped there. This map is meaningful against the
+ * Insurance board and nothing else; see `lib/shared/payerLabels.ts`.
+ *
+ * ⚠️ `United Healthcare Commercial: 7` was removed on 2026-09-16. It was a label
+ * on no board, and slot 7 on this board is now `Health Plans Inc (PHCS)`, so the
+ * entry had gone from a silent no-op to a wrong-payer write.
+ */
 export const PRIMARY_INSURANCE_INDEX: Record<PrimaryInsurance, number> = {
   "BCBS TN": 0,
   "BCBS FL": 1,
@@ -262,7 +278,6 @@ export const PRIMARY_INSURANCE_INDEX: Record<PrimaryInsurance, number> = {
   "MagnaCare": 3,
   "Oregon Care": 4,
   "UMR": 6,
-  "United Healthcare Commercial": 7,
   "Medicare A&B": 8,
   "NYSHIP": 9,
   "United Commercial": 10,

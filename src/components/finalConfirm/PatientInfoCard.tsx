@@ -1,4 +1,5 @@
 import type { Patient } from "@/lib/finalConfirm/workflow";
+import { usePayerOptions } from "@/hooks/shared/usePayerOptions";
 import {
   GENDER_OPTIONS,
   PRIMARY_INSURANCE_OPTIONS,
@@ -674,6 +675,27 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
   const fieldSeverity = useMemo(() => severityByField(findings), [findings]);
 
   /**
+   * Primary Insurance options come from the WELCOME CALL board, live.
+   *
+   * ⚠️ This select WRITES the column (`mondayWrite` sends
+   * `{index: primaryInsuranceIndex}`), and the index it hands back is the one
+   * attached to the option the rep chose — so a live list yields a live index
+   * and the fallback yields the fallback's. They cannot be sourced from
+   * different places, which is the property that stops a stale table writing
+   * a real-but-wrong payer (§5.33; `lib/shared/payerLabels.ts`).
+   *
+   * The patient's own value is re-admitted when neither list offers it, or a
+   * payer added on Monday renders as the empty placeholder and the next save
+   * silently writes whatever is picked instead.
+   */
+  const payers = usePayerOptions("welcomeCall");
+  const primaryInsuranceOptions = payers.optionsFor(
+    PRIMARY_INSURANCE_OPTIONS,
+    patient.primaryInsurance,
+    patient.primaryInsuranceIndex,
+  );
+
+  /**
    * Medicare A&B MAC jurisdiction pill, beside Primary Insurance
    * (Brandon, 2026-09-02 — flagged as temporary; delete this block, the
    * `badge` prop and the `medicareJurisdiction` import together).
@@ -987,11 +1009,11 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
           <SelectField
             label="Primary Insurance"
             icon={<Shield className="h-4 w-4" />}
-            options={PRIMARY_INSURANCE_OPTIONS}
+            options={primaryInsuranceOptions}
             value={patient.primaryInsurance}
             onChange={(index) => {
               onFieldChange("primaryInsuranceIndex", index);
-              const opt = PRIMARY_INSURANCE_OPTIONS.find((o) => o.index === index);
+              const opt = primaryInsuranceOptions.find((o) => o.index === index);
               if (opt) onFieldChange("primaryInsurance", opt.label);
             }}
             badge={macPill && (

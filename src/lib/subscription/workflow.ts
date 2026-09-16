@@ -229,6 +229,17 @@ export const SUPPLIES_TYPE_OPTIONS = [
 // (`lib/shared/statusOptions.ts`) and disables the control until they load.
 // Do not reintroduce a hardcoded list here — see CLAUDE.md and that module.
 
+/**
+ * ⚠️ **FALLBACK ONLY.** The picker reads the Subscription board live through
+ * `hooks/shared/usePayerOptions` (2026-09-16); this list is what the page
+ * degrades to when the board cannot be reached, so it must never render an empty
+ * select. Verified against `color_mm254qxj`'s live `settings_str` 2026-09-16.
+ *
+ * `United Low-Cost` (106) and `Health Plans Inc (PHCS)` (159) were on the board
+ * and missing here — a rep could read either on a patient but never set or
+ * correct one, the same gap "Not Serving" once had on a product dropdown
+ * (§5.2). Added 2026-09-16 with their live indexes.
+ */
 export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 0, label: "Medicare A&B" },
   { index: 14, label: "Aetna Medicare" },
@@ -259,6 +270,8 @@ export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 7, label: "Fidelis Low-Cost" },
   { index: 8, label: "Anthem BCBS Medicaid (JLJ)" },
   { index: 9, label: "Anthem BCBS Low-Cost (JLJ)" },
+  { index: 106, label: "United Low-Cost" },
+  { index: 159, label: "Health Plans Inc (PHCS)" },
 ];
 
 export const SECONDARY_INSURANCE_OPTIONS = [

@@ -219,6 +219,18 @@ export const GENDER_OPTIONS = [
   { index: 2, label: "Unknown" },
 ];
 
+/**
+ * ⚠️ **FALLBACK ONLY.** The picker reads the Welcome Call board live through
+ * `hooks/shared/usePayerOptions` (2026-09-16); this list is what the page
+ * degrades to when the board cannot be reached, so it must never render an empty
+ * select. Verified against `color_mm1x157j`'s live `settings_str` 2026-09-16.
+ *
+ * ⚠️ This stage's select is the one that WRITES the column
+ * (`mondayWrite.ts` → `{index: p.primaryInsuranceIndex}`), which is why index
+ * **7** reading `United Healthcare Commercial` — a label on no board — stopped
+ * being a harmless no-op the moment "Health Plans Inc (PHCS)" was created into
+ * slot 7 on 2026-09-11. See `lib/shared/payerLabels.ts`.
+ */
 export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 0, label: "BCBS TN" },
   { index: 1, label: "BCBS FL" },
@@ -226,7 +238,7 @@ export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 3, label: "MagnaCare" },
   { index: 4, label: "Oregon Care" },
   { index: 6, label: "UMR" },
-  { index: 7, label: "United Healthcare Commercial" },
+  { index: 7, label: "Health Plans Inc (PHCS)" },
   { index: 8, label: "Medicare A&B" },
   { index: 9, label: "NYSHIP" },
   { index: 10, label: "United Commercial" },
