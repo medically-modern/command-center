@@ -24,9 +24,11 @@ const FOLLOWER_COLS: { name: string; email: string }[] = [
   { name: "text_mm4vhnws", email: "email_mm4vphes" },
 ];
 export const MAX_FOLLOWERS = FOLLOWER_COLS.length;
-// Clinicals method ("MN Exchange?" status): Parachute / Fax / Email.
+// Clinicals method ("MN Exchange?" status): Parachute / Fax / Email / Dashboard.
+// NOTE: this column orders its labels differently from the patient boards'
+// Clinicals Method — both put Dashboard on 3, the rest do not line up.
 const COL_METHOD = "color_mm1vr8rd";
-const METHOD_INDEX: Record<string, number> = { Parachute: 0, Fax: 1, Email: 2 };
+const METHOD_INDEX: Record<string, number> = { Parachute: 0, Fax: 1, Email: 2, Dashboard: 3 };
 // Contact fields for creating a new provider / a location profile.
 const COL_DOC_ADDRESS = "text_mkzc21ns";
 const COL_DOC_PHONE = "phone";

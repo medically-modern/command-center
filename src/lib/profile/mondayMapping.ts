@@ -239,7 +239,7 @@ export const DOCTOR_STATUS_INDEX: Record<string, number> = {
 };
 
 export const CLINICALS_METHOD_INDEX: Record<string, number> = {
-  "Fax": 0, "Parachute": 1, "Email": 2,
+  "Fax": 0, "Parachute": 1, "Email": 2, "Dashboard": 3,
 };
 
 export const REFERRAL_TYPE_INDEX: Record<string, number> = {

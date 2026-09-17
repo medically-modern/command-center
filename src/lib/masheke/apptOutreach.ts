@@ -58,6 +58,7 @@
 import type { Patient } from "./workflow";
 import { addBusinessDaysIso, addCalendarDaysIso, etToday } from "./etDate";
 import { RETURNED_TO_QUEUE_TAG } from "./proposedStuck";
+import { isParachuteRoleMethod } from "./chaseMethods";
 
 // ---------------------------------------------------------------------------
 // Outcomes
@@ -551,18 +552,17 @@ export function apptProposedStuckReason(opts: { slot: 1 | 2 | 3; note: string })
 
 /**
  * Which chase role owns this patient, by the same rule as §5.9 — Clinicals
- * Method `Parachute` or `Email` ⇒ the Email & Parachute role, everything else
+ * Method `Parachute`, `Email` or `Dashboard` ⇒ the Email, Parachute &
+ * Dashboards role, everything else
  * (Fax, blank) ⇒ Fax. Used to label the return and to place the patient on the
  * right Oversight row.
  */
 export function chaseRoleFor(clinicalsMethod: string | undefined): "chaseFax" | "chaseParachute" {
-  return clinicalsMethod === "Parachute" || clinicalsMethod === "Email"
-    ? "chaseParachute"
-    : "chaseFax";
+  return isParachuteRoleMethod(clinicalsMethod) ? "chaseParachute" : "chaseFax";
 }
 
 export function chaseRoleLabel(clinicalsMethod: string | undefined): string {
   return chaseRoleFor(clinicalsMethod) === "chaseParachute"
-    ? "Chase Clinicals — Email & Parachute"
+    ? "Chase Clinicals — Email, Parachute & Dashboards"
     : "Chase Clinicals — Fax";
 }

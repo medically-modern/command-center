@@ -15,7 +15,8 @@
  *   benefits/submitAuth/authOutstanding — not escalated AND Follow Up !== "Follow Up"
  *   evaluate/sendRequest/confirmReceipt/chaseFax/chaseParachute —
  *     not escalated AND Next Action Date blank/today/past.
- *     Chase split by Clinicals Method: Parachute OR Email → chaseParachute,
+ *     Chase split by Clinicals Method: Parachute, Email OR Dashboard →
+ *     chaseParachute,
  *     anything else (Fax/blank) → chaseFax (CLAUDE.md §5.9 — Email rides
  *     with Parachute). chaseBenefits kept as the combined legacy total.
  *   welcomeCall — Escalation index not 0 (manager) and not 2 (proposed stuck)
@@ -303,7 +304,7 @@ async function countMashekeStages(todayStr) {
     else if (stage === "Confirm Receipt") roleId = "confirmReceipt";
     else if (stage === "Chase Clinicals") {
       const cm = item.cols[MESH_METHOD_COL] ?? "";
-      roleId = cm === "Parachute" || cm === "Email" ? "chaseParachute" : "chaseFax";
+      roleId = ["Parachute", "Email", "Dashboard"].includes(cm) ? "chaseParachute" : "chaseFax";
     }
     // Doctor Appointments (2026-08-03) — patient outreach when the provider
     // requires a new visit. Must mirror useRoleCounts + the other baseline

@@ -89,6 +89,7 @@ export const CLINICALS_METHOD_OPTS: StatusOption[] = [
   { label: "Fax", index: 0 },
   { label: "Parachute", index: 1 },
   { label: "Email", index: 2 },
+  { label: "Dashboard", index: 3 },
 ];
 
 // MN Attempts

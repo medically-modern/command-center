@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import type { Patient } from "@/lib/masheke/workflow";
+import { isParachuteRoleMethod } from "@/lib/masheke/chaseMethods";
 import { ChaseClinicalsPanel } from "@/components/masheke/ChaseClinicalsPanel";
 import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
 import { SendRequestHeaderCard } from "@/components/masheke/SendRequestHeaderCard";
@@ -60,8 +61,8 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
       allChasePatients.filter((p) =>
         p.id === deepLinkedId ||
         (method === "parachute"
-          ? p.clinicalsMethod === "Parachute" || p.clinicalsMethod === "Email"
-          : p.clinicalsMethod !== "Parachute" && p.clinicalsMethod !== "Email"),
+          ? isParachuteRoleMethod(p.clinicalsMethod)
+          : !isParachuteRoleMethod(p.clinicalsMethod)),
       ),
     [allChasePatients, method, deepLinkedId],
   );
@@ -124,7 +125,7 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
                   <h1 className="text-2xl font-bold flex items-center gap-2.5">
-                    Chase Clinicals — {method === "parachute" ? "Email & Parachute" : "Fax"}
+                    Chase Clinicals — {method === "parachute" ? "Email, Parachute & Dashboards" : "Fax"}
                     {isManager && (
                       <span className="text-[11px] font-semibold uppercase tracking-wider bg-white/15 border border-white/25 rounded-full px-2.5 py-0.5">
                         Manager · Escalated
@@ -198,8 +199,7 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
                     editHint="Edits are saved to Monday when you complete the chase (or via the Save button above)."
                     fullDetails
                     showClinicalsMethod={
-                      method === "parachute" &&
-                      (selected.clinicalsMethod === "Parachute" || selected.clinicalsMethod === "Email")
+                      method === "parachute" && isParachuteRoleMethod(selected.clinicalsMethod)
                     }
                   />
                   <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} managerMode={isManager} roleMethod={method} />

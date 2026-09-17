@@ -10,6 +10,7 @@ import { stampReturnedToQueue, stampReturnedToManager, stampApprovedStuck, stamp
 import { buildAttemptRollup, type AttemptResetScope } from "../masheke/attemptRollup";
 import { assertTextLikeFits } from "../shared/longText";
 import { MN_ATTEMPTS_INDEX } from "../masheke/mondayMapping";
+import { PARACHUTE_ROLE_METHODS } from "../masheke/chaseMethods";
 import { userInitials } from "../shared/auth";
 const MONDAY_API_VERSION = "2024-10";
 
@@ -471,7 +472,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "chase-email-parachute",
-    title: "Chase Clinicals — Email & Parachute",
+    title: "Chase Clinicals — Email, Parachute & Dashboards",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
     drilldownCols: CHASE_APPT_COLS,
@@ -529,7 +530,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "chase-email-parachute-escalations",
-    title: "Chase Clinicals — Email & Parachute (Escalated)",
+    title: "Chase Clinicals — Email, Parachute & Dashboards (Escalated)",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
     drilldownCols: CHASE_COLS,
@@ -570,7 +571,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "chase-email-parachute-escalated-3rd",
-    title: "Chase Clinicals — Email & Parachute (Escalated · 3rd)",
+    title: "Chase Clinicals — Email, Parachute & Dashboards (Escalated · 3rd)",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
     drilldownCols: CHASE_COLS,
@@ -706,7 +707,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "chase-email-parachute-escalated-merged",
-    title: "Chase Clinicals — Email & Parachute (Escalated)",
+    title: "Chase Clinicals — Email, Parachute & Dashboards (Escalated)",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
     rowOf: "chase-email-parachute",
@@ -791,7 +792,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "chase-email-parachute-proposed-stuck",
-    title: "Chase Clinicals — Email & Parachute (Proposed Stuck)",
+    title: "Chase Clinicals — Email, Parachute & Dashboards (Proposed Stuck)",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
     rowOf: "chase-email-parachute",
@@ -1780,8 +1781,8 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // Doctor Appointments row instead — otherwise they'd be counted twice, and
   // they'd sit in the chase day buckets drifting toward "30+ Days" while
   // legitimately parked.
-  "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
-  "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }, { colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS, not: true }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }, { colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   // Doctor Appointments — one sub-stage, three states, one per manager column.
   // Between them they cover EVERY escalation value, which is what keeps an
   // outreach patient visible in all of them (§7: a state matching no chart is
@@ -1838,8 +1839,8 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // in the rep's — the same shape as the Insurance ">5 days" bar, which has
   // keyed on the label since it was written.
   "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
-  "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
-  "chase-email-parachute-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1wz0vg", value: "Escalate" }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS, not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-email-parachute-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS }, { colId: "color_mm1wz0vg", value: "Escalate" }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   // 3rd+ Attempt escalations = same stage AND Escalation = Manager Escalation
   // Required (color_mm1x7997 index 0) AND Evaluation Counter ≥ 3. The Evaluate
   // SOP escalates at counter ≥ 3 and the patient stays in Evaluate MN, so the
@@ -1851,8 +1852,8 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "confirm-receipt-escalated-3rd":         { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
   // The chase pair drops appointment-waiting patients, same as every other
   // chase chart — they are on the Doctor Appointments row instead.
-  "chase-fax-escalated-3rd":               { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
-  "chase-email-parachute-escalated-3rd":   { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-fax-escalated-3rd":               { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS, not: true }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-email-parachute-escalated-3rd":   { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   // ── Manager Intervention POPULATION (Brandon, 2026-08-12) ──
   // Each merged chart draws two series — Attempt 4+ and 3rd+ round — and those
   // two say WHY a patient is on a manager's desk. They do not, between them,
@@ -1872,8 +1873,8 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // The chase pair keeps the §5.9 method split and drops patients waiting on a
   // booked visit — `doctor-appointments-manager` claims those, same as it does
   // for the two series.
-  "chase-fax-escalated-merged":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
-  "chase-email-parachute-escalated-merged": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-fax-escalated-merged":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS, not: true }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-email-parachute-escalated-merged": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   // ── Insurance Processor Overview (column 1) ──
   // NON-ESCALATED ONLY (Josh 2026-07-30): this column is the processors' own
   // working queue, so a patient flagged for a manager — either level — belongs
@@ -1906,8 +1907,8 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "confirm-receipt-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2] }] },
   // The chase pair drops appointment-waiting patients — `doctor-appointments-final`
   // claims them instead, so they aren't on two rows of the same column.
-  "chase-fax-proposed-stuck":       { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [2] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
-  "chase-email-parachute-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [2] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-fax-proposed-stuck":       { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS, not: true }, { colId: "color_mm1x7997", index: [2] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-email-parachute-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: PARACHUTE_ROLE_METHODS }, { colId: "color_mm1x7997", index: [2] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   // Benefits check-failed (Final Decisions): still at Benefits, Escalation
   // Required, and at least one universal check failed on the board.
   // Final Decisions: any Benefits item flagged Final Escalation Required —

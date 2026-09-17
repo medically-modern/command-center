@@ -537,7 +537,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
         <div><div className="flabel">Email</div><input type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
         <div className="full"><div className="flabel">Method</div>
           <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
-            <option>Fax</option><option>Parachute</option><option>Email</option>
+            <option>Fax</option><option>Parachute</option><option>Email</option><option>Dashboard</option>
           </select>
         </div>
       </div>

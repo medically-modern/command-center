@@ -50,9 +50,10 @@ export const ROLES: RoleConfig[] = [
   { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck", route: "/evaluate"         },
   { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: "/send-request"     },
   { id: "confirmReceipt",  label: "Confirm Receipt",    color: "bg-emerald-500", icon: "CheckCircle",    route: "/confirm-receipt"  },
-  // Chase Clinicals split into two roles (June 2026): fax (Fax/blank) and Email & Parachute
+  // Chase Clinicals split into two roles (June 2026): fax (Fax/blank) and Email,
+  // Parachute & Dashboards (Dashboard joined 2026-09-17 — lib/masheke/chaseMethods.ts)
   { id: "chaseFax",        label: "Chase Clinicals — Fax",       color: "bg-amber-500",  icon: "PhoneCall", route: "/chase-fax"       },
-  { id: "chaseParachute",  label: "Chase Clinicals — Email & Parachute", color: "bg-amber-600",  icon: "Send",      route: "/chase-parachute" },
+  { id: "chaseParachute",  label: "Chase Clinicals — Email, Parachute & Dashboards", color: "bg-amber-600",  icon: "Send",      route: "/chase-parachute" },
   { id: "doctorAppointments", label: "Doctor Appointments", color: "bg-yellow-600", icon: "CalendarClock", route: "/doctor-appointments" },
   { id: "benefits",        label: "Benefits",           color: "bg-pink-500",    icon: "HeartPulse",     route: "/benefits"         },
   { id: "submitAuth",      label: "Submit Auth",        color: "bg-indigo-500",  icon: "FileCheck",      route: "/submit-auth"      },

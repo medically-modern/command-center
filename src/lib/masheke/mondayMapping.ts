@@ -85,8 +85,8 @@ export function isProposedStuckIndex(index: number | null | undefined): boolean 
   return index === ESCALATION_INDEX.finalRequired;
 }
 
-// Clinicals Method: 0=Fax, 1=Parachute, 2=Email
-export const CLINICALS_METHOD_INDEX = { fax: 0, parachute: 1, email: 2 } as const;
+// Clinicals Method: 0=Fax, 1=Parachute, 2=Email, 3=Dashboard
+export const CLINICALS_METHOD_INDEX = { fax: 0, parachute: 1, email: 2, dashboard: 3 } as const;
 
 // Blocked: 0=Blocked
 // Follow Up: 1=Follow Up (index 1 = "Done" label, repurposed)

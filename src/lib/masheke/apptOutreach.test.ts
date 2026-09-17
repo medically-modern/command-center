@@ -277,7 +277,7 @@ describe("which chase role a patient returns to", () => {
   });
 
   it("labels the return with the role the patient came from", () => {
-    expect(chaseRoleLabel("Email")).toBe("Chase Clinicals — Email & Parachute");
+    expect(chaseRoleLabel("Email")).toBe("Chase Clinicals — Email, Parachute & Dashboards");
     expect(chaseRoleLabel("Fax")).toBe("Chase Clinicals — Fax");
   });
 });

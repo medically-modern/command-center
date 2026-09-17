@@ -80,8 +80,9 @@ import { getIdToken } from "@/lib/shared/auth";
 import { ESCALATION_INDEX, MN_ATTEMPTS_INDEX } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
-import { AlertTriangle, Check, CheckCircle2, ChevronRight, FileText, Loader2, Phone, Send } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ChevronRight, ExternalLink, FileText, Loader2, Phone, Send } from "lucide-react";
 import { CalendarClock } from "lucide-react";
+import { DISTRICT_ENDOCRINE_DASHBOARD_URL } from "@/lib/shared/partnerDashboard";
 import { FileList, LoadingRow, MmStep } from "@/components/masheke/mmKit";
 import { MissingChecklist } from "@/components/masheke/MissingChecklist";
 import { MethodBar } from "@/components/masheke/MethodBar";
@@ -607,6 +608,38 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
                 className="w-full rounded-xl border px-4 py-3 text-sm leading-relaxed bg-background resize-y focus:outline-none placeholder:text-muted-foreground/50"
                 style={{ borderColor: "var(--mm-card-border)" }}
               />
+
+              {/* Dashboard method — the request is sent and chased on the
+                  partner's own dashboard, so there is no fax or email to
+                  re-send; the affordance is a link out (see
+                  lib/shared/partnerDashboard.ts for why it is the roster and
+                  not a per-patient link).
+                  ⚠️ Keyed on the PATIENT's clinicals method, never on
+                  `effectiveRole`: Dashboard shares the Email, Parachute &
+                  Dashboards role with Parachute and Email, so keying on the
+                  role would change what THOSE patients see. */}
+              {patient.clinicalsMethod === "Dashboard" && (
+                <div
+                  className="mt-4 rounded-xl border px-4 py-3.5"
+                  style={{ borderColor: "var(--mm-card-border)" }}
+                >
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                    Chase on the partner dashboard
+                  </p>
+                  <a
+                    href={DISTRICT_ENDOCRINE_DASHBOARD_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm bg-[color:var(--mm-teal)] hover:opacity-90 transition-opacity"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open District Endocrine dashboard
+                  </a>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Sign in, then find {patient.name || "the patient"} on the roster.
+                  </p>
+                </div>
+              )}
 
               {/* Optional re-send (fax role only) — re-fax the request while chasing */}
               {effectiveRole === "fax" && (

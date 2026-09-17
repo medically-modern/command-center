@@ -39,6 +39,7 @@ import { GROUPS as SAM_GROUPS, BOARD_ID as SAM_BOARD_ID, hasToken as samHasToken
 import { GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
 import { MONDAY_API_URL, mondayIdentityHeaders } from "@/lib/shared/mondayEndpoint";
 import { etToday } from "@/lib/masheke/etDate";
+import { isParachuteRoleMethod } from "@/lib/masheke/chaseMethods";
 
 const MASHEKE_BOARD_ID = 18406060017;
 
@@ -512,7 +513,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             if (stage === "Evaluate MN") roleId = "evaluate";
             else if (stage === "Send Request") roleId = "sendRequest";
             else if (stage === "Confirm Receipt") roleId = "confirmReceipt";
-            else if (stage === "Chase Clinicals") { const cm = item.cols[MESH_METHOD_COL]; roleId = cm === "Parachute" || cm === "Email" ? "chaseParachute" : "chaseFax"; }
+            else if (stage === "Chase Clinicals") { const cm = item.cols[MESH_METHOD_COL]; roleId = isParachuteRoleMethod(cm) ? "chaseParachute" : "chaseFax"; }
             // Doctor Appointments (2026-08-03). WITHOUT this branch the new
             // sub-stage falls through the `if (!roleId) continue` below and the
             // patient is counted NOWHERE — no error, just invisible. Same
