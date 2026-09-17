@@ -1791,7 +1791,13 @@ function ProfileBody(p: BodyProps) {
               <div className="work-col">
                 <section className="card step-card">
                   <header className="step-head"><span className="step-num">4</span><h2>Select Correct Provider</h2></header>
-                  <DoctorSection patient={pt} received={rcv} onUpdate={p.onUpdate} clinicLabels={p.clinicLabels} onClinicSelect={p.onClinicSelect} />
+                  {/* ⚠️ `key` is correctness, not tidiness: this component holds the doctor
+                      search, the picked profile and that profile's Doctor DB notes in
+                      its own state, and none of it reset on a patient switch — so a
+                      rep could read, and "Save to Doctor DB", the PREVIOUS patient's
+                      doctor. §9's notes-box rule. (The prefill effect also resets on
+                      `pt.id`, so the pane is right either way.) */}
+                  <DoctorSection key={pt.id} patient={pt} received={rcv} onUpdate={p.onUpdate} clinicLabels={p.clinicLabels} onClinicSelect={p.onClinicSelect} />
                 </section>
               </div>
             </div>

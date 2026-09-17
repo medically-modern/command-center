@@ -3816,7 +3816,12 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       on the left are untouched by it (§6.0). */}
                   <Card step={3} title="Select Correct Provider" tone="lead">
                   <div className="pf-root">
+                    {/* ⚠️ `key` is correctness — see the ProfilePage mount: this
+                        component's doctor search, picked profile and that
+                        profile's Doctor DB notes did not reset on a patient
+                        switch. §9's notes-box rule. */}
                     <DoctorSection
+                      key={selected.id}
                       patient={selected}
                       onUpdate={edit}
                       clinicLabels={clinicLabels}

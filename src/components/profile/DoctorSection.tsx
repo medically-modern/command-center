@@ -4,7 +4,10 @@ import type { Patient } from "@/lib/profile/workflow";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { phoneToState } from "@/lib/profile/areaCodeState";
 import { addressWarning } from "@/lib/profile/workflow";
-import { doctorFaxMissing } from "@/lib/profile/doctorFaxRequired";
+import { doctorFaxGap } from "@/lib/profile/doctorFaxRequired";
+import {
+  prefillLocation, prefillNpi, prefillSelection, prefillTerm,
+} from "@/lib/profile/doctorPrefill";
 import {
   searchDoctors, saveDoctorNotes, saveDoctorFollowers, saveDoctorLocation,
   createDoctorItem, MAX_FOLLOWERS, type DoctorRecord, type OrderFollower,
@@ -72,8 +75,23 @@ const emptyForm: LocForm = { clinic: "", phone: "", address: "", addrLat: null, 
  *  picks the exact PROFILE, never an NPI-merged blend. */
 const profileKey = (r: { name: string; npi: string }) => `${norm(r.name)}|${r.npi}`;
 
+/**
+ * NPI → the Doctor DB records for it, shared by every mount for the life of the
+ * tab. Rules this exists to satisfy (INCIDENT_2026-08-20):
+ *  - one lookup per NPI, not per render and not on a timer;
+ *  - a rep clicking between two patients and back re-asks nothing;
+ *  - ⚠️ a FAILED lookup is not cached, so re-opening the patient retries. A
+ *    cached failure would pin the pane blank for the session with nothing
+ *    erroring — §5.28's `fetchDirectoryNames` lesson.
+ * A MISS (a real "this NPI is not in the DB") IS cached: that is an answer, and
+ * re-asking it on every patient switch is the waste the cache exists to stop.
+ */
+const prefillCache = new Map<string, DoctorRecord[]>();
+
 export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, onClinicSelect }: Props) {
-  // ── Doctor DB search — starts blank; the rep searches & picks explicitly ──
+  // ── Doctor DB search. It opens on the doctor the patient's record already
+  //    names (the prefill effect below, §5.19c); with no usable NPI the rep
+  //    searches and picks explicitly, because a name is not an identity. ──
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<DoctorRecord[]>([]);
   const [searching, setSearching] = useState(false);
@@ -81,6 +99,16 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const searchWrapRef = useRef<HTMLDivElement>(null);
+  /** The prefill sets `term` to the selected doctor's name so the box shows who
+   *  is selected. ⚠️ That must NOT re-run the debounced search: `runSearch`
+   *  empties `results` when Monday fails, which would blank the card the
+   *  prefill had just filled. A card that appears and then vanishes reads as
+   *  broken; a rep who picked the doctor themselves would simply pick again. */
+  const skipSearchRef = useRef(false);
+  /** Which patient the prefill has run for. Keyed on the id so the pane is
+   *  correct even without the `key` its callers now pass (§9's notes-box rule —
+   *  this component's state used to survive a sidebar click outright). */
+  const prefilledForRef = useRef<string | null>(null);
 
   // ── Parachute order-count (per NPI) + name-search panel ──
   const [count, setCount] = useState<number | null>(null);
@@ -118,6 +146,8 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
   // Debounced search as the rep types.
   useEffect(() => {
     if (locMode) return;
+    // One skipped cycle after the prefill named the selected doctor (above).
+    if (skipSearchRef.current) { skipSearchRef.current = false; return; }
     const id = setTimeout(() => { runSearch(term); }, 300);
     return () => clearTimeout(id);
   }, [term, locMode]);
@@ -130,6 +160,97 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  /**
+   * ── Open on the doctor the patient's record already names ──
+   * Josh, 2026-09-17 (Mark MECHeal): *"his doctor info isnt showing up in the
+   * ui cause it auto showed up from the form, it should select the doctor in
+   * the ui"*. Rules + the measurement: `lib/profile/doctorPrefill.ts`. In
+   * short — 37 of the 41 live worked patients carry a Doctor NPI, and this
+   * pane opened blank in front of every one of them.
+   *
+   * ⚠️⚠️ **IT NEVER CALLS `onUpdate`.** `pickProfile` does, and that patches
+   * the patient from the Doctor DB's values, so an automatic pick would
+   * silently overwrite the doctor the referral named — the exact hazard §5.20
+   * records for this component. The rep's own click stays the only thing that
+   * copies DB values onto the patient; this only ever SHOWS.
+   * ⚠️ NPI only, and only when it resolves to ONE profile. A name fills the
+   * search box so the results are on screen, and selects nobody.
+   */
+  useEffect(() => {
+    if (prefilledForRef.current === pt.id) return;
+    prefilledForRef.current = pt.id;
+
+    // Everything below is the previous patient's. Clear it whether or not the
+    // caller keyed this component, so a sidebar click can never leave one
+    // patient's doctor — or their Doctor DB notes, which "Save to Doctor DB"
+    // would then write — on another patient's pane.
+    setOpen(false);
+    setResults([]);
+    setSelectedKey(null);
+    setSelectedItemId(null);
+    setNotes("");
+    setFollowers([]);
+    setCount(null);
+    setEditingInfo(false);
+    setLocMode(null);
+    setParaOpen(false);
+    setParaSel(null);
+    setParaResults([]);
+    setParaQuery("");
+    setParaError(null);
+    setParaTerm(pt.doctorName || "");
+
+    const npi = prefillNpi(pt);
+    if (!npi) {
+      // No usable NPI: put the name in the box so the results are ready, and
+      // let the rep pick. A name is not an identity.
+      setTerm(prefillTerm(pt));
+      return;
+    }
+
+    let live = true;
+    const apply = (recs: DoctorRecord[]) => {
+      if (!live || prefilledForRef.current !== pt.id) return; // a later patient won
+      const key = prefillSelection(recs, npi);
+      if (!key) {
+        // In the DB under several name spellings, or not in it at all. Show the
+        // name in the box and leave the choice alone.
+        setTerm(prefillTerm(pt));
+        if (recs.length) setResults(recs);
+        return;
+      }
+      const chosen = recs.filter((r) => profileKey(r) === key);
+      setResults(recs);
+      setSelectedKey(key);
+      skipSearchRef.current = true;
+      setTerm(displayName(chosen[0].name));
+      const locId = prefillLocation(recs, key);
+      if (locId) {
+        // Display-only: this is what makes the doctor's notes and order
+        // followers readable (the pane greys them out until a location is
+        // picked) and it is deliberately NOT `pickProfile`, which writes.
+        const loc = chosen.find((r) => r.itemId === locId);
+        if (loc) { setSelectedItemId(loc.itemId); setNotes(loc.notes); setFollowers(loc.followers); }
+      }
+    };
+
+    const cached = prefillCache.get(npi);
+    if (cached) { apply(cached); return () => { live = false; }; }
+    searchDoctors(npi)
+      .then((recs) => { prefillCache.set(npi, recs); apply(recs); })
+      // ⚠️ Not cached, so re-opening the patient retries. A cached failure
+      // would pin this pane blank for the session with nothing erroring.
+      .catch(() => { if (live && prefilledForRef.current === pt.id) setTerm(prefillTerm(pt)); });
+    return () => { live = false; };
+    // ⚠️ The PATIENT ID is the whole dependency, deliberately. `pt` is rebuilt
+    // on every keystroke by the page's overlay, so depending on the object (or
+    // on the doctor fields, which the rep edits right here) would re-run this
+    // mid-typing and reset the pane — INCIDENT_2026-08-20's rule 2, with a
+    // state reset attached. The fields are read at run time instead, and the
+    // ref above makes any re-run for the same patient a no-op.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- id only; see above
+  }, [pt.id]);
 
   // Dropdown entries — one per PROFILE (distinct name spelling + NPI). Two
   // spellings under the same NPI are two separate, explicitly-selectable rows.
@@ -249,6 +370,9 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
     finally { setParaLoading(false); }
   };
 
+  // Why the fax is short, if it is — read once so the banner and any future
+  // consumer here cannot disagree about it.
+  const faxGap = doctorFaxGap(pt);
   const phoneState = phoneToState(pt.doctorPhone);
   // Area code from the doctor's phone → state; matching-state candidates are
   // grouped at the top (with the "matches phone area code" header), the rest
@@ -578,11 +702,23 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
             {/* ⚠️ The same call the two readiness checklists make
                 (lib/profile/doctorFaxRequired.ts), so this banner's own claim —
                 "it blocks send-off" — is true on every page it renders on. It
-                was not, on the intake page, until 2026-09-17. */}
-            {doctorFaxMissing(pt) && (
+                was not, on the intake page, until 2026-09-17.
+                ⚠️ BLANK and MALFORMED get different sentences. "Add a fax" is
+                wrong for a field already holding `smweissoffice@gmail.com` (a
+                live row): the rep sees a filled box and a message asking them
+                to fill it, and concludes the page is broken. */}
+            {faxGap && (
               <div className="err-banner" style={{ marginTop: 12 }}>
-                <div className="et">Method is Fax — no fax on file</div>
-                <div className="ed">Add a fax to the selected location (Edit selected location); it blocks send-off.</div>
+                <div className="et">
+                  {faxGap === "blank"
+                    ? "Method is Fax — no fax on file"
+                    : "Method is Fax — that isn't a fax address"}
+                </div>
+                <div className="ed">
+                  {faxGap === "blank"
+                    ? <>Add a fax to the selected location (Edit selected location); it blocks send-off.</>
+                    : <>“{pt.doctorFax}” can’t be faxed — it has to be a <b>{`<number>${RCFAX_SUFFIX}`}</b> address. Replace it on the selected location (Edit selected location); it blocks send-off.</>}
+                </div>
               </div>
             )}
           </div>

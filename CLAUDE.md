@@ -1687,25 +1687,116 @@ to read past it. The banner, both checklists and the rule are now **one call**
 (`doctorFaxMissing` / `faxMethodChosen` + `hasDoctorFax`); `doctorFaxGateWiring.test.ts` scans all
 three files and fails if the condition is re-inlined anywhere.
 ⚠️ **A BLANK Clinicals Method is deliberately NOT caught** — Brandon's wording is "if method is
-fax", and the measurement is the argument. Live board, 2026-09-17, over the four live groups (78
-rows): **3** carry `Fax` (Simon Spitzer, Melissa Grau, Jeremy Bullimore) and **every one already
-has a fax number**, so the new row blocks nobody the day it ships; **~36** carry a blank method,
-nearly all of them New Form — Completed rows with no doctor picked yet. Widening to blank would
-turn a rule that blocks nobody into one that blocks three dozen patients at once. It is still
-worth knowing that §5.9 routes a blank method to the **fax** chase queue — `ProfilePage`'s own
-"Doctor selected" note already records that gap — so widening is a DECISION with a population
-behind it, not a tidy-up.
-⚠️ **Presence, never FORMAT.** The column is an EMAIL column holding `<digits>@rcfax.com` (§5.28);
-judging the shape needs the live-board audit `cardinalAddress` got before anyone could pick a
-severity, which is the same line §5.32b draws for the blank doctor phone.
+fax", and the measurement is the argument. ⚠️ **Note the status rule takes the label INDEX as a
+NUMBER**: `compare_value: [0]` for `Fax`, where `["0"]` returns an empty page and reads exactly
+like "no such patients" — a first pass at this measurement got 78 rows because of it and missed
+*New Form — Partial Leads* entirely. Read properly, the live board on 2026-09-17 holds **415
+Fax-method rows with no fax at all**, 359 of them in Partial Leads (the 8/25 bulk import, §5.30),
+and just **3** in the three worked groups — every one of those already carrying a fax, so the new
+row blocks nobody in them the day it ships. None of the 415 is blocked either: Info Collection's
+own Advance is `unlock.unlocked` alone, so they meet this rule when they reach Profile Clean-Up,
+whose Advance to MN reads the checklist. Reading a blank method as a fax would pull all 415 in at
+once. It is still worth knowing that §5.9 routes a blank method to the **fax** chase queue —
+`ProfilePage`'s own "Doctor selected" note already records that gap — so widening is a DECISION
+with a population behind it, not a tidy-up.
+
+⚠️⚠️ **THE REQUIREMENT IS AN `@rcfax.com` ADDRESS, NOT A NON-EMPTY BOX** (Josh, 2026-09-17:
+*"@rcfax.com address, is what needs to be required if doctor is a fax doctor"*). This shipped
+presence-only, reasoning from §5.32b — which flags a BLANK doctor phone and deliberately does not
+judge its format. That was the wrong precedent: a doctor phone is a number somebody dials, while
+this column is a **delivery address** (§5.5 — RingCentral turns `<digits>@rcfax.com` into a fax),
+so a value in the wrong shape is not an untidy number, it is a fax that goes nowhere and says
+nothing. The shape test is **`shared/faxAddress.isFaxAddress`**, which lives beside
+`toFaxAddress`/`splitFaxAddress` so the normalizer, the splitter and the validator cannot
+disagree; `hasDoctorFax` is a call to it and implements none of it itself.
+> **Every non-empty Doctor Fax on the board was read (2026-09-17, ~581 values) and the exception
+> set is what chose the rule — in BOTH directions.** Seven are undeliverable and each one passes a
+> presence check: `smweissoffice@gmail.com` (a real inbox typed into the fax field, live on Clara
+> Perlstein), **`3156270554@rcfaxcom` — the dot is missing**, `fax@rcfax.com` and
+> `josh.pso@rcfax.com` (the local part is a word, not a number), and three truncated nine-digit
+> numbers (`805343557@`, `423892505@`, `516832442@`).
+> ⚠️ Five more must NOT be refused, and they are why the rule is shaped as it is: the suffix match
+> is **case-insensitive** because `3367130547@RCFAX.com` is live and RingCentral delivers it (mail
+> domains are case-insensitive), and **eleven digits with a leading 1 is accepted** because four
+> live values are that shape and all four are dialable. Anything else is not, so the digit count
+> is what catches a truncation. Refusing a working fax is the one direction this check must never
+> fail in. **Re-run that scan before loosening or tightening it.**
+⚠️ **Blank and malformed are DIFFERENT sentences** (`doctorFaxGap`). "Add a fax" is wrong for
+Clara Perlstein, whose field already holds an email address: a rep sees a filled box and a message
+telling them to fill it, and concludes the page is broken. The banner names the value and the
+required shape instead.
 ⚠️ A readiness row only blocks because each page's button reads the COUNT — `canSubmit =
 missing.length === 0` on `ProfilePage`, `canAdvance = unlock.unlocked && readyMissing === 0` on the
 intake page. `doctorFaxGateWiring.test.ts` pins both, because a row added to a list nothing gates
 on is decoration that reads like a gate.
 
-**Keep-in-agreement:** `lib/profile/doctorFaxRequired.ts` ⇄ `ProfilePage`'s checklist ⇄
+**Keep-in-agreement:** `lib/shared/faxAddress.ts` `isFaxAddress` (the shape) ⇄
+`lib/profile/doctorFaxRequired.ts` (the rule) ⇄ `ProfilePage`'s checklist ⇄
 `UnverifiedReferralsPage`'s `readiness` ⇄ `components/profile/DoctorSection`'s banner. Never
-re-derive `clinicalsMethod === "Fax"` in any of them.
+re-derive `clinicalsMethod === "Fax"` or the rcfax shape in any of them —
+`doctorFaxGateWiring.test.ts` scans for both.
+
+### 5.19c Select Correct Provider opens on the doctor already on the record (Sep 2026)
+Josh, 2026-09-17, on **Mark MECHeal** (`13063500233`, Profile Clean-Up): *"his doctor info isnt
+showing up in the ui cause it auto showed up from the form, it should select the doctor in the
+ui"*. Canonical rule: **`lib/profile/doctorPrefill.ts`** (+ tests). **No board change; app only.**
+
+His item carries **MEIR DERSHOWITZ · NPI 1316121049 · 201-460-0063 · 2014601684@rcfax.com · 612
+Rutherford Avenue, Lyndhurst NJ**, written by the CareCentrix intake path (§5.20), and the
+matching Doctor DB item (`13063514110`) was auto-created the same minute. Nothing was missing.
+`DoctorSection` opened with `term = ""` and `selectedKey = null` all the same — its own comment
+says *"starts blank; the rep searches & picks explicitly"* — so the doctor card, the locations, the
+Parachute count and the doctor's notes and order followers all rendered nowhere, and the rep had
+to retype a name the record already held.
+
+⚠️ **This is the DEFAULT state of that step, not a Mark-specific glitch.** Of the **41** patients
+in the three worked groups on 2026-09-17, **37 already carry a Doctor NPI** — so nine reps out of
+ten were looking at an empty search box in front of a filled-in record.
+
+**Two rules make it safe, and both are scanned** (`doctorPrefillWiring.test.ts`, verified to fail
+when either protection is removed):
+- ⚠️⚠️ **PRE-SELECTING MUST NOT WRITE.** `pickProfile` calls `onUpdate(...)`, which patches the
+  patient overlay from the Doctor DB's name, phone, fax, clinic address and method, and the next
+  Save puts them on the board. An automatic pick would therefore silently overwrite the doctor the
+  referral actually named — the precise hazard §5.20 records ("Select Correct Provider can change
+  the verified doctor later, which would then overwrite the as-provided record and lose the
+  discrepancy the two column sets exist to show"). The prefill only ever SHOWS; the rep's own
+  click stays the only thing that copies DB values onto the patient.
+- ⚠️ **NPI ONLY — a name is not an identity.** Selection is made from a whole 10-digit NPI and
+  only when it resolves to exactly ONE profile; this component's own `profileKey` comment records
+  that one NPI can carry several name SPELLINGS ("JASON SLOANE" vs "JASON LOUIS SLOANE"), and that
+  is a genuine choice which stays the rep's. A name only prefills the SEARCH BOX so the results
+  are on screen. `searchDoctors` is a `contains_text` search, so a record whose NPI merely
+  *contains* the query is filtered out too. Same line `commsHub/dossier.nameMatchAccepted` draws
+  for patients (§5.28).
+
+⚠️ **A single location IS focused** (`prefillLocation`), because the doctor's notes and order
+followers are per-profile Doctor DB columns and the pane greys them out until a location is
+picked — with one location there is nothing to choose, so leaving it unpicked hides real
+information for no reason. Focusing is display-only by construction: it sets `selectedItemId` /
+notes / followers and never calls `pickProfile`. With several locations it focuses nothing.
+
+⚠️ **`DoctorSection` now takes `key={patient.id}` on BOTH mounts, and that is correctness rather
+than tidiness — a pre-existing bug this uncovered.** Its search term, picked profile, picked
+location and that location's Doctor DB notes and followers were all plain `useState` with nothing
+keyed on the patient, and neither caller passed a key: a sidebar click left the **previous**
+patient's doctor card on screen, with *Edit Notes and Followers* and *Save to Doctor DB* live
+against that doctor's DB item, and `pickProfile` one click from patching the open patient with
+them. §9's notes-box rule, in a component nobody had keyed. The prefill effect also resets the
+pane on `pt.id` itself, so it is right even if a future caller drops the key.
+
+**Incident guards** (INCIDENT_2026-08-20): one lookup per NPI, cached at module scope for the life
+of the tab, never on a timer and never per render; a slow answer is discarded when a later patient
+has won (`prefilledForRef`); a MISS is cached (it is an answer) and ⚠️ **a FAILURE is not**, so
+re-opening the patient retries rather than pinning the pane blank for the session with nothing
+erroring — §5.28's `fetchDirectoryNames` lesson. The prefill's own `setTerm` deliberately **skips
+one debounced-search cycle** (`skipSearchRef`): `runSearch` empties `results` when Monday fails,
+which would blank the card the prefill had just filled, and a card that appears and then vanishes
+reads as broken.
+
+**Keep-in-agreement:** `doctorPrefill.prefillProfileKey` ⇄ `DoctorSection`'s own
+`profileKey`/`norm`. They select and filter by the same key, so a different normalization would
+set a `selectedKey` matching no record and render an empty card — silently.
 
 ### 5.20 Patient Intake split in two — Info Collection · Profile Clean-Up (Aug 2026)
 The DTC/CareCentrix intake page was **one page with two panes**: the left one collected what the
@@ -6231,7 +6322,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
-| A Fax-method patient advanced with no fax on file | §5.19b — `lib/profile/doctorFaxRequired.ts`, read by BOTH checklists and by `DoctorSection`'s banner. It fires on Clinicals Method **exactly** `Fax`; a BLANK method is deliberately not caught (~36 live rows vs 3, and §5.9 routes a blank to the fax chase queue — widening it is a decision). Presence only, never format |
+| A Fax-method patient advanced with no fax on file | §5.19b — `lib/profile/doctorFaxRequired.ts`, read by BOTH checklists and by `DoctorSection`'s banner. It fires on Clinicals Method **exactly** `Fax`; a BLANK method is deliberately not caught (415 live rows with no fax, 359 of them the 8/25 import, vs 3 in the worked groups — and §5.9 routes a blank to the fax chase queue, so widening it is a decision) |
+| A fax "on file" that never arrives / a rep says the fax box is filled but the page still complains | §5.19b — the requirement is an **`@rcfax.com` address** (`shared/faxAddress.isFaxAddress`), not a non-empty box: seven live values pass a presence check and are undeliverable, including `3156270554@rcfax**com**` with the dot missing and an ordinary Gmail address. `doctorFaxGap` is what tells blank from malformed, because "Add a fax" is wrong for a field that already holds something. ⚠️ Uppercase `@RCFAX.com` and an 11-digit leading-1 number are LIVE and must keep passing |
+| A patient's doctor is on the board but Select Correct Provider is empty | §5.19c — `lib/profile/doctorPrefill.ts`. It selects on a whole 10-digit NPI resolving to ONE profile; several name spellings under that NPI, a partial NPI, or a doctor not in the Doctor DB all correctly leave the choice to the rep (the name goes in the search box). ⚠️ It never writes — `pickProfile` does, and an automatic pick would overwrite the doctor the referral named (§5.20) |
 | The benefits check filled in a bad-looking address / "not confirmed" flag | §5.19 — `lib/profile/addressFormat.ts`, rendered by `pages/UnverifiedReferralsPage.tsx` |
 | A Fidelis/Medicaid check on an MA dual shows a red "Medicare Parts A & B" Primary Payer cell and "Check card" | `lib/profile/primaryInsurance.ts` `primaryPayerIsMemberMa` (Tanya Freckleton, 2026-08-11): MA = Yes + a non-empty MA carrier + a COB primary payer that says Medicare/CMS is the member's OWN MA plan, not a mismatch — pick `maFamilyLabel(maCarrier)` at high confidence, `MA_PRIMARY_COB` caveat, cell shows the carrier (`primaryPayerCell`). A PRP naming a DIFFERENT MA carrier, or no Medicare word at all (Impellizeri), keeps the withheld pick. Gate 2 replay is mandatory (`REGRESSION.md`) |
 | A DTC form patient wasn't duplicate-checked / the "Already In System" pill is missing | §5.21 — `lib/profile/dupCheckFlag.ts` reads **Dup Check Result**, never `alreadyInSystem`; the service half is `josh-monday-automations` `automations/duplicate-patient-check.js` |

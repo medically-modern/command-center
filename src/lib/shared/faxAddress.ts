@@ -31,6 +31,41 @@ export function toFaxAddress(raw: string): string {
 }
 
 /**
+ * Is this value a fax destination RingCentral can actually deliver, i.e.
+ * `<digits>@rcfax.com`? This is the "required" half of the Doctor Fax rule
+ * (`lib/profile/doctorFaxRequired.ts`) and it lives HERE, beside the two
+ * functions that produce and split the value, so the normalizer, the splitter
+ * and the validator cannot disagree about what the convention is.
+ *
+ * ⚠️ **Presence is NOT enough, and the board proves it.** Every non-empty
+ * Doctor Fax on Profile Send Off was read on 2026-09-17 (~581 values): SEVEN
+ * are not deliverable and each one looks fine to a presence check —
+ * `smweissoffice@gmail.com` (a real inbox typed into the fax field),
+ * `3156270554@rcfaxcom` (**the dot is missing**), `fax@rcfax.com` and
+ * `josh.pso@rcfax.com` (the local part is a word, not a number), and three
+ * truncated nine-digit numbers (`805343557@`, `423892505@`, `516832442@`).
+ * A fax to any of them goes nowhere and nothing says so.
+ *
+ * ⚠️ **The suffix match is CASE-INSENSITIVE because a live value depends on
+ * it** — `3367130547@RCFAX.com` is on the board and RingCentral delivers it
+ * (mail domains are case-insensitive). Refusing it would block a working fax,
+ * which is the one direction this check must never fail in.
+ * ⚠️ **Eleven digits with a leading 1 is ACCEPTED** for the same reason: four
+ * live values are that shape (`13102138290@`, `18432349057@`, `19724066715@`,
+ * `14065854650@`) and all four are dialable. Anything else — nine digits, a
+ * stray letter — is not, so the count is the check that catches a truncation.
+ *
+ * Re-run that scan before loosening or tightening the digit rule; the numbers,
+ * not an intuition, are what chose it.
+ */
+export function isFaxAddress(raw: string): boolean {
+  const v = (raw || "").trim().toLowerCase();
+  if (!v.endsWith(RCFAX_SUFFIX)) return false;
+  const local = v.slice(0, -RCFAX_SUFFIX.length);
+  return /^1?\d{10}$/.test(local);
+}
+
+/**
  * Split a stored fax value for display in an input that shows `@rcfax.com` as a
  * fixed suffix: `local` is what the rep sees/edits, `suffixed` says whether the
  * suffix adornment applies (false when the value is some other address, which
