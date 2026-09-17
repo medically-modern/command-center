@@ -32,6 +32,7 @@ import { IntakeMessages } from "@/components/profile/IntakeMessages";
 import "@/pages/profile/redesign.css";
 import "@/pages/profile/intake.css";
 import { infusionSetCap, payerCapNote, supplyLengthNote, supplyLengthDays, supplyLengthOptions, DEFAULT_INFUSION_QTY } from "@/lib/welcomeCall/payerRules";
+import { activityNumbers } from "@/lib/welcomeCall/activityMatch";
 import { InsuranceBlock, AuthBlock, OopBlock } from "@/components/welcomeCall/InsuranceAuthSection";
 import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
 import { stockVerdict, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
@@ -1551,7 +1552,13 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           <IntakeMessages
             patientId={patient.id}
             email={patient.email}
-            phone={patient.phoneEdited ?? patient.phone}
+            /* ⚠️ The STARRED SLOT, not `phoneEdited ?? phone` — nothing on this
+               board has written `phoneEdited` since the banner's phone editor
+               was deleted on 2026-09-11 (§5.31c/§5.31f), so that read was pinned
+               to the Primary Phone COLUMN and showed the thread of a number the
+               rep may have corrected two sections above this one. Falls back to
+               the column when there are no slots yet. */
+            phone={activityNumbers(phoneSlotsFor(patient))[0]?.number ?? patient.phone}
           />
         </div>
       </FormSection>
