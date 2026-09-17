@@ -97,7 +97,8 @@
         "profile",
         "unverifiedReferrals",
         "doctorAppointments",
-        "intakeCleanup"
+        "intakeCleanup",
+        "welcomeCall"
       ]
     },
     "janelle@medicallymodern.com": {
