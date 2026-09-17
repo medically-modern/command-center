@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { MessageSquare, Phone, PhoneIncoming, PhoneOutgoing, Voicemail, RefreshCw, ChevronRight, Loader2, Play } from "lucide-react";
 import { PatientContact } from "@/components/masheke/mmKit";
 import { usePatientActivity, type ActivityTab } from "@/hooks/welcomeCall/usePatientActivity";
+import type { ActivityNumber } from "@/lib/welcomeCall/activityMatch";
 import SmsDeliveryNote from "@/components/shared/SmsDeliveryNote";
 import { fetchRcContentBlobUrl, fetchRecordingBlobUrl } from "@/lib/fax/ringcentralApi";
 
@@ -49,12 +50,30 @@ function mmss(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export function PatientActivityCard({ phone }: { phone: string }) {
+/**
+ * @param numbers every number the rep has on this patient, starred first
+ *                (`activityNumbers(phoneSlotsFor(patient))`).
+ *
+ * ⚠️ It takes the LIST, not a string, and the list comes from the phone slots —
+ * i.e. from what is on screen now, not from the Primary Phone column. See
+ * `activityNumbers` for the two ways the old `phoneEdited ?? phone` prop was
+ * wrong, one of which had the Text button in this very header composing to a
+ * number the rep had already corrected.
+ */
+export function PatientActivityCard({ numbers }: { numbers: ActivityNumber[] }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<ActivityTab>("texts");
+  /* Which number is on screen, by DIGITS rather than by index: the slots are
+     rebuilt on every edit, so an index would follow the rep's typing onto a
+     different number. An unknown selection falls back to the starred one, which
+     is what happens when the selected number is edited or deleted. */
+  const [selected, setSelected] = useState<string>("");
+  const active =
+    numbers.find((n) => n.number === selected) ?? numbers[0] ?? null;
+  const phone = active?.number ?? "";
   const { data, loading, error, reload } = usePatientActivity(phone, tab, open);
 
-  if (!phone?.trim()) return null;
+  if (!phone.trim()) return null;
 
   return (
     /* Same material as the form steps below it (see `FormSection`) — this box
@@ -74,9 +93,36 @@ export function PatientActivityCard({ phone }: { phone: string }) {
           <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90")} />
           RingCentral Activity
         </button>
-        {/* Brandon: "this is where the user will press to call them". The Calls
-            pop-up is suppressed because the Calls TAB below is the same history. */}
-        <PatientContact phone={phone} hideCallHistory />
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* ⚠️ Only when there IS a second number. Katie, 2026-09-17: *"not sure
+              if ring central activity is fully synced"* — a patient with an
+              alternate number had half their history invisible and nothing on
+              screen said a second number existed. One number is loaded at a
+              time (a per-patient RingCentral read, INCIDENT_2026-08-20), so this
+              is a switch, not a merge. */}
+          {numbers.length > 1 &&
+            numbers.map((n) => (
+              <button
+                key={n.number}
+                type="button"
+                onClick={() => setSelected(n.number)}
+                title={n.number}
+                className={cn(
+                  "rounded-lg border px-2 py-1 text-xs font-semibold transition-colors",
+                  n.number === phone
+                    ? "border-[color:var(--mm-teal)] bg-[color:var(--mm-teal)] text-white"
+                    : "border-border text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {n.label}
+              </button>
+            ))}
+          {/* Brandon: "this is where the user will press to call them". The Calls
+              pop-up is suppressed because the Calls TAB below is the same
+              history. ⚠️ It dials and texts the SELECTED number, so a rep
+              reading the alternate's thread replies on the alternate. */}
+          <PatientContact phone={phone} hideCallHistory />
+        </div>
       </div>
 
       {open && (

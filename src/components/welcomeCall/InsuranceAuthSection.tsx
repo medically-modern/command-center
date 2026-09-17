@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { Calculator } from "lucide-react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { OopEstimateCard } from "@/components/welcomeCall/OopEstimateCard";
+import { isCareCentrixReferral } from "@/lib/welcomeCall/oopContext";
 import type { CallIntake } from "@/lib/welcomeCall/callIntake";
 import {
   SECONDARY_TYPES,
@@ -379,6 +380,8 @@ export function OopBlock({
   intake: CallIntake;
   onChange: (next: CallIntake) => void;
 }) {
+  /* One reader, shared with the card below — see `isCareCentrixReferral`. */
+  const carecentrix = isCareCentrixReferral(patient);
   return (
     <div className="space-y-4">
       {/* The estimate itself (Josh, 2026-09-15 — put back after four days with
@@ -388,63 +391,92 @@ export function OopBlock({
           has no primary insurance or serving to work from, and swaps itself for
           a routing note on CareCentrix. */}
       <OopEstimateCard patient={patient} />
-      <p className="text-sm text-muted-foreground">
-        Benefit details aren&apos;t shown here. Open the calculator to confirm what the patient owes.
-      </p>
-      {/* ⚠️ Inert on purpose — Brandon: "skip for now… show what loveable shows,
-          but button won't work". Disabled rather than absent so the shape of the
-          finished step is visible, and disabled rather than a dead click so
-          nobody reports it as broken. */}
-      <Button type="button" variant="outline" disabled className="gap-2">
-        <Calculator className="h-4 w-4" /> Open out-of-pocket calculator
-      </Button>
 
-      {/* ⚠️ These two ride in the call-intake NOTES block, because Brandon's own
-          note says the Monday columns for them "should be added" and they do not
-          exist yet. That keeps a rep's answer durable today and means the only
-          change when the columns land is where it is written. */}
-      {/* Josh, 2026-09-14: *"let's make confirmed amount from calculator and
-          reviewed with patient on same line"*. `sm:items-end` so the tick box
-          and the input sit on the same baseline; the tick keeps its own width
-          rather than stretching, so the amount field gets the space. */}
-      <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-        <div className="flex-1 min-w-0">
-          <label className={LABEL_CLS}>Confirmed amount from calculator</label>
-          <Input
-            placeholder="e.g. $42.50, or $0 with Medicaid"
-            value={intake.oopAmount}
-            onChange={(e) => onChange({ ...intake, oopAmount: e.target.value })}
-          />
+      {/* ⚠️⚠️ **CARECENTRIX STOPS HERE.** Katie, 2026-09-17: *"should remove
+          option to select reviewed with patient for CareCentrix patients"*.
+          The card directly above has just told the rep that CareCentrix prices
+          these patients and we do not — so an amount box and a tick saying the
+          rep reviewed that amount are a contradiction on one screen, and the
+          tick is stamped into the call notes as a claim about a conversation
+          nobody can have had. Nothing is stranded by removing them: the tick
+          gates nothing (`unmetSendRequirements` never reads `confirmed.oop`),
+          and a value a rep entered before this shipped stays in the notes block
+          untouched rather than being cleared behind their back. */}
+      {carecentrix ? (
+        <p className="text-sm text-muted-foreground">
+          Nothing to confirm here — CareCentrix quotes this patient directly.
+        </p>
+      ) : (
+        <>
+        {/* ⚠️ The line here used to read *"Benefit details aren't shown here. Open
+            the calculator to confirm what the patient owes."* Both halves were
+            false by 2026-09-17: the benefit details ARE on the card above
+            (deductible left, coinsurance, OOP max left — put back after the
+            2026-09-11 cut took them off the page), and the calculator does not
+            open, which is what Katie reported as *"still missing updated OOP cost
+            calculator"*. A sentence telling a rep to press a disabled button is
+            worse than no sentence.
+            ⚠️ The BUTTON stays, still inert — Brandon: "skip for now… show what
+            loveable shows, but button won't work". Disabled rather than absent so
+            the shape of the finished step is visible, and disabled rather than a
+            dead click so nobody reports it as broken. It now says so itself. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" disabled className="gap-2">
+            <Calculator className="h-4 w-4" /> Open out-of-pocket calculator
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Not built yet — the estimate above is the figure to quote.
+          </span>
         </div>
-        {/* Same treatment as the two gating confirmations (see `ConfirmCheck`) —
-            a row you have to notice rather than a 16px tick in a line of text. */}
-        <label
-          htmlFor="wc-oop-reviewed"
-          className={cn(
-            "flex items-center gap-3 shrink-0 h-10 cursor-pointer select-none rounded-lg border px-3 transition-colors",
-            intake.confirmed.oop
-              ? "border-emerald-400 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
-              : "border-input bg-muted/20 hover:bg-muted/40",
-          )}
-        >
-          <Checkbox
-            className="h-5 w-5 shrink-0"
-            id="wc-oop-reviewed"
-            checked={intake.confirmed.oop}
-            onCheckedChange={(v) =>
-              onChange({ ...intake, confirmed: { ...intake.confirmed, oop: v === true } })
-            }
-          />
-          <span
+
+        {/* ⚠️ These two ride in the call-intake NOTES block, because Brandon's own
+            note says the Monday columns for them "should be added" and they do not
+            exist yet. That keeps a rep's answer durable today and means the only
+            change when the columns land is where it is written. */}
+        {/* Josh, 2026-09-14: *"let's make confirmed amount from calculator and
+            reviewed with patient on same line"*. `sm:items-end` so the tick box
+            and the input sit on the same baseline; the tick keeps its own width
+            rather than stretching, so the amount field gets the space. */}
+        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+          <div className="flex-1 min-w-0">
+            <label className={LABEL_CLS}>Confirmed amount from calculator</label>
+            <Input
+              placeholder="e.g. $42.50, or $0 with Medicaid"
+              value={intake.oopAmount}
+              onChange={(e) => onChange({ ...intake, oopAmount: e.target.value })}
+            />
+          </div>
+          {/* Same treatment as the two gating confirmations (see `ConfirmCheck`) —
+              a row you have to notice rather than a 16px tick in a line of text. */}
+          <label
+            htmlFor="wc-oop-reviewed"
             className={cn(
-              "text-sm font-medium leading-snug whitespace-nowrap",
-              intake.confirmed.oop ? "text-emerald-900 dark:text-emerald-200" : "text-foreground",
+              "flex items-center gap-3 shrink-0 h-10 cursor-pointer select-none rounded-lg border px-3 transition-colors",
+              intake.confirmed.oop
+                ? "border-emerald-400 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+                : "border-input bg-muted/20 hover:bg-muted/40",
             )}
           >
-            Reviewed with patient
-          </span>
-        </label>
-      </div>
+            <Checkbox
+              className="h-5 w-5 shrink-0"
+              id="wc-oop-reviewed"
+              checked={intake.confirmed.oop}
+              onCheckedChange={(v) =>
+                onChange({ ...intake, confirmed: { ...intake.confirmed, oop: v === true } })
+              }
+            />
+            <span
+              className={cn(
+                "text-sm font-medium leading-snug whitespace-nowrap",
+                intake.confirmed.oop ? "text-emerald-900 dark:text-emerald-200" : "text-foreground",
+              )}
+            >
+              Reviewed with patient
+            </span>
+          </label>
+        </div>
+        </>
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   Loader2,
   Mail,
   MessageSquare,
+  Copy,
   Pencil,
   Phone,
   RefreshCw,
@@ -540,6 +541,70 @@ function formatPhoneNice(raw?: string): string {
   return raw;
 }
 
+/**
+ * Copy the patient's number to the clipboard.
+ *
+ * ⚠️ **The number IS on screen and still cannot be copied** — that is the whole
+ * bug. Katie, 2026-09-17, on the new Welcome Call screen: *"more difficult to
+ * copy/paste phone number"*. `PatientContact` renders it as the label of an
+ * `<a href="tel:">`, so dragging across it starts a link drag rather than a text
+ * selection and a click dials. Until 2026-09-11 the Welcome Call banner also had
+ * the number in an editable `PhoneField`, where select-and-copy worked; that
+ * field was deleted with the banner's phone controls (§5.31c) and the tel: link
+ * became the only rendering of it.
+ *
+ * One button instead of a second copy of the number: it sits with Call and Text,
+ * so every header that already shows the number gets it, and nothing has to be
+ * re-laid-out to hold a selectable span.
+ *
+ * ⚠️ Copies the DIGITS as displayed, not `tel:`'s stripped form — a rep is
+ * pasting this into RingCentral, a payer portal or a note, and `+15555550100`
+ * is not what any of them want to read back.
+ *
+ * ⚠️ `navigator.clipboard` is unavailable on an insecure origin and can be
+ * refused by permissions policy, so a failure says so rather than silently
+ * doing nothing and leaving the rep believing they have the number.
+ */
+function CopyPhoneButton({ display }: { display: string }) {
+  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
+  useEffect(() => {
+    if (state === "idle") return;
+    const t = setTimeout(() => setState("idle"), 1600);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(display);
+      setState("done");
+    } catch {
+      setState("failed");
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={`Copy ${display}`}
+      aria-label={`Copy phone number ${display}`}
+      className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      {state === "done" ? (
+        <>
+          <Check className="h-3.5 w-3.5 shrink-0" /> Copied
+        </>
+      ) : state === "failed" ? (
+        <>
+          <XCircle className="h-3.5 w-3.5 shrink-0" /> Can&apos;t copy
+        </>
+      ) : (
+        <Copy className="h-3.5 w-3.5 shrink-0" />
+      )}
+    </button>
+  );
+}
+
 /** Days-in-stage pill — shown right-aligned with the patient name, with a
  *  "Days in Stage:" label in front. */
 export function DaysInStagePill({ value }: { value?: string }) {
@@ -612,6 +677,7 @@ export function PatientContact({
         onSent={onTextSent}
         tone={textTone}
       />
+      <CopyPhoneButton display={display} />
       {!hideCallHistory && <CallHistoryButton phone={tel} display={display} label={callHistoryLabel} icon={callHistoryIcon} />}
     </span>
   );

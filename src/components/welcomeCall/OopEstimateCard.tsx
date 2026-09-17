@@ -27,6 +27,7 @@ import { Card } from "@/components/ui/card";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { estimateOop } from "@/lib/welcomeCall/oopEstimator";
 import type { OopEstimate, OopLineItem } from "@/lib/welcomeCall/oopEstimator";
+import { benefitInputs, isCareCentrixReferral, oopReason } from "@/lib/welcomeCall/oopContext";
 
 interface Props {
   patient: Patient;
@@ -163,7 +164,7 @@ const FIELD_WARNINGS: Record<string, string> = {
 };
 
 export function OopEstimateCard({ patient, infusionSets }: Props) {
-  const isCarecentrix = (patient.referralSource || "").toLowerCase().includes("carecentrix");
+  const isCarecentrix = isCareCentrixReferral(patient);
 
   // A mid-call edit (e.g. Secondary Insurance → NY Medicaid) must flip the
   // estimate immediately — the board value lags until the Monday write
@@ -226,6 +227,8 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
 
   const est = result as OopEstimate;
   const displayLines = distributePerLine(est.lines, est);
+  const benefits = benefitInputs(patient);
+  const reason = oopReason(est, patient);
   const hasMissing = est.missingFields.length > 0 && !est.medicaidCovers;
   const costsUnknown = !est.canCalculateCosts && !est.medicaidCovers;
 
@@ -276,6 +279,42 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
           )}
         </div>
       </div>
+
+      {/* ─── What eligibility actually returned ───
+          Katie, 2026-09-17: *"context on coinsurance, OOP max, and deductible is
+          important to have a nuance conversation"*. These three are the INPUTS,
+          not the applied amounts in the header above them — Mariacamila Salazar
+          reads $0 owed with $191 still on her out-of-pocket maximum, and only
+          this row can tell that apart from a maximum she has already spent.
+          They were on the page until 2026-09-11, when Brandon's screen pass cut
+          the "Benefits" row and nothing replaced it; they live here rather than
+          back at the top so the cut stands and the figures sit beside the
+          estimate they explain. Read off the BOARD, never off the estimate —
+          `estimateOop` returns a null OOP max on its Medicaid and zero-payer
+          branches whatever eligibility said. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg bg-muted/40 px-3 py-2">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          From eligibility
+        </span>
+        {benefits.map((b) => (
+          <span key={b.label} className="text-xs">
+            <span className="text-muted-foreground">{b.label} </span>
+            <span
+              className={
+                b.known ? "font-semibold tabular-nums" : "text-muted-foreground italic"
+              }
+            >
+              {b.known ? b.value : "not on file"}
+            </span>
+          </span>
+        ))}
+      </div>
+
+      {/* One sentence naming WHY the total is the total. Silent when the card
+          already says it another way (the Medicaid note above, or the
+          missing-field warnings below) — a second sentence saying the same
+          thing is how a card stops being read. */}
+      {reason && <p className="text-sm text-foreground">{reason}</p>}
 
       {/* Line items table */}
       <div className="overflow-x-auto">

@@ -143,6 +143,20 @@ export function usePatientActivity(phone: string, tab: ActivityTab, open: boolea
     void load(phone, tab, true).then(() => bump((n) => n + 1));
   }, [phone, tab]);
 
+  /* ⚠️ `load` returns early — writing neither an answer nor an error — when
+     there is no gateway or the number cannot be normalised, which left `rows`
+     undefined and `errors` empty: the box sat on **"Reading RingCentral…"
+     for ever**. A spinner that never resolves is the worst of the three
+     possible answers, because it reads as "still loading" rather than as
+     "nothing was asked". This says which it is, in the box.
+     Computed here rather than pushed into the module `errors` map so the store
+     keeps meaning "what a fetch came back with" and no emit is needed. */
+  const unavailable = !RC_VIA_GATEWAY
+    ? "RingCentral isn't reachable from this build."
+    : !phoneIdentity(phone)
+      ? "This number can't be read, so there's no history to look up."
+      : null;
+
   return useMemo(() => {
     const rows = map.get(k);
     const data: Partial<ActivityData> = {};
@@ -153,11 +167,11 @@ export function usePatientActivity(phone: string, tab: ActivityTab, open: boolea
     }
     return {
       data,
-      loading: open && rows === undefined && !errors.has(k),
-      error: errors.get(k) ?? null,
+      loading: open && !unavailable && rows === undefined && !errors.has(k),
+      error: unavailable ?? errors.get(k) ?? null,
       reload,
     };
-  }, [map, k, tab, open, reload]);
+  }, [map, k, tab, open, reload, unavailable]);
 }
 
 /** Test seam — drops the module-scope cache. */

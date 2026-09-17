@@ -397,9 +397,34 @@ export {
 const CGM_NOT_SERVING_INDEX = 9;
 const INFUSION_NOT_SERVING_INDEX = 101;
 
-/** True when the agent is being asked to cross-sell CGM:
- *  serving includes CGM but the original request type does not. */
+/**
+ * True when the rep is being asked to cross-sell CGM: serving includes CGM but
+ * the original request type does not.
+ *
+ * ⚠️⚠️ **A BLANK Request Type is UNKNOWN, never "they didn't ask for CGM".**
+ * Katie, 2026-09-17: *"we get flagged on cross sell even if patient has already
+ * selected CGM (ex: order is CGM only)"*. Measured on the live Welcome Call
+ * board the same day: **7 of the 39** rows in the two live groups carry a blank
+ * Request Type `color_mm1w1978` with Serving = `CGM` — Maria Suarez, Daniel
+ * Davis, Dennis Jonas, Glenn Dussinger, Robin Coghill, Beverly Danyluk, Irene
+ * Lee, every one of them a `SNJ` reactivation row that arrived without the
+ * column set. `!servingIncludesCgm("")` is true, so all seven wore an amber
+ * **Cross-sell** chip telling the rep to sell a CGM the patient had already
+ * asked for.
+ *
+ * The claim this chip makes is about what the patient ORIGINALLY wanted, and a
+ * blank column is not a record of that — it is the absence of one. Same rule as
+ * `networkAnswer`'s `Unknown` (§5.20), the blank secondary (§5.31c) and a blank
+ * Can Text (§5.31d): an unanswered question must not be read as a negative.
+ *
+ * Nothing genuine is lost. The seven above stop being flagged; every real
+ * cross-sell on the board that day — Request Type `Insulin Pump`, Serving
+ * `Insulin Pump + CGM` (Tracy Nixon, Ryan Przybylski, Martin Kellogg, Mary
+ * Mathis, Helen Pinch, Mariacamila Salazar, Joanne Bleeker) — still is, because
+ * those carry a real answer that really does exclude CGM.
+ */
 export function isCrossSell(p: { serving: string; requestType: string }): boolean {
+  if (!(p.requestType ?? "").trim()) return false;
   return servingIncludesCgm(p.serving) && !servingIncludesCgm(p.requestType);
 }
 
@@ -456,16 +481,29 @@ export function formatDateMDY(raw: string): string {
 /* ─── Call-shaping signals (ported from the ops prototype) ─── */
 
 /**
- * Is this the patient's FIRST pump?
+ * Is this the first pump WE ARE BILLING THIS INSURANCE FOR?
  *
- * Rule ported verbatim from the prototype: we are selling them a pump
- * (`pumpQty === "1"`, not just serving its supplies) and there is no evidence
- * they have ever had one — no prior insulin-pump bill on file, and no Medicare
- * prior-pump date collected.
+ * ⚠️⚠️ **It is an INSURANCE fact, not a biography — and the chip used to claim
+ * the second.** Katie, 2026-09-17: *"Pt Charmaine Johnson was flagged as a first
+ * time pump user but she told me she already had one?"* — Charmaine **Brooks**
+ * (`13029605043`, Fidelis Medicaid, Serving `Insulin Pump`, Pump Qty 1, both
+ * date columns blank), the only Charmaine on the board. Brandon, the same day:
+ * *"this is from insurance perspective. so first time pump for that insurance.
+ * that's just knowledge for rep doing welcome calls, doesn't necessarily mean
+ * patient never has used pump before"*.
  *
- * It changes the call rather than the order: a first-time user needs training
- * expectations and a different conversation, and they are the population most
- * likely to be surprised by what arrives.
+ * So the RULE is right and the WORDS were wrong. What the two inputs can
+ * actually see is claims history — `sosLastBillIp` is the Same-or-Similar last
+ * bill for the pump and `medicarePriorPumpDate` is the obtained-date collected
+ * for Medicare billing. Neither knows about a pump bought privately, carried in
+ * from another payer, or billed before the SoS lookback. Read as "this patient
+ * has never had a pump" it is wrong for exactly the population Katie hit; read
+ * as "this payer has no pump on file for them" it is true and useful, and it is
+ * what every render site now says out loud.
+ *
+ * It changes the call rather than the order: nothing has been billed to this
+ * plan before, so the rep sets expectations about training and about what the
+ * payer is seeing for the first time.
  *
  * ⚠️ Gated on `pumpQty === "1"` and not on `servingSellsPumpDevice`. A supplies
  * patient who already owns a pump serves "pump" in the §5.22 sense while buying
@@ -490,6 +528,17 @@ export function isFirstTimePumpUser(p: {
   if (p.pumpQty !== "1") return false;
   return !p.ipLastBillDate.trim() && !p.medicarePriorPumpDate.trim();
 }
+
+/**
+ * What the chip says, and what it says on hover — ONE copy, because it renders
+ * in two places (the patient banner and the Pump Qty row) and the whole reason
+ * this pair exists is that the old wording claimed something the rule cannot
+ * know. Two copies of a sentence about what a flag means is how one of them
+ * goes back to claiming it.
+ */
+export const FIRST_PUMP_CHIP_LABEL = "First pump on this insurance";
+export const FIRST_PUMP_CHIP_TITLE =
+  "No pump billed to this plan before — they may still own one. Ask, and set expectations on the call.";
 
 /** What the rep still has to get from the patient about secondary coverage. */
 export type SecondaryAsk =

@@ -1,6 +1,10 @@
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SERVING_OPTIONS, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
-import { isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
+import {
+  isFirstTimePumpUser,
+  FIRST_PUMP_CHIP_LABEL,
+  FIRST_PUMP_CHIP_TITLE,
+} from "@/lib/welcomeCall/workflow";
 import { CallScheduledChip } from "@/components/welcomeCall/CallScheduledChip";
 import { servedOrderLines } from "@/lib/shared/servingLines";
 import { formatLastBill } from "@/lib/shared/lastBillDate";
@@ -16,6 +20,8 @@ import {
 } from "@/components/ui/select";
 import { WelcomeCallProfileStatus } from "@/components/shared/PatientProfileStatus";
 import { PatientActivityCard } from "@/components/welcomeCall/PatientActivityCard";
+import { activityNumbers } from "@/lib/welcomeCall/activityMatch";
+import { phoneSlotsFor } from "@/lib/welcomeCall/phoneSlots";
 
 interface Props {
   patient: Patient;
@@ -37,9 +43,20 @@ function HeaderEyebrow({ children }: { children: React.ReactNode }) {
 }
 
 /** A call-shaping flag beside the patient's name. */
-function HeaderChip({ tone, children }: { tone: "sky" | "amber"; children: React.ReactNode }) {
+function HeaderChip({
+  tone,
+  title,
+  children,
+}: {
+  tone: "sky" | "amber";
+  /** Hover text. The first-pump chip needs one — its label states an insurance
+   *  fact and the sentence is what stops a rep reading it as a biography. */
+  title?: string;
+  children: React.ReactNode;
+}) {
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider border",
         tone === "sky"
@@ -185,7 +202,11 @@ export function PatientInfoCard({ patient, onFieldChange, onSaveSecondaryInsuran
               pumpQty: patient.pumpQty,
               ipLastBillDate: patient.sosLastBillIp,
               medicarePriorPumpDate: patient.medicarePriorPumpDate,
-            }) && <HeaderChip tone="sky">First-time pump user</HeaderChip>}
+            }) && (
+              <HeaderChip tone="sky" title={FIRST_PUMP_CHIP_TITLE}>
+                {FIRST_PUMP_CHIP_LABEL}
+              </HeaderChip>
+            )}
             {isCrossSell({
               serving: patient.servingEdited ?? patient.serving,
               requestType: patient.requestType,
@@ -273,7 +294,14 @@ export function PatientInfoCard({ patient, onFieldChange, onSaveSecondaryInsuran
           Directly under the banner and above everything else, with the Call and
           Text buttons in its header — the "lower down" the banner note points
           at. Collapsed by default and fetches nothing until opened. */}
-      <PatientActivityCard phone={patient.phoneEdited ?? patient.phone} />
+      {/* ⚠️ The SLOTS, not `phoneEdited ?? phone`. Nothing on this board has
+          written `phoneEdited` since the banner's phone editor was deleted on
+          2026-09-11 (§5.31c) and the slots took the column over (§5.31d), so
+          that prop was pinned to the Primary Phone COLUMN — and this card's
+          header is where a rep presses Call and Text. A corrected number, or a
+          moved star, reached the form and not this box. `activityNumbers` has
+          the full note. */}
+      <PatientActivityCard numbers={activityNumbers(phoneSlotsFor(patient))} />
 
       {/* ⚠️ THE THREE ROWS UNDER THE ACTIVITY CARD WERE DELETED (Brandon,
           2026-09-11: *"get rid of the next 3 rows … right after ringcentral

@@ -2208,7 +2208,9 @@ where the board says `Sensors & Supplies`, only **4 of its 10 infusion sets** ar
 (the board has 25, and the app already reads them live via `useStatusOptions`), and its cross-sell
 test reads `requestType.includes("cross")` against a Request Type column whose five labels contain
 no such word — so that rule could never fire here. The app's own `isCrossSell` is
-`servingIncludesCgm(serving) && !servingIncludesCgm(requestType)`. Pump Type and Serving are the
+`servingIncludesCgm(serving) && !servingIncludesCgm(requestType)` — plus, from 2026-09-17, a
+**blank Request Type is UNKNOWN and never a cross-sell** (§5.31f: 7 live patients were flagged to
+sell a CGM they had already asked for). Pump Type and Serving are the
 only two vocabularies that match exactly.
 
 **Two asks were deliberately not built.**
@@ -3018,8 +3020,12 @@ rule** any more. `Horizon BCBS` still matches on `/horizon/i`.
 BCBS Commercial + Aetna Commercial, both cap-raised), one 5 (Horizon BCBS), two 1 — **nobody has
 ever ordered 9**. So the cap and `DEFAULT_INFUSION_QTY` are orthogonal numbers. A cap set too HIGH
 is the dangerous direction: it lets a rep order sets the payer pays three of, denied weeks later.
-⚠️ The cap now renders on **Qty Cartridge** too. It had always been drawn on the two set
+⚠️ The cap renders on **Qty Cartridge** too. It had always been drawn on the two set
 quantities and never there, so 9 cartridges on a 3-cap payer passed silently.
+⚠️ **It is ENFORCED from 2026-09-17, not just rendered** (§5.31f) — Brandon: *"most plans should
+limit ability to go above 3"*. `QtySelect` takes the cap as its `max` on all three quantities and
+stops there; `CapNote` still explains it, and a value the BOARD already holds above the cap is
+always offered, or the picker would show a placeholder in place of a real number.
 
 **Qty 1 defaults to a flat 3 — it does NOT follow the supply length.** Brandon offered both
 branches; Josh picked flat on 2026-09-09 after the board scan showed why. Medicaid patients run a
@@ -3572,6 +3578,140 @@ Files: `services/monday-gateway/calendlyPatient.mjs` + `calendlyPatientRules.mjs
 `components/welcomeCall/CallScheduledChip.tsx`, mounted in `welcomeCall/PatientInfoCard`.
 **Not wired to Final Confirm** — deliberate scope; the chip takes an email and nothing else, so it
 is a one-line addition if wanted.
+
+### 5.31f Katie's first week on the new Welcome Call screen (Sep 2026)
+Katie and Brandon's notes on the rebuilt screen, 2026-09-17 — *"all minor"*, and every one of them
+turned out to be a real defect rather than a preference. **No board change; app only.** Three of the
+six are the same shape, which is worth naming once: **a blank column was being read as a negative
+answer** (§5.20's `networkAnswer`, §5.31c's blank secondary, §5.31d's blank Can Text — now four
+times on this board alone).
+
+**1. Cross-sell fired on patients who had asked for CGM themselves.** *"we get flagged on cross sell
+even if patient has already selected CGM (ex: order is CGM only)"*. `isCrossSell` is
+`servingIncludesCgm(serving) && !servingIncludesCgm(requestType)`, and `!servingIncludesCgm("")` is
+**true** — so a blank Request Type `color_mm1w1978` read as "they did not ask for CGM". Measured the
+same day: **7 of the 39** rows in the two live groups carry a blank Request Type with Serving `CGM`
+(Maria Suarez, Daniel Davis, Dennis Jonas, Glenn Dussinger, Robin Coghill, Beverly Danyluk, Irene
+Lee — every one an `SNJ` reactivation row that arrived without the column). The chip now needs a real
+answer; the seven stop being flagged and every genuine cross-sell on the board (Request Type
+`Insulin Pump`, Serving `Insulin Pump + CGM`) still is.
+
+**2. "First-time pump user" claimed something the rule cannot know.** *"Pt Charmaine Johnson was
+flagged as a first time pump user but she told me she already had one?"* — Charmaine **Brooks**
+(`13029605043`, Fidelis Medicaid, Pump Qty 1, both date columns blank), the only Charmaine on the
+board. Brandon: *"this is from insurance perspective. so first time pump for that insurance… doesn't
+necessarily mean patient never has used pump before"*. ⚠️ **The RULE is unchanged and correct** — its
+two inputs are claims history (`sosLastBillIp`, `medicarePriorPumpDate`), which cannot see a pump
+bought privately, carried in from another payer, or billed before the SoS lookback. Only the words
+moved: `FIRST_PUMP_CHIP_LABEL` / `FIRST_PUMP_CHIP_TITLE` in `welcomeCall/workflow.ts`, ONE copy
+shared by the banner chip and the Pump Qty pill, because two copies of a sentence about what a flag
+means is how one of them goes back to claiming the biography.
+
+**3. The benefit details had been gone since 2026-09-11, and nothing replaced them.**
+*"still missing updated OOP cost calculator"* and *"For pt Mariacamila Salazar — I need context on
+their OOP cost. Is it 0 because of her coinsurance / because she hit OOP max?"* are one gap with a
+date. Brandon's screen pass cut three rows off the top of the page and one of them was **Benefits —
+deductible, remaining, coinsurance, OOP max**; the note recording that cut argues nothing was lost
+because *"the out-of-pocket figure has its own step there"*. ⚠️ **The figure is not the benefit
+details.** `OopEstimateCard` shows what the deductible and coinsurance came to ON THIS ORDER and has
+never shown what eligibility returned — its own copy said *"Benefit details aren't shown here"*,
+under a calculator button that is inert. Salazar (`13059690654`, Fidelis Low-Cost, secondary None)
+reads deductible remaining **0**, coinsurance **0%**, OOP max remaining **191**: her $0 is 0%
+coinsurance on a met deductible, and she has **not** hit her out-of-pocket maximum — which is the one
+thing Katie could not tell and the first thing a patient asks next.
+Rule: **`lib/welcomeCall/oopContext.ts`** (+ tests) — `benefitInputs` (the three facts, QMB appended
+only when it is a Yes) and `oopReason` (one sentence naming which $0 this is). Rendered inside the
+OOP card, not back at the top, so Brandon's cut stands and the figures sit beside the estimate they
+explain.
+⚠️ **Read off the BOARD, never off the estimate.** `estimateOop`'s Medicaid and zero-OOP-payer
+branches both return `oopMaxRemaining: null` whatever eligibility said, so sourcing the row from the
+estimate would blank a real number for exactly the payers whose patients ask hardest about it.
+⚠️ **Blank is "not on file", never `$0.00`** — a missing deductible and a met deductible are opposite
+facts that render identically once either becomes a zero. `parseBenefit` returns null and the row
+prints "not on file", the same missing ≠ zero contract `estimateOop.missingFields` keeps.
+⚠️ `oopReason` returns `""` whenever the card already says it another way (the Medicaid note, the
+missing-field warnings). A second sentence repeating one of them is how a card stops being read.
+⚠️ The sentence *"Benefit details aren't shown here. Open the calculator…"* is gone: both halves were
+false, and telling a rep to press a disabled button is worse than saying nothing. The **button** stays
+inert per Brandon ("show what loveable shows, but button won't work") and now says so itself.
+
+**4. CareCentrix was offered a cost review it can never have.** *"should remove option to select
+reviewed with patient for CareCentrix patients"*. The card tells the rep CareCentrix prices these
+patients and we do not — and then an amount box and a **Reviewed with patient** tick rendered under
+it anyway, and that tick is stamped into the call notes as a claim about a conversation nobody can
+have had. Both are dropped for a CareCentrix referral. ⚠️ Nothing is stranded: `confirmed.oop` gates
+nothing (`unmetSendRequirements` never reads it), and a value entered before this shipped stays in
+the notes block rather than being cleared behind the rep's back. ⚠️ `isCareCentrixReferral` is ONE
+reader shared by the card and `OopBlock` — split between two files, one eventually stops matching and
+the tick comes back on a patient the card refuses to price. It reads Referral **Source**
+`color_mm1w5wxr`, never a payer column (§5.32g: all 33 CareCentrix rows are Horizon BCBS, so keying
+off insurance would catch every Horizon patient).
+
+**5. The quantity cap was a sentence, not a cap.** Brandon: *"default should always be 3. most plans
+should limit ability to go above 3. some plans should allow to adjust more than 3 (anthem/horizon are
+9, aetna is 4)"* — answering Katie's *"haven't seen enough examples to know if it adjusts to higher
+amounts"*. It does not adjust: `DEFAULT_INFUSION_QTY` is a flat **3** for everybody (and the board
+bears it out — 164 of 181 orders are 3, nobody has ever ordered 9), and the payer moves only the
+CEILING. But `QtySelect` always offered **0–10** and `CapNote` complained afterwards, so "limit
+ability to go above 3" was implemented nowhere: a rep could pick 9 on a default-cap payer and the
+only consequence was amber text. The picker now stops at `infusionSetCap` on all three quantities
+(Qty Inf. 1, Qty Inf. 2, Qty Cartridge) and `CapNote` still explains, because a control that simply
+lacks an option teaches nothing. ⚠️ **A value the BOARD holds is always offered even above the cap** —
+`Select` renders from the list, so a row carrying 5 on a 3-cap payer would otherwise show the
+placeholder and read as an empty quantity (the §5.11 blank-with-no-error, and the same rule
+`infusionSelection.withCurrentSelection` keeps for the set lists).
+
+**6. The number was on screen and could not be copied; the activity box read the wrong one.**
+- *"more difficult to copy/paste phone number"* — `PatientContact` renders it as the label of an
+  `<a href="tel:">`, so dragging across it starts a link drag and a click dials. Until 2026-09-11 the
+  banner also had it in an editable `PhoneField`, where select-and-copy worked; that field went with
+  the banner's phone controls (§5.31c) and the tel: link became the only rendering. `CopyPhoneButton`
+  sits with Call and Text in `masheke/mmKit`, so all ten headers that already show a number get it.
+  ⚠️ It copies the DIGITS **as displayed**, not `tel:`'s stripped form — a rep is pasting into
+  RingCentral, a payer portal or a note, and `+15555550100` is not what any of them want back. A
+  clipboard refusal (insecure origin, permissions policy) says so rather than silently doing nothing.
+- ⚠️⚠️ *"not sure if ring central activity is fully synced"* — **`PatientActivityCard` was reading
+  `phoneEdited ?? phone`, and NOTHING on this board has written `phoneEdited` since the banner editor
+  was deleted.** The phone SLOTS took the column over (§5.31d) and write `phoneSlotsEdited`, so the
+  box — and the **Call and Text buttons in its header** — were pinned to the Primary Phone COLUMN: a
+  rep who corrected a wrong number went on reading, and texting, the old one, and a rep who moved the
+  star was ignored the same way. It takes `activityNumbers(phoneSlotsFor(patient))` now.
+- The other half of that report is the **alternate number**, whose history was invisible with nothing
+  on screen saying a second number existed — often the caregiver's. The box offers both and loads
+  **one at a time**: every entry is a per-patient RingCentral read and fanning out over both is
+  INCIDENT_2026-08-20's shape. Selection is keyed on the DIGITS, not an index (the slots are rebuilt
+  on every keystroke), and an unknown selection falls back to the starred number, so it cannot follow
+  a sidebar click onto another patient.
+- ⚠️ `usePatientActivity` spun **for ever** on a number `toE164` could not read, or with no gateway:
+  `load` returns early writing neither an answer nor an error, leaving `loading` true with nothing to
+  resolve it. A spinner that never ends reads as "still loading" rather than "nothing was asked". It
+  now says which.
+
+**Answered, not built — "can this number receive texts → can we automate this?"** Half of it can, and
+that half is already written. `services/monday-gateway/canTextRules.mjs` derives **Yes** from our own
+`sms_archive` (any inbound text, or an outbound one RingCentral marked `Delivered` — never merely
+`Sent`, §5.5), and `canTextBackfill.mjs` would apply it in bulk. ⚠️ **It has never been run and that
+is a decision, not a backlog item** (Josh, 2026-09-10: *"moving forward we'll add can text, no need
+to backfill"*) — §5.31d has the terms. **No cannot be automated at all**: a failed outbound text looks
+identical for a landline, a disconnected mobile, a typo and a carrier having a bad afternoon, and a
+wrong No routes that patient's reorders into a call queue silently. That needs a carrier line-type
+lookup nobody has bought. Automating the Yes in the SPA is NOT the route — a per-patient read at
+render is the incident shape; it belongs on the gateway as a Postgres-only lookup (no RingCentral
+call), which is a shared-infrastructure change and Josh's call.
+
+**Keep-in-agreement:**
+1. **The chip's words** — `FIRST_PUMP_CHIP_LABEL` / `FIRST_PUMP_CHIP_TITLE` ⇄ both render sites
+   (`welcomeCall/PatientInfoCard` banner, `WelcomeCallForm` Pump Qty row). `callSignals.test.ts`
+   fails if the label goes back to claiming a first-time *user*.
+2. **CareCentrix** — `oopContext.isCareCentrixReferral` ⇄ `OopEstimateCard`'s routing note ⇄
+   `OopBlock`'s dropped controls. Never re-derive it in either file.
+3. **The cap** — `QtySelect`'s `max` ⇄ `infusionSetCap` (§5.32g's one module) ⇄ `CapNote`. The picker
+   and the note must read the same cap, or a rep is offered a number the line under it complains about.
+4. **The numbers** — `activityNumbers(phoneSlotsFor(patient))` is the ONLY source for this card and
+   its Call/Text buttons. `phoneEdited` is dead on this board; do not reach for it again.
+Files: `lib/welcomeCall/{oopContext,activityMatch,workflow}.ts` (+ tests),
+`components/welcomeCall/{OopEstimateCard,InsuranceAuthSection,PatientActivityCard,PatientInfoCard,
+WelcomeCallForm}.tsx`, `components/masheke/mmKit.tsx`, `hooks/welcomeCall/usePatientActivity.ts`.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -5986,6 +6126,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's Medical Records still read "MR Expired" after new records went in | §5.36 — `lib/subscription/mrStatus.ts` (the rung rule) → `mondayWrite.saveVisitDateVerified`. The board's five automations only count DOWN and nothing there writes **MR Valid**, so before 2026-09-16 the only fix was by hand. If it recurs: check the Update Visit Date save actually ran (it writes MN Expiry AND MR), then that `MR_STATUS_INDEX` still matches `color_mktyr8xg`'s live `settings_str` — a stale id is dropped at HTTP 200 with nothing in the logs |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |
+| A "Cross-sell" chip on a patient who asked for CGM themselves | §5.31f — their Request Type `color_mm1w1978` is BLANK, and `isCrossSell` used to read that as "they didn't ask". A blank is unknown now. If it fires on a patient who DOES have a Request Type, that is a genuine cross-sell |
+| "First pump on this insurance" on a patient who owns a pump | §5.31f — working as intended, and the label says so since 2026-09-17. It reads claims history (`sosLastBillIp`, `medicarePriorPumpDate`), so it means no pump billed to THIS plan — never that the patient has never had one (Brandon, 2026-09-17). Wording is `FIRST_PUMP_CHIP_LABEL`, one copy for both render sites |
+| "Why does this patient owe $0?" / the deductible and OOP max aren't on screen | §5.31f — the **From eligibility** row and the reason sentence in `OopEstimateCard`, both from `lib/welcomeCall/oopContext.ts`. Three different $0s: deductible met, 0% coinsurance, or an out-of-pocket maximum already spent — only the last resets in January. "not on file" means the column is blank, which is NOT the same as $0 |
+| A rep can pick more infusion sets than the payer pays for | §5.31f — `QtySelect`'s `max` comes from `infusionSetCap` (§5.32g). A number above the cap still on screen is a value the BOARD holds; it is offered deliberately so it doesn't render as a placeholder |
+| Welcome Call texts/calls the wrong number, or the activity box misses history | §5.31f — the box and its Call/Text buttons read `activityNumbers(phoneSlotsFor(patient))`, i.e. the SLOTS. `phoneEdited` is dead on this board (nothing has written it since 2026-09-11) — do not reach for it. Only one number loads at a time; the Primary/Alternate toggle switches it. A box stuck on "Reading RingCentral…" meant a number `toE164` couldn't read — it says so now |
 | An infusion set is missing from the dropdown, or its stock pill is wrong | §5.31b — `lib/welcomeCall/infusionSelection.ts` filters by pump compatibility and excludes the other slot's set; `withCurrentSelection` means a value the BOARD holds is always shown, so a genuinely absent option was filtered. Stock is `stockApi` → `infusionStock`: "No stock data" means no tracker row for that label (re-run the name-join audit), "Stock unknown" means either a stale stamp or a row with no readable quantity — neither is a shortage |
 | Send is greyed out on Welcome Call with no obvious reason | §5.31b — the button and its reasons come from ONE array (`sendGates.unmetSendRequirements`), so the sentences under it are the answer. They apply to **Advance only**; the pump confirmation is hidden entirely when the serving sells no pump device |
 | A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |

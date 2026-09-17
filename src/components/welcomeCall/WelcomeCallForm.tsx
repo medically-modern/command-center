@@ -8,6 +8,8 @@ import {
   servingIncludesPump,
   isCrossSell,
   isFirstTimePumpUser,
+  FIRST_PUMP_CHIP_LABEL,
+  FIRST_PUMP_CHIP_TITLE,
   isInfusionSelling,
   needsPriorPumpDate,
   isOriginalMedicare,
@@ -239,20 +241,54 @@ function InfusionSetCombobox({
 }
 
 /** Quantity selector as a dropdown 0-10 */
+/**
+ * A quantity picker that stops at what the payer will pay for.
+ *
+ * Brandon, 2026-09-17: *"default should always be 3. most plans should limit
+ * ability to go above 3. some plans should allow to adjust more than 3 (i've
+ * provided this info before, anthem/horizon are 9, aetna is 4)"* — answering
+ * Katie's *"haven't seen enough examples to know if it adjusts to higher amounts
+ * for patients with plans that allow for more"*. It does not adjust: the default
+ * is a flat 3 for everybody (`DEFAULT_INFUSION_QTY`, and the live board bears it
+ * out — 164 of 181 orders are 3 and nobody has ever ordered 9), and the payer
+ * only moves the CEILING.
+ *
+ * ⚠️ Until this, the ceiling was a SENTENCE. The list always offered 0–10 and
+ * `CapNote` complained afterwards, so "limit ability to go above 3" was not
+ * implemented anywhere — a rep could pick 9 on a payer that pays for 3 and the
+ * only consequence was amber text they had already scrolled past. The cap is
+ * enforced here and still explained by `CapNote`, because a control that simply
+ * lacks an option teaches nothing.
+ *
+ * ⚠️ **A value the BOARD already holds is always offered, even above the cap.**
+ * `Select` renders from this list, so a row carrying 5 on a default-cap payer
+ * would otherwise show the placeholder and read as an empty quantity — the §5.11
+ * blank-with-no-error, and the same rule `infusionSelection.withCurrentSelection`
+ * keeps for the set lists. Sean Dayton (`12583677009`) is the live example: 5
+ * sets, Horizon, so his cap is 9 — but a payer correction would strand him.
+ */
 function QtySelect({
   value,
   onChange,
+  max,
 }: {
   value: string;
   onChange: (val: string) => void;
+  /** The payer's cap. Omitted, the picker is uncapped as it always was. */
+  max?: number;
 }) {
+  const current = Number(value);
+  const ceiling = Math.max(
+    max ?? 10,
+    Number.isFinite(current) && current > 0 ? current : 0,
+  );
   return (
     <Select value={value || "0"} onValueChange={onChange}>
       <SelectTrigger>
         <SelectValue placeholder="0" />
       </SelectTrigger>
       <SelectContent>
-        {Array.from({ length: 11 }, (_, i) => (
+        {Array.from({ length: ceiling + 1 }, (_, i) => (
           <SelectItem key={i} value={String(i)}>
             {i}
           </SelectItem>
@@ -986,11 +1022,14 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             </div>
 
             <div>
-              {/* Brandon, 2026-09-11: *"shorten this to a pill that says
-                  'First-time pump user' and have the pill next to the pump qty,
-                  not below it"*. Same rule as before — it shapes the CALL, not
-                  the order, and prompts rather than gating, because absent
-                  billing history is weak evidence. */}
+              {/* Brandon, 2026-09-11: *"shorten this to a pill … next to the
+                  pump qty, not below it"*. Same rule as before — it shapes the
+                  CALL, not the order, and prompts rather than gating, because
+                  absent billing history is weak evidence.
+                  ⚠️ The pill said "First-time pump user" until 2026-09-17, which
+                  is a claim about the PATIENT the rule cannot make — Katie hit a
+                  patient who owns one. Wording now comes from
+                  `FIRST_PUMP_CHIP_LABEL`, shared with the banner chip. */}
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <label className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
                   Pump Qty
@@ -1002,10 +1041,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   medicarePriorPumpDate: patient.medicarePriorPumpDate,
                 }) && (
                   <span
-                    title="No prior pump on file — set training expectations on this call."
+                    title={FIRST_PUMP_CHIP_TITLE}
                     className="inline-flex items-center rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
                   >
-                    First-time pump user
+                    {FIRST_PUMP_CHIP_LABEL}
                   </span>
                 )}
               </div>
@@ -1102,6 +1141,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   <QtySelect
                     value={patient.qtyInf1}
                     onChange={(val) => onFieldChange("qtyInf1", val)}
+                    max={infusionCap.cap}
                   />
                 </div>
               </div>
@@ -1150,6 +1190,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   <QtySelect
                     value={patient.qtyInf2}
                     onChange={(val) => onFieldChange("qtyInf2", val)}
+                    max={infusionCap.cap}
                   />
                 </div>
               </div>
@@ -1187,6 +1228,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                   <QtySelect
                     value={patient.qtyCartridge}
                     onChange={(val) => onFieldChange("qtyCartridge", val)}
+                    max={infusionCap.cap}
                   />
                 </div>
               </div>

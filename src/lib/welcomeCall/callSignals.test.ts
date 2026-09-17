@@ -4,7 +4,13 @@
  * write behaviour.
  */
 import { describe, it, expect } from "vitest";
-import { isFirstTimePumpUser, secondaryAsk, secondaryAskNote } from "./workflow";
+import {
+  isCrossSell,
+  isFirstTimePumpUser,
+  secondaryAsk,
+  secondaryAskNote,
+  FIRST_PUMP_CHIP_LABEL,
+} from "./workflow";
 
 const base = { serving: "Insulin Pump", pumpQty: "1", ipLastBillDate: "", medicarePriorPumpDate: "" };
 
@@ -91,5 +97,46 @@ describe("secondaryAsk", () => {
     for (const ask of ["medicare-supplement", "medicaid", "member-id", "full-details"] as const) {
       expect(secondaryAskNote(ask).length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("isCrossSell — a blank Request Type is UNKNOWN, not a no", () => {
+  it("fires on a real request that excluded CGM", () => {
+    // Every genuine cross-sell on the live board 2026-09-17 has this shape.
+    expect(isCrossSell({ serving: "Insulin Pump + CGM", requestType: "Insulin Pump" })).toBe(true);
+    expect(isCrossSell({ serving: "Supplies + CGM", requestType: "Supplies Only" })).toBe(true);
+  });
+
+  it("does not fire when the patient asked for CGM themselves", () => {
+    expect(isCrossSell({ serving: "CGM", requestType: "CGM" })).toBe(false);
+    expect(isCrossSell({ serving: "Insulin Pump + CGM", requestType: "Insulin Pump + CGM" })).toBe(false);
+  });
+
+  it("does not fire on a BLANK Request Type", () => {
+    /* Katie, 2026-09-17: "we get flagged on cross sell even if patient has
+       already selected CGM (ex: order is CGM only)". 7 of the 39 live rows that
+       day carried a blank Request Type with Serving CGM — all SNJ reactivation
+       imports — and every one of them wore the chip. */
+    expect(isCrossSell({ serving: "CGM", requestType: "" })).toBe(false);
+    expect(isCrossSell({ serving: "CGM", requestType: "   " })).toBe(false);
+    expect(isCrossSell({ serving: "Insulin Pump + CGM", requestType: "" })).toBe(false);
+  });
+
+  it("stays quiet when serving has no CGM at all", () => {
+    expect(isCrossSell({ serving: "Insulin Pump", requestType: "Insulin Pump" })).toBe(false);
+    expect(isCrossSell({ serving: "Supplies Only", requestType: "" })).toBe(false);
+  });
+});
+
+describe("the first-pump chip's words", () => {
+  it("claims an insurance fact, never a biography", () => {
+    /* Brandon, 2026-09-17: "this is from insurance perspective… doesn't
+       necessarily mean patient never has used pump before". The rule is
+       unchanged; the label was what was wrong, and Charmaine Brooks — who owns
+       a pump — still matches it. */
+    expect(isFirstTimePumpUser(base)).toBe(true);
+    expect(FIRST_PUMP_CHIP_LABEL).toBe("First pump on this insurance");
+    expect(FIRST_PUMP_CHIP_LABEL).not.toMatch(/first[- ]time/i);
+    expect(FIRST_PUMP_CHIP_LABEL).not.toMatch(/user/i);
   });
 });
