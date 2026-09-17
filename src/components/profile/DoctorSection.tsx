@@ -4,6 +4,7 @@ import type { Patient } from "@/lib/profile/workflow";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { phoneToState } from "@/lib/profile/areaCodeState";
 import { addressWarning } from "@/lib/profile/workflow";
+import { doctorFaxMissing } from "@/lib/profile/doctorFaxRequired";
 import {
   searchDoctors, saveDoctorNotes, saveDoctorFollowers, saveDoctorLocation,
   createDoctorItem, MAX_FOLLOWERS, type DoctorRecord, type OrderFollower,
@@ -574,7 +575,11 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
             )}
 
             {/* Fax cross-check */}
-            {pt.clinicalsMethod === "Fax" && !pt.doctorFax?.trim() && (
+            {/* ⚠️ The same call the two readiness checklists make
+                (lib/profile/doctorFaxRequired.ts), so this banner's own claim —
+                "it blocks send-off" — is true on every page it renders on. It
+                was not, on the intake page, until 2026-09-17. */}
+            {doctorFaxMissing(pt) && (
               <div className="err-banner" style={{ marginTop: 12 }}>
                 <div className="et">Method is Fax — no fax on file</div>
                 <div className="ed">Add a fax to the selected location (Edit selected location); it blocks send-off.</div>

@@ -22,6 +22,11 @@ import {
   type DtcFormMatch, type DtcMatchReason,
 } from "@/lib/profile/dtcFormFlag";
 import { sidebarVisibleList } from "@/lib/profile/sidebarList";
+import {
+  DOCTOR_FAX_ROW_LABEL,
+  faxMethodChosen,
+  hasDoctorFax,
+} from "@/lib/profile/doctorFaxRequired";
 import { viewFilterFromParams } from "@/lib/roleView";
 import type { Patient } from "@/lib/profile/workflow";
 import {
@@ -436,7 +441,14 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     // because the NPI is what the MM Doctor Database and the Parachute lookup
     // key on — a bare name can't be looked up, faxed, or matched.
     items.push({ label: "Doctor selected", ok: !!selected.doctorNpi?.trim() });
-    if (selected.clinicalsMethod === "Fax") items.push({ label: "Doctor Fax", ok: !!selected.doctorFax?.trim() });
+    // ⚠️ Shared with the intake page's own checklist and with DoctorSection's
+    // cross-check banner — see lib/profile/doctorFaxRequired.ts. It lived only
+    // here until 2026-09-17, so the board's OTHER route to Advance to MN let a
+    // Fax patient through with no fax while the banner on that page still said
+    // "it blocks send-off".
+    if (faxMethodChosen(selected)) {
+      items.push({ label: DOCTOR_FAX_ROW_LABEL, ok: hasDoctorFax(selected) });
+    }
     return items;
   }, [selected, addressIssue]);
 

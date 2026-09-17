@@ -1641,7 +1641,8 @@ one of the 22 raised a warning of any kind** — `addressWarning` accepts three-
 
 **Plus a provenance prompt, which is the other half of the ask.** An address that is still the
 payer's line and has never been confirmed shows *"Not confirmed with the patient — re-pick it from
-the address suggestions"* beside the field, and an amber **Address not confirmed** block in *Ready
+the address suggestions"* beside the field, and an amber **Patient address not confirmed** block
+(**"Address not confirmed"** until 2026-09-17 — §5.19b) in *Ready
 to Advance?* (only when no format complaint is already showing there — a rose "Address won't ship"
 says the same thing louder). ⚠️ **The durable half of that test is the MAP PIN, not a render flag.**
 A Places pick always sets lat/lng; the benefits-check fill deliberately never does (a payer gives a
@@ -1655,6 +1656,56 @@ values). ⚠️ **Warnings only** — the intake stage's exits stay open by desi
 never become a gate there. `isUnitSegment` is imported from `shared/cardinalAddress` rather than
 re-implemented, so the fold and the parser can't disagree about what a unit is.
 
+
+### 5.19b The two Profile Send Off asks from 2026-09-17
+Brandon, relaying a pass he and Katie did over the board. Both are small; one of them is a gate
+that existed on one of this board's two routes to Advance to MN and not the other. **No board
+change; app only.**
+
+**1. "say patient address not confirmed at bottom instead of address not confirmed."** §5.19's
+amber block sits at the foot of *Ready to Send Off?*, which summarises insurance, the doctor and
+the address together — and by that point the page has shown **two** addresses, because Select
+Correct Provider carries the clinic's (§5.17 records the clinic address as the one Cardinal
+hard-blocks on far more often than the patient's). Beside the field the inline note can say
+"Address"; down there it cannot. One string, in `UnverifiedReferralsPage`.
+⚠️ Its sibling **"Address won't ship"** — the rose block for a malformed address, rendered
+instead of this one, never beside it — was NOT renamed: Brandon named one string and they are
+mutually exclusive, so a rep never reads the two together. Worth offering him, not worth assuming.
+
+**2. "fax number should be required if method is fax — right now there's no thing blocking this."**
+It WAS blocking, on one page. Canonical rule: **`lib/profile/doctorFaxRequired.ts`** (+ tests).
+⚠️ **This board has TWO routes to Advance to MN and the rule lived on one of them.** `ProfilePage`
+(Referral Intake · Already In System) has carried a "Doctor Fax" readiness row for a while and
+gates its button on the checklist, so there it really did block. The intake page
+(`UnverifiedReferralsPage`, Info Collection + Profile Clean-Up, §5.20) reaches the same exit
+through its **own** `readiness` list, and that list had no such row — the §5.9/§5.10
+keep-in-agreement failure, in a checklist rather than a queue rule.
+⚠️⚠️ **And the screen said otherwise on both.** `DoctorSection` renders on BOTH pages and its
+cross-check banner ends *"it blocks send-off"*. On the intake page that sentence was simply false,
+which is the one thing a warning may never be — a rep who reads a block that is not there learns
+to read past it. The banner, both checklists and the rule are now **one call**
+(`doctorFaxMissing` / `faxMethodChosen` + `hasDoctorFax`); `doctorFaxGateWiring.test.ts` scans all
+three files and fails if the condition is re-inlined anywhere.
+⚠️ **A BLANK Clinicals Method is deliberately NOT caught** — Brandon's wording is "if method is
+fax", and the measurement is the argument. Live board, 2026-09-17, over the four live groups (78
+rows): **3** carry `Fax` (Simon Spitzer, Melissa Grau, Jeremy Bullimore) and **every one already
+has a fax number**, so the new row blocks nobody the day it ships; **~36** carry a blank method,
+nearly all of them New Form — Completed rows with no doctor picked yet. Widening to blank would
+turn a rule that blocks nobody into one that blocks three dozen patients at once. It is still
+worth knowing that §5.9 routes a blank method to the **fax** chase queue — `ProfilePage`'s own
+"Doctor selected" note already records that gap — so widening is a DECISION with a population
+behind it, not a tidy-up.
+⚠️ **Presence, never FORMAT.** The column is an EMAIL column holding `<digits>@rcfax.com` (§5.28);
+judging the shape needs the live-board audit `cardinalAddress` got before anyone could pick a
+severity, which is the same line §5.32b draws for the blank doctor phone.
+⚠️ A readiness row only blocks because each page's button reads the COUNT — `canSubmit =
+missing.length === 0` on `ProfilePage`, `canAdvance = unlock.unlocked && readyMissing === 0` on the
+intake page. `doctorFaxGateWiring.test.ts` pins both, because a row added to a list nothing gates
+on is decoration that reads like a gate.
+
+**Keep-in-agreement:** `lib/profile/doctorFaxRequired.ts` ⇄ `ProfilePage`'s checklist ⇄
+`UnverifiedReferralsPage`'s `readiness` ⇄ `components/profile/DoctorSection`'s banner. Never
+re-derive `clinicalsMethod === "Fax"` in any of them.
 
 ### 5.20 Patient Intake split in two — Info Collection · Profile Clean-Up (Aug 2026)
 The DTC/CareCentrix intake page was **one page with two panes**: the left one collected what the
@@ -6152,6 +6203,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
+| A Fax-method patient advanced with no fax on file | §5.19b — `lib/profile/doctorFaxRequired.ts`, read by BOTH checklists and by `DoctorSection`'s banner. It fires on Clinicals Method **exactly** `Fax`; a BLANK method is deliberately not caught (~36 live rows vs 3, and §5.9 routes a blank to the fax chase queue — widening it is a decision). Presence only, never format |
 | The benefits check filled in a bad-looking address / "not confirmed" flag | §5.19 — `lib/profile/addressFormat.ts`, rendered by `pages/UnverifiedReferralsPage.tsx` |
 | A Fidelis/Medicaid check on an MA dual shows a red "Medicare Parts A & B" Primary Payer cell and "Check card" | `lib/profile/primaryInsurance.ts` `primaryPayerIsMemberMa` (Tanya Freckleton, 2026-08-11): MA = Yes + a non-empty MA carrier + a COB primary payer that says Medicare/CMS is the member's OWN MA plan, not a mismatch — pick `maFamilyLabel(maCarrier)` at high confidence, `MA_PRIMARY_COB` caveat, cell shows the carrier (`primaryPayerCell`). A PRP naming a DIFFERENT MA carrier, or no Medicare word at all (Impellizeri), keeps the withheld pick. Gate 2 replay is mandatory (`REGRESSION.md`) |
 | A DTC form patient wasn't duplicate-checked / the "Already In System" pill is missing | §5.21 — `lib/profile/dupCheckFlag.ts` reads **Dup Check Result**, never `alreadyInSystem`; the service half is `josh-monday-automations` `automations/duplicate-patient-check.js` |

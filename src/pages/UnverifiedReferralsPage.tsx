@@ -46,6 +46,11 @@ import { GROUPS, LIST_COLUMN_IDS, fetchClinicLabels, clearFileColumn } from "@/l
 // location grid, order count and notes all behave exactly as on /profile —
 // rebuilding it would fork behaviour reps already rely on.
 import { DoctorSection } from "@/components/profile/DoctorSection";
+import {
+  DOCTOR_FAX_ROW_LABEL,
+  faxMethodChosen,
+  hasDoctorFax,
+} from "@/lib/profile/doctorFaxRequired";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
 import {
@@ -955,6 +960,17 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     }
     // The doctor carries to Medical Necessity and is what Send Request needs.
     items.push({ label: "Doctor selected", ok: !!(selected.doctorNpi ?? "").trim() });
+    /* ⚠️ Brandon + Katie, 2026-09-17: *"fax number should be required if method
+       is fax - right now there's no thing blocking this"*. It was blocking on
+       `/profile`'s route to Advance to MN and not on this one, while
+       `DoctorSection` — which renders on BOTH pages — carried a banner saying
+       "it blocks send-off". One rule for the checklist and the banner now, so
+       the warning and the gate are the same fact
+       (lib/profile/doctorFaxRequired.ts). A BLANK method is deliberately not
+       caught; the header there has the measurement and the argument. */
+    if (faxMethodChosen(selected)) {
+      items.push({ label: DOCTOR_FAX_ROW_LABEL, ok: hasDoctorFax(selected) });
+    }
     return items;
   }, [selected, verified.primaryInsurance, verified.memberId1,
       verified.secondaryInsurance, verified.memberId2]);
@@ -3903,8 +3919,16 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       >
                         <AlertTriangle className="h-6 w-6 shrink-0 text-amber-600" />
                         <div>
+                          {/* ⚠️ "PATIENT address", not "Address" (Brandon with
+                              Katie, 2026-09-17). This block sits at the bottom
+                              of Ready to Send Off?, a summary of insurance, the
+                              doctor and the address together — and by then the
+                              page has shown TWO addresses, because Select
+                              Correct Provider carries the clinic's. Beside the
+                              field (the inline note further up) "Address" is
+                              unambiguous; down here it is not. */}
                           <div className="text-sm font-black uppercase tracking-wide text-amber-800">
-                            Address not confirmed
+                            Patient address not confirmed
                           </div>
                           <p className="mt-0.5 text-sm text-amber-900">
                             It came from the benefits check, not from the patient. Read it back to
