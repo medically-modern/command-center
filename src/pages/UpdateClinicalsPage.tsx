@@ -51,7 +51,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { ArrowLeft, CalendarDays, CheckCircle2, FileUp, Loader2, MessageSquareReply, RefreshCw, Search, User, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, ChevronRight, FileUp, Loader2, MessageSquareReply, RefreshCw, Search, User, X } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
@@ -322,7 +323,7 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
         Update Visit Date
       </p>
       <p className="text-[11px] text-muted-foreground mb-3">
-        Enter the most recent appointment / visit date — MN Expiry is set to that date + 6 months, and the Medical Records status is set to match it.
+        Enter the most recent appointment / visit date.
       </p>
       <div className="flex items-end gap-3 flex-wrap">
         <div>
@@ -366,6 +367,7 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
 export function RecordsReplyCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: () => void }) {
   const [draft, setDraft] = useState<RecordsReplyDraft>(EMPTY_RECORDS_REPLY);
   const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const option = recordsReplyOption(draft.choice);
   const problems = recordsReplyProblems(draft);
@@ -397,110 +399,119 @@ export function RecordsReplyCard({ patient, onSaved }: { patient: ClinicalsRow; 
   };
 
   return (
-    <Card className="p-5 border-l-4 border-l-amber-500">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 flex items-center gap-1.5">
-        <MessageSquareReply className="h-3.5 w-3.5" />
-        Office replied — no new records
-      </p>
-      <p className="text-[11px] text-muted-foreground mb-3">
-        Use this when the fax came back without new clinicals. It goes into MR Request Log beside the
-        requests we sent, so the chase reads as one conversation.
-      </p>
+    // A drawer, shut by default. The everyday path is upload the records and
+    // enter the visit date; this is the exception, so it stays out of the way
+    // until a rep goes looking for it.
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card className="p-5 border-l-4 border-l-amber-500">
+        <CollapsibleTrigger className="w-full text-left group">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5 group-hover:text-foreground transition-colors">
+            <ChevronRight className={cn("h-3.5 w-3.5 transition-transform duration-200", open && "rotate-90")} />
+            <MessageSquareReply className="h-3.5 w-3.5" />
+            Office replied — no new records
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-1 pl-5">
+            Use this when the fax came back without new clinicals.
+          </p>
+        </CollapsibleTrigger>
 
-      <div className="grid gap-2 sm:grid-cols-3 mb-3">
-        {RECORDS_REPLY_OPTIONS.map((o) => {
-          const active = draft.choice === o.id;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              onClick={() =>
-                // Switching answers clears what belonged to the old one, so a
-                // half-typed detail can never ride along under a new heading.
-                setDraft(active ? EMPTY_RECORDS_REPLY : { ...EMPTY_RECORDS_REPLY, choice: o.id })
-              }
-              className={cn(
-                "text-left rounded-lg border p-3 transition-colors",
-                active
-                  ? "border-amber-500 bg-amber-50 ring-1 ring-amber-400"
-                  : "border-border bg-background hover:bg-muted/50",
-              )}
-            >
-              <span className="block text-sm font-semibold">{o.label}</span>
-              <span className="block text-[11px] text-muted-foreground mt-0.5">{o.hint}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {option && (
-        <div className="space-y-3">
-          {option.detail && (
-            <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                {option.detail.label}
-                {option.detail.required ? " *" : " (optional)"}
-              </label>
-              <textarea
-                value={draft.detail}
-                onChange={(e) => setDraft((d) => ({ ...d, detail: e.target.value }))}
-                placeholder={option.detail.placeholder}
-                rows={2}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          )}
-
-          {option.takesAppointment && (
-            <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                Next doctor appointment (optional)
-              </label>
-              <Input
-                type="date"
-                value={draft.apptDate}
-                onChange={(e) => setDraft((d) => ({ ...d, apptDate: e.target.value }))}
-                className="h-9 w-48 bg-background"
-              />
-              {/* Writing this date schedules a real fax. Say so — it is the one
-                  control on this card with a consequence the rep cannot see. */}
-              <p className="text-[11px] text-muted-foreground mt-1">
-                {draft.apptDate
-                  ? apptPassed
-                    ? "That date has already passed, so no follow-up will be scheduled from it. The reply is still recorded."
-                    : "We'll ask the office again the day after this, unless the records have been updated by then."
-                  : "Leave blank if they didn't give one."}
-              </p>
-            </div>
-          )}
-
-          {preview && (
-            <p className="text-[11px] text-muted-foreground">
-              Goes in as: <span className="font-medium text-foreground">{preview}</span>
-            </p>
-          )}
-
-          {/* A disabled control with no stated reason is a dead end, so the
-              button and the sentences under it read from one list. */}
-          {problems.length > 0 && draft.choice && (
-            <ul className="text-[11px] text-amber-700 list-disc pl-4">
-              {problems.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </ul>
-          )}
-
-          <Button
-            onClick={handleSave}
-            disabled={!canSaveRecordsReply(draft) || saving}
-            className="h-9 gap-2 bg-amber-600 hover:bg-amber-700 text-white"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareReply className="h-4 w-4" />}
-            {saving ? "Recording…" : "Record reply"}
-          </Button>
+        <CollapsibleContent className="pt-3">
+        <div className="grid gap-2 sm:grid-cols-3 mb-3">
+          {RECORDS_REPLY_OPTIONS.map((o) => {
+            const active = draft.choice === o.id;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() =>
+                  // Switching answers clears what belonged to the old one, so a
+                  // half-typed detail can never ride along under a new heading.
+                  setDraft(active ? EMPTY_RECORDS_REPLY : { ...EMPTY_RECORDS_REPLY, choice: o.id })
+                }
+                className={cn(
+                  "text-left rounded-lg border p-3 transition-colors",
+                  active
+                    ? "border-amber-500 bg-amber-50 ring-1 ring-amber-400"
+                    : "border-border bg-background hover:bg-muted/50",
+                )}
+              >
+                <span className="block text-sm font-semibold">{o.label}</span>
+                <span className="block text-[11px] text-muted-foreground mt-0.5">{o.hint}</span>
+              </button>
+            );
+          })}
         </div>
-      )}
-    </Card>
+
+        {option && (
+          <div className="space-y-3">
+            {option.detail && (
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                  {option.detail.label}
+                  {option.detail.required ? " *" : " (optional)"}
+                </label>
+                <textarea
+                  value={draft.detail}
+                  onChange={(e) => setDraft((d) => ({ ...d, detail: e.target.value }))}
+                  placeholder={option.detail.placeholder}
+                  rows={2}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+            )}
+
+            {option.takesAppointment && (
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                  Next doctor appointment (optional)
+                </label>
+                <Input
+                  type="date"
+                  value={draft.apptDate}
+                  onChange={(e) => setDraft((d) => ({ ...d, apptDate: e.target.value }))}
+                  className="h-9 w-48 bg-background"
+                />
+                {/* Writing this date schedules a real fax. Say so — it is the one
+                    control on this card with a consequence the rep cannot see. */}
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {draft.apptDate
+                    ? apptPassed
+                      ? "That date has already passed, so no follow-up will be scheduled from it. The reply is still recorded."
+                      : "We'll ask the office again the day after this, unless the records have been updated by then."
+                    : "Leave blank if they didn't give one."}
+                </p>
+              </div>
+            )}
+
+            {preview && (
+              <p className="text-[11px] text-muted-foreground">
+                Goes in as: <span className="font-medium text-foreground">{preview}</span>
+              </p>
+            )}
+
+            {/* A disabled control with no stated reason is a dead end, so the
+                button and the sentences under it read from one list. */}
+            {problems.length > 0 && draft.choice && (
+              <ul className="text-[11px] text-amber-700 list-disc pl-4">
+                {problems.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            )}
+
+            <Button
+              onClick={handleSave}
+              disabled={!canSaveRecordsReply(draft) || saving}
+              className="h-9 gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareReply className="h-4 w-4" />}
+              {saving ? "Recording…" : "Record reply"}
+            </Button>
+          </div>
+        )}
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
 

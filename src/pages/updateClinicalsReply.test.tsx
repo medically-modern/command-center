@@ -34,7 +34,13 @@ const PATIENT: ClinicalsRow = {
 };
 
 const onSaved = vi.fn();
-const setup = () => render(<RecordsReplyCard patient={PATIENT} onSaved={onSaved} />);
+/** The card is a drawer, shut by default, so every test opens it first. */
+const openDrawer = () => fireEvent.click(screen.getByText(/office replied/i));
+const setup = () => {
+  const rendered = render(<RecordsReplyCard patient={PATIENT} onSaved={onSaved} />);
+  openDrawer();
+  return rendered;
+};
 const pick = (label: string) => fireEvent.click(screen.getByText(label));
 const save = () => fireEvent.click(screen.getByRole("button", { name: /record reply/i }));
 const saveBtn = () => screen.getByRole("button", { name: /record reply/i }) as HTMLButtonElement;
@@ -45,6 +51,13 @@ beforeEach(() => {
 });
 
 describe("the three answers reach the screen", () => {
+  it("stays shut until asked for — the everyday path is the visit date above it", () => {
+    render(<RecordsReplyCard patient={PATIENT} onSaved={onSaved} />);
+    expect(screen.queryByText("Same old records")).toBeNull();
+    openDrawer();
+    expect(screen.getByText("Same old records")).toBeTruthy();
+  });
+
   it("offers all three, and nothing else until one is picked", () => {
     setup();
     expect(screen.getByText("Same old records")).toBeTruthy();
