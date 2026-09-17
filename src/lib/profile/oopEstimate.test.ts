@@ -80,19 +80,40 @@ describe("profile OOP — Profile-only rules", () => {
     expect(r.totalAllowed).toBe(953.91);
   });
 
-  it("United Medicare = 0% coinsurance (patient pays deductible only)", () => {
+  // Changed 2026-09-17. This used to assert "patient pays deductible only" ($500
+  // on a $500 remaining deductible), because United Medicare was a 0% coinsurance
+  // override. It is a zero-OOP payer now (Josh: "no matter what its 0 oop"), and a
+  // deductible is exactly the case the two rules disagree about — so the $500 is
+  // the number this test exists to keep from coming back.
+  it("United Medicare owes $0 even with a deductible remaining", () => {
     const r = estimateOop({
       serving: "CGM",
       primaryInsurance: "United Medicare",
       secondaryInsurance: "",
-      stediCoinsurance: "20", // Stedi says 20% but override forces 0%
+      stediCoinsurance: "20", // Stedi reports 20%; the payer has no cost share
       deductibleRemaining: "500",
       oopMaxRemaining: "",
     });
     expect(r.ok).toBe(true);
-    expect(r.coinsurancePct).toBe(0);
-    // sensors 176.55×3 = 529.65 allowed; deductible 500 applied; coins 0 → owes 500
-    expect(r.patientOwes).toBe(500);
+    expect(r.patientOwes).toBe(0);
+    expect(formatOop(r).val).toBe("$0");
+  });
+
+  it("United Medicare owes $0 with no benefits data at all", () => {
+    // ZERO_PAYERS returns canCalculateCosts: true regardless, so the card renders
+    // a definite $0 instead of vanishing. A coinsurance override could not do this
+    // — it only applies once Stedi has answered.
+    const r = estimateOop({
+      serving: "CGM",
+      primaryInsurance: "United Medicare",
+      secondaryInsurance: "",
+      stediCoinsurance: "",
+      deductibleRemaining: "",
+      oopMaxRemaining: "",
+    });
+    expect(r.ok).toBe(true);
+    expect(r.canCalculateCosts).toBe(true);
+    expect(r.patientOwes).toBe(0);
   });
 
   it("dual secondary Medicaid → $0", () => {

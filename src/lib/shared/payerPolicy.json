@@ -217,7 +217,7 @@
       "Medicare A&B": "MM bills Medicare directly.",
       "NYSHIP": "Empire Plan covers DME in full, no member cost share.",
       "Aetna Medicare": "Fully covered, no cost share (MM-1071, 2026-08-10).",
-      "United Medicare": "Fully covered, no cost share (2026-09-17, Lisa Sanders escalation)."
+      "United Medicare": "Fully covered, no cost share \u2014 $0 regardless of deductible or benefits data (Josh, 2026-09-17, resolving the reorder-form / profile split)."
     }
   },
   "coinsuranceOverrides": {
@@ -284,7 +284,7 @@
       "repo": "medically-modern/command-center-test",
       "path": "src/lib/profile/oopEstimate.ts",
       "local": true,
-      "note": "Profile Send-Off first-order + recurring estimate. Imports PAYER_RATE_SCHEDULE from welcomeCall, so it carries no rate table of its own.",
+      "note": "Profile Send-Off first-order + recurring estimate. Imports PAYER_RATE_SCHEDULE from welcomeCall, so it carries no rate table of its own. Its United Medicare rule was a 0% coinsurance override until 2026-09-17, which left the deductible payable and made this surface disagree with the reorder form for any member carrying one; it is a zero-OOP payer on both now.",
       "constants": {
         "zeroOopPayers": "ZERO_PAYERS",
         "coinsuranceOverrides": "COINS_OVERRIDES",
@@ -294,18 +294,6 @@
         "suppliesRouteToMedicaid": "SUPPLIES_TO_MEDICAID"
       },
       "deviations": [
-        {
-          "field": "zeroOopPayers",
-          "value": "omits \"United Medicare\"",
-          "reason": "UNRESOLVED, NOT a settled deviation. This surface bills United Medicare members the remaining deductible at 0% coinsurance; the reorder form treats them as zero-OOP and waives it. The two agree for a member with no deductible left and disagree by the full deductible for everyone else. Asserted by oopEstimate.test.ts ('patient pays deductible only', $500 case). Decide which is right, then either add United Medicare to ZERO_PAYERS and delete both entries, or move it out of canonical zeroOopPayers."
-        },
-        {
-          "field": "coinsuranceOverrides",
-          "value": {
-            "United Medicare": 0
-          },
-          "reason": "UNRESOLVED, NOT a settled deviation. This surface bills United Medicare members the remaining deductible at 0% coinsurance; the reorder form treats them as zero-OOP and waives it. The two agree for a member with no deductible left and disagree by the full deductible for everyone else. Asserted by oopEstimate.test.ts ('patient pays deductible only', $500 case). Decide which is right, then either add United Medicare to ZERO_PAYERS and delete both entries, or move it out of canonical zeroOopPayers."
-        },
         {
           "field": "productScope",
           "value": "excludes CGM Monitor (E2103)",

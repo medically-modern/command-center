@@ -4868,7 +4868,7 @@ the same class of bug pointing three different ways at once:
 |---|---|
 | `welcomeCall/oopEstimator.ts` (and its `profile/oopEstimate.ts` sibling) | Medicare A&B · **NYSHIP** |
 | `reorder-patient-form` (both copies) | Medicare A&B · **Aetna Medicare** · United Medicare* |
-| `coins-form-payment` | Medicare A&B |
+| `coins-form-payment` | Medicare A&B *(the furthest adrift; all four added 2026-09-17)* |
 
 Aetna Medicare had been made $0 on the reorder form in August (MM-1071) and never came back
 here; **NYSHIP was $0 here and never went there**, so nine live members were quoted between
@@ -4890,13 +4890,19 @@ over), so a shared module would mean adding a bundler to the patient-facing reor
 data problem. Parsing the source instead gives the same guarantee at zero runtime risk: nothing
 about how any estimator computes changed.
 
-⚠️ **A DECLARED deviation is not an endorsement.** `profile/oopEstimate.ts` bills United Medicare
-the remaining deductible at 0% coinsurance while the reorder form waives it — the two agree for a
-member with nothing left on their deductible and disagree by the **whole deductible** for everyone
-else. It is recorded with an `UNRESOLVED` reason rather than silently reconciled, because
-`oopEstimate.test.ts` asserts the current behaviour on purpose ("patient pays deductible only",
-the $500 case) and deleting a deliberate tested rule to make a checker green is how you turn a
-sync tool into a bug. **Decide it, then delete the entry.**
+✅ **The one real disagreement it surfaced is RESOLVED.** `profile/oopEstimate.ts` billed United
+Medicare the remaining deductible at 0% coinsurance while the reorder form waived it — the two
+agreed only for a member with nothing left on their deductible and disagreed by the **whole
+deductible** for everyone else. Josh, 2026-09-17: *"united medicare is a 0 oop meaning that no
+matter what its 0 oop"*. It is in `ZERO_PAYERS` on both surfaces now and `COINS_OVERRIDES` is
+empty. ⚠️ `oopEstimate.test.ts` asserted the OLD rule on purpose ($500 owed on a $500 deductible),
+so that test was rewritten rather than deleted — a deductible is precisely the case the two rules
+differ on, so the $500 is the number the test now exists to keep from coming back.
+
+⚠️ **A DECLARED deviation is not an endorsement** — it is a difference somebody has looked at and
+signed off. Profile keeps exactly one (it excludes the CGM Monitor, per the redesign handoff).
+Deleting a deliberate tested rule to make a checker green is how you turn a sync tool into a bug;
+the answer is a decision, then the entry goes.
 
 ⚠️ **Two halves, because one of them needs the network.**
 `src/lib/shared/payerPolicy.test.ts` runs `--offline` (this repo's two estimators) inside the
@@ -5976,7 +5982,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
-| A payer is $0 on one screen and charged on another | §5.37 — `src/lib/shared/payerPolicy.json` is canonical; `node scripts/check-payer-policy.mjs` names every copy that disagrees. A DECLARED deviation is a decision somebody still owes (United Medicare's deductible on `profile/oopEstimate.ts` is the open one). A drift line right after a push to another repo may be the raw CDN being ~5 min stale — re-run with `GITHUB_TOKEN` set. The **Python** copy is in another org and is checked by nobody |
+| A payer is $0 on one screen and charged on another | §5.37 — `src/lib/shared/payerPolicy.json` is canonical; `node scripts/check-payer-policy.mjs` names every copy that disagrees. A DECLARED deviation is a difference somebody has signed off; profile's CGM-monitor exclusion is the only one. A drift line right after a push to another repo may be the raw CDN being ~5 min stale — re-run with `GITHUB_TOKEN` set. The **Python** copy is in another org and is checked by nobody |
 | A patient's Medical Records still read "MR Expired" after new records went in | §5.36 — `lib/subscription/mrStatus.ts` (the rung rule) → `mondayWrite.saveVisitDateVerified`. The board's five automations only count DOWN and nothing there writes **MR Valid**, so before 2026-09-16 the only fix was by hand. If it recurs: check the Update Visit Date save actually ran (it writes MN Expiry AND MR), then that `MR_STATUS_INDEX` still matches `color_mktyr8xg`'s live `settings_str` — a stale id is dropped at HTTP 200 with nothing in the logs |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |

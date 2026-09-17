@@ -27,17 +27,23 @@ const PRIMARY_MEDICAID = new Set([
 ]);
 // $0-OOP payers. Canonical list: src/lib/shared/payerPolicy.json, enforced by
 // scripts/check-payer-policy.mjs.
-const ZERO_PAYERS = new Set(["Medicare A&B", "NYSHIP", "Aetna Medicare"]);
+//
+// United Medicare joined this set on 2026-09-17 (Josh: "united medicare is a 0
+// oop meaning that no matter what its 0 oop"). It was previously a 0% COINSURANCE
+// override, which is a different and weaker thing: an override leaves the
+// remaining deductible payable, so this surface billed a member up to their full
+// deductible for a fill the reorder form quoted at $0. ZERO_PAYERS short-circuits
+// above the deductible math, so the two surfaces now answer identically.
+const ZERO_PAYERS = new Set(["Medicare A&B", "NYSHIP", "Aetna Medicare", "United Medicare"]);
 /**
- * United Medicare = 0% coinsurance — patient pays the deductible only.
+ * Coinsurance overrides — a whole-number percentage replacing the Stedi value.
  *
- * OPEN QUESTION, do not copy this elsewhere without deciding first. The reorder
- * form (reorder-patient-form) treats United Medicare as a zero-OOP payer, which
- * ALSO waives the remaining deductible. This surface bills it. The two agree for
- * a member with no deductible left and disagree by the full deductible for
- * everyone else. Recorded as a declared deviation in payerPolicy.json.
+ * Empty, and note what an entry here would and would not do before adding one: it
+ * still passes the remaining DEDUCTIBLE through to the patient, and it only takes
+ * effect when Stedi benefits data is present. A payer with no member cost share at
+ * all belongs in ZERO_PAYERS above, which does neither.
  */
-const COINS_OVERRIDES: Record<string, number> = { "United Medicare": 0 };
+const COINS_OVERRIDES: Record<string, number> = {};
 const HUMANA_CGM = new Set(["CGM Monitor", "CGM Sensors"]);
 const ALIASES: Record<string, string> = { "Magnacare": "MagnaCare", "BCBS Wyoming": "BCBS WY" };
 
