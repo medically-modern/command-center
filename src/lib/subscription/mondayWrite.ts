@@ -4,6 +4,7 @@ import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 import type { Patient } from "./workflow";
 import { mrRungForExpiry } from "./mrStatus";
+import { appendNoteEntry, stampNoteEntry } from "../shared/noteStamp";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -16,6 +17,12 @@ interface WriteTask {
    *  what this task's write helper hands JSON.stringify. Every task must carry
    *  one or the gateway /send fast path stays disengaged. */
   value?: unknown;
+  /** Verify this DATA column by exact read-back rather than by "it changed".
+   *  Worth it for an append onto a column with a second writer: a snapshot diff
+   *  says something moved, which is also true when somebody else's line landed
+   *  and ours did not. (On a STAGE task the same field means something else —
+   *  it opts into the advancer no-op guard — so do not add it to one lightly.) */
+  expectedText?: string;
 }
 
 async function executeWithRetry(task: WriteTask): Promise<string | null> {
@@ -294,6 +301,89 @@ export async function saveVisitDateVerified(
     label: "Update Clinicals — visit date",
     tasks,
     stageColumnId: rung ? [COL.mr] : [],
+    executeWithRetry,
+    readColumns: readColumnTexts,
+  });
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} column(s) failed after retries. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
+    );
+  }
+}
+
+/* ── The office replied, but sent no new records ──────────────────────────
+      Records Masheke's reading of a fax that carried no clinicals, and — when
+      the office named a date the patient is next in — schedules the follow-up
+      chase off it. See lib/subscription/recordsReply.ts for the three answers
+      and why only one of them takes a date. ─────────────────────────────── */
+
+/**
+ * Append one stamped line to MR Request Log, and optionally set Next Doc Appt
+ * Date.
+ *
+ * ⚠️ THE LOG IS RE-READ IMMEDIATELY BEFORE THE APPEND, never taken from the
+ * page's copy. Monday has no compare-and-set — `change_column_value` REPLACES
+ * the value — and this column has a SECOND WRITER: `email-serivce`'s
+ * `mr-request` appends a line every time it faxes an office, on its own
+ * schedule, with nothing telling this page it happened. Appending onto a copy
+ * the page loaded minutes ago would silently delete whichever lines landed in
+ * between, and the thing deleted would be the record of the very request this
+ * reply is answering. Re-reading narrows that to one round trip, the same
+ * exposure every other note path in the app carries. A failed re-read ABORTS
+ * rather than appending onto "" — the alternative is replacing the entire
+ * history with one line.
+ *
+ * ⚠️ NEXT DOC APPT DATE IS THE STAGE ADVANCER HERE, so it is written LAST,
+ * behind read-back verification of the note. It is not a note: a board
+ * automation flips MR Rechase the day after it, and the service faxes the
+ * office another records request. Arming that before the reason for it has
+ * landed would leave a fax scheduled with nothing on the item explaining why —
+ * the same reason Mark as Stuck stamps its reason before it moves an item.
+ */
+export async function recordRecordsReplyVerified(
+  itemId: string,
+  { noteLine, apptDate }: { noteLine: string; apptDate?: string },
+): Promise<void> {
+  const trimmed = noteLine.trim();
+  if (!trimmed) throw new Error("Nothing to record — the reply produced no note line.");
+
+  const existing = await readColumnTexts(itemId, [COL.mrRequestLog]);
+  const current = existing.find((c) => c.id === COL.mrRequestLog);
+  if (!current) {
+    throw new Error(
+      "Could not read MR Request Log, so the reply was not saved — appending now would replace the whole history. Try again.",
+    );
+  }
+  const next = appendNoteEntry(current.text ?? "", stampNoteEntry(trimmed, "Update Clinicals"));
+
+  const tasks: WriteTask[] = [
+    {
+      label: "MR Request Log",
+      columnId: COL.mrRequestLog,
+      value: next,
+      expectedText: next,
+      fn: () => writeLongText(itemId, COL.mrRequestLog, next),
+    },
+  ];
+
+  if (apptDate) {
+    tasks.push({
+      label: "Next Doc Appt Date",
+      columnId: COL.nextDocApptDate,
+      value: { date: apptDate },
+      fn: () => writeDate(itemId, COL.nextDocApptDate, apptDate),
+    });
+  }
+
+  const failures = await executeWritesWithVerification({
+    itemId,
+    boardId: String(BOARD_ID),
+    label: "Update Clinicals — office reply",
+    tasks,
+    // The date is held back until the note is confirmed indexed; with no date
+    // there is nothing to advance and this is a plain verified write.
+    stageColumnId: apptDate ? [COL.nextDocApptDate] : [],
     executeWithRetry,
     readColumns: readColumnTexts,
   });

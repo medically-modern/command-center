@@ -64,6 +64,21 @@ export const COL = {
   mnUpdate: "text_mm48gn5w",
   diagnosis: "color_mkxrxv9w",
   mnDocs: "file_mkp0vm0a",
+  // MR Request Log — the running record of the records chase, written from BOTH
+  // ends. The `email-serivce` `mr-request` feature appends a line every time it
+  // faxes an office ("Sent to …@RCFAX.COM (fax) · MR Expired request · 2 files
+  // attached"); Update Clinicals appends the office's REPLY (§ recordsReply).
+  // Both stamp "[Sep 16, 2026, 2:33 PM] …", so one timeline reads as
+  // we-asked / they-answered rather than two half-stories.
+  // ⚠️ A plain `text` column, so no 2,000-character cap — and it has a second
+  // writer, which is why every append here re-reads it first (see mondayWrite).
+  mrRequestLog: "text_mm76ksn7",
+  // Next Doc Appt Date — when the office says the patient is next due in.
+  // ⚠️ Writing it ARMS AN AUTOMATED FAX: a board automation is to flip MR
+  // Rechase the day after this date, which sends the office another records
+  // request unless the records have been refreshed by then. It is a trigger,
+  // not a note, so it is written last and behind read-back verification.
+  nextDocApptDate: "date_mm78r109",
 
   // Prior Auth — Sensors
   sensorsAuthStatus: "color_mm25t997",
