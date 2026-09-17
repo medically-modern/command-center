@@ -390,13 +390,13 @@ describe("checkPack — C31 infusion sets over the cap", () => {
     sets({ primaryInsurance: "Humana", infusionSet2: "", infusionSet2Index: null, qtyInf2: "" }),
     [], [OVER]);
 
-  // The three 9-payers and Aetna's 4 — Brandon's own list, unchanged.
+  // The two 9-payers and Aetna's 4 (Josh narrowed the 9 list 2026-09-17).
   scenario("3 + 3 on Anthem Commercial is silent",
     sets({ primaryInsurance: "Anthem BCBS Commercial" }), [], [OVER]);
   scenario("3 + 3 on Horizon is silent",
     sets({ primaryInsurance: "Horizon BCBS" }), [], [OVER]);
-  scenario("3 + 3 on Cigna is silent",
-    sets({ primaryInsurance: "Cigna" }), [], [OVER]);
+  // Cigna is a default-cap payer now, so 3 + 3 is 6 and fires.
+  scenario("3 + 3 on Cigna fires", sets({ primaryInsurance: "Cigna" }), [OVER]);
   scenario("2 + 2 on Aetna is silent, 3 + 2 fires",
     sets({ primaryInsurance: "Aetna Commercial", qtyInf1: "2", qtyInf2: "2" }), [], [OVER]);
   scenario("Aetna at 5 fires",

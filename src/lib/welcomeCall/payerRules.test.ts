@@ -23,10 +23,11 @@ const BOARD_PAYERS = [
 ];
 
 describe("payerInfusionCap", () => {
-  it("gives 9 to exactly three payer families (Brandon, 2026-09-09)", () => {
+  it("gives 9 to exactly two payer families (Josh, 2026-09-17)", () => {
     expect(payerInfusionCap("Anthem BCBS Commercial")).toEqual({ cap: 9, payerLabel: "Anthem Commercial" });
     expect(payerInfusionCap("Horizon BCBS")).toEqual({ cap: 9, payerLabel: "Horizon" });
-    expect(payerInfusionCap("Cigna")).toEqual({ cap: 9, payerLabel: "Cigna" });
+    // Cigna was the third from 2026-09-09 until Josh narrowed the list.
+    expect(payerInfusionCap("Cigna")).toEqual({ cap: 3, payerLabel: null });
   });
 
   it("caps Aetna at 4, both board plans", () => {

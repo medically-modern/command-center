@@ -90,6 +90,39 @@ export async function fetchConversation(
 }
 
 /**
+ * "Have we ever exchanged a text with these numbers?" — the evidence behind the
+ * Welcome Call Can Text auto-fill (§5.31f).
+ *
+ * Josh, 2026-09-17: *"if the number has received texts we should auto fill it as
+ * yes"* / *"postgres only lookup, sure"*.
+ *
+ * ⚠️ **The gateway answers this from Postgres alone — no RingCentral call.**
+ * That is the whole reason it may be asked once per patient a rep opens, where
+ * every other per-patient lookup on a stage page is rationed to on-open
+ * (INCIDENT_2026-08-20). If this ever grows a RingCentral read, the callers'
+ * fetch policy has to change with it.
+ *
+ * ⚠️ **A number MISSING from `results` means "no evidence", never "no".** The
+ * route omits rather than returning a falsy verdict precisely so there is no
+ * value here a caller could mistake for a negative — a wrong No routes that
+ * patient's reorders into a call queue silently.
+ *
+ * ⚠️ Keyed by the string you SENT, not by E.164. The gateway normalises to hash
+ * and maps back, so the browser never needs a second copy of `toE164` that
+ * could disagree with the gateway's.
+ */
+export async function fetchCanTextEvidence(
+  numbers: string[],
+): Promise<Record<string, "yes">> {
+  const res = await call("/messaging/can-text", {
+    method: "POST",
+    body: JSON.stringify({ numbers }),
+  });
+  const out = await json<{ ok: boolean; results?: Record<string, "yes"> }>(res, "Checking text history");
+  return out.results ?? {};
+}
+
+/**
  * Send a text from the MM number, recording who sent it.
  *
  * ⚠️ Resolving means RingCentral ACCEPTED the message, not that it arrived — an

@@ -98,3 +98,63 @@ export function summarise(decisions) {
   }
   return out;
 }
+
+/* ─── The live lookup (POST /messaging/can-text) ───────────────────────────── */
+
+/**
+ * How many numbers one request may ask about.
+ *
+ * Josh, 2026-09-17: *"if the number has received texts we should auto fill it as
+ * yes"* / *"postgres only lookup, sure"*. A Welcome Call patient has at most two
+ * phone slots, so this is generous by an order of magnitude and exists only so a
+ * malformed caller cannot ask for an unbounded IN-list.
+ */
+export const MAX_LOOKUP_NUMBERS = 25;
+
+/**
+ * The evidence query.
+ *
+ * ⚠️ **It does NOT decide anything.** The temptation is a
+ * `bool_or(direction = 'Inbound' OR lower(message_status) = 'delivered')` in
+ * SQL, which is one round trip and one line — and a second copy of
+ * `canTextFromMessages` in a language nothing tests. That is the hand-synced
+ * mirror hazard CLAUDE.md §5.7/§5.17/§5.29 keep recording, on a rule whose whole
+ * point is that it must never answer "no": a drift between the two copies would
+ * show up as a Can Text that quietly stopped filling in, which looks exactly
+ * like a patient we have never texted.
+ *
+ * So the query GROUPS instead of deciding. One row per distinct
+ * (number, direction, status) — at most a handful per number however many
+ * thousand messages the archive holds for them — and `canTextFromMessages`, the
+ * rule the backfill already uses and the tests already cover, reads them.
+ */
+export function canTextEvidenceSql() {
+  return `SELECT phone_hmac, direction, message_status
+            FROM sms_archive
+           WHERE phone_hmac = ANY($1)
+           GROUP BY phone_hmac, direction, message_status`;
+}
+
+/**
+ * Evidence rows → one verdict per hashed number.
+ *
+ * ⚠️ A number with no rows is ABSENT from the result, not `""`. The caller maps
+ * its own numbers back, and "we have no archived messages for this number" and
+ * "this number cannot receive texts" are different statements — the second one
+ * is the one this rule is forbidden to make.
+ */
+export function canTextVerdicts(rows) {
+  const byHmac = new Map();
+  for (const r of rows ?? []) {
+    const k = String(r?.phone_hmac ?? "");
+    if (!k) continue;
+    if (!byHmac.has(k)) byHmac.set(k, []);
+    byHmac.get(k).push(r);
+  }
+  const out = new Map();
+  for (const [k, messages] of byHmac) {
+    const verdict = canTextFromMessages(messages);
+    if (verdict === "yes") out.set(k, "yes");
+  }
+  return out;
+}

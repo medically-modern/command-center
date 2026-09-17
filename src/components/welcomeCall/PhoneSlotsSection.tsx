@@ -28,11 +28,16 @@ import {
   setSlotOwner,
   starSlot,
   MAX_SLOTS,
+  canTextWasDerived,
+  fillCanTextFromEvidence,
   type CanText,
+  type CanTextEvidence,
   type CaregiverDetails,
   type PhoneSlot,
   type SlotOwner,
 } from "@/lib/welcomeCall/phoneSlots";
+import { useCanTextEvidence } from "@/hooks/welcomeCall/useCanTextEvidence";
+import { useEffect } from "react";
 import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -64,6 +69,24 @@ export function PhoneSlotsSection({ patient, onFieldChange, intake, onIntakeChan
   const slots = phoneSlotsFor(patient);
   const caregiver = caregiverFor(patient);
   const setSlots = (next: PhoneSlot[]) => onFieldChange("phoneSlotsEdited", next);
+
+  /* ── Can Text fills itself in from our own text history ──
+     Josh, 2026-09-17: *"if the number has received texts we should auto fill it
+     as yes"*. The evidence is `sms_archive`, read through the gateway's
+     Postgres-only `/messaging/can-text` — see `useCanTextEvidence` for why a
+     per-patient lookup is allowed here at all.
+     ⚠️ Only ever fills a BLANK, and only ever with "yes": `fillCanTextFromEvidence`
+     returns the same array when there is nothing to do, which is what stops this
+     effect looping (incident rule 2). The write goes to the page overlay like
+     every other slot edit, so the send gate and the send read one answer. */
+  const evidence = useCanTextEvidence(slots.map((sl) => sl.number));
+  useEffect(() => {
+    const next = fillCanTextFromEvidence(slots, evidence);
+    if (next !== slots) onFieldChange("phoneSlotsEdited", next);
+    // `slots` is rebuilt on every render; the identity check above is the real
+    // guard, and `evidence` is a memoized snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evidence]);
   const setCaregiver = (patch: Partial<CaregiverDetails>) =>
     onFieldChange("caregiverEdited", { ...caregiver, ...patch });
 
@@ -99,6 +122,7 @@ export function PhoneSlotsSection({ patient, onFieldChange, intake, onIntakeChan
             onRemove={() => setSlots(removeSlot(slots, i))}
             caregiver={showCaregiver && i === caregiverSlot ? caregiver : null}
             onCaregiver={setCaregiver}
+            evidence={evidence}
           />
         ))}
       </div>
@@ -200,9 +224,13 @@ function SlotRow({
   onRemove,
   caregiver,
   onCaregiver,
+  evidence,
 }: {
   slot: PhoneSlot;
   canDelete: boolean;
+  /** What our own text history says about these numbers — for the note under
+   *  a Yes we filled in rather than the rep did. */
+  evidence: CanTextEvidence;
   onNumber: (v: string) => void;
   onOwner: (v: SlotOwner) => void;
   onCanText: (v: CanText) => void;
@@ -341,6 +369,17 @@ function SlotRow({
               </button>
             ))}
           </div>
+          {/* ⚠️ A derived answer SAYS SO. Every other auto-filled value on this
+              page labels itself — Order Frequency's "default for Medicaid",
+              Subscription Type's "from product mix" — and the reason is sharper
+              here: this is a claim about the patient's phone line, and a rep who
+              cannot tell their own answer from the app's has no way to correct
+              it. Pressing either button replaces it, and the note goes. */}
+          {canTextWasDerived(slot, evidence) && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Filled in automatically — we&apos;ve exchanged texts with this number.
+            </p>
+          )}
           {slot.canText === "no" && (
             <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />

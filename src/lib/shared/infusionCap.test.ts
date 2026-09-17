@@ -13,10 +13,17 @@ import {
 } from "./infusionCap";
 
 describe("infusionSetCap — the payer half", () => {
-  it("raises the three 9-payers", () => {
+  it("raises the two 9-payers", () => {
     expect(infusionSetCap("Anthem BCBS Commercial", "").cap).toBe(9);
     expect(infusionSetCap("Horizon BCBS", "").cap).toBe(9);
-    expect(infusionSetCap("Cigna", "").cap).toBe(9);
+  });
+
+  // ⚠️ Josh, 2026-09-17: "Anthem Commercial/Horizon/ - only for 9". Cigna sat at
+  // 9 from 2026-09-09 and is back on the default. Pinned as its own case rather
+  // than merely deleted from the list above, because a silent re-add is exactly
+  // the "cap set too HIGH" direction this module warns about.
+  it("does NOT raise Cigna", () => {
+    expect(infusionSetCap("Cigna", "")).toEqual({ cap: DEFAULT_INFUSION_CAP, payerLabel: null });
   });
 
   it("gives Aetna 4", () => {

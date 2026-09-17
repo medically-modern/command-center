@@ -9,23 +9,29 @@
  * Brandon, 2026-09-15: *"it should flag if insuion sets add up to more than 3 as
  * a warning. If it's Aetna, it's ok if it's 4. If it's carecentrix or anthem
  * commercial, it's ok if its 9. Everything else should only be 3 total."*
+ * ⚠️ **Josh, 2026-09-17: *"Anthem Commercial/Horizon/ - only for 9"* — so CIGNA
+ * DROPS BACK TO 3**, reversing the 2026-09-09 line that raised it. Anthem
+ * Commercial and Horizon are the whole 9 list among payers, and CareCentrix
+ * stays on its own dimension below because it names the same population Horizon
+ * does (see the next note). Measured the day it changed: of **486 rows** on the
+ * Welcome Call board only **4** are Cigna, **2** carry a quantity, and both
+ * order 3 — so nobody moves, which is why this is a one-line change and not a
+ * migration.
  *
  * ⚠️ **CARECENTRIX IS NOT A PAYER — it is the Referral SOURCE**, `color_mm1w5wxr`
  * label 3, a different column from Primary Insurance, whose 29 labels contain no
  * CareCentrix at all. So the second note names a second DIMENSION rather than
  * restating the first.
  *
- * ⚠️ **The two notes AGREE; they are not a revision.** Measured on the live
- * Welcome Call board 2026-09-15: **all 33** CareCentrix-referral patients carry
- * Primary Insurance = **Horizon BCBS**, with no other payer once. CareCentrix
- * administers Horizon's DME benefit, so "carecentrix" and "horizon" name one
- * population and the September 9th list is intact. Horizon and Cigna therefore
- * KEEP their 9 — reading the later note as a replacement would silently reverse
- * Brandon's own six-day-old decision to raise Cigna from 3 to 9.
- * That reading costs nothing today either way: over the 197 live rows carrying a
- * quantity, **both readings flag exactly zero patients**, because the only order
- * above 3 on a default-cap payer is a Horizon patient who is also a CareCentrix
- * referral (Sean Dayton, `12583677009`, 5 sets) and is covered by either route.
+ * ⚠️ **CareCentrix keeps its 9 under Josh's list, and that is not a third
+ * payer sneaking back in.** Measured on the live Welcome Call board 2026-09-15:
+ * **all 33** CareCentrix-referral patients carry Primary Insurance = **Horizon
+ * BCBS**, with no other payer once. CareCentrix administers Horizon's DME
+ * benefit, so "carecentrix" and "horizon" name ONE population — the referral
+ * rule below only matters for a CareCentrix referral on some other payer, which
+ * has never existed on this board. The one order above 3 on the whole board is
+ * Sean Dayton (`12583677009`, 5 sets), Horizon AND CareCentrix, covered either
+ * way.
  *
  * ⚠️ These are PATTERNS, not board labels — deliberately. `anthem.*commercial`
  * is NOT `anthem`: the board carries "Anthem BCBS Medicare", "Anthem BCBS
@@ -64,7 +70,10 @@ interface CapRule {
 export const PAYER_CAP_RULES: CapRule[] = [
   { match: /anthem.*commercial/i, label: "Anthem Commercial", cap: 9 },
   { match: /horizon/i, label: "Horizon", cap: 9 },
-  { match: /cigna/i, label: "Cigna", cap: 9 },
+  // ⚠️ Cigna was here at 9 from 2026-09-09 to 2026-09-17 and is deliberately
+  // NOT any more (Josh, above). Falling through to the default is the safe
+  // direction — a cap set too high is what lets a rep order sets the payer
+  // pays three of — so re-adding it needs a decision, not a tidy-up.
   { match: /aetna/i, label: "Aetna", cap: 4 },
 ];
 

@@ -514,3 +514,79 @@ export function caregiverConsentJustGiven(
 export function caregiverConsentNote(): string {
   return "Caregiver authorized — verbal consent on welcome call";
 }
+
+/* ─── Can Text, filled in from what we have already texted ─── */
+
+/**
+ * The gateway's answer for a set of numbers: present and `"yes"`, or absent.
+ *
+ * ⚠️ There is deliberately no `"no"` and no `""` in this type. The evidence
+ * (`sms_archive`) can show that a number receives texts; nothing in it can show
+ * that a number cannot — a failed outbound text looks identical for a landline,
+ * a disconnected mobile, a typo and a carrier having a bad afternoon (§5.5). A
+ * wrong No routes that patient's reorders into a call queue instead of the
+ * Day-20 text, silently, so the No side stays the rep's answer.
+ */
+export type CanTextEvidence = Record<string, "yes">;
+
+/** Digits only, so "(555) 555-0100" and "5555550100" are one number. */
+const digitsOf = (s: string) => String(s ?? "").replace(/\D/g, "");
+
+/**
+ * Fill a slot's Can Text from our own text history.
+ *
+ * Josh, 2026-09-17: *"if the number has received texts we should auto fill it as
+ * yes"*. The Can Text answer is a send requirement (`phoneSlotGaps`), and for a
+ * patient we have already been texting it is a question a rep should not have to
+ * spend a call on.
+ *
+ * ⚠️ **FILL-WHEN-BLANK, never overwrite.** A value already on the slot came off
+ * the board or out of the rep's mouth on this call, and both beat a message log.
+ * Same contract `deriveMonitorPurchaseDate`, `shouldDefaultPumpQty` and
+ * `needsCanTextBackfill` all carry.
+ *
+ * ⚠️ **Only ever writes `"yes"`.** Absent evidence leaves the slot blank, which
+ * keeps the rep being asked — see `CanTextEvidence`.
+ *
+ * ⚠️⚠️ **RETURNS THE SAME ARRAY REFERENCE WHEN NOTHING CHANGES.** This runs in an
+ * effect that writes its result back to the page overlay, so a fresh array on
+ * every render is an infinite loop — incident rule 2
+ * (INCIDENT_2026-08-20_RINGCENTRAL.md), the one that took the phone system down
+ * for the whole company. The identity check is the guard, not a nicety.
+ */
+export function fillCanTextFromEvidence(
+  slots: PhoneSlot[],
+  evidence: CanTextEvidence,
+): PhoneSlot[] {
+  const yes = new Set(
+    Object.entries(evidence ?? {})
+      .filter(([, v]) => v === "yes")
+      .map(([number]) => digitsOf(number))
+      .filter(Boolean),
+  );
+  if (yes.size === 0) return slots;
+
+  let changed = false;
+  const next = slots.map((s) => {
+    if (s.canText) return s;                      // answered already — leave it
+    if (!yes.has(digitsOf(s.number))) return s;   // no evidence for this number
+    changed = true;
+    return { ...s, canText: "yes" as CanText };
+  });
+  return changed ? next : slots;
+}
+
+/**
+ * Which slots hold a Can Text we filled in rather than a rep did.
+ *
+ * The screen has to SAY so. Every other derived value on this page labels
+ * itself — Order Frequency's "default for Medicaid", Subscription Type's "from
+ * product mix" — because a rep who cannot tell an answer they gave from one the
+ * app guessed has no way to correct it, and because the claim here is about a
+ * patient's phone line rather than about a default.
+ */
+export function canTextWasDerived(slot: PhoneSlot, evidence: CanTextEvidence): boolean {
+  if (slot.canText !== "yes") return false;
+  const d = digitsOf(slot.number);
+  return !!d && Object.entries(evidence ?? {}).some(([n, v]) => v === "yes" && digitsOf(n) === d);
+}

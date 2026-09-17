@@ -41,7 +41,12 @@
  */
 import { rcApiFetch, rcConfigured } from "./ringcentral.mjs";
 import { authEnforced } from "./auth.mjs";
-import { phoneHmac } from "./phoneHash.mjs";
+import { phoneHmac, toE164 } from "./phoneHash.mjs";
+import {
+  MAX_LOOKUP_NUMBERS,
+  canTextEvidenceSql,
+  canTextVerdicts,
+} from "./canTextRules.mjs";
 import {
   MAX_PAGES,
   PAGE_SIZE,
@@ -386,6 +391,85 @@ export function registerSmsArchive({ app, pool, requireCaller }) {
     lastForcedAt = Date.now();
     const out = await reconcileSmsArchive({ pool });
     res.status(out.ok ? 200 : 502).json(out);
+  });
+
+  /**
+   * "Have we ever exchanged a text with this number?" — POSTGRES ONLY.
+   *
+   * Josh, 2026-09-17: *"if the number has received texts we should auto fill it
+   * as yes"* / *"postgres only lookup, sure"*. Welcome Call's Can Text question
+   * is a send requirement (§5.31d), and for a patient we have already been
+   * texting the answer is sitting in a table we own.
+   *
+   * ⚠️⚠️ **IT TOUCHES RINGCENTRAL NOT AT ALL, and that is the whole reason this
+   * is allowed to be called per patient.** Every other per-patient lookup on a
+   * stage page is rationed — fetched on open, never on render, no polling —
+   * because it spends the shared RingCentral account
+   * (INCIDENT_2026-08-20_RINGCENTRAL.md). This one is a single indexed read of
+   * `sms_archive` against `phone_hmac`, so the budget it competes for is
+   * Postgres, not the phone system. Adding a RingCentral call to this route
+   * would silently re-create that hazard on the busiest page in the app.
+   *
+   * ⚠️ **It can answer "yes" and "we don't know". It can never answer "no".**
+   * `canTextVerdicts` omits a number rather than returning a falsy verdict for
+   * it, so there is no value in this response a caller could mistake for a
+   * negative — see canTextRules.mjs for why the No side needs a carrier
+   * line-type lookup nobody has bought, and what a wrong No costs the patient.
+   *
+   * ⚠️ AUTHENTICATED. The numbers come from the caller, so nothing is disclosed
+   * that they did not already hold — but the ANSWER is a fact about a patient's
+   * communications with us, which is the same posture `/messaging/conversation`
+   * and `/directory/lookup` take. Not rate-floored like `/messaging/archive-run`
+   * beside it: that one spends RingCentral calls, this one does not.
+   *
+   * ⚠️ The archive begins 2026-08-01 (§5.27), so a patient last texted in June
+   * is indistinguishable from one never texted. That is exactly why a miss is
+   * silence and the rep is still asked.
+   */
+  app.post("/messaging/can-text", async (req, res) => {
+    if (requireCaller) {
+      const who = await requireCaller(req, res);
+      // Same shape as /messaging/archive-run: requireCaller answers 401 itself
+      // only when auth is enforced, so a bare null check would hang a build
+      // with no Google client id.
+      if (who === null && authEnforced()) return;
+    }
+    const raw = Array.isArray(req.body?.numbers) ? req.body.numbers : [];
+    if (raw.length > MAX_LOOKUP_NUMBERS) {
+      return res.status(400).json({ error: `At most ${MAX_LOOKUP_NUMBERS} numbers per request` });
+    }
+    /* Caller's spelling → E.164 → HMAC, keeping a way back: the response is
+       keyed by the string the caller sent, because that is what its own slots
+       hold and re-normalising on the browser side would be a second copy of
+       toE164 that could disagree with this one. */
+    const byHmac = new Map();
+    for (const n of raw) {
+      const e164 = toE164(String(n ?? ""));
+      if (!e164) continue; // unreadable identifies nobody — do not guess
+      const h = phoneHmac(e164);
+      if (!h) continue;
+      if (!byHmac.has(h)) byHmac.set(h, []);
+      byHmac.get(h).push(String(n));
+    }
+    if (byHmac.size === 0) return res.json({ ok: true, results: {} });
+
+    try {
+      const q = await pool.query(canTextEvidenceSql(), [[...byHmac.keys()]]);
+      const verdicts = canTextVerdicts(q.rows);
+      const results = {};
+      for (const [h, originals] of byHmac) {
+        if (verdicts.get(h) !== "yes") continue;
+        for (const original of originals) results[original] = "yes";
+      }
+      res.json({ ok: true, results });
+    } catch (e) {
+      /* ⚠️ A failure is an ERROR, not an empty result. An empty `results` means
+         "no evidence", which the caller acts on by leaving the question to the
+         rep; a 200 with `{}` on a dead database would make a broken lookup
+         indistinguishable from a patient we have never texted, which is the
+         §5.27 silence one table over. */
+      res.status(502).json({ ok: false, error: String((e && e.message) || e) });
+    }
   });
 
   void (async () => {

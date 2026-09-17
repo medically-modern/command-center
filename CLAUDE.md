@@ -3012,6 +3012,9 @@ cigna can go up to 9 for the infusion sets and cartridges. Aetna can go up to 4.
 only go up to 3."* That replaced a table ported from the Lovable prototype and moves **six live
 board labels**: `BCBS TN/FL/WY` and `Anthem BCBS Medicare / Medicaid (JLJ) / Low-Cost (JLJ)` all
 drop **9 → 3**, and `Cigna` rises **3 → 9**.
+⚠️ **Cigna went back to 3 on 2026-09-17** (Josh: *"Anthem Commercial/Horizon/ - only for 9"*, §5.31f).
+The 9 list is Anthem Commercial + Horizon, plus CareCentrix on the referral dimension. Re-adding a
+payer is a decision — a cap set too HIGH is the direction that costs money.
 ⚠️ **`/anthem/i` is now WRONG** — it matched all four Anthem plans and only Commercial is a 9;
 the pattern carries `commercial` for exactly that reason. There is deliberately **no generic BCBS
 rule** any more. `Horizon BCBS` still matches on `/horizon/i`.
@@ -3656,7 +3659,13 @@ CEILING. But `QtySelect` always offered **0–10** and `CapNote` complained afte
 ability to go above 3" was implemented nowhere: a rep could pick 9 on a default-cap payer and the
 only consequence was amber text. The picker now stops at `infusionSetCap` on all three quantities
 (Qty Inf. 1, Qty Inf. 2, Qty Cartridge) and `CapNote` still explains, because a control that simply
-lacks an option teaches nothing. ⚠️ **A value the BOARD holds is always offered even above the cap** —
+lacks an option teaches nothing.
+⚠️ **Josh narrowed the 9 list the same day** — *"Anthem Commercial/Horizon/ - only for 9"* — so
+**Cigna drops back to 3**, reversing Brandon's 2026-09-09 line that raised it. CareCentrix keeps its
+9 on the referral dimension because it names the same population Horizon does (all 33 are Horizon
+BCBS, §5.32g). Measured before changing it: of **486 rows** board-wide, 4 are Cigna, **2 carry a
+quantity and both order 3** — nobody moves.
+⚠️ **A value the BOARD holds is always offered even above the cap** —
 `Select` renders from the list, so a row carrying 5 on a 3-cap payer would otherwise show the
 placeholder and read as an empty quantity (the §5.11 blank-with-no-error, and the same rule
 `infusionSelection.withCurrentSelection` keeps for the set lists).
@@ -3687,17 +3696,52 @@ placeholder and read as an empty quantity (the §5.11 blank-with-no-error, and t
   resolve it. A spinner that never ends reads as "still loading" rather than "nothing was asked". It
   now says which.
 
-**Answered, not built — "can this number receive texts → can we automate this?"** Half of it can, and
-that half is already written. `services/monday-gateway/canTextRules.mjs` derives **Yes** from our own
-`sms_archive` (any inbound text, or an outbound one RingCentral marked `Delivered` — never merely
-`Sent`, §5.5), and `canTextBackfill.mjs` would apply it in bulk. ⚠️ **It has never been run and that
-is a decision, not a backlog item** (Josh, 2026-09-10: *"moving forward we'll add can text, no need
-to backfill"*) — §5.31d has the terms. **No cannot be automated at all**: a failed outbound text looks
-identical for a landline, a disconnected mobile, a typo and a carrier having a bad afternoon, and a
-wrong No routes that patient's reorders into a call queue silently. That needs a carrier line-type
-lookup nobody has bought. Automating the Yes in the SPA is NOT the route — a per-patient read at
-render is the incident shape; it belongs on the gateway as a Postgres-only lookup (no RingCentral
-call), which is a shared-infrastructure change and Josh's call.
+**7. Can Text fills itself in — ✅ BUILT 2026-09-17** (Josh: *"if the number has received texts we
+should auto fill it as yes"* / *"postgres only lookup, sure"*, approving the shape the first pass of
+this section recorded as needing his call). The Can Text answer is a send requirement (§5.31d), and
+for a patient we have already been texting it is sitting in a table we own.
+`POST /messaging/can-text` on the gateway → `lib/assignedPatients/messagingApi.fetchCanTextEvidence`
+→ `hooks/welcomeCall/useCanTextEvidence` → `phoneSlots.fillCanTextFromEvidence`, rendered by
+`PhoneSlotsSection`.
+⚠️⚠️ **The route touches RingCentral NOT AT ALL, and that is the ONLY reason a per-patient lookup is
+allowed on this page.** Every other per-patient read on a stage page is rationed to on-open because
+it spends the shared RingCentral account (INCIDENT_2026-08-20); this one is a single indexed read of
+`sms_archive` on `phone_hmac`, so the budget it competes for is Postgres. **If `/messaging/can-text`
+ever grows a RingCentral read, `useCanTextEvidence`'s fetch policy has to change in the same commit.**
+⚠️ **It can answer "yes" and "we don't know", and it is structurally incapable of answering "no".**
+`canTextVerdicts` OMITS a number rather than returning a falsy verdict, so there is no value in the
+response a caller could mistake for a negative. The No side needs a carrier line-type lookup nobody
+has bought, and §5.31d has what a wrong No costs the patient — the reorders go to a call queue,
+silently, for as long as nobody notices.
+⚠️ **The SQL groups; it does not decide.** A `bool_or(direction='Inbound' OR …)` would be one line
+and one round trip — and a second copy of `canTextFromMessages` in a language nothing tests, i.e. the
+§5.7/§5.17/§5.29 hand-synced mirror on a rule whose drift looks exactly like "we have never texted
+this patient". `canTextEvidenceSql` returns one row per distinct (number, direction, status) and the
+existing, tested rule reads them. Pinned by a test that fails if the predicate reappears in SQL.
+⚠️ **Fill-when-blank, and only ever "yes".** A value already on the slot came off the board or out of
+the rep's mouth on this call; both beat a message log. Same contract as `deriveMonitorPurchaseDate`,
+`shouldDefaultPumpQty` and `needsCanTextBackfill`.
+⚠️⚠️ **`fillCanTextFromEvidence` returns the SAME ARRAY when nothing changes.** It runs in an effect
+that writes its result to the page overlay, so a fresh array per render is incident rule 2 with a
+state write attached. The identity check IS the loop guard; `canTextAutoFill.test.ts` pins it both
+ways.
+⚠️ **A derived answer says so on screen** ("Filled in automatically — we've exchanged texts with this
+number"), like Order Frequency's "default for Medicaid" and Subscription Type's "from product mix".
+Sharper here: it is a claim about the patient's phone line, and a rep who cannot tell their own
+answer from the app's cannot correct it. Pressing either button replaces it.
+⚠️ **A miss is cached, a failure is not.** Caching misses is what stops a patient with no text history
+being re-asked on every render; caching a failure would freeze the auto-fill off for the session with
+nothing erroring (§5.28's `fetchDirectoryNames` lesson). A failure is swallowed — this is an
+accelerator, and a rep who is simply asked the question has lost nothing.
+⚠️ **The archive begins 2026-08-01** (§5.27), so a patient last texted in June is indistinguishable
+from one never texted. That is exactly why a miss is silence rather than a No.
+⚠️ **Response keyed by the string the CALLER sent**, not by E.164 — the gateway normalises to hash and
+maps back, so the browser never needs a second copy of `toE164` that could disagree with the
+gateway's.
+⚠️ A dead database is a **502, never a 200 with `{}`** — an empty result means "no evidence", and
+making a broken lookup indistinguishable from an untexted patient is §5.27's silence one table over.
+⚠️ `canTextBackfill.mjs` is UNTOUCHED and still unrun (Josh, 2026-09-10) — that is the bulk
+historical pass, a different decision from filling the column forward on the call.
 
 **Keep-in-agreement:**
 1. **The chip's words** — `FIRST_PUMP_CHIP_LABEL` / `FIRST_PUMP_CHIP_TITLE` ⇄ both render sites
@@ -3709,9 +3753,18 @@ call), which is a shared-infrastructure change and Josh's call.
    and the note must read the same cap, or a rep is offered a number the line under it complains about.
 4. **The numbers** — `activityNumbers(phoneSlotsFor(patient))` is the ONLY source for this card and
    its Call/Text buttons. `phoneEdited` is dead on this board; do not reach for it again.
-Files: `lib/welcomeCall/{oopContext,activityMatch,workflow}.ts` (+ tests),
+5. **Can Text** — `canTextRules.mjs` (the verdict, shared with the backfill) ⇄ `canTextEvidenceSql`
+   (which must stay a GROUP BY, never a predicate) ⇄ `POST /messaging/can-text` ⇄
+   `fetchCanTextEvidence` ⇄ `useCanTextEvidence` ⇄ `fillCanTextFromEvidence`. Nothing in that chain
+   may gain a RingCentral call without the fetch policy changing with it.
+6. **The 9 list** — `PAYER_CAP_RULES` (§5.32g's one module) is Anthem Commercial + Horizon, plus
+   CareCentrix on the referral dimension. Re-adding a payer is a decision, not a tidy-up.
+Files: `lib/welcomeCall/{oopContext,activityMatch,phoneSlots,workflow}.ts` (+ tests),
+`lib/shared/infusionCap.ts`, `lib/assignedPatients/messagingApi.ts`,
 `components/welcomeCall/{OopEstimateCard,InsuranceAuthSection,PatientActivityCard,PatientInfoCard,
-WelcomeCallForm}.tsx`, `components/masheke/mmKit.tsx`, `hooks/welcomeCall/usePatientActivity.ts`.
+PhoneSlotsSection,WelcomeCallForm}.tsx`, `components/masheke/mmKit.tsx`,
+`hooks/welcomeCall/{usePatientActivity,useCanTextEvidence}.ts`,
+`services/monday-gateway/{canTextRules,smsArchive}.mjs` (+ `canTextRoute.test.mjs`).
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -4321,19 +4374,19 @@ app while ordering six boxes the payer pays three of. `C31_INFUSION_QTY_OVER_CAP
 Insurance `color_mm1x157j` carries 29 labels and **not one of them is CareCentrix**, so the note
 names a second DIMENSION rather than restating the payer list.
 
-⚠️ **The two notes AGREE; the later one is not a revision.** Read naively, 2026-09-15 drops Horizon
-and Cigna from 9 to 3 — reversing Brandon's own 2026-09-09 decision to raise Cigna from 3 to 9
-(§5.31), six days old. Measured instead: **all 33** CareCentrix-referral patients on the live
-Welcome Call board carry Primary Insurance = **Horizon BCBS**, with no other payer once.
-CareCentrix administers Horizon's DME benefit, so "carecentrix" and "horizon" name ONE population
-and the September 9th list stands. Horizon and Cigna keep their 9; CareCentrix is added as an
-independent route to 9.
-> **It costs nothing either way today.** Over the **197** live rows carrying a quantity, *both*
-> readings flag **exactly zero** patients: 192 order 3, two order 4 (Aetna Commercial and Anthem
-> BCBS Commercial — both cap-raised), and the single 5 is Sean Dayton (`12583677009`), Horizon
-> **and** a CareCentrix referral, so covered by either route. **13** rows use a second set at all.
-> The check is preventive, not a backlog. Tell Brandon the Horizon/Cigna reading if he meant the
-> narrower list.
+⚠️ **Brandon's two notes AGREE; the later one is not a revision.** Read naively, 2026-09-15 drops
+Horizon and Cigna from 9 to 3. Measured instead: **all 33** CareCentrix-referral patients on the
+live Welcome Call board carry Primary Insurance = **Horizon BCBS**, with no other payer once.
+CareCentrix administers Horizon's DME benefit, so "carecentrix" and "horizon" name ONE population,
+and CareCentrix is an independent route to 9 rather than a replacement for Horizon.
+✅ **CIGNA IS 3 AGAIN from 2026-09-17** — Josh, asked directly: *"Anthem Commercial/Horizon/ - only
+for 9"*. So the 9 list is **Anthem Commercial + Horizon** among payers, plus CareCentrix on the
+referral dimension; Brandon's 2026-09-09 raise of Cigna is deliberately reversed.
+> **It cost nothing to change.** Of **486 rows** board-wide only 4 are Cigna, **2 carry a quantity
+> and both order 3**. Over the 197 live rows carrying a quantity: 192 order 3, two order 4 (Aetna
+> Commercial and Anthem BCBS Commercial — both cap-raised), and the single 5 is Sean Dayton
+> (`12583677009`), Horizon **and** a CareCentrix referral, covered by either route. **13** rows use
+> a second set at all. The check is preventive, not a backlog.
 
 **ONE module, re-exported rather than copied — `lib/shared/infusionCap.ts`** (+ tests).
 `welcomeCall/payerRules` re-exports the cap table it used to own, and `finalConfirm/checkPack`
@@ -6117,7 +6170,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Humana patient's Same-or-Similar was never asked / a product sits in Skip SoS Products | §5.32c — `benefitsDerive.sosRequiredDespiteAuth`. Auth = Required defers the check for every payer EXCEPT Humana; keyed on primary insurance (the secondary column has no Humana label). An auth-required Humana product with no entry derives `""`, which holds the stage — never `"skip"` |
 | The patient's phone is wrong and a rep can't fix it | §5.32d — editable on **Auth Outstanding only**, via `BenefitsPatientHeader`'s opt-in `onSavePhone`. The refusal fires BEFORE the write (`planPhoneWrite` skips what it can't parse, so an unchecked save is green and empty); the write goes straight to the board, never into the overlay. Not a route back to the retired Edit-profile dialog — §7 |
 | The auth-expiry warning keeps popping up on Medicaid supplies | §5.32f — `lib/shared/dvsClaim.ts`. A **paid** A4230/A4232 claim silences the C18 expiry row on that line; a `Denied`, an `ERROR` or the legacy `Yes` deliberately does not, and neither does a blank. Still firing on a patient whose claim paid ⇒ check the primary matches `/medicaid/i` or the secondary is NY Medicaid. ⚠️ Never re-gate this on `hcpcRules.suppliesRouteToMedicaid` — its payer set omits `United Medicaid` |
-| Infusion sets add up to more than the payer allows | §5.32g — `lib/shared/infusionCap.ts`. C31 sums **Qty Inf. 1 + Qty Inf. 2** against `infusionSetCap(primary, referralSource)`; cartridges are a separate line and are not summed in. ⚠️ CareCentrix is the Referral SOURCE, not a payer — all 33 live CareCentrix patients are Horizon BCBS, which is why that route ADDS to the payer list rather than replacing Horizon and Cigna. Welcome Call's per-field cap note reads the same module, so never re-copy the table |
+| Infusion sets add up to more than the payer allows | §5.32g — `lib/shared/infusionCap.ts`. C31 sums **Qty Inf. 1 + Qty Inf. 2** against `infusionSetCap(primary, referralSource)`; cartridges are a separate line and are not summed in. ⚠️ CareCentrix is the Referral SOURCE, not a payer — all 33 live CareCentrix patients are Horizon BCBS, which is why that route ADDS to the payer list rather than replacing Horizon. ⚠️ The payer 9 list is Anthem Commercial + Horizon ONLY — Cigna was on it from 2026-09-09 to 2026-09-17 and Josh took it off (§5.31f). Welcome Call's per-field cap note reads the same module, so never re-copy the table |
 | A blank doctor phone slipped through Final Confirm | §5.32b — `C30_DOCTOR_PHONE_MISSING` in `lib/finalConfirm/checkPack.ts`, paired with `emptyTone="amber"` on that field. Amber by the pack's own rule; Final Confirm never blocks Send |
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
@@ -6129,6 +6182,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A "Cross-sell" chip on a patient who asked for CGM themselves | §5.31f — their Request Type `color_mm1w1978` is BLANK, and `isCrossSell` used to read that as "they didn't ask". A blank is unknown now. If it fires on a patient who DOES have a Request Type, that is a genuine cross-sell |
 | "First pump on this insurance" on a patient who owns a pump | §5.31f — working as intended, and the label says so since 2026-09-17. It reads claims history (`sosLastBillIp`, `medicarePriorPumpDate`), so it means no pump billed to THIS plan — never that the patient has never had one (Brandon, 2026-09-17). Wording is `FIRST_PUMP_CHIP_LABEL`, one copy for both render sites |
 | "Why does this patient owe $0?" / the deductible and OOP max aren't on screen | §5.31f — the **From eligibility** row and the reason sentence in `OopEstimateCard`, both from `lib/welcomeCall/oopContext.ts`. Three different $0s: deductible met, 0% coinsurance, or an out-of-pocket maximum already spent — only the last resets in January. "not on file" means the column is blank, which is NOT the same as $0 |
+| Can Text filled itself in / didn't | §5.31f — `POST /messaging/can-text` (gateway, Postgres-only) → `useCanTextEvidence` → `fillCanTextFromEvidence`. It fills a BLANK with "yes" and nothing else: no evidence means the rep is still asked, which is correct and not a failure. The archive starts 2026-08-01, so a patient last texted in June looks untexted. A wrong "yes" is overridden by pressing either button. ⚠️ It can never write "no" — that needs a carrier line-type lookup nobody has bought |
 | A rep can pick more infusion sets than the payer pays for | §5.31f — `QtySelect`'s `max` comes from `infusionSetCap` (§5.32g). A number above the cap still on screen is a value the BOARD holds; it is offered deliberately so it doesn't render as a placeholder |
 | Welcome Call texts/calls the wrong number, or the activity box misses history | §5.31f — the box and its Call/Text buttons read `activityNumbers(phoneSlotsFor(patient))`, i.e. the SLOTS. `phoneEdited` is dead on this board (nothing has written it since 2026-09-11) — do not reach for it. Only one number loads at a time; the Primary/Alternate toggle switches it. A box stuck on "Reading RingCentral…" meant a number `toE164` couldn't read — it says so now |
 | An infusion set is missing from the dropdown, or its stock pill is wrong | §5.31b — `lib/welcomeCall/infusionSelection.ts` filters by pump compatibility and excludes the other slot's set; `withCurrentSelection` means a value the BOARD holds is always shown, so a genuinely absent option was filtered. Stock is `stockApi` → `infusionStock`: "No stock data" means no tracker row for that label (re-run the name-join audit), "Stock unknown" means either a stale stamp or a row with no readable quantity — neither is a shortage |

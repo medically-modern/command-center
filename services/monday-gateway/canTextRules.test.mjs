@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { canTextFromMessages, needsCanTextBackfill, summarise } from "./canTextRules.mjs";
+import {
+  canTextEvidenceSql,
+  canTextFromMessages,
+  canTextVerdicts,
+  needsCanTextBackfill,
+  summarise,
+  MAX_LOOKUP_NUMBERS,
+} from "./canTextRules.mjs";
 
 const inbound = (over = {}) => ({ direction: "Inbound", message_status: "Received", ...over });
 const outbound = (status) => ({ direction: "Outbound", message_status: status });
@@ -73,5 +80,59 @@ describe("summarise", () => {
       { eligible: false, verdict: "" },
     ]);
     expect(s).toEqual({ scanned: 3, eligible: 2, yes: 1, unknown: 1 });
+  });
+});
+
+describe("the live lookup", () => {
+  it("asks the DB for evidence, never for a verdict", () => {
+    const sql = canTextEvidenceSql();
+    // ⚠️ The rule must not be re-expressed in SQL — see canTextEvidenceSql's
+    // note. A `bool_or(...)` here would be a second, untested copy of
+    // canTextFromMessages, on a rule whose drift looks exactly like "we have
+    // never texted this patient".
+    expect(sql).not.toMatch(/bool_or|delivered|inbound/i);
+    expect(sql).toMatch(/GROUP BY phone_hmac, direction, message_status/);
+    expect(sql).toMatch(/phone_hmac = ANY\(\$1\)/);
+  });
+
+  it("returns yes for a number with an inbound text", () => {
+    const v = canTextVerdicts([
+      { phone_hmac: "aaa", direction: "Inbound", message_status: "Received" },
+    ]);
+    expect(v.get("aaa")).toBe("yes");
+  });
+
+  it("returns yes for a number with a DELIVERED outbound text", () => {
+    expect(canTextVerdicts([{ phone_hmac: "bbb", direction: "Outbound", message_status: "Delivered" }]).get("bbb"))
+      .toBe("yes");
+  });
+
+  it("OMITS a number whose only evidence is Sent or SendingFailed", () => {
+    // §5.5: accepted is not delivered. Absent, never "" and never "no" — the
+    // caller must not be able to read this as a negative answer.
+    const v = canTextVerdicts([
+      { phone_hmac: "ccc", direction: "Outbound", message_status: "Sent" },
+      { phone_hmac: "ccc", direction: "Outbound", message_status: "SendingFailed" },
+    ]);
+    expect(v.has("ccc")).toBe(false);
+    expect(v.size).toBe(0);
+  });
+
+  it("keeps numbers apart", () => {
+    const v = canTextVerdicts([
+      { phone_hmac: "aaa", direction: "Inbound", message_status: "Received" },
+      { phone_hmac: "bbb", direction: "Outbound", message_status: "Queued" },
+    ]);
+    expect([...v.keys()]).toEqual(["aaa"]);
+  });
+
+  it("survives junk rows", () => {
+    expect(canTextVerdicts(null).size).toBe(0);
+    expect(canTextVerdicts([null, {}, { phone_hmac: "" }]).size).toBe(0);
+  });
+
+  it("caps how many numbers one request may carry", () => {
+    expect(MAX_LOOKUP_NUMBERS).toBeGreaterThan(2);
+    expect(MAX_LOOKUP_NUMBERS).toBeLessThanOrEqual(100);
   });
 });
