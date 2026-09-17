@@ -4,12 +4,10 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { OrderHeaderCard } from "./OrderHeaderCard";
-import { OrderTimeline } from "./OrderTimeline";
 import { OrderLinesCard } from "./OrderLinesCard";
-import { ShippingCard } from "./ShippingCard";
 import { SubstitutionCard } from "./SubstitutionCard";
-import { CardinalCard } from "./CardinalCard";
-import { NotesCard, PatientCoverageCard } from "./PatientCoverageCard";
+import { NotesCard } from "./PatientCoverageCard";
+import { OrderDetails } from "./OrderDetails";
 import { OrdersOverview } from "./OrdersOverview";
 import { SkuTrackerView } from "./SkuTrackerView";
 import { OrdersSidebar } from "./OrdersSidebar";
@@ -19,9 +17,11 @@ import { SKU_GROUPS, type SkuTrackerRow } from "@/lib/orders/skuTrackerApi";
 /**
  * Every component on the Orders page, mounted once with fixture data. Pure
  * rules are tested in lib/orders; this catches what only a render catches — a
- * wrong import, a prop shape, a null the JSX did not expect. The contact trio
- * and the sidebar marks reach for RingCentral-backed hooks, which are stubbed
- * so nothing here touches a network.
+ * wrong import, a prop shape, a null the JSX did not expect — and pins the
+ * shape of the 2026-09-17 simplification: ONE sentence answers "where is
+ * it", nothing is said twice, and the long tail is folded but still there.
+ * The contact trio and the sidebar marks reach for RingCentral-backed hooks,
+ * which are stubbed so nothing here touches a network.
  */
 vi.mock("@/components/masheke/mmKit", () => ({
   PatientContact: ({ phone }: { phone?: string }) => <span data-testid="contact">{phone}</span>,
@@ -75,38 +75,60 @@ beforeAll(() => {
 const wrap = (ui: React.ReactNode) => render(<MemoryRouter><SidebarProvider>{ui}</SidebarProvider></MemoryRouter>);
 
 describe("the Orders page renders every card", () => {
-  it("header: name, pills, flags, other orders for the patient, and the switch-off note", () => {
+  it("header: the answer in one sentence, said once, with the other orders one click away", () => {
     wrap(<OrderHeaderCard order={held} allOrders={all} onSelect={() => {}} />);
     expect(screen.getByText("Held Person")).toBeInTheDocument();
-    expect(screen.getAllByText("On hold — Credit Check Failure").length).toBeGreaterThan(0);
-    expect(screen.getByText(/This patient's other orders \(1\)/)).toBeInTheDocument();
-    // Not a to-place order, so no ordering note either way.
-    expect(screen.queryByText(/Ordering from here is coming/)).toBeNull();
+    // The headline states the hold — and the flag banner does NOT repeat it.
+    expect(screen.getByText("On hold at Cardinal — Credit Check Failure")).toBeInTheDocument();
+    expect(screen.queryByText("On hold — Credit Check Failure")).toBeNull();
+    // A different fact still gets its banner.
+    expect(screen.getByText("Backordered at Cardinal")).toBeInTheDocument();
+    // DOB rides under the name; the item id, PO and group are in the drawer, not here.
+    expect(screen.getByText(/DOB 01\/01\/1980/)).toBeInTheDocument();
+    expect(screen.queryByText(/Item h/)).toBeNull();
+    expect(screen.queryByText("Accepted / Partial")).toBeNull();
+    // The path, and the paperwork as a button.
+    expect(screen.getByLabelText("Order progress")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /POD PDF/ })).toBeInTheDocument();
+    expect(screen.getByText(/Other orders \(1\)/)).toBeInTheDocument();
   });
 
-  it("a to-place order says where it is placed today (the switch is off)", () => {
+  it("a delivered order: the date and the signature, and a Track button to the carrier", () => {
+    wrap(<OrderHeaderCard order={done} allOrders={all} onSelect={() => {}} />);
+    expect(screen.getByText("Delivered 9/11/2026")).toBeInTheDocument();
+    expect(screen.getByText("Signed by FRONT DOOR")).toBeInTheDocument();
+    const track = screen.getByRole("link", { name: /Track package/ });
+    expect(track).toHaveAttribute("href", expect.stringContaining("ups.com"));
+  });
+
+  it("a to-place order says so and offers no button while the switch is off", () => {
     wrap(<OrderHeaderCard order={all[0]} allOrders={all} onSelect={() => {}} />);
-    expect(screen.getByText(/Orders are placed on the order board for now/)).toBeInTheDocument();
+    expect(screen.getByText("Waiting to be placed")).toBeInTheDocument();
     expect(screen.queryByText("Mark as Ordered")).toBeNull();
+    expect(screen.queryByText(/order board for now/)).toBeNull();
   });
 
-  it("timeline, lines with stock pills, shipping docs, Cardinal, patient, notes", () => {
+  it("lines: product and quantity, a stock pill only where it says something, notes, and the drawer", () => {
     wrap(
       <>
-        <OrderTimeline order={held} />
         <OrderLinesCard order={held} skuRows={rows} />
-        <ShippingCard order={held} />
-        <CardinalCard order={done} />
-        <PatientCoverageCard order={held} />
         <NotesCard order={held} />
+        <OrderDetails order={done} />
       </>,
     );
-    expect(screen.getByText("Where it is")).toBeInTheDocument();
-    expect(screen.getByText("Backordered")).toBeInTheDocument(); // the stock pill on the AutoSoft line
+    expect(screen.getByText("Backordered")).toBeInTheDocument(); // the AutoSoft line's pill
     expect(screen.getByText("G7 Receiver")).toBeInTheDocument(); // receiver named from the tracker row
-    expect(screen.getByText("POD PDF", { exact: false })).toBeInTheDocument();
-    expect(screen.getByText("$215.31")).toBeInTheDocument();
+    expect(screen.queryByText("426 in stock")).toBeNull();      // an available line wears no pill
     expect(screen.getByText("9/10: a note")).toBeInTheDocument();
+    // Folded, not dropped: the invoice is still in the DOM, under the drawer.
+    expect(screen.getByText("Full order details")).toBeInTheDocument();
+    expect(screen.getByText("$215.31")).toBeInTheDocument();
+  });
+
+  it("a delivered order wears no stock pill — stock today is not that patient's question", () => {
+    wrap(<OrderLinesCard order={delivered({ infusionSet1: 'AutoSoft 90 6 mm 23"', qtyInfusionSet1: "3" })} skuRows={rows} />);
+    expect(screen.queryByText("Backordered")).toBeNull();
+    expect(screen.getByText('AutoSoft 90 6 mm 23"')).toBeInTheDocument();
   });
 
   it("substitution: the pick, the Send button, the verdict and its fix", () => {
@@ -121,7 +143,7 @@ describe("the Orders page renders every card", () => {
       substituteInfusionSet: 'TruSteel 6 mm 23"', substitutionStatus: "Sent",
     });
     wrap(<SubstitutionCard order={swap} skuRows={rows} />);
-    expect(screen.getByText("Email sent")).toBeInTheDocument();
+    expect(screen.getByText("Email sent to Cardinal")).toBeInTheDocument();
     expect(screen.getByText('AutoSoft 90 6mm 23" infusion sets')).toBeInTheDocument();
     expect(screen.getByText("TN1002833I")).toBeInTheDocument(); // the pick's SKU, off the tracker
     // The set already on the board is selected, so pressing Send is a re-send.
@@ -158,12 +180,23 @@ describe("the Orders page renders every card", () => {
     expect(screen.getByText(/Cardinal would refuse this/)).toBeInTheDocument();
   });
 
-  it("overview counts and alerts, and the stock table", () => {
-    wrap(<OrdersOverview orders={all} skuRows={rows} skuLastRun="Last run: 2026-09-15 09:05 ET (cron)" onSelect={() => {}} onShowStock={() => {}} loading={false} />);
-    expect(screen.getByText("The ordering picture")).toBeInTheDocument();
+  it("landing: the search, what needs a person, and one line on stock", () => {
+    const { rerender } = wrap(
+      <OrdersOverview orders={all} skuRows={rows} onSelect={() => {}} onShowStock={() => {}} loading={false} query="" onQueryChange={() => {}} />,
+    );
+    expect(screen.getByLabelText("Find an order")).toBeInTheDocument();
     expect(screen.getByText(/Needs a person \(1\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Cardinal stock alerts \(1\)/)).toBeInTheDocument();
-    expect(screen.getByText(/1 open order on it/)).toBeInTheDocument();
+    expect(screen.getByText(/1 SKU Cardinal can't ship today/)).toBeInTheDocument();
+    expect(screen.getByText(/1 open order on them/)).toBeInTheDocument();
+    // Typing turns the landing into the answer and folds the rest away.
+    rerender(
+      <MemoryRouter><SidebarProvider>
+        <OrdersOverview orders={all} skuRows={rows} onSelect={() => {}} onShowStock={() => {}} loading={false} query="done" onQueryChange={() => {}} />
+      </SidebarProvider></MemoryRouter>,
+    );
+    expect(screen.getByText("Done Person")).toBeInTheDocument();
+    expect(screen.getByText("Delivered 9/11")).toBeInTheDocument();
+    expect(screen.queryByText(/Needs a person/)).toBeNull();
   });
 
   it("stock view lists families and the poll history", () => {
@@ -178,7 +211,7 @@ describe("the Orders page renders every card", () => {
       <OrdersSidebar orders={all} selectedId={null} onSelect={() => {}} loading={false} initialLoading={false} loadedRows={4} error={null} onRefresh={() => {}} query="" onQueryChange={() => {}} showAllDelivered={false} onShowAllDelivered={() => {}} />,
     );
     expect(screen.getByText(/To place \(2\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Placed · in progress \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/In progress \(1\)/)).toBeInTheDocument();
     expect(screen.getByText(/Delivered \(1\)/)).toBeInTheDocument();
     rerender(
       <MemoryRouter><SidebarProvider>

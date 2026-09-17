@@ -53,8 +53,9 @@ const ALWAYS_AVAILABLE = new Set(["id", "name", "groupId", "groupTitle", "partia
 
 /**
  * Read by list-side code but harmless as "" there: `orderLines` carries the
- * per-product auth ids, which only the OPEN order's lines table displays.
- * Nothing on a row, in the overview or in a count reads them.
+ * per-product auth ids, which only the OPEN order's details drawer displays
+ * (`PatientCoverageCard`). Nothing on a row, in the overview or in a count
+ * reads them.
  */
 const BLANK_ON_LIST_IS_FINE = new Set([
   "monitorAuthId", "sensorsAuthId", "pumpAuthId", "infusionSetAuthId", "cartridgesAuthId",

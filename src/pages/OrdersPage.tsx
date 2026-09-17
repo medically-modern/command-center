@@ -4,10 +4,13 @@
  * READ-ONLY (Josh, 2026-09-15): reps observe orders here and still place them
  * on the board. The one write this role knows how to make sits dark behind
  * `lib/orders/config.ts` (see that file before flipping it). What the page is
- * FOR is the phone call: a patient asks where their order is, the rep
- * searches the sidebar and reads the timeline. Landing with nothing selected
- * is deliberate — the overview is the day's picture, and there is no "first
- * patient" to auto-open on a board of 1,480 orders.
+ * FOR is the phone call: a patient asks where their order is, the rep types
+ * the name and reads ONE sentence. So the page is a single column read top to
+ * bottom — the answer, the path, the tracking button, what was ordered, the
+ * notes — and everything else on the item is folded under "Full order
+ * details". Landing with nothing selected is deliberate: the landing IS the
+ * search, and there is no "first patient" to auto-open on a board of 1,480
+ * orders.
  *
  * Two views on one header toggle: Orders (the list + an open order) and
  * Cardinal stock (the tracker table). `?orderId=` deep-links an order;
@@ -28,12 +31,10 @@ import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { OrdersSidebar } from "@/components/orders/OrdersSidebar";
 import { OrderHeaderCard } from "@/components/orders/OrderHeaderCard";
-import { OrderTimeline } from "@/components/orders/OrderTimeline";
 import { OrderLinesCard } from "@/components/orders/OrderLinesCard";
 import { SubstitutionCard } from "@/components/orders/SubstitutionCard";
-import { ShippingCard } from "@/components/orders/ShippingCard";
-import { CardinalCard } from "@/components/orders/CardinalCard";
-import { NotesCard, PatientCoverageCard } from "@/components/orders/PatientCoverageCard";
+import { NotesCard } from "@/components/orders/PatientCoverageCard";
+import { OrderDetails } from "@/components/orders/OrderDetails";
 import { OrdersOverview } from "@/components/orders/OrdersOverview";
 import { SkuTrackerView } from "@/components/orders/SkuTrackerView";
 
@@ -150,7 +151,9 @@ const OrdersPage = () => {
           )}
 
           <main className="flex-1 px-6 py-6 overflow-y-auto">
-            <section className="max-w-6xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-4">
+            {/* One column, read top to bottom, for the order view; the stock
+                table earns its width. */}
+            <section className={cn("mx-auto space-y-4", view === "stock" ? "max-w-7xl" : "max-w-4xl")}>
               {view === "stock" ? (
                 <SkuTrackerView
                   rows={sku.rows}
@@ -164,16 +167,17 @@ const OrdersPage = () => {
                 <OrdersOverview
                   orders={orders}
                   skuRows={sku.rows}
-                  skuLastRun={skuLastRun}
                   onSelect={select}
                   onShowStock={() => setView("stock")}
                   loading={loading}
+                  query={query}
+                  onQueryChange={setQuery}
                 />
               ) : detailGone ? (
                 <Card className="p-10 text-center space-y-2">
                   <p className="text-base font-semibold">This order is no longer on the board.</p>
                   <p className="text-sm text-muted-foreground">It was deleted from Monday since the list last loaded.</p>
-                  <Button variant="outline" size="sm" onClick={() => setSelectedId(null)}>Back to the overview</Button>
+                  <Button variant="outline" size="sm" onClick={() => setSelectedId(null)}>Back to search</Button>
                 </Card>
               ) : !open ? (
                 <Card className="p-10 text-center">
@@ -185,15 +189,10 @@ const OrdersPage = () => {
               ) : (
                 <>
                   <OrderHeaderCard order={open} allOrders={orders} onSelect={select} onPlaced={() => void refetch(true)} />
-                  <OrderTimeline order={open} />
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    <OrderLinesCard order={open} skuRows={sku.rows} />
-                    <SubstitutionCard key={open.id} order={open} skuRows={sku.rows} onSent={() => void refetch(true)} />
-                    <ShippingCard order={open} />
-                    <CardinalCard order={open} />
-                    <PatientCoverageCard order={open} />
-                    <NotesCard order={open} />
-                  </div>
+                  <OrderLinesCard order={open} skuRows={sku.rows} />
+                  <SubstitutionCard key={open.id} order={open} skuRows={sku.rows} onSent={() => void refetch(true)} />
+                  <NotesCard order={open} />
+                  <OrderDetails order={open} />
                 </>
               )}
             </section>

@@ -1,8 +1,9 @@
 /**
  * Created → Placed → Accepted → Shipped → Delivered, drawn from
  * `lib/orders/timeline.ts`. The looks only; the states are tested there.
+ * Renders bare (no card, no title) so the header can carry it under the
+ * headline — the path under the answer.
  */
-import { Card } from "@/components/ui/card";
 import { Check, Circle, Clock, Info, XOctagon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { orderTimeline, type StepState } from "@/lib/orders/timeline";
@@ -33,33 +34,30 @@ function Icon({ state }: { state: StepState }) {
   return <Circle className={c} />;
 }
 
-export function OrderTimeline({ order }: { order: Order }) {
+export function OrderTimeline({ order, className }: { order: Order; className?: string }) {
   const steps = orderTimeline(order);
   return (
-    <Card className="p-4">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-4">Where it is</p>
-      <ol className="grid gap-4" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
-        {steps.map((s, i) => (
-          <li key={s.key} className="relative min-w-0">
-            {i < steps.length - 1 && (
-              <span className={cn("absolute left-[calc(50%+14px)] right-[calc(-50%+14px)] top-3.5 h-0.5", LINE[s.state])} aria-hidden />
-            )}
-            <div className="flex flex-col items-center text-center">
-              <span className={cn("relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border-2", RING[s.state])}>
-                <Icon state={s.state} />
-              </span>
-              <p className={cn("mt-2 text-xs font-semibold", s.state === "pending" ? "text-muted-foreground" : s.state === "blocked" ? "text-rose-700" : "text-foreground")}>
-                {s.title}
+    <ol className={cn("grid gap-3", className)} style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }} aria-label="Order progress">
+      {steps.map((s, i) => (
+        <li key={s.key} className="relative min-w-0">
+          {i < steps.length - 1 && (
+            <span className={cn("absolute left-[calc(50%+14px)] right-[calc(-50%+14px)] top-3.5 h-0.5", LINE[s.state])} aria-hidden />
+          )}
+          <div className="flex flex-col items-center text-center">
+            <span className={cn("relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border-2", RING[s.state])}>
+              <Icon state={s.state} />
+            </span>
+            <p className={cn("mt-2 text-xs font-semibold", s.state === "pending" ? "text-muted-foreground" : s.state === "blocked" ? "text-rose-700" : "text-foreground")}>
+              {s.title}
+            </p>
+            {s.lines.map((l, j) => (
+              <p key={j} className={cn("text-[11px] leading-snug break-words", j === 0 && s.state !== "pending" ? "text-foreground/80" : "text-muted-foreground")}>
+                {l}
               </p>
-              {s.lines.map((l, j) => (
-                <p key={j} className={cn("text-[11px] leading-snug break-words", j === 0 && s.state !== "pending" ? "text-foreground/80" : "text-muted-foreground")}>
-                  {l}
-                </p>
-              ))}
-            </div>
-          </li>
-        ))}
-      </ol>
-    </Card>
+            ))}
+          </div>
+        </li>
+      ))}
+    </ol>
   );
 }

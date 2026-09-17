@@ -50,13 +50,17 @@ export function OrdersSidebar({
 }: Props) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const [openCancelled, setOpenCancelled] = useState(false);
+  const [openTail, setOpenTail] = useState(false);
 
   const sections: OrderSections = useMemo(
     () => sidebarSections(orders, { query, showAllDelivered }),
     [orders, query, showAllDelivered],
   );
   const searching = query.trim().length > 0;
+  // A search opens the tail on its own: a rep looking for a returned order
+  // must not have to know it is folded.
+  const tail = [...sections.returns, ...sections.other, ...sections.cancelled];
+  const tailOpen = openTail || searching;
   const total = orders.length;
   const shown = [
     sections.toPlace, sections.onHold, sections.inProgress, sections.shipped, sections.delivered,
@@ -167,7 +171,7 @@ export function OrdersSidebar({
 
         {renderGroup("To place", sections.toPlace, { tone: "text-[color:var(--mm-teal)]" })}
         {renderGroup("On hold", sections.onHold)}
-        {renderGroup("Placed · in progress", sections.inProgress, { tone: "text-amber-700" })}
+        {renderGroup("In progress", sections.inProgress, { tone: "text-amber-700" })}
         {renderGroup("Shipped", sections.shipped, { tone: "text-sky-700" })}
         {renderGroup(
           "Delivered",
@@ -184,22 +188,22 @@ export function OrdersSidebar({
             ) : undefined,
           },
         )}
-        {renderGroup("Returns", sections.returns, { tone: "text-violet-700" })}
         {renderGroup("Stuck", sections.stuck, { tone: "text-rose-600" })}
-        {renderGroup("Other", sections.other)}
 
-        {sections.cancelled.length > 0 && !collapsed && (
+        {/* Returns, cancellations and the odd row with no status: real, searchable,
+            and not what anyone opens this list for — so one closed group. */}
+        {tail.length > 0 && !collapsed && (
           <SidebarGroup>
             <button
-              onClick={() => setOpenCancelled((v) => !v)}
+              onClick={() => setOpenTail((v) => !v)}
               className="w-full text-left px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5 hover:text-foreground"
             >
-              {openCancelled ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              Cancelled ({sections.cancelled.length})
+              {tailOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              Returns & cancelled ({tail.length})
             </button>
-            {openCancelled && (
+            {tailOpen && (
               <SidebarGroupContent>
-                <SidebarMenu>{sections.cancelled.map((o) => renderRow(o, true))}</SidebarMenu>
+                <SidebarMenu>{tail.map((o) => renderRow(o, true))}</SidebarMenu>
               </SidebarGroupContent>
             )}
           </SidebarGroup>

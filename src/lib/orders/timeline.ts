@@ -3,10 +3,15 @@
  *
  *   Created → Placed → Cardinal → Shipped → Delivered
  *
- * plus a terminal sixth for a return or a cancellation. Pure, so the card is
- * only the looks and the states are tested. `blocked` is the one state a rep
- * must act on (a hold, a booking error, a deletion); `note` is a step that
- * passed with something worth reading (backordered, a warning).
+ * plus a terminal sixth for a return or a cancellation. Pure, so the header
+ * is only the looks and the states are tested. `blocked` is the one state a
+ * rep must act on (a hold, a booking error, a deletion); `note` is a step
+ * that passed with something worth reading (backordered, a warning).
+ *
+ * Each step carries at most one or two short lines — a date, an order
+ * number, Cardinal's reason. What a rep reads aloud is `orderHeadline`; the
+ * timeline shows the path, so it must not restate everything the header,
+ * the tracking buttons and the details drawer already carry.
  */
 import { cardinalStatus, fmtDate, orderStage, type Order } from "./workflow";
 
@@ -22,8 +27,8 @@ export interface TimelineStep {
 type Input = Pick<
   Order,
   | "groupId" | "orderStatus" | "apiStatus" | "holdReason" | "apiMessage"
-  | "orderDate" | "orderType" | "cahOrderNumber" | "poNumber" | "lastCardinalSync"
-  | "shipDate" | "estimatedShipDate" | "carrier" | "tracking" | "deliveryDate" | "signedBy"
+  | "orderDate" | "cahOrderNumber" | "poNumber" | "lastCardinalSync"
+  | "shipDate" | "estimatedShipDate" | "carrier" | "deliveryDate"
 >;
 
 export function orderTimeline(o: Input): TimelineStep[] {
@@ -41,15 +46,12 @@ export function orderTimeline(o: Input): TimelineStep[] {
     key: "created",
     title: "Created",
     state: "done",
-    lines: [[o.orderType, o.orderDate ? fmtDate(o.orderDate) : ""].filter(Boolean).join(" · ")],
+    lines: [o.orderDate ? fmtDate(o.orderDate) : ""].filter(Boolean),
   });
 
   // Placed
   if (placed) {
-    const lines = [
-      o.cahOrderNumber ? `Cardinal order ${o.cahOrderNumber}` : "",
-      o.lastCardinalSync ? `Synced ${o.lastCardinalSync}` : "",
-    ].filter(Boolean);
+    const lines = [o.cahOrderNumber ? `Cardinal order ${o.cahOrderNumber}` : ""].filter(Boolean);
     steps.push({ key: "placed", title: "Placed", state: "done", lines: lines.length ? lines : ["Placed with Cardinal"] });
   } else if (stage === "onHold") {
     steps.push({
@@ -72,7 +74,11 @@ export function orderTimeline(o: Input): TimelineStep[] {
   if (!placed) {
     steps.push({ key: "cardinal", title: "Accepted", state: "pending", lines: [] });
   } else if (cs.kind === "hold" || cs.kind === "error" || cs.kind === "review" || cs.kind === "deleted") {
-    steps.push({ key: "cardinal", title: "Accepted", state: "blocked", lines: [cs.label, cs.detail !== cs.label ? cs.detail : ""].filter(Boolean) });
+    // The node marks the block; the REASON is the headline's, and Cardinal's
+    // full sentence is in the details drawer. Saying it here too is the
+    // three-times-over the page used to do.
+    const word = cs.kind === "hold" ? "On hold" : cs.kind === "error" ? "Booking error" : cs.kind === "review" ? "Needs review" : "Deleted";
+    steps.push({ key: "cardinal", title: "Accepted", state: "blocked", lines: [word] });
   } else if (cs.kind === "backordered" || cs.kind === "substitution" || cs.kind === "warning") {
     steps.push({ key: "cardinal", title: "Accepted", state: "note", lines: [cs.label] });
   } else if (cs.kind === "none" && !shipped) {
@@ -88,7 +94,6 @@ export function orderTimeline(o: Input): TimelineStep[] {
     const lines = [
       [o.shipDate ? fmtDate(o.shipDate) : "", o.carrier].filter(Boolean).join(" · "),
       cs.kind === "partial" ? "Partially shipped — the rest is still to come" : "",
-      o.tracking.length ? `${o.tracking.length} tracking number${o.tracking.length > 1 ? "s" : ""}` : "",
     ].filter(Boolean);
     steps.push({ key: "shipped", title: "Shipped", state: cs.kind === "partial" ? "note" : "done", lines: lines.length ? lines : ["Shipped"] });
   } else {
@@ -102,11 +107,8 @@ export function orderTimeline(o: Input): TimelineStep[] {
 
   // Delivered
   if (delivered) {
-    const lines = [
-      o.deliveryDate ? fmtDate(o.deliveryDate) : "",
-      o.signedBy ? `Signed by ${o.signedBy}` : "",
-    ].filter(Boolean);
-    steps.push({ key: "delivered", title: "Delivered", state: "done", lines: lines.length ? lines : ["Delivered"] });
+    // The date only — who signed is the headline's second line.
+    steps.push({ key: "delivered", title: "Delivered", state: "done", lines: [o.deliveryDate ? fmtDate(o.deliveryDate) : "Delivered"] });
   } else {
     steps.push({ key: "delivered", title: "Delivered", state: "pending", lines: [] });
   }

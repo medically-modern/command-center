@@ -4929,6 +4929,34 @@ one-line add via the Subscription `NotesPanel` pattern when wanted); no Oversigh
 a pipeline stage); no Profile Status badge (the board has no escalation column — the page wears its
 own stage and Cardinal pills instead).
 
+**The page was rebuilt as ONE COLUMN on 2026-09-17** (Josh: *"way way too busy … we need a more
+linear simple path for the people reading … too much text and explaining when the ui should do the
+work"*). The persona is the one this section already names — a rep on the phone, asked *where is my
+order?* — so an open order now reads top to bottom in the order that call runs: the name (DOB and the
+ship-to address under it), **ONE SENTENCE** (`lib/orders/headline.ts` `orderHeadline`, tested —
+"Delivered 9/11/2026 · Signed by FRONT DOOR", "On hold at Cardinal — Credit Check Failure", "Waiting
+to be placed"), the flags that still need a person, the timeline, **Track package** and the documents
+as buttons, the patient's other orders as chips; then *What was ordered* (product · qty, with a stock
+pill only on an OPEN order and only when it says something), the substitution card, the notes, and
+**everything else folded under "Full order details"** (`components/orders/OrderDetails.tsx`: Cardinal +
+invoice, the shipping long tail, patient & coverage & doctor & auth ids, pre-check + line items).
+Nothing left the read; it moved one click down. The landing IS the search (the same `query` the sidebar
+filters on, so typing in either narrows both), then *Needs a person*, then one line on Cardinal stock —
+the six stage tiles went, because the sidebar's section headers already say those numbers.
+⚠️ **Say each fact ONCE.** `orderHeadline.flagId` names the `orderFlags` entry the sentence already
+states and the header skips that banner; the timeline's blocked node says "On hold" and its Delivered
+node the date alone, because the reason and the signature are the headline's; an amber flag is one
+line, because the card below names the set; the substitution verdict is the box, not a corner label as
+well. `ordersRender.test.tsx` pins the removed duplicates (a held order renders the old
+"On hold — Credit Check Failure" banner zero times beside the headline). An addition that restates the
+headline is the busy-ness coming back — put a new fact in the drawer unless a rep needs it on the call.
+⚠️ The stock table dropped OOP price, UOM, last-changed and the description column (Product · Stock ·
+Available · SKU · Unit cost · Open orders remain; a hand-written note sits under the name), and the
+sidebar folds Returns / Other / Cancelled into one closed group that a search opens on its own. The
+"where orders are placed" note under a to-place order is gone: the headline says it, and the ordering
+desk knows where. Rendered in a browser at 1440 and 1100 wide and in dark mode before shipping
+(§5.30d's rule); the render harness is not in the repo.
+
 **System Management → Search returns orders from 2026-09-15, in a fourth folder of their own**
 (Josh: *"add them to the search but ONLY show them in a tab to the right of stuck that says
 orders"*) — **`lib/systemMgmt/ordersSearch.ts`** (+ tests). ⚠️ **The board is still NOT in
@@ -6287,7 +6315,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Welcome Call rep's Propose Stuck says the board has no "Final Escalation Required" label / a manager can't escalate to Final | §5.34 — that label EXISTS since 2026-09-14 (id **2**, working_orange, read back from `settings_str`), so `assertEscalationLabelExists` firing means it was deleted or deactivated on the board since, or the 5-minute label cache is stale right after a board change (the guard drops the cache on a miss, so a retry re-reads). Check `color_mm1x7997`'s `settings_str` on board `18410804557`; if the id is no longer 2, correct `welcomeCall/mondayApi` `ESCALATION_INDEX.final` + every reader listed in §5.34's keep-in-agreement — never by inference. Re-adding it needs the two-step colour swap §5.34 records (Monday refuses duplicate colours and derives a new label's id from its colour) |
 | An escalated Welcome Call / Final Confirm patient is in no Oversight column, or the sidebar and burndown disagree | §5.34 — `escalated` is read off the board (index 0) since 2026-09-14 and `proposedStuck` is index 2; both leave the rep's list and count (`welcomeCall`/`finalConfirm` `sidebarList`, `useRoleCounts`, both baselines) and land in the Welcome Call section's Manager Intervention / Final Decisions charts. A patient in NO column fails `columnExclusivity.test.ts` |
 | The Welcome Call Text shows "Queued" but the patient never got a second text | §5.34 / the 2026-09-14 audit — the trigger fires on a status CHANGE, so re-pressing Send onto a column already at "Send" is a no-op. Press the Queued button once to reset it on the board (`mondayWrite.resetWelcomeCallText`), then Send |
-| "Where is this patient's order?" / an order shows the wrong stage | §5.35 — `/orders`, search the sidebar (name · phone · CAH # · PO · tracking). Stage is `lib/orders/workflow.ts` `orderStage`: **API Status first**, group second — a Delivered order can still sit in *Accepted / Partial*, and 609 pre-poller rows have no API Status. `cardinalStatus` reads API Status + Hold Reason + API Message together |
+| "Where is this patient's order?" / an order shows the wrong stage | §5.35 — `/orders`, type into the landing's search (name · phone · CAH # · PO · tracking); the header's one sentence is `lib/orders/headline.ts`. Stage is `lib/orders/workflow.ts` `orderStage`: **API Status first**, group second — a Delivered order can still sit in *Accepted / Partial*, and 609 pre-poller rows have no API Status. `cardinalStatus` reads API Status + Hold Reason + API Message together. A field "missing" from the order is under **Full order details** — nothing was dropped on 2026-09-17, it was folded |
 | The Orders tile count looks wrong / says "not connected" | §5.35 — it is the Order group's items at Order Status "Order" (waiting to be placed), in `useRoleCounts` + both baseline generators; "not connected" until the first 9 AM cron after the role shipped |
 | A product line reads "Not on the SKU tracker" / a stock pill is grey | §5.35 — `lib/orders/skuJoin.ts` joins BY NAME (`stockKey`); receivers match the sensor label as a suffix of the tracker row's left side. Re-run `skuJoin.test.ts`'s comparison against the live labels; a Medtronic sensor has no receiver row by design |
 | A backordered set's swap request didn't go / the board shows an `Error:` label | §5.35 — the card names the fix and the Send button re-sends; the rule is `lib/orders/substitution.ts` and the AUTHORITY is `email-serivce` (feature `backorder-substitution`, webhook 635472669). Fix the field it names, then press Send again — a repeat CLEARS the column first (`substitutionSendKind`), because re-writing the same label fires no webhook. A blank Substitution Status means the service never ran, not that it succeeded. "No answer from the email service yet" is the watcher giving up after 45s, never a failure |

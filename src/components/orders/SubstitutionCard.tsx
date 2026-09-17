@@ -162,21 +162,7 @@ export function SubstitutionCard({
 
   return (
     <Card className="p-4">
-      <SectionTitle
-        aside={
-          verdict.state === "sent" ? (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-              <Check className="h-3.5 w-3.5" /> Email sent
-            </span>
-          ) : verdict.state === "error" ? (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 dark:text-rose-400">
-              <AlertTriangle className="h-3.5 w-3.5" /> Email not sent
-            </span>
-          ) : undefined
-        }
-      >
-        Backorder substitution
-      </SectionTitle>
+      <SectionTitle>Backorder substitution</SectionTitle>
 
       {stuck.length > 0 && (
         <div className="mb-3">
@@ -252,15 +238,13 @@ export function SubstitutionCard({
                 ? optionsError
                   ? `Can't read the board's set list: ${optionsError}`
                   : "Reading the board's set list…"
-                : "This emails Cardinal customer care straight away."}
+                : "Emails Cardinal customer care straight away."}
           </p>
         </div>
       )}
 
       {phase === "quiet" && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          No answer from the email service yet. Substitution Status will show the verdict when it lands.
-        </p>
+        <p className="mt-2 text-xs text-muted-foreground">No answer yet — the board's Substitution Status will show it when it lands.</p>
       )}
 
       {verdict.state !== "none" && (
@@ -272,20 +256,18 @@ export function SubstitutionCard({
               : "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100",
           )}
         >
-          <p className="font-semibold">{verdict.label}</p>
-          {verdict.state === "sent" ? (
-            <p className="text-xs mt-0.5 opacity-90">
-              The swap request reached Cardinal customer care. The Notes below carry the line that was sent.
-            </p>
-          ) : (
-            verdict.fix && <p className="text-xs mt-0.5 opacity-90">{verdict.fix}</p>
-          )}
+          <p className="font-semibold inline-flex items-center gap-1.5">
+            {verdict.state === "sent" ? <Check className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+            {verdict.state === "sent" ? "Email sent to Cardinal" : "Email not sent"}
+            <span className="font-normal opacity-80">· {verdict.label}</span>
+          </p>
+          {verdict.state === "error" && verdict.fix && <p className="text-xs mt-0.5 opacity-90">{verdict.fix}</p>}
         </div>
       )}
 
       {blockers.length > 0 && (
         <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-          <p className="font-semibold">Cardinal would refuse a swap as this order stands</p>
+          <p className="font-semibold">Fix before sending</p>
           <ul className="mt-0.5 text-xs space-y-0.5 list-disc pl-4">
             {blockers.map((b) => <li key={b}>{b}</li>)}
           </ul>
@@ -293,11 +275,8 @@ export function SubstitutionCard({
       )}
 
       {order.substitutionCahNumber && (
-        <div className="mt-3 pt-3 border-t">
+        <div className="mt-3 pt-3 border-t" title="Cardinal placed this order in place of the original line; the original stays in CAH Order Number.">
           <Field label="Replacement Cardinal order" value={order.substitutionCahNumber} valueClassName="font-mono" />
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Cardinal deleted the original line and placed this order in its place. The original stays in CAH Order Number.
-          </p>
         </div>
       )}
 
