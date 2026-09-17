@@ -46,7 +46,7 @@
  * Pure + unit-tested (`doctorFaxRequired.test.ts`). No fetches, no writes.
  */
 
-import { isFaxAddress } from "@/lib/shared/faxAddress";
+import { RCFAX_SUFFIX, isFaxAddress, toFaxAddress } from "@/lib/shared/faxAddress";
 
 /** The label the readiness row carries on both pages — one string, so the two
  *  checklists cannot describe the same requirement differently. */
@@ -102,4 +102,43 @@ export function doctorFaxGap(p: DoctorFaxSource): "blank" | "malformed" | null {
  */
 export function doctorFaxMissing(p: DoctorFaxSource): boolean {
   return doctorFaxGap(p) !== null;
+}
+
+/**
+ * The same requirement at the point of ENTRY — the "Add Doctor to Database" /
+ * "Add another location" form in Select Correct Provider.
+ *
+ * Josh, 2026-09-17, naming the two halves: *"a new doctor is getting added and
+ * they dont have a fax"* vs *"current doctor added method is fax and we dont
+ * have the rc fax added"*. The readiness row above is the SECOND; this is the
+ * first, and until now nothing checked it: `saveLoc` validated Name, NPI and
+ * Address and let the fax through blank.
+ *
+ * ⚠️ **The form's Method DEFAULTS to `Fax`**, so this is not a rare path — it
+ * is what a rep gets by not touching the dropdown. Measured on the live Doctor
+ * Database (2026-09-17, the 500 records carrying a method): **267 are Fax and
+ * 22 of those hold no fax**, against **228 Parachute** — so roughly half the
+ * doctors we add are not faxed at all, and the default is how a Parachute
+ * doctor becomes a Fax doctor with nothing to fax.
+ *
+ * ⚠️ **It refuses, and the message names BOTH ways out** — fill the fax in, or
+ * change the method. A gate whose only passing move is invisible is the dead
+ * end §5.10 · §5.20 · §5.31c · §5.32c each record reversing; here the second
+ * move is usually the right one, because the rep picked Fax by not choosing.
+ *
+ * ⚠️ Checked on the value AFTER `toFaxAddress`, which is what the save writes —
+ * so a typed `8653742115` passes (it becomes an address) while a pasted
+ * `doctor@clinic.com` does not (that function keeps any `@` value verbatim,
+ * which is the hole §5.19b's audit found live on Clara Perlstein).
+ */
+export function doctorFormFaxRefusal(method: string, typedFax: string): string | null {
+  if (!faxMethodChosen({ clinicalsMethod: method })) return null;
+  const addr = toFaxAddress(typedFax);
+  if (!addr.trim()) {
+    return "Method is Fax, so a fax number is required — add one, or change the method to Parachute or Email.";
+  }
+  if (!isFaxAddress(addr)) {
+    return `"${addr}" can't be faxed — it has to be a 10-digit number at ${RCFAX_SUFFIX}.`;
+  }
+  return null;
 }

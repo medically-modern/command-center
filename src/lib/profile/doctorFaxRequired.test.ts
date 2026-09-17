@@ -11,6 +11,7 @@ import {
   DOCTOR_FAX_ROW_LABEL,
   doctorFaxGap,
   doctorFaxMissing,
+  doctorFormFaxRefusal,
   faxMethodChosen,
   hasDoctorFax,
 } from "./doctorFaxRequired";
@@ -122,5 +123,43 @@ describe("doctorFaxMissing — what the gate and the banner both read", () => {
 describe("the row label", () => {
   it("is one string for both checklists", () => {
     expect(DOCTOR_FAX_ROW_LABEL).toBe("Doctor Fax");
+  });
+});
+
+describe("doctorFormFaxRefusal — the requirement at the point of ENTRY", () => {
+  it("⚠️ refuses a Fax doctor added with no fax — the default path", () => {
+    // The form's Method defaults to "Fax", so this is what a rep gets by not
+    // touching the dropdown. 22 of the 267 Fax records in the live Doctor
+    // Database hold no fax; this is how they got there.
+    const msg = doctorFormFaxRefusal("Fax", "");
+    expect(msg).toBeTruthy();
+    // Both ways out are named — the second is usually the right one.
+    expect(msg).toMatch(/required/);
+    expect(msg).toMatch(/Parachute or Email/);
+  });
+
+  it("accepts a typed number, because the save turns it into an address", () => {
+    expect(doctorFormFaxRefusal("Fax", "8653742115")).toBeNull();
+    expect(doctorFormFaxRefusal("Fax", "(865) 374-2115")).toBeNull();
+    expect(doctorFormFaxRefusal("Fax", "8653742115@rcfax.com")).toBeNull();
+  });
+
+  it("⚠️ refuses an ordinary email pasted into the fax box", () => {
+    // toFaxAddress keeps any "@" value verbatim, which is the hole the live
+    // audit found on Clara Perlstein — an inbox in the fax column.
+    const msg = doctorFormFaxRefusal("Fax", "smweissoffice@gmail.com");
+    expect(msg).toBeTruthy();
+    expect(msg).toMatch(/can't be faxed/);
+  });
+
+  it("refuses a truncated number", () => {
+    expect(doctorFormFaxRefusal("Fax", "865374211")).toBeTruthy();
+  });
+
+  it("is silent for the methods that need no fax", () => {
+    expect(doctorFormFaxRefusal("Parachute", "")).toBeNull();
+    expect(doctorFormFaxRefusal("Email", "")).toBeNull();
+    // ~half the live Doctor Database is Parachute and 194 of those hold no fax.
+    expect(doctorFormFaxRefusal("Parachute", "not a fax")).toBeNull();
   });
 });

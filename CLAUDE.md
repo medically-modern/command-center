@@ -1730,10 +1730,36 @@ missing.length === 0` on `ProfilePage`, `canAdvance = unlock.unlocked && readyMi
 intake page. `doctorFaxGateWiring.test.ts` pins both, because a row added to a list nothing gates
 on is decoration that reads like a gate.
 
+**3. The same requirement AT THE POINT OF ENTRY** (Josh, 2026-09-17, naming the two halves: *"a
+new doctor is getting added and they dont have a fax"* vs *"current doctor added method is fax and
+we dont have the rc fax added"*). The readiness row above is the second; the FIRST was checked
+nowhere. Select Correct Provider's *Add Doctor to Database* / *Add another location* form
+validated **Name, NPI and Address** and let the fax through blank —
+`doctorFaxRequired.doctorFormFaxRefusal` is that gap closed.
+⚠️ **The form's Method DEFAULTS to `Fax`**, so this is not a rare path, it is what a rep gets by
+not touching the dropdown — and `saveLoc` writes that method onto the **patient** as well as the
+Doctor Database, so the mistake only surfaced at Advance to MN, one stage and several minutes
+later, on a patient whose doctor now says Fax. Measured on the live Doctor Database (2026-09-17,
+the 500 records carrying a method): **267 Fax, 22 of them with no fax**, against **228 Parachute**
+(194 with no fax, correctly). Roughly half the doctors we add are never faxed, so the default is
+exactly how a Parachute doctor becomes a Fax doctor with nothing to fax.
+⚠️ **The refusal names BOTH ways out** — fill the fax in, or change the method to Parachute or
+Email — and the second is usually the right one, because the rep picked Fax by not choosing. A
+gate whose passing move is invisible is the dead end §5.10 · §5.20 · §5.31c · §5.32c each record
+reversing.
+⚠️ Checked on the value **after `toFaxAddress`**, which is what the save writes: a typed
+`8653742115` passes (it becomes an address) and a pasted `doctor@clinic.com` does not, since that
+function keeps any `@` value verbatim — the hole the audit above found live on Clara Perlstein.
+⚠️ The required star, the inline complaint and the Save guard read **one** derived value
+(`formFaxRefusal`); three copies is how one stops matching and the button refuses with nothing on
+screen saying why. ⚠️ **Changing the default away from Fax is a SEPARATE decision** and is not
+made — it would move every Parachute add, and nobody has asked.
+
 **Keep-in-agreement:** `lib/shared/faxAddress.ts` `isFaxAddress` (the shape) ⇄
-`lib/profile/doctorFaxRequired.ts` (the rule) ⇄ `ProfilePage`'s checklist ⇄
-`UnverifiedReferralsPage`'s `readiness` ⇄ `components/profile/DoctorSection`'s banner. Never
-re-derive `clinicalsMethod === "Fax"` or the rcfax shape in any of them —
+`lib/profile/doctorFaxRequired.ts` (the rule: `hasDoctorFax` · `doctorFaxGap` ·
+`doctorFormFaxRefusal`) ⇄ `ProfilePage`'s checklist ⇄ `UnverifiedReferralsPage`'s `readiness` ⇄
+`components/profile/DoctorSection`'s banner AND its `saveLoc` guard. Never re-derive
+`clinicalsMethod === "Fax"` or the rcfax shape in any of them —
 `doctorFaxGateWiring.test.ts` scans for both.
 
 ### 5.19c Select Correct Provider opens on the doctor already on the record (Sep 2026)
@@ -6323,6 +6349,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
 | A Fax-method patient advanced with no fax on file | §5.19b — `lib/profile/doctorFaxRequired.ts`, read by BOTH checklists and by `DoctorSection`'s banner. It fires on Clinicals Method **exactly** `Fax`; a BLANK method is deliberately not caught (415 live rows with no fax, 359 of them the 8/25 import, vs 3 in the worked groups — and §5.9 routes a blank to the fax chase queue, so widening it is a decision) |
+| A rep added a doctor with no fax / "why is it making me enter a fax?" | §5.19b — `doctorFormFaxRefusal` gates the *Add Doctor to Database* form when Method is `Fax`, and **Method defaults to Fax**, so a Parachute doctor needs the dropdown changed first — which is the other move the message names. Before 2026-09-17 nothing checked this and the mistake surfaced at Advance to MN instead |
 | A fax "on file" that never arrives / a rep says the fax box is filled but the page still complains | §5.19b — the requirement is an **`@rcfax.com` address** (`shared/faxAddress.isFaxAddress`), not a non-empty box: seven live values pass a presence check and are undeliverable, including `3156270554@rcfax**com**` with the dot missing and an ordinary Gmail address. `doctorFaxGap` is what tells blank from malformed, because "Add a fax" is wrong for a field that already holds something. ⚠️ Uppercase `@RCFAX.com` and an 11-digit leading-1 number are LIVE and must keep passing |
 | A patient's doctor is on the board but Select Correct Provider is empty | §5.19c — `lib/profile/doctorPrefill.ts`. It selects on a whole 10-digit NPI resolving to ONE profile; several name spellings under that NPI, a partial NPI, or a doctor not in the Doctor DB all correctly leave the choice to the rep (the name goes in the search box). ⚠️ It never writes — `pickProfile` does, and an automatic pick would overwrite the doctor the referral named (§5.20) |
 | The benefits check filled in a bad-looking address / "not confirmed" flag | §5.19 — `lib/profile/addressFormat.ts`, rendered by `pages/UnverifiedReferralsPage.tsx` |

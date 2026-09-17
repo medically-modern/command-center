@@ -4,7 +4,7 @@ import type { Patient } from "@/lib/profile/workflow";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { phoneToState } from "@/lib/profile/areaCodeState";
 import { addressWarning } from "@/lib/profile/workflow";
-import { doctorFaxGap } from "@/lib/profile/doctorFaxRequired";
+import { doctorFaxGap, doctorFormFaxRefusal } from "@/lib/profile/doctorFaxRequired";
 import {
   prefillLocation, prefillNpi, prefillSelection, prefillTerm,
 } from "@/lib/profile/doctorPrefill";
@@ -373,6 +373,9 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
   // Why the fax is short, if it is — read once so the banner and any future
   // consumer here cannot disagree about it.
   const faxGap = doctorFaxGap(pt);
+  /** Why this form can't be saved yet, if the method is Fax. Read once so the
+   *  required star, the inline note and the Save guard cannot disagree. */
+  const formFaxRefusal = locMode ? doctorFormFaxRefusal(form.method, form.fax) : null;
   const phoneState = phoneToState(pt.doctorPhone);
   // Area code from the doctor's phone → state; matching-state candidates are
   // grouped at the top (with the "matches phone area code" header), the rest
@@ -447,6 +450,13 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
   const saveLoc = async () => {
     if (!form.name.trim() || !form.npi.trim()) { toast.error("Name and NPI are required"); return; }
     if (locMode !== "edit" && !form.address.trim()) { toast.error("Address is required"); return; }
+    // ⚠️ A Fax doctor with no fax is a chase nobody can run, and this form is
+    // where it gets created — Method defaults to "Fax", so it is the shape a
+    // rep gets by not touching the dropdown. The refusal names both ways out
+    // (§5.19b); `saveLoc` writes the method onto the PATIENT too, so letting it
+    // through here is what the readiness row then blocks at Advance, one stage
+    // and several minutes later.
+    if (formFaxRefusal) { toast.error(formFaxRefusal); return; }
     setSavingLoc(true);
     // Both boards store the fax in an EMAIL column — send an address, never a
     // bare number, or Monday rejects the whole mutation.
@@ -514,13 +524,15 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
             board, so it is stored as <number>@rcfax.com (also what RingCentral
             faxes). The rep types just the number; the suffix rides along. It is
             hidden when they paste some other address, which saves verbatim. */}
-        <div><div className="flabel">Fax</div>
+        <div><div className="flabel">Fax {form.method === "Fax" && <span className="req-star">*</span>}</div>
           <div className="fax-wrap">
             <input type="text" inputMode="tel" placeholder="8653742115"
               value={form.fax} onChange={(e) => setForm({ ...form, fax: e.target.value })} />
             {splitFaxAddress(form.fax).suffixed && <span className="fax-sfx">{RCFAX_SUFFIX}</span>}
           </div>
-          <div className="fhint">Saves as <b>{toFaxAddress(form.fax) || `<number>${RCFAX_SUFFIX}`}</b></div>
+          {formFaxRefusal
+            ? <div className="fwarn">{formFaxRefusal}</div>
+            : <div className="fhint">Saves as <b>{toFaxAddress(form.fax) || `<number>${RCFAX_SUFFIX}`}</b></div>}
         </div>
         <div><div className="flabel">Email</div><input type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
         <div className="full"><div className="flabel">Method</div>

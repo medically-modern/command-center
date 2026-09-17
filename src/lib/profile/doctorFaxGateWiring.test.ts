@@ -61,9 +61,13 @@ describe("the requirement is the rcfax SHAPE, not merely a non-empty box", () =>
     // rcfax (its header explains why the shape is checked at all) and must not
     // IMPLEMENT it. Comments are stripped before asserting that.
     expect(RULE).toMatch(/isFaxAddress\(p\.doctorFax/);
+    // It may NAME the convention — it imports RCFAX_SUFFIX to write the refusal
+    // sentence, which is the shared constant and cannot drift. What it must not
+    // do is IMPLEMENT the shape: no second regex, no second endsWith.
     const code = RULE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-    expect(code).not.toMatch(/rcfax/i);
-    expect(code).not.toMatch(/RCFAX_SUFFIX/);
+    expect(code).not.toMatch(/endsWith/);
+    expect(code).not.toMatch(/\/\^?1?\\d/);       // a digit-count regex literal
+    expect(code).not.toMatch(/"@rcfax\.com"/);    // the suffix written out again
   });
 
   it("the shape test lives beside toFaxAddress / splitFaxAddress", () => {
@@ -74,6 +78,23 @@ describe("the requirement is the rcfax SHAPE, not merely a non-empty box", () =>
     // `3367130547@RCFAX.com` is live and deliverable; refusing it would block a
     // working fax, the one direction this check must never fail in.
     expect(FAX).toMatch(/isFaxAddress[\s\S]{0,400}toLowerCase\(\)/);
+  });
+});
+
+describe("the doctor form requires the fax at the point of entry", () => {
+  it("saveLoc refuses before it writes", () => {
+    // It writes the method onto the PATIENT as well as the Doctor Database, so
+    // letting it through here is what the readiness row blocks one stage later.
+    expect(DOCTOR).toMatch(/if \(formFaxRefusal\) \{ toast\.error\(formFaxRefusal\); return; \}/);
+    expect(DOCTOR).toMatch(/doctorFormFaxRefusal\(form\.method, form\.fax\)/);
+  });
+
+  it("the star, the inline note and the guard read ONE value", () => {
+    // Three copies of "is this form short a fax" is how one of them stops
+    // matching and the button refuses with nothing on screen saying why.
+    expect(DOCTOR).toMatch(/form\.method === "Fax" && <span className="req-star">/);
+    expect(DOCTOR).toMatch(/\{formFaxRefusal\s*\n?\s*\?\s*<div className="fwarn">\{formFaxRefusal\}<\/div>/);
+    expect((DOCTOR.match(/doctorFormFaxRefusal\(/g) ?? []).length).toBe(1); // derived once, read twice
   });
 });
 
