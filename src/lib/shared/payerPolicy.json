@@ -1,0 +1,378 @@
+{
+  "$comment": [
+    "CANONICAL payer policy. Every out-of-pocket estimator in the org is checked",
+    "against this file by scripts/check-payer-policy.mjs. Change a payer's",
+    "treatment HERE first, then run that script to see which consumers drifted.",
+    "Consumers are listed under `consumers` with any deliberate deviations."
+  ],
+  "version": "2026-09-17",
+  "rateSchedule": {
+    "NYSHIP": {
+      "pump_rate": 4326.7,
+      "infusion_rate": 24.64,
+      "cartridge_rate": 3.3,
+      "monitor_rate": 298.7,
+      "sensor_rate": 315.26
+    },
+    "Anthem BCBS Commercial": {
+      "pump_rate": 4200,
+      "infusion_rate": 8.75,
+      "cartridge_rate": 2.95,
+      "monitor_rate": 400,
+      "sensor_rate": 375
+    },
+    "Anthem BCBS Medicare": {
+      "pump_rate": 4200,
+      "infusion_rate": 25.19,
+      "cartridge_rate": 3.38,
+      "monitor_rate": 267.92,
+      "sensor_rate": 255
+    },
+    "Anthem BCBS Medicaid (JLJ)": {
+      "pump_rate": 4200,
+      "infusion_rate": 8.75,
+      "cartridge_rate": 2.95,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "Anthem BCBS Low-Cost (JLJ)": {
+      "pump_rate": 4200,
+      "infusion_rate": 8.75,
+      "cartridge_rate": 2.95,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "Fidelis Commercial": {
+      "pump_rate": 4000,
+      "infusion_rate": 11.17,
+      "cartridge_rate": 2.65,
+      "monitor_rate": 193.97,
+      "sensor_rate": 218.09
+    },
+    "Fidelis Medicaid": {
+      "pump_rate": 4000,
+      "infusion_rate": 15.2,
+      "cartridge_rate": 3.61,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "Fidelis Medicare": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": 218.13
+    },
+    "Fidelis Low-Cost": {
+      "pump_rate": 4000,
+      "infusion_rate": 11.17,
+      "cartridge_rate": 2.65,
+      "monitor_rate": 193.97,
+      "sensor_rate": 218.09
+    },
+    "Medicare A&B": {
+      "pump_rate": 600,
+      "infusion_rate": 29.07,
+      "cartridge_rate": 3.62,
+      "monitor_rate": 322.63,
+      "sensor_rate": 318
+    },
+    "Medicaid": {
+      "pump_rate": 4440,
+      "infusion_rate": 15.2,
+      "cartridge_rate": 3.61,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "United Commercial": {
+      "pump_rate": null,
+      "infusion_rate": 6.97,
+      "cartridge_rate": 1.83,
+      "monitor_rate": 167.27,
+      "sensor_rate": 176.55
+    },
+    "United Medicare": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": 167.27,
+      "sensor_rate": 176.55
+    },
+    "Aetna Commercial": {
+      "pump_rate": 1597,
+      "infusion_rate": 23.51,
+      "cartridge_rate": 0.92,
+      "monitor_rate": 191.17,
+      "sensor_rate": 173.41
+    },
+    "Aetna Medicare": {
+      "pump_rate": 1597,
+      "infusion_rate": 23.51,
+      "cartridge_rate": 0.92,
+      "monitor_rate": 191.17,
+      "sensor_rate": 201.77
+    },
+    "Wellcare": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": 241.97,
+      "sensor_rate": 229.13
+    },
+    "Humana": {
+      "pump_rate": 5431,
+      "infusion_rate": 16.37,
+      "cartridge_rate": 2.2,
+      "monitor_rate": 295.36,
+      "sensor_rate": 317.97
+    },
+    "Cigna": {
+      "pump_rate": 4200,
+      "infusion_rate": 17.75,
+      "cartridge_rate": 2.36,
+      "monitor_rate": 214.05,
+      "sensor_rate": 170.42
+    },
+    "Midlands Choice": {
+      "pump_rate": 5644,
+      "infusion_rate": 31.68,
+      "cartridge_rate": 3.96,
+      "monitor_rate": 331.4,
+      "sensor_rate": 349.77
+    },
+    "Horizon BCBS": {
+      "pump_rate": 4300,
+      "infusion_rate": 10.9,
+      "cartridge_rate": 3.1,
+      "monitor_rate": 480,
+      "sensor_rate": 445
+    },
+    "BCBS TN": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "BCBS FL": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "BCBS WY": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "United Medicaid": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "United Low-Cost": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "MagnaCare": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "UMR": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "Oregon Care": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": null
+    },
+    "Fidelis NJ": {
+      "pump_rate": null,
+      "infusion_rate": null,
+      "cartridge_rate": null,
+      "monitor_rate": null,
+      "sensor_rate": null
+    }
+  },
+  "zeroOopPayers": {
+    "$comment": "Payers that leave no member cost share on the items we resupply. These short-circuit to $0 BEFORE deductible and coinsurance, and stay $0 even when Stedi returns no benefits data.",
+    "payers": {
+      "Medicare A&B": "MM bills Medicare directly.",
+      "NYSHIP": "Empire Plan covers DME in full, no member cost share.",
+      "Aetna Medicare": "Fully covered, no cost share (MM-1071, 2026-08-10).",
+      "United Medicare": "Fully covered, no cost share (2026-09-17, Lisa Sanders escalation)."
+    }
+  },
+  "coinsuranceOverrides": {
+    "$comment": "Whole-number percentages that replace the Stedi coinsurance. NOTE: an entry here still passes the remaining DEDUCTIBLE through to the patient, and only applies when Stedi benefits data is present. For a payer with no cost share at all use zeroOopPayers instead.",
+    "overrides": {}
+  },
+  "primaryMedicaidLabels": [
+    "Fidelis Medicaid",
+    "Anthem BCBS Medicaid (JLJ)",
+    "Anthem BCBS Low-Cost (JLJ)",
+    "Wellcare",
+    "Medicaid",
+    "United Medicaid"
+  ],
+  "medicareStyleInfusionPayers": [
+    "Anthem BCBS Medicare",
+    "Fidelis Medicare",
+    "Medicare A&B",
+    "NYSHIP",
+    "United Medicare",
+    "Wellcare",
+    "Humana",
+    "Cigna",
+    "Midlands Choice"
+  ],
+  "aetnaStylePayers": [
+    "Aetna Commercial",
+    "Aetna Medicare"
+  ],
+  "suppliesRouteToMedicaid": [
+    "Fidelis Medicaid",
+    "Anthem BCBS Medicaid (JLJ)",
+    "Medicaid"
+  ],
+  "aliases": {
+    "Magnacare": "MagnaCare",
+    "BCBS Wyoming": "BCBS WY"
+  },
+  "consumers": {
+    "$comment": [
+      "Every estimator that encodes payer policy. check-payer-policy.mjs reads each",
+      "one and compares it to the canonical sets above. `constants` maps this file's",
+      "concepts onto whatever the consumer happens to call them. `deviations` lists",
+      "differences that are DELIBERATE \u2014 anything not listed here is reported as drift.",
+      "Adding a consumer here is what makes it covered; a file nobody lists is a file",
+      "nobody checks, which is how the 2026-09 United Medicare / NYSHIP split happened."
+    ],
+    "command-center-test/welcomeCall": {
+      "repo": "medically-modern/command-center-test",
+      "path": "src/lib/welcomeCall/oopEstimator.ts",
+      "local": true,
+      "note": "Canonical implementation. command-center is a force-push mirror of this repo (.github/workflows/sync-from-test.yml), so it is not listed separately.",
+      "constants": {
+        "zeroOopPayers": "ZERO_OOP_PAYERS",
+        "coinsuranceOverrides": "COINSURANCE_OVERRIDES",
+        "primaryMedicaidLabels": "PRIMARY_MEDICAID_LABELS",
+        "medicareStyleInfusionPayers": "MEDICARE_STYLE_INFUSION_PAYERS",
+        "aetnaStylePayers": "AETNA_STYLE_PAYERS",
+        "suppliesRouteToMedicaid": "SUPPLIES_ROUTE_TO_MEDICAID"
+      },
+      "deviations": []
+    },
+    "command-center-test/profile": {
+      "repo": "medically-modern/command-center-test",
+      "path": "src/lib/profile/oopEstimate.ts",
+      "local": true,
+      "note": "Profile Send-Off first-order + recurring estimate. Imports PAYER_RATE_SCHEDULE from welcomeCall, so it carries no rate table of its own.",
+      "constants": {
+        "zeroOopPayers": "ZERO_PAYERS",
+        "coinsuranceOverrides": "COINS_OVERRIDES",
+        "primaryMedicaidLabels": "PRIMARY_MEDICAID",
+        "medicareStyleInfusionPayers": "MEDICARE_STYLE",
+        "aetnaStylePayers": null,
+        "suppliesRouteToMedicaid": "SUPPLIES_TO_MEDICAID"
+      },
+      "deviations": [
+        {
+          "field": "zeroOopPayers",
+          "value": "omits \"United Medicare\"",
+          "reason": "UNRESOLVED, NOT a settled deviation. This surface bills United Medicare members the remaining deductible at 0% coinsurance; the reorder form treats them as zero-OOP and waives it. The two agree for a member with no deductible left and disagree by the full deductible for everyone else. Asserted by oopEstimate.test.ts ('patient pays deductible only', $500 case). Decide which is right, then either add United Medicare to ZERO_PAYERS and delete both entries, or move it out of canonical zeroOopPayers."
+        },
+        {
+          "field": "coinsuranceOverrides",
+          "value": {
+            "United Medicare": 0
+          },
+          "reason": "UNRESOLVED, NOT a settled deviation. This surface bills United Medicare members the remaining deductible at 0% coinsurance; the reorder form treats them as zero-OOP and waives it. The two agree for a member with no deductible left and disagree by the full deductible for everyone else. Asserted by oopEstimate.test.ts ('patient pays deductible only', $500 case). Decide which is right, then either add United Medicare to ZERO_PAYERS and delete both entries, or move it out of canonical zeroOopPayers."
+        },
+        {
+          "field": "productScope",
+          "value": "excludes CGM Monitor (E2103)",
+          "reason": "Deliberate, per the Profile redesign handoff: welcome-call includes the monitor, profile does not."
+        }
+      ]
+    },
+    "reorder-patient-form/backend": {
+      "repo": "medically-modern/reorder-patient-form",
+      "path": "backend/src/oopEstimator.js",
+      "branch": "main",
+      "note": "Cron/link-creation service. Writes the estimate to the Subscription board OOP Estimate column at link-creation time.",
+      "constants": {
+        "zeroOopPayers": "ZERO_OOP_PAYERS",
+        "coinsuranceOverrides": "COINSURANCE_OVERRIDES",
+        "primaryMedicaidLabels": "PRIMARY_MEDICAID_LABELS",
+        "medicareStyleInfusionPayers": "MEDICARE_STYLE_INFUSION_PAYERS",
+        "aetnaStylePayers": "AETNA_STYLE_PAYERS",
+        "suppliesRouteToMedicaid": "SUPPLIES_ROUTE_TO_MEDICAID"
+      },
+      "deviations": [
+        {
+          "field": "productScope",
+          "value": "excludes CGM Monitor (E2103) and Pump (E0784)",
+          "reason": "Deliberate: a reorder is consumables only, the patient already has the hardware."
+        },
+        {
+          "field": "secondaryCoverage",
+          "value": "only a secondary containing 'medicaid' zeroes the estimate",
+          "reason": "UNRESOLVED. command-center treats ANY secondary other than 'None' as covering the balance; the reorder form only matches Medicaid. A 'Medicare Supplement' or 'Other' secondary is quoted a charge here and $0 there."
+        }
+      ]
+    },
+    "reorder-patient-form/docs": {
+      "repo": "medically-modern/reorder-patient-form",
+      "path": "docs/oopEstimator.js",
+      "branch": "main",
+      "note": "Patient-facing GitHub Pages form at reorder.medicallymodern.com. Byte-identical to the backend copy apart from its module.exports line; computes live in the browser via a plain <script src> tag, so it cannot import a shared module without adding a build step.",
+      "constants": {
+        "zeroOopPayers": "ZERO_OOP_PAYERS",
+        "coinsuranceOverrides": "COINSURANCE_OVERRIDES",
+        "primaryMedicaidLabels": "PRIMARY_MEDICAID_LABELS",
+        "medicareStyleInfusionPayers": "MEDICARE_STYLE_INFUSION_PAYERS",
+        "aetnaStylePayers": "AETNA_STYLE_PAYERS",
+        "suppliesRouteToMedicaid": "SUPPLIES_ROUTE_TO_MEDICAID"
+      },
+      "mirrorOf": "reorder-patient-form/backend",
+      "deviations": []
+    },
+    "coins-form-payment": {
+      "repo": "medically-modern/coins-form-payment",
+      "path": "src/lib/oopEstimator.ts",
+      "branch": "main",
+      "note": "Coinsurance payment form. Oldest copy in the org.",
+      "constants": {
+        "zeroOopPayers": "ZERO_OOP_PAYERS",
+        "coinsuranceOverrides": "COINSURANCE_OVERRIDES",
+        "primaryMedicaidLabels": "PRIMARY_MEDICAID_LABELS",
+        "medicareStyleInfusionPayers": "MEDICARE_STYLE_INFUSION_PAYERS",
+        "aetnaStylePayers": "AETNA_STYLE_PAYERS",
+        "suppliesRouteToMedicaid": "SUPPLIES_ROUTE_TO_MEDICAID"
+      },
+      "deviations": []
+    }
+  },
+  "outOfScope": {
+    "$comment": "Encodes the same payer policy but cannot be checked from here.",
+    "medicallymodern1/stedi-monday-integration": "claim_assumptions.py (PAYER_RATE_SCHEDULE) and insurance_rules.py are the original source every TS/JS header cites. Different GitHub org, FastAPI on Render. Not reachable from a command-center-test session, so this checker cannot read it \u2014 verify it by hand when payer policy changes."
+  }
+}

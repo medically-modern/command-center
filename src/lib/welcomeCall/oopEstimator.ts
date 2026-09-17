@@ -102,12 +102,18 @@ const PRIMARY_MEDICAID_LABELS = new Set([
   "United Medicaid",
 ]);
 
-// Payers whose patients always pay $0 OOP:
+// Payers whose patients always pay $0 OOP. Canonical list lives in
+// src/lib/shared/payerPolicy.json; scripts/check-payer-policy.mjs fails when
+// this set and that file disagree.
 //  - Medicare A&B: MM bills Medicare directly
 //  - NYSHIP (Empire Plan): plan covers DME in full — no patient cost share
+//  - Aetna Medicare: fully covered, no cost share (MM-1071)
+//  - United Medicare: fully covered, no cost share
 const ZERO_OOP_PAYERS = new Set([
   "Medicare A&B",
   "NYSHIP",
+  "Aetna Medicare",
+  "United Medicare",
 ]);
 
 // ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────

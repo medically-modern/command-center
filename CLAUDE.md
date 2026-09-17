@@ -297,7 +297,11 @@ routing on submit), a doctor-facing **ask list**, and an **MN checklist**.
 Estimates patient out-of-pocket for the Welcome Call. **Mirrors backend Python** (`claim_assumptions.py`,
 `financial_estimate_service.py`, `insurance_rules.py`) that lives on Railway, **not in this repo**.
 `PAYER_RATE_SCHEDULE` and the Medicaid/Medicare/NYSHIP/Humana special-cases are **hardcoded and must
-be hand-synced** with that backend — there is no automated check for drift. (NYSHIP is a **$0-OOP
+be hand-synced** with that backend. **From 2026-09-17 the TS/JS copies are checked against each
+other** — `src/lib/shared/payerPolicy.json` is canonical and `scripts/check-payer-policy.mjs`
+fails when this file, `profile/oopEstimate.ts`, either `reorder-patient-form` copy or
+`coins-form-payment` drifts from it (§5.37). ⚠️ **The Python is still unchecked** — it is in
+another GitHub org, so nothing reads it; hand-sync it and say so. (NYSHIP is a **$0-OOP
 payer** in both this estimator and `profile/oopEstimate.ts` — `ZERO_OOP_PAYERS`/`ZERO_PAYERS`.) Eligibility inputs
 (deductible, coinsurance %, OOP max) come from **Stedi**, written into Monday by the
 `stedi-monday-integration` Railway service and read back by the SPA — for the profile role that's
@@ -4849,6 +4853,90 @@ not on the status — but it is a bulk write against live PHI rows, it would fir
    it cannot promise a status the save does not write. `saveVisitDate.test.ts` pins the order
    and is verified to fail when MR stops being held back.
 
+### 5.37 One canonical payer policy, and a check that fails when a copy drifts (Sep 2026)
+Josh, 2026-09-17, after an escalation: *"where do we get oop logic from? … when i make these
+changes i need a system to apply them to everything so its in sync. because i know theyre
+mirrored but seperate — or are they connected?"* They were not connected, and the cost was
+live.
+
+**A patient emailed asking why her reorder form quoted $105.** Lisa Sanders, United Medicare,
+CGM: 3 sensors x $176.55 = $529.65 allowed, no deductible left, Stedi's 20% = **$105.93**.
+Correct arithmetic on a payer that charges her nothing. Auditing the other copies turned up
+the same class of bug pointing three different ways at once:
+
+| copy | ZERO_OOP set before 2026-09-17 |
+|---|---|
+| `welcomeCall/oopEstimator.ts` (and its `profile/oopEstimate.ts` sibling) | Medicare A&B · **NYSHIP** |
+| `reorder-patient-form` (both copies) | Medicare A&B · **Aetna Medicare** · United Medicare* |
+| `coins-form-payment` | Medicare A&B |
+
+Aetna Medicare had been made $0 on the reorder form in August (MM-1071) and never came back
+here; **NYSHIP was $0 here and never went there**, so nine live members were quoted between
+$94.58 and **$1,307.55** on a fill this repo says costs them nothing. Nobody was wrong at any
+one keyboard — four files encode one policy and nothing had ever compared them.
+
+**`src/lib/shared/payerPolicy.json` is now canonical** (rate schedule, `zeroOopPayers`,
+coinsurance overrides, the Medicaid/Medicare-style/Aetna-style sets, aliases) and lists every
+consumer under `consumers`. `scripts/check-payer-policy.mjs` reads each consumer's **actual
+source** and compares what it encodes; a difference listed under that consumer's `deviations`
+passes, anything else fails.
+
+⚠️ **The registry IS the coverage — a file nobody lists is a file nobody checks**, which is
+exactly how the split above happened. Adding a consumer there is what makes it covered.
+
+⚠️ **The estimators are NOT refactored to import the JSON, deliberately.** `docs/oopEstimator.js`
+is loaded by a bare `<script src>` on a GitHub Pages site with no build step (§8's shape one repo
+over), so a shared module would mean adding a bundler to the patient-facing reorder form to fix a
+data problem. Parsing the source instead gives the same guarantee at zero runtime risk: nothing
+about how any estimator computes changed.
+
+⚠️ **A DECLARED deviation is not an endorsement.** `profile/oopEstimate.ts` bills United Medicare
+the remaining deductible at 0% coinsurance while the reorder form waives it — the two agree for a
+member with nothing left on their deductible and disagree by the **whole deductible** for everyone
+else. It is recorded with an `UNRESOLVED` reason rather than silently reconciled, because
+`oopEstimate.test.ts` asserts the current behaviour on purpose ("patient pays deductible only",
+the $500 case) and deleting a deliberate tested rule to make a checker green is how you turn a
+sync tool into a bug. **Decide it, then delete the entry.**
+
+⚠️ **Two halves, because one of them needs the network.**
+`src/lib/shared/payerPolicy.test.ts` runs `--offline` (this repo's two estimators) inside the
+unit suite, so it rides `deploy.yml`'s existing gate. `.github/workflows/payer-policy-drift.yml`
+does the full run — including the other repos — on a push touching any of these files, on a PR,
+and **weekdays at 13:10 UTC**, because a push to `reorder-patient-form` cannot trigger a workflow
+here and that is precisely the drift nobody would otherwise see.
+
+⚠️ **Read the other repos through the contents API, not the raw CDN.**
+`raw.githubusercontent` keeps serving the previous version for a few minutes after a push —
+`Cache-Control: no-cache` does not defeat it and neither does a cache-busting query param (both
+measured 2026-09-17, both `x-cache: HIT`). So the check reports drift that was just fixed, or
+misses drift just introduced. With `GITHUB_TOKEN` set it reads the API instead and falls back to
+raw only when that is refused; without a token it says so under the drift list rather than
+letting a stale read read as a finding.
+
+⚠️ **The check must fail LOUDLY when it cannot read something.** An `error` severity — a constant
+renamed out from under the regex, a repo it could not fetch — fails the run exactly like drift
+does, and `payerPolicy.test.ts` asserts there are none. A checker that quietly stops checking is
+worse than no checker, because everyone believes it.
+
+⚠️ **`command-center` is NOT a separate consumer.** It is a force-push mirror of this repo
+(`.github/workflows/sync-from-test.yml`, §8), so listing it would report its lag as drift on every
+run between syncs. Its copy is this repo's copy, one sync behind — **and a payer policy fixed here
+does not reach prod until Josh presses that button.**
+
+⚠️ **The Python is still unchecked and cannot be checked from here.**
+`claim_assumptions.py` / `insurance_rules.py` live in `medicallymodern1/stedi-monday-integration`
+— a **different GitHub org**, so a session scoped to this one cannot even read it. It is recorded
+under `outOfScope` so it appears in every report as a thing a human must verify by hand, rather
+than being absent and forgotten. If the reorder form and the actual claim ever disagree, start there.
+
+**Keep-in-agreement:**
+1. **The canonical file** — `src/lib/shared/payerPolicy.json`. Change a payer's treatment HERE
+   first, then run the script to see which consumers moved.
+2. **The consumers** — every estimator listed under `consumers`, each with the `constants` map
+   naming what that file calls things (`ZERO_OOP_PAYERS` here, `ZERO_PAYERS` in profile).
+3. **The two halves** — `src/lib/shared/payerPolicy.test.ts` (offline, in the unit suite) and
+   `.github/workflows/payer-policy-drift.yml` (full, scheduled).
+
 ## 6. Patient flow across boards (the big picture)
 
 ```
@@ -5888,6 +5976,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
+| A payer is $0 on one screen and charged on another | §5.37 — `src/lib/shared/payerPolicy.json` is canonical; `node scripts/check-payer-policy.mjs` names every copy that disagrees. A DECLARED deviation is a decision somebody still owes (United Medicare's deductible on `profile/oopEstimate.ts` is the open one). A drift line right after a push to another repo may be the raw CDN being ~5 min stale — re-run with `GITHUB_TOKEN` set. The **Python** copy is in another org and is checked by nobody |
 | A patient's Medical Records still read "MR Expired" after new records went in | §5.36 — `lib/subscription/mrStatus.ts` (the rung rule) → `mondayWrite.saveVisitDateVerified`. The board's five automations only count DOWN and nothing there writes **MR Valid**, so before 2026-09-16 the only fix was by hand. If it recurs: check the Update Visit Date save actually ran (it writes MN Expiry AND MR), then that `MR_STATUS_INDEX` still matches `color_mktyr8xg`'s live `settings_str` — a stale id is dropped at HTTP 200 with nothing in the logs |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |

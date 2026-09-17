@@ -1,0 +1,52 @@
+name: Payer Policy Drift
+
+# The other half of the drift check. src/lib/shared/payerPolicy.test.ts covers
+# the two estimators in this repo and runs on every deploy; this job reaches the
+# copies that live in other repos, which needs the network.
+#
+# Consumers are listed in src/lib/shared/payerPolicy.json under `consumers` —
+# add one there, not here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/lib/shared/payerPolicy.json"
+      - "src/lib/welcomeCall/oopEstimator.ts"
+      - "src/lib/profile/oopEstimate.ts"
+      - "scripts/check-payer-policy.mjs"
+      - ".github/workflows/payer-policy-drift.yml"
+  pull_request:
+    paths:
+      - "src/lib/shared/payerPolicy.json"
+      - "src/lib/welcomeCall/oopEstimator.ts"
+      - "src/lib/profile/oopEstimate.ts"
+      - "scripts/check-payer-policy.mjs"
+  schedule:
+    # Weekdays 13:10 UTC (~09:10 ET). Catches drift introduced by a push to one
+    # of the OTHER repos, which cannot trigger a workflow here.
+    - cron: "10 13 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # No install step: the checker is dependency-free on purpose, so a drift
+      # report never waits on npm and never breaks on an unrelated dep change.
+      - name: Check every consumer against the canonical payer policy
+        env:
+          # Without this the other repos are read from the raw.githubusercontent
+          # CDN, which serves a copy up to ~5 minutes old — so a push that fixed
+          # drift still reports it. The token routes the reads through the
+          # contents API instead, which is not cached that way. It also lifts the
+          # unauthenticated rate limit, and the default GITHUB_TOKEN can read
+          # every repo in this org.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/check-payer-policy.mjs

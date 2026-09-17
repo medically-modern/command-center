@@ -25,9 +25,18 @@ const PRIMARY_MEDICAID = new Set([
   "Fidelis Medicaid", "Anthem BCBS Medicaid (JLJ)", "Anthem BCBS Low-Cost (JLJ)",
   "Wellcare", "Medicaid", "United Medicaid",
 ]);
-// $0-OOP payers — keep in sync with ZERO_OOP_PAYERS in welcomeCall/oopEstimator.ts
-const ZERO_PAYERS = new Set(["Medicare A&B", "NYSHIP"]);
-/** United Medicare = 0% coinsurance — patient pays the deductible only. */
+// $0-OOP payers. Canonical list: src/lib/shared/payerPolicy.json, enforced by
+// scripts/check-payer-policy.mjs.
+const ZERO_PAYERS = new Set(["Medicare A&B", "NYSHIP", "Aetna Medicare"]);
+/**
+ * United Medicare = 0% coinsurance — patient pays the deductible only.
+ *
+ * OPEN QUESTION, do not copy this elsewhere without deciding first. The reorder
+ * form (reorder-patient-form) treats United Medicare as a zero-OOP payer, which
+ * ALSO waives the remaining deductible. This surface bills it. The two agree for
+ * a member with no deductible left and disagree by the full deductible for
+ * everyone else. Recorded as a declared deviation in payerPolicy.json.
+ */
 const COINS_OVERRIDES: Record<string, number> = { "United Medicare": 0 };
 const HUMANA_CGM = new Set(["CGM Monitor", "CGM Sensors"]);
 const ALIASES: Record<string, string> = { "Magnacare": "MagnaCare", "BCBS Wyoming": "BCBS WY" };
