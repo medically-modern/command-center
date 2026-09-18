@@ -106,7 +106,8 @@
         "welcomeCall"
       ],
       "perms": {
-        "comms": false
+        "comms": false,
+        "adjustOrders": false
       }
     },
     "janelle@medicallymodern.com": {
