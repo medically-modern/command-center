@@ -3934,6 +3934,67 @@ PhoneSlotsSection,WelcomeCallForm}.tsx`, `components/masheke/mmKit.tsx`,
 `hooks/welcomeCall/{usePatientActivity,useCanTextEvidence}.ts`,
 `services/monday-gateway/{canTextRules,smsArchive}.mjs` (+ `canTextRoute.test.mjs`).
 
+### 5.31g The benefits-check answer never left Patient Intake (Sep 2026)
+Katie, 2026-09-18: *"every patient i have seen on welcome call has 'deductible not on file' and OOP
+max not on file on the calculator"*. The calculator was right; the numbers never reached it.
+**No board change; app only.**
+
+⚠️⚠️ **THE STEDI COLUMNS DO NOT HOP — THE *WORKING* COLUMNS DO, AND ONE OF THE TWO INTAKE ROUTES
+NEVER FILLED THEM.** `stedi-monday-integration` writes its answer into Profile Send Off's
+`stediIndividual*` columns (§5.11), and those exist on that board alone. What rides the board hops
+is the **plain** pair — `text_mm1xdzxw` Deductible Remaining and `text_mm1xx5f` OOP Max Remaining —
+which create-item automation **7917676280** fills from Profile Send Off's **working numeric**
+columns `numeric_mm1zv64b` / `numeric_mm1zxktp`, not from the Stedi text. That plain pair is what
+travels Profile Send Off → ME → Insurance → Welcome Call, and `oopContext.benefitInputs` reads
+exactly it. So the working columns are the bridge, and the only code that had ever built it was
+**`profile/mondayWrite.buildDataTasks`** — which runs on `/profile` (Referral Intake) and nowhere
+else. The DTC intake route (`UnverifiedReferralsPage` → `unverifiedWrite`, §5.20) advanced patients
+with those five columns untouched, so their eligibility answer stopped at Profile Send Off and every
+stage downstream read a blank.
+`unverifiedWrite.buildCostSharingTasks` is that bridge, wired into `buildAdvanceTasks`.
+
+⚠️ **The two routes made it look payer-specific, which is why it went unreported for so long.**
+Coinsurance `text_mm391jq8` has its own chain and arrived for nearly everyone, so the card showed a
+coinsurance percentage beside two em dashes — a half-filled card reads as one missing field rather
+than as a whole step that never ran. Measured on the live boards the day it was reported: **6/6**
+SNJ-sourced Welcome Call patients had a real Stedi value upstream and an empty working column;
+**4/4** doctor/manufacturer referrals (i.e. `/profile`) had both, matching exactly.
+
+⚠️ **A ZERO IS AN ANSWER, and it is the common one.** A met deductible and a missing deductible are
+opposite facts that render identically once either becomes `$0.00` — `oopContext.parseBenefit`'s own
+rule. `cleanNumberValue` returns a **string**, so `"0"` is truthy and the guard keeps it; the test
+pins that explicitly, because a `Number()`-shaped guard here would drop every met deductible and
+leave exactly the symptom being fixed. The rep's own working value still wins over Stedi — the
+builder reads `p.workingX || p.stediX`, never the other way round.
+
+⚠️ **Not every blank is this bug — Original Medicare has no out-of-pocket maximum**, so Stedi
+returns nothing and "OOP max not on file" is CORRECT for a Medicare A&B patient. Of the 33 Welcome
+Call patients carrying a blank OOP max when this was reported, 14 had a blank in the Profile Send
+Off **source** as well (Medicare A&B and Medicaid, plus the odd commercial plan with no cap on
+file). Reading that population as broken and filling it in would fabricate a cap the payer does not
+offer. Count the DEDUCTIBLE blanks to size this bug; the OOP blanks are mostly honest.
+
+**The one-time backfill, 2026-09-18.** The fix only helps patients who advance from Profile Send Off
+*after* it, so the in-flight population was repaired by hand: 19 Welcome Call patients had a blank
+Deductible Remaining, **11 had a recoverable Stedi answer** upstream and were copied across
+verbatim, joined on exact name **AND** exact DOB (§5.28 — a name is not an identity) with every
+destination column re-verified blank immediately before the write. The other 8 were left alone and
+are not a gap this can close: 3 have a Profile Send Off record whose Stedi columns are blank
+(no successful check), and **5 have no Profile Send Off record at all** — they entered the pipeline
+by another route, so there is no eligibility answer anywhere to recover. Those need a fresh check,
+which is a human action, not a backfill. ⚠️ Nothing was written for a patient whose source was
+blank; a fabricated benefit figure is quoted to a patient on a call.
+⚠️ Upstream is dominated by patients who have never had a check rather than by this bug — most of
+the blanks in ME's *2. Medical Necessity* belong to the 8/25 SNJ bulk import (§5.30), which never
+ran eligibility at all and picks it up when it is worked. Insurance carried only a handful. So the
+backfill is Welcome Call and stops there.
+
+**Keep-in-agreement:** `profile/mondayWrite.buildDataTasks` ⇄ `profile/unverifiedWrite
+.buildCostSharingTasks` — the same five columns from the same two sources, one per intake route, and
+a route that stops writing them fails **silently two boards later**. `costSharingTasks.test.ts` pins
+the builder and asserts `buildAdvanceTasks` carries it; both halves are verified to fail when
+reverted.
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
 > ✅ **REWRITTEN 2026-09-14 to Brandon's "Notes for masani dashboard (9/14/26)"** — read this
@@ -6382,6 +6443,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A "Cross-sell" chip on a patient who asked for CGM themselves | §5.31f — their Request Type `color_mm1w1978` is BLANK, and `isCrossSell` used to read that as "they didn't ask". A blank is unknown now. If it fires on a patient who DOES have a Request Type, that is a genuine cross-sell |
 | "First pump on this insurance" on a patient who owns a pump | §5.31f — working as intended, and the label says so since 2026-09-17. It reads claims history (`sosLastBillIp`, `medicarePriorPumpDate`), so it means no pump billed to THIS plan — never that the patient has never had one (Brandon, 2026-09-17). Wording is `FIRST_PUMP_CHIP_LABEL`, one copy for both render sites |
 | "Why does this patient owe $0?" / the deductible and OOP max aren't on screen | §5.31f — the **From eligibility** row and the reason sentence in `OopEstimateCard`, both from `lib/welcomeCall/oopContext.ts`. Three different $0s: deductible met, 0% coinsurance, or an out-of-pocket maximum already spent — only the last resets in January. "not on file" means the column is blank, which is NOT the same as $0 |
+| "Deductible not on file" / "OOP max not on file" on EVERY patient | §5.31g — the Stedi columns do not hop; the **working** columns do, and the DTC intake route never filled them (`unverifiedWrite.buildCostSharingTasks` is the bridge, beside `profile/mondayWrite.buildDataTasks`). Check the patient's Profile Send Off `text_mm1xyga2` / `text_mm1x32jw`: a value there with a blank `numeric_mm1zv64b` is this bug, and it only self-heals on the NEXT advance. ⚠️ A blank OOP max on **Medicare A&B** is correct — Original Medicare has no out-of-pocket maximum, so count the deductible blanks to size it |
 | Can Text filled itself in / didn't | §5.31f — `POST /messaging/can-text` (gateway, Postgres-only) → `useCanTextEvidence` → `fillCanTextFromEvidence`. It fills a BLANK with "yes" and nothing else: no evidence means the rep is still asked, which is correct and not a failure. The archive starts 2026-08-01, so a patient last texted in June looks untexted. A wrong "yes" is overridden by pressing either button. ⚠️ It can never write "no" — that needs a carrier line-type lookup nobody has bought |
 | A rep can pick more infusion sets than the payer pays for | §5.31f — `QtySelect`'s `max` comes from `infusionSetCap` (§5.32g). A number above the cap still on screen is a value the BOARD holds; it is offered deliberately so it doesn't render as a placeholder |
 | Welcome Call texts/calls the wrong number, or the activity box misses history | §5.31f — the box and its Call/Text buttons read `activityNumbers(phoneSlotsFor(patient))`, i.e. the SLOTS. `phoneEdited` is dead on this board (nothing has written it since 2026-09-11) — do not reach for it. Only one number loads at a time; the Primary/Alternate toggle switches it. A box stuck on "Reading RingCentral…" meant a number `toE164` couldn't read — it says so now |
