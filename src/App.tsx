@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
 import IncomingCallHost from "./components/inboundCalls/IncomingCallHost";
 import ScheduledCallHost from "./components/scheduledCalls/ScheduledCallHost";
+import { AppShell } from "./components/shell/AppShell";
 import AuthGate from "./components/AuthGate";
 import AccessProvider from "./components/AccessProvider";
 
@@ -113,6 +114,13 @@ const App = () => (
           comes due — but gated to people who hold the role, and INSIDE the
           router because its toast navigates to the patient. */}
       <ScheduledCallHost />
+      {/* Brandon's Sept-2026 redesign shell (§5.39): the global header with
+          its four section tabs and the always-on patient search. INSIDE the
+          router because the tabs, the search and the active-tab rule all read
+          the location, and OUTSIDE Suspense so the header stays put while a
+          lazy page loads rather than blinking away on every navigation. With
+          the layout toggle off it renders its children and nothing else. */}
+      <AppShell>
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/" element={<Index />} />
@@ -162,6 +170,7 @@ const App = () => (
           <Route path="*" element={<Index />} />
         </Routes>
       </Suspense>
+      </AppShell>
     </BrowserRouter>
   </QueryClientProvider>
   </AccessProvider>

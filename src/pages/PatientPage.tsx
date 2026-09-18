@@ -1,56 +1,62 @@
 /**
  * The patient screen — `/patient/:itemId?board=<boardId>` (§5.39).
  *
- * ONE screen holding a patient's whole record: the onboarding trail on the left,
- * their texts and calls on the right, and a link into the Subscription profile.
- * It is the keystone of the Sept-2026 redesign — every other screen in that
- * handoff is either a tab on this one or a link into it.
+ * ONE screen holding a patient's whole record, in Brandon's 2026-09-18 layout:
+ * the top bar card (name · DOB · phone + the Onboarding | Subscription toggle),
+ * the four-stage stepper, the read-only snapshot of the step a rep picks, and a
+ * fixed right column carrying their texts and calls.
  *
- * ⚠️⚠️ **READ-ONLY, AND THAT IS THE DESIGN OF THIS SLICE, not an omission.**
- * It adds no writer and no mutation: every action deep-links to the stage page
- * whose verified write path already does the work (§5.2). Two writers for one
- * column is how they disagree — the reason `PhoneField` left the Welcome Call
- * banner (§5.31d) and the Secondary Insurance select left `PatientInfoCard`
- * (§5.31c). The one thing on screen that writes is `ConversationThread`'s
- * composer, which is the existing component and the existing write.
+ * ⚠️⚠️ **READ-ONLY, AND THAT IS THE DESIGN, not an omission.** It adds no writer
+ * and no mutation: every action deep-links to the stage page whose verified
+ * write path already does the work (§5.2). Two writers for one column is how
+ * they disagree — the reason `PhoneField` left the Welcome Call banner (§5.31d)
+ * and the Secondary Insurance select left `PatientInfoCard` (§5.31c). The one
+ * thing on screen that writes is `ConversationThread`'s composer, which is the
+ * existing component making the existing write.
  *
  * ⚠️ **Purely additive.** Nothing was removed to make room for it: every page it
  * links to still works exactly as it did, the role bars are untouched, and no
  * queue rule, role count or baseline generator was changed. A screen that reads
  * cannot move a patient (§5.8's counting contract is safe by construction).
  *
+ * ⚠️ **No header of its own** — it renders inside the global shell (§5.39's
+ * `AppShell`), which is where the brand, the section tabs and the patient search
+ * live. A second header would put two navy bars on one screen.
+ *
  * ⚠️ **`?board=` is required and that is deliberate.** A Monday item id does not
  * say which board it is on, and `fetchDossierItemsForPick` needs both. Every
- * caller has it — a Search row, a Comms Hub match, a stage page — so requiring
- * it costs nothing and guessing would mean a board scan per open.
+ * caller has it — a search hit, a Comms Hub match — so requiring it costs
+ * nothing and guessing would mean a board scan per open.
  */
 import { useCallback, useMemo } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowUpRight, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { ArrowUpRight, ClipboardList, RefreshCw, RotateCw } from "lucide-react";
 import { OnboardingView } from "@/components/patient/OnboardingView";
 import { PatientCommsColumn } from "@/components/patient/PatientCommsColumn";
 import { usePatientRecord } from "@/hooks/patient/usePatientRecord";
-import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { clearDossierCaches, type DossierPick } from "@/lib/commsHub/dossierApi";
 import {
   BOARD_PARAM,
   SIDE_PARAM,
+  SNAP_PARAM,
+  STEP_PARAM,
   VIEW_PARAM,
+  buildStages,
+  defaultStepIndex,
+  onboardingCaption,
   parseSide,
   parseView,
-  pathSummary,
+  subscriptionCaption,
   subscriptionItem,
+  topBarFacts,
   type PatientSide,
 } from "@/lib/patient/patientScreen";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
-import { cn } from "@/lib/utils";
+import "./patient/redesign.css";
 
 export default function PatientPage() {
   const { itemId = "" } = useParams<{ itemId: string }>();
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
-  const { goBack } = useBackNavigation();
 
   const boardId = Number(params.get(BOARD_PARAM) || 0);
   const view = parseView(params.get(VIEW_PARAM));
@@ -66,9 +72,9 @@ export default function PatientPage() {
   const { dossier, loading, error, configured, reload } = usePatientRecord(pick);
 
   const setParam = useCallback(
-    (key: string, value: string) => {
+    (patch: Record<string, string>) => {
       const next = new URLSearchParams(params);
-      next.set(key, value);
+      for (const [k, v] of Object.entries(patch)) next.set(k, v);
       setParams(next, { replace: true });
     },
     [params, setParams],
@@ -79,9 +85,16 @@ export default function PatientPage() {
     reload();
   }, [reload]);
 
+  const steps = useMemo(() => buildStages(dossier), [dossier]);
+  const rawStep = params.get(STEP_PARAM);
+  const stepIdx = rawStep !== null && Number.isFinite(Number(rawStep))
+    ? Math.max(0, Math.min(steps.length - 1, Number(rawStep)))
+    : defaultStepIndex(steps);
+
   const active = dossier?.active ?? null;
   const phone = dossier?.phone || active?.phone || "";
   const subItem = subscriptionItem(dossier);
+  const facts = topBarFacts(dossier);
 
   /** What an outbound text is attributed to. Null when there is no live record —
    *  deliberately, because a text filed against a finished item is a note in the
@@ -98,165 +111,151 @@ export default function PatientPage() {
 
   if (!itemId || !boardId) {
     return (
-      <Shell onBack={goBack}>
-        <p className="text-sm text-muted-foreground">
-          This link is missing the board it belongs to, so the patient can't be looked up. Open the
-          patient from Search or the Communications hub.
-        </p>
-      </Shell>
+      <div className="cc-pt">
+        <div className="pt-main">
+          <div className="notice amber">
+            This link is missing the board it belongs to, so the patient can't be looked up. Open
+            them from the search box above, or from the Communications hub.
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-20 border-b bg-[hsl(var(--mm-navy,222_47%_11%))] text-white">
-        <div className="mx-auto flex max-w-[1800px] items-center gap-3 px-4 py-3">
-          <button onClick={goBack} className="rounded p-1.5 hover:bg-white/10" title="Back">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-lg font-bold leading-tight">
-              {dossier?.name || (loading ? "Loading…" : "Patient")}
-            </div>
-            <div className="truncate text-xs text-white/70">{pathSummary(dossier)}</div>
-          </div>
-          <button
-            onClick={hardReload}
-            className="rounded p-1.5 hover:bg-white/10"
-            title="Re-read this patient from Monday"
-          >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          </button>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-[1800px] px-4 py-4">
-        {!configured ? (
-          <p className="text-sm text-muted-foreground">
+    <div className="cc-pt">
+      {!configured ? (
+        <div className="pt-main">
+          <div className="notice amber">
             This build has no Monday connection, so a patient record can't be read.
-          </p>
-        ) : error ? (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950/20">
-            <p className="font-medium">Couldn't load this patient.</p>
-            <p className="mt-1 text-muted-foreground">{error}</p>
-            <Button size="sm" variant="outline" className="mt-3" onClick={hardReload}>
-              Try again
-            </Button>
           </div>
-        ) : loading && !dossier ? (
-          <p className="text-sm text-muted-foreground">Reading this patient's record…</p>
-        ) : !dossier ? (
-          <p className="text-sm text-muted-foreground">
+        </div>
+      ) : error ? (
+        <div className="pt-main">
+          <div className="notice amber">
+            <div>
+              <b>Couldn't load this patient.</b>
+              <div style={{ marginTop: 4 }}>{error}</div>
+              <button className="btn outline sm" style={{ marginTop: 10 }} onClick={hardReload}>
+                <RotateCw style={{ width: 13, height: 13 }} /> Try again
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : loading && !dossier ? (
+        <div className="pt-main">
+          <p className="small muted">Reading this patient's record…</p>
+        </div>
+      ) : !dossier ? (
+        <div className="pt-main">
+          <div className="notice amber">
             No board record was found for this item. It may have been deleted on Monday.
-          </p>
-        ) : (
-          <>
-            {/* ── view toggle ─────────────────────────────────────────── */}
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <ViewTab active={view === "onboarding"} onClick={() => setParam(VIEW_PARAM, "onboarding")}>
-                Onboarding
-              </ViewTab>
-              {/* ⚠️ Disabled by the ROW'S EXISTENCE, never by a status — the row
-                  is created at Final Profile Confirmation, so a patient stuck in
-                  Insurance with an early row can still open it. */}
-              <ViewTab
-                active={view === "subscription"}
-                disabled={!subItem}
-                title={
-                  subItem
-                    ? undefined
-                    : "Not on the Subscription board yet — the row is created at Final Profile Confirmation"
-                }
-                onClick={() => setParam(VIEW_PARAM, "subscription")}
-              >
-                Subscription
-              </ViewTab>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-              <div className="min-w-0">
-                {view === "onboarding" || !subItem ? (
-                  <OnboardingView dossier={dossier} />
-                ) : (
-                  <section className="rounded-xl border bg-card p-4 shadow-sm">
-                    <h2 className="text-sm font-semibold">Subscription</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {subItem.groupTitle}
-                    </p>
-                    {/* The Profile | Orders tabs are the existing pages for now —
-                        linked rather than duplicated, so there is exactly one
-                        writer for those columns. */}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Link
-                        to={`/subscription?patientId=${subItem.itemId}&from=patient`}
-                        className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-                      >
-                        Open profile <ArrowUpRight className="h-3.5 w-3.5" />
-                      </Link>
-                      <button
-                        onClick={() => navigate(`/orders?query=${encodeURIComponent(dossier.name)}`)}
-                        className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-                      >
-                        Open orders <ArrowUpRight className="h-3.5 w-3.5" />
-                      </button>
+          </div>
+        </div>
+      ) : (
+        <div className="pt-screen">
+          <div className="pt-main">
+            {/* ── the top bar card, on BOTH views ─────────────────────────── */}
+            <section className="card tb-card">
+              <div className="tb">
+                {facts.map((f, i) => (
+                  <div className="fact" key={f.label}>
+                    <div className="k">{f.label}</div>
+                    <div className={`v${i === 0 ? " nm" : ""}${f.missing ? " gone" : ""}`}>
+                      {f.value}
                     </div>
-                  </section>
-                )}
+                  </div>
+                ))}
+
+                <div className="vtoggle">
+                  <button
+                    type="button"
+                    className={view === "onboarding" ? "on" : ""}
+                    onClick={() => setParam({ [VIEW_PARAM]: "onboarding" })}
+                  >
+                    <ClipboardList style={{ width: 14, height: 14 }} /> Onboarding
+                    <span className="st">{onboardingCaption(dossier)}</span>
+                  </button>
+                  {/* ⚠️ Disabled by the ROW'S EXISTENCE, never by a status — the
+                      row is created at Final Profile Confirmation, so a patient
+                      stuck in Insurance with an early row can still open it. */}
+                  {subItem ? (
+                    <button
+                      type="button"
+                      className={view === "subscription" ? "on" : ""}
+                      onClick={() => setParam({ [VIEW_PARAM]: "subscription" })}
+                    >
+                      <RefreshCw style={{ width: 14, height: 14 }} /> Subscription
+                      <span className="st">{subscriptionCaption(subItem)}</span>
+                    </button>
+                  ) : (
+                    <span
+                      className="off"
+                      aria-disabled="true"
+                      title="Not on the Subscription board yet — the row is created at Final Profile Confirmation"
+                    >
+                      <RefreshCw style={{ width: 14, height: 14 }} /> Subscription
+                      <span className="st">Not yet</span>
+                    </span>
+                  )}
+                </div>
               </div>
+            </section>
 
-              <PatientCommsColumn
-                phone={phone}
-                patient={threadPatient}
-                side={side}
-                onSide={(s: PatientSide) => setParam(SIDE_PARAM, s)}
+            {view === "onboarding" || !subItem ? (
+              <OnboardingView
+                dossier={dossier}
+                steps={steps}
+                stepIdx={stepIdx}
+                onStep={(i) => setParam({ [STEP_PARAM]: String(i), [SNAP_PARAM]: "" })}
+                snapId={params.get(SNAP_PARAM) || ""}
+                onSnap={(id) => setParam({ [SNAP_PARAM]: id })}
               />
-            </div>
-          </>
-        )}
-      </main>
-    </div>
-  );
-}
+            ) : (
+              <SubscriptionView item={subItem} />
+            )}
+          </div>
 
-function Shell({ children, onBack }: { children: React.ReactNode; onBack: () => void }) {
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-[hsl(var(--mm-navy,222_47%_11%))] px-4 py-3 text-white">
-        <button onClick={onBack} className="rounded p-1.5 hover:bg-white/10" title="Back">
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-      </header>
-      <main className="mx-auto max-w-3xl p-6">{children}</main>
-    </div>
-  );
-}
-
-function ViewTab({
-  active,
-  disabled,
-  title,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  disabled?: boolean;
-  title?: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      title={title}
-      onClick={onClick}
-      className={cn(
-        "rounded-lg px-4 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-primary text-primary-foreground" : "border hover:bg-muted",
-        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
+          <PatientCommsColumn
+            phone={phone}
+            patient={threadPatient}
+            side={side}
+            onSide={(s: PatientSide) => setParam({ [SIDE_PARAM]: s })}
+          />
+        </div>
       )}
-    >
-      {children}
-    </button>
+    </div>
+  );
+}
+
+/**
+ * The Subscription view.
+ *
+ * ⚠️ **Profile and Orders are the EXISTING pages, linked rather than
+ * duplicated.** Brandon draws them as tabs inside this view; rebuilding either
+ * here would put a second writer on the Subscription columns and a second copy
+ * of the order rules (§5.35). The tabs come when those pages are split into
+ * shell and body — a later phase, and a decision with a known price.
+ */
+function SubscriptionView({ item }: { item: { itemId: string; groupTitle: string; stageAdvancerText: string } }) {
+  return (
+    <section className="card pad">
+      <div className="section-h">
+        <h2 style={{ fontSize: 16 }}>Subscription</h2>
+        <span className="chip">{item.stageAdvancerText || item.groupTitle}</span>
+      </div>
+      <div className="row wrap" style={{ gap: 8 }}>
+        <Link className="btn outline sm" to={`/subscription?patientId=${item.itemId}&from=patient`}>
+          Open the profile <ArrowUpRight style={{ width: 13, height: 13 }} />
+        </Link>
+        <Link className="btn outline sm" to={`/update-clinicals?patientId=${item.itemId}&from=patient`}>
+          Update clinicals <ArrowUpRight style={{ width: 13, height: 13 }} />
+        </Link>
+      </div>
+      <p className="xs muted" style={{ marginTop: 10, marginBottom: 0 }}>
+        Profile and Orders open their existing pages, so there is exactly one place that writes
+        these columns.
+      </p>
+    </section>
   );
 }

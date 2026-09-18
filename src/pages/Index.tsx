@@ -50,8 +50,16 @@ const Index = () => {
             <Stethoscope className="w-5 h-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-base font-bold tracking-tight">Command Center</h1>
-            <p className="text-[11px] text-white/60">Medically Modern</p>
+            {/* ⚠️ `data-cc-brand` is a hook for the redesign shell ONLY (§5.39):
+                inside it the global header already carries the wordmark, so this
+                one is hidden to stop two "Command Center" blocks stacking. The
+                call badge below is NOT hidden — it is the softphone status and
+                the global header has no equivalent. With the shell off nothing
+                reads this attribute and the sidebar renders exactly as before. */}
+            <div data-cc-brand>
+              <h1 className="text-base font-bold tracking-tight">Command Center</h1>
+              <p className="text-[11px] text-white/60">Medically Modern</p>
+            </div>
             {/* Renders only for assigned call answerers (§5.13b). */}
             <CallConnectionBadge className="mt-1.5 max-w-full" />
           </div>

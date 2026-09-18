@@ -1,0 +1,192 @@
+/**
+ * The redesign's global shell (§5.39) — Brandon's navy header with the four
+ * section tabs, ported from the 2026-09-18 mockup.
+ *
+ * ⚠️⚠️ **EVERY RULE IS SCOPED UNDER `.cc-shell`, AND THAT IS THE WHOLE REASON
+ * THIS CAN SHIP ON BY DEFAULT.** `.cc-shell` exists only while the redesign
+ * layout is on, so with the toggle off this file has no effect on any page —
+ * the escape hatch is a real one rather than a promise. The mockup styles bare
+ * `.tab`, `.brand`, `.right`; unscoped, those collide with the live app (§9
+ * records `.pf-root button` out-specifying every single-class Tailwind utility,
+ * which is the same hazard pointing the other way).
+ *
+ * ⚠️ **Colours read the app's OWN tokens.** Brandon re-declares `--primary` as
+ * a full `hsl(...)`; this build stores HSL TRIPLETS because Tailwind wraps them
+ * (`hsl(var(--primary))`). Re-declaring here would break one or the other, so
+ * nothing below redefines a token — which also means dark mode and all five
+ * accent themes work with nothing added.
+ */
+
+.cc-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  --cc-head: 56px;
+}
+
+/* ⚠️⚠️ THE FIT OVERRIDES — this is what makes the header additive rather than
+   a rewrite of 30 pages. Every existing page sizes itself against the viewport
+   (`min-h-screen`, and `h-screen` on the Communications hub and the tool
+   frames). Under a 56px header those become 56px too tall: the page grows a
+   second scrollbar, and on an `h-screen` page the composer at its foot lands
+   below the fold — §7 records exactly that failure on the Communications tab,
+   where it only reproduced with a real, long list.
+   Two classes beat Tailwind's one, so these win without `!important`, and they
+   vanish with the shell. */
+.cc-shell .min-h-screen { min-height: calc(100vh - var(--cc-head)); }
+.cc-shell .h-screen { height: calc(100vh - var(--cc-head)); }
+
+.cc-shell > .cc-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── The header ───────────────────────────────────────────────────────────── */
+.cc-shell .gh {
+  background: linear-gradient(180deg, hsl(215 55% 18%), hsl(215 60% 12%));
+  color: hsl(210 40% 98%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  min-height: var(--cc-head);
+  border-bottom: 1px solid hsl(215 50% 22%);
+  position: relative;
+  z-index: 40;
+  flex-shrink: 0;
+  font: 14px/1.45 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.cc-shell .gh .brand { display: flex; align-items: center; gap: 8px; flex-shrink: 0; color: inherit; }
+.cc-shell .gh .brand b { font-family: Outfit, Inter, sans-serif; font-size: 14px; font-weight: 700; }
+.cc-shell .gh .brand .dim { font-size: 10px; color: hsl(210 40% 98% / 0.55); line-height: 1; }
+.cc-shell .gh .tile {
+  width: 32px; height: 32px; border-radius: 10px;
+  background: hsl(0 0% 100% / 0.12);
+  display: grid; place-items: center; flex-shrink: 0;
+}
+
+/* the four sections are TABS — primary navigation, not a utility row */
+.cc-shell .gh .topnav {
+  display: flex; align-items: stretch; align-self: stretch;
+  gap: 2px; margin-left: 6px; flex-shrink: 0;
+}
+.cc-shell .gh .tab {
+  display: inline-flex; align-items: center; gap: 7px; padding: 0 13px;
+  font-size: 13px; font-weight: 600; color: hsl(210 40% 98% / 0.72);
+  border-top: 3px solid transparent; border-bottom: 3px solid transparent;
+  white-space: nowrap; position: relative; background: none; border-left: 0; border-right: 0;
+  cursor: pointer; font-family: inherit;
+}
+.cc-shell .gh .tab:hover { color: #fff; background: hsl(0 0% 100% / 0.06); }
+.cc-shell .gh .tab.active { color: #fff; border-bottom-color: hsl(199 89% 60%); }
+.cc-shell .gh .tab .badge {
+  background: hsl(0 75% 55%); color: #fff; border-radius: 999px;
+  font-size: 9px; font-weight: 700; padding: 0 5px; min-width: 15px;
+  text-align: center; line-height: 15px;
+}
+
+.cc-shell .gh .right { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.cc-shell .gh .ib {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px;
+  border-radius: 8px; font-size: 12px; font-weight: 600;
+  color: hsl(210 40% 98% / 0.85); position: relative;
+  background: none; border: 0; cursor: pointer; font-family: inherit;
+}
+.cc-shell .gh .ib:hover, .cc-shell .gh .ib.active { background: hsl(0 0% 100% / 0.12); color: #fff; }
+
+/* ── Global search — the door into any patient, on every page ─────────────── */
+.cc-shell .gsearch { flex: 1; max-width: 520px; position: relative; margin: 0 auto; }
+.cc-shell .gsearch input {
+  width: 100%; background: #fff; color: hsl(215 60% 12%);
+  border: 1px solid hsl(0 0% 100% / 0.2); border-radius: 10px;
+  padding: 8px 12px 8px 36px; font: inherit; font-size: 13px;
+  box-shadow: inset 0 1px 2px hsl(215 40% 12% / 0.08);
+}
+.cc-shell .gsearch input::placeholder { color: hsl(215 16% 50%); }
+.cc-shell .gsearch input:focus { outline: 2px solid hsl(199 89% 60%); outline-offset: 1px; }
+.cc-shell .gsearch > svg.mag {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: hsl(215 16% 50%); width: 16px; height: 16px; pointer-events: none;
+}
+.cc-shell .gsearch .kbd {
+  pointer-events: none; position: absolute; right: 10px; top: 50%;
+  transform: translateY(-50%); font-size: 10px; color: hsl(215 16% 55%);
+  border: 1px solid hsl(215 25% 85%); border-radius: 4px; padding: 1px 5px;
+  background: hsl(210 33% 98%);
+}
+.cc-shell .gs-drop {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border)); border-radius: 12px;
+  box-shadow: 0 4px 12px -2px hsl(215 40% 12% / 0.18);
+  overflow: hidden; z-index: 60; max-height: 60vh; overflow-y: auto;
+}
+.cc-shell .gs-row {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 9px 12px;
+  text-align: left; border: 0; border-bottom: 1px solid hsl(var(--border));
+  background: none; cursor: pointer; color: inherit; font: inherit;
+}
+.cc-shell .gs-row:last-child { border-bottom: 0; }
+.cc-shell .gs-row:hover, .cc-shell .gs-row.hi { background: hsl(var(--primary) / 0.1); }
+.cc-shell .gs-row .nm { font-weight: 600; font-size: 13px; }
+.cc-shell .gs-row .sub { font-size: 11px; color: hsl(var(--muted-foreground)); }
+.cc-shell .gs-row .hit {
+  margin-left: auto; font-size: 11px; color: hsl(var(--muted-foreground));
+  white-space: nowrap; text-align: right;
+}
+.cc-shell .gs-row .st {
+  font-size: 10px; border-radius: 4px; padding: 1px 6px;
+  background: hsl(var(--muted)); color: hsl(var(--muted-foreground));
+  font-weight: 600; white-space: nowrap;
+}
+.cc-shell .gs-note { padding: 10px 12px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+/* ── Settings menu ────────────────────────────────────────────────────────── */
+.cc-shell .menu {
+  position: absolute; right: 0; top: calc(100% + 6px);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border)); border-radius: 10px;
+  box-shadow: 0 4px 12px -2px hsl(215 40% 12% / 0.18);
+  min-width: 260px; padding: 6px; z-index: 60;
+}
+.cc-shell .menu .eyebrow {
+  padding: 6px 10px 2px; font-size: 10px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.cc-shell .menu button.opt,
+.cc-shell .menu a.opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 10px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  background: none; border: 0; cursor: pointer; color: inherit;
+  font-family: inherit; text-align: left;
+}
+.cc-shell .menu button.opt:hover,
+.cc-shell .menu a.opt:hover { background: hsl(var(--muted)); }
+.cc-shell .menu .divider { height: 1px; background: hsl(var(--border)); margin: 6px 0; }
+
+@media (max-width: 1250px) {
+  .cc-shell .gh .tab { padding: 0 10px; }
+  .cc-shell .gh .tab .lbl { display: none; }
+  .cc-shell .gh .tab.active .lbl { display: inline; }
+}
+@media (max-width: 900px) {
+  .cc-shell .gh .tab.active .lbl { display: none; }
+  .cc-shell .gh .topnav { margin-left: 0; }
+  .cc-shell .gh .ib .lbl { display: none; }
+  .cc-shell .gh .brand div { display: none; }
+}
+
+/* ⚠️ The home sidebar carries its own "Command Center" wordmark, which stacks
+   under the global header's — two brand blocks, one above the other, was the
+   first thing visible when the shell was rendered. Hidden HERE rather than
+   deleted there, so the sidebar is untouched with the layout toggle off. The
+   stethoscope beside it and the call badge under it both stay: the icon anchors
+   the column, and the softphone status has no equivalent in the header.
+   ⚠️ Targeted by a DATA ATTRIBUTE, never by a utility class — `bg-gradient-navy`
+   is on several page headers and a `.w-9` inside one could be any icon, so a
+   utility-based rule here would blank things on pages this has no business
+   touching. */
+.cc-shell [data-cc-brand] { display: none; }

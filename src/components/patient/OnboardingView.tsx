@@ -1,119 +1,211 @@
 /**
- * The patient screen's Onboarding view (§5.39) — the stage stepper, the info
- * strip, and one card per board the patient has a record on.
+ * The patient screen's Onboarding view (§5.39) — the info strip, the four-stage
+ * stepper, and the read-only snapshot of the step a rep picks.
  *
- * ⚠️ **Read-only, and the per-stage panel is a LINK rather than an embedded
- * render** (Josh, 2026-09-18). Brandon's handoff asks for each stage tool to
- * render inline in a disabled state; that needs all 13 pages split into shell +
- * body and a review mode that disables every control rather than just the
- * advance — a refactor OF the stage tools, which is out of scope. The app
- * already has the behaviour: `?completedStage=` opens the real page in review
- * mode (§5.38 · §7), so the card links there. Embedding later is a decision with
- * a known price, not a blocker now.
+ * ⚠️⚠️ **THE SNAPSHOT IS THE COMPLETED BOARD RECORD, READ-ONLY — and that is
+ * not a stand-in for something we have yet to build** (Josh, 2026-09-18:
+ * *"this is just rendering the completed version of the profile at that stage
+ * as read only, we already have this"*). §5.38 is the mechanism: a patient is
+ * one item per board and a board hop is a create-item automation, so the
+ * finished item stays frozen in that board's Completed group and nothing writes
+ * to it again. `buildStageDetail` already maps each board's columns to the
+ * fields a rep wants, and `?completedStage=` already opens the real tool in
+ * review mode. Both are reused here rather than re-derived.
+ *
+ * ⚠️ **Granularity is per BOARD, not per sub-stage.** Medical Evaluation spans
+ * evaluate → send request → confirm receipt → chase → doctor appointments on
+ * ONE item, so a column overwritten later in the same board reads as though it
+ * always said that. The panel says which record it is showing rather than
+ * implying a per-step history it cannot have.
  */
-import { ArrowUpRight, Check, CircleDashed, CircleDot, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, Check, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
-import { cn } from "@/lib/utils";
-import type { PathStep, PatientDossier } from "@/lib/commsHub/dossier";
-import { infoFacts, stepCaption, stepOpenHref } from "@/lib/patient/patientScreen";
+import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
+import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
+import { infoFacts, itemOpenHref, stepCaption, type StageStep } from "@/lib/patient/patientScreen";
 
-export function OnboardingView({ dossier }: { dossier: PatientDossier }) {
+interface Props {
+  dossier: PatientDossier;
+  steps: StageStep[];
+  stepIdx: number;
+  onStep: (i: number) => void;
+  snapId: string;
+  onSnap: (itemId: string) => void;
+}
+
+export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap }: Props) {
   const facts = infoFacts(dossier);
+  const step = steps[stepIdx];
+  const snap = step?.items.find((i) => i.itemId === snapId) ?? step?.lead ?? null;
 
   return (
-    <div className="space-y-4">
+    <>
       {facts.length > 0 && (
-        <section className="rounded-xl border-l-4 border-l-teal-500 bg-card p-4 shadow-sm">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
+        <section className="card pad left-teal">
+          <div className="strip">
             {facts.map((f) => (
-              <div key={f.label} className="min-w-0">
-                <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{f.label}</dt>
-                <dd
-                  className={cn(
-                    "truncate text-sm font-semibold",
-                    f.missing && "font-normal text-muted-foreground",
-                  )}
-                  title={f.value}
-                >
+              <div className="fact" key={f.label}>
+                <div className="k">{f.label}</div>
+                <div className={`v${f.missing ? " gone" : ""}`} title={f.value}>
                   {f.value}
-                </dd>
+                </div>
               </div>
             ))}
-          </dl>
+          </div>
         </section>
       )}
 
-      <section className="rounded-xl border bg-card p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold">Onboarding</h2>
-        <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {dossier.path.map((step) => (
-            <StepCard key={step.board.boardId} step={step} />
-          ))}
-        </ol>
-      </section>
+      <div className="stepper">
+        {steps.map((s, i) => {
+          const reached = s.state !== "todo";
+          return (
+            <button
+              key={s.stage.key}
+              type="button"
+              className={`st ${s.state}${i === stepIdx ? " sel" : ""}`}
+              disabled={!reached}
+              onClick={() => reached && onStep(i)}
+              title={reached ? s.stage.label : `${s.stage.label} hasn't started yet`}
+            >
+              <span className="n">
+                <span className="c">
+                  {s.state === "done" ? <Check style={{ width: 12, height: 12 }} /> : i + 1}
+                </span>
+                <span className="truncate">{s.stage.label}</span>
+              </span>
+              <span className="s truncate">{stepCaption(s)}</span>
+              <span className="bar">
+                <i style={{ width: `${Math.round(s.progress * 100)}%` }} />
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-      {dossier.alsoOn.length > 0 && (
-        <section className="rounded-xl border bg-card p-4 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold">Also on</h2>
-          <ul className="space-y-1 text-sm text-muted-foreground">
-            {dossier.alsoOn.map((i) => (
-              <li key={`${i.boardId}:${i.itemId}`}>
-                {i.boardName} — {i.groupTitle}
-              </li>
-            ))}
-          </ul>
+      {step && (
+        <section className="snap">
+          <div className="snap-h">
+            {step.items.length > 1 ? (
+              <div className="snap-tabs">
+                {step.items.map((it) => (
+                  <button
+                    key={it.itemId}
+                    type="button"
+                    className={it.itemId === snap?.itemId ? "on" : ""}
+                    onClick={() => onSnap(it.itemId)}
+                  >
+                    {it.isCompleted && <Check style={{ width: 11, height: 11 }} />}
+                    {it.boardName}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <b className="small">{snap?.boardName || step.stage.label}</b>
+            )}
+
+            <div className="row wrap" style={{ gap: 6, marginLeft: "auto" }}>
+              {snap && (
+                <span className={`chip ${snap.isCompleted ? "green" : "blue"}`}>
+                  {snap.isCompleted
+                    ? "Snapshot · as it looked when this stage was left"
+                    : "Live — the patient is here now"}
+                </span>
+              )}
+              <span
+                className="chip"
+                title="Nothing on this panel writes to Monday — it is the record of what the tool saw"
+              >
+                <Eye style={{ width: 11, height: 11 }} /> Read-only
+              </span>
+              <OpenTool item={snap} />
+            </div>
+          </div>
+
+          <div className="snap-page">
+            <Snapshot step={step} item={snap} />
+          </div>
         </section>
       )}
-    </div>
+
+      {snap && (
+        <section className="card pad">
+          <div className="section-h">
+            <b className="small">Notes from this stage</b>
+            <span className="xs muted">{snap.boardName}</span>
+          </div>
+          <div className="notes">
+            {snap.notes.trim() ? (
+              <div className="note">{snap.notes.trim()}</div>
+            ) : (
+              <div className="note muted">
+                <i>No notes on this board.</i>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+    </>
   );
 }
 
-function StepIcon({ step }: { step: PathStep }) {
-  if (step.state === "completed") return <Check className="h-4 w-4 text-emerald-600" />;
-  if (step.state === "active") return <CircleDot className="h-4 w-4 text-sky-600" />;
-  if (step.state === "parked")
-    return step.item?.isStuck ? (
-      <TriangleAlert className="h-4 w-4 text-rose-600" />
-    ) : (
-      <CircleDot className="h-4 w-4 text-muted-foreground" />
+function OpenTool({ item }: { item: DossierItem | null }) {
+  const href = itemOpenHref(item);
+  if (!item) return null;
+  if (!href) {
+    return (
+      <span className="xs muted" title={`${item.boardName} has no page in the Command Center`}>
+        No page for this board
+      </span>
     );
-  return <CircleDashed className="h-4 w-4 text-muted-foreground/60" />;
+  }
+  return (
+    <Link className="btn outline xs" to={href}>
+      <ArrowUpRight style={{ width: 12, height: 12 }} />
+      {item.isCompleted ? "Open read-only" : "Open the tool"}
+    </Link>
+  );
 }
 
-function StepCard({ step }: { step: PathStep }) {
-  const href = stepOpenHref(step);
-  const reached = step.state !== "notReached";
+function Snapshot({ step, item }: { step: StageStep; item: DossierItem | null }) {
+  if (!item) {
+    return (
+      <div className="card pad small muted">
+        {step.state === "done"
+          ? "This patient completed this stage before it was tracked on its own board — there is no record to show."
+          : "Nothing here yet — the tool opens once the patient reaches this step."}
+      </div>
+    );
+  }
+
+  const sections = buildStageDetail(item.boardId, item.cols);
 
   return (
-    <li
-      className={cn(
-        "rounded-lg border p-3",
-        step.state === "active" && "border-sky-300 bg-sky-50/60 dark:bg-sky-950/20",
-        step.state === "notReached" && "border-dashed opacity-60",
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <StepIcon step={step} />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{step.board.label}</div>
-          <div className="truncate text-xs text-muted-foreground">{stepCaption(step)}</div>
-
-          {/* ⚠️ A step with no page says so rather than offering a dead link —
-              §7's rule for a Search row that cannot be worked. */}
-          {reached &&
-            (href ? (
-              <Link
-                to={href}
-                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-              >
-                {step.state === "completed" ? "View (read-only)" : `Open ${step.board.short}`}
-                <ArrowUpRight className="h-3 w-3" />
-              </Link>
-            ) : (
-              <p className="mt-2 text-xs text-muted-foreground">No page for this board — check Monday.</p>
-            ))}
-        </div>
+    <>
+      <div className="snap-tool">
+        {item.boardName} <span className="muted">· {item.groupTitle}</span>
       </div>
-    </li>
+
+      {sections.length === 0 && (
+        <div className="card pad small muted">
+          {hasStageDetail(item.boardId)
+            ? "Nothing has been filled in on this board yet."
+            : "No read-only view is mapped for this board — open it on Monday."}
+        </div>
+      )}
+
+      {sections.map((s) => (
+        <section className="card snapcard" key={s.title}>
+          <div className="snap-ct">{s.title}</div>
+          <div className="rogrid">
+            {s.fields.map((f) => (
+              <div className={`rof${f.lead ? " lead" : ""}`} key={f.col}>
+                <div className="k">{f.label}</div>
+                <div className="v">{f.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </>
   );
 }

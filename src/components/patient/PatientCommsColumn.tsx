@@ -1,5 +1,6 @@
 /**
- * The patient screen's right-hand column — Texts | Calls (§5.39).
+ * The patient screen's right-hand column (§5.39) — Texts | Calls, and the
+ * patient's numbers, in Brandon's `.pt-side` layout.
  *
  * ⚠️ **Both halves are the EXISTING components, not new ones.** The thread is
  * `assignedPatients/ConversationThread`, which is the only surface RingCentral's
@@ -7,16 +8,14 @@
  * opt-out guard; the call history is `shared/CallHistoryButton`, which already
  * fetches ON OPEN rather than on render (§5.16), already plays and downloads a
  * recording, and already paces a bulk download against `rcLimiter`. Rebuilding
- * either one here would be a second copy of a rule whose drift is silent.
+ * either here would be a second copy of a rule whose drift is silent.
  *
  * ⚠️ **Only the OPEN tab reads RingCentral** — the §5.28 rule, and the reason
- * the Calls tab renders a button rather than an inline list in this first slice:
- * a list would have to fetch on mount, which is a per-patient RingCentral read
- * on a screen a rep clicks through. The button is the version that already has
- * the incident guards.
+ * the Calls tab renders the button rather than an inline list: a list would have
+ * to fetch on mount, which is a per-patient RingCentral read on a screen a rep
+ * clicks through. INCIDENT_2026-08-20 is that shape.
  */
-import { Phone, MessageSquare } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { MessageSquare, Phone } from "lucide-react";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
@@ -33,73 +32,57 @@ export function PatientCommsColumn({
   side: PatientSide;
   onSide: (s: PatientSide) => void;
 }) {
-  if (!phone) {
-    return (
-      <aside className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
-        No phone number on this record, so there is nothing to show here. Add one on the stage page
-        and it will appear.
-      </aside>
-    );
-  }
-
   return (
-    <aside className="flex min-h-0 flex-col rounded-xl border bg-card">
-      <div className="flex shrink-0 items-center gap-1 border-b p-2">
-        <Tab active={side === "texts"} onClick={() => onSide("texts")} icon={<MessageSquare className="h-3.5 w-3.5" />}>
-          Texts
-        </Tab>
-        <Tab active={side === "calls"} onClick={() => onSide("calls")} icon={<Phone className="h-3.5 w-3.5" />}>
-          Calls
-        </Tab>
+    <aside className="pt-side">
+      <div className="hd">
+        <div className="side-tabs">
+          <button type="button" className={side === "texts" ? "on" : ""} onClick={() => onSide("texts")}>
+            <MessageSquare style={{ width: 13, height: 13 }} /> Texts
+          </button>
+          <button type="button" className={side === "calls" ? "on" : ""} onClick={() => onSide("calls")}>
+            <Phone style={{ width: 13, height: 13 }} /> Calls
+          </button>
+        </div>
       </div>
 
-      {side === "texts" ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {/* ⚠️ `onCall` is deliberately a no-op here: placing a call is the
-              Communications Hub's job (it owns the softphone registration,
-              §5.13b), and a second dialer on this screen would spend a second
-              SIP slot. The Calls tab beside it is where a rep goes. */}
-          <ConversationThread phone={phone} patient={patient} onCall={() => onSide("calls")} calling={false} />
+      <div className="numline">
+        <Phone style={{ width: 11, height: 11 }} />
+        <span className={phone ? "on" : ""}>{phone || "no phone on file"}</span>
+        <span className="muted">primary</span>
+      </div>
+
+      {!phone ? (
+        <div className="empty-pane">
+          <div className="xs" style={{ maxWidth: 220 }}>
+            No phone number on this record, so there is nothing to show here. Add one on the stage
+            page and it appears.
+          </div>
+        </div>
+      ) : side === "texts" ? (
+        <div className="side-body">
+          {/* ⚠️ `onCall` is a no-op on purpose: placing a call is the
+              Communications Hub's job — it owns the softphone registration, and
+              RingCentral caps the shared extension at five (§5.13b). A second
+              dialer here would spend a slot. The Calls tab is the door. */}
+          <ConversationThread phone={phone} patient={patient} onCall={() => {}} calling={false} />
         </div>
       ) : (
-        <div className="flex flex-1 flex-col gap-3 p-4">
-          <p className="text-sm text-muted-foreground">
-            Every call with this number — both directions, with the recording where RingCentral kept
-            one.
+        <div className="side-body" style={{ padding: 14, gap: 10, overflowY: "auto" }}>
+          <p className="xs muted" style={{ margin: 0 }}>
+            Call history, recordings and voicemail for this number, from RingCentral.
           </p>
-          <CallHistoryButton phone={phone} display={phone} label="Open call history" />
-          <p className="text-xs text-muted-foreground">
-            ⚠️ RingCentral deletes recordings after 90 days and keeps the log row, so an older call
-            looks the same as one that was never recorded.
+          <div>
+            <CallHistoryButton phone={phone} />
+          </div>
+          {/* ⚠️ Says WHY the list is behind a press rather than just showing a
+              button — the call log is one of RingCentral's more rate-limited
+              endpoints (§5.16) and this screen renders for every patient a rep
+              clicks through. */}
+          <p className="xs muted" style={{ margin: 0 }}>
+            Loaded when you open it, so a patient you only glance at costs nothing.
           </p>
         </div>
       )}
     </aside>
-  );
-}
-
-function Tab({
-  active,
-  onClick,
-  icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
-      )}
-    >
-      {icon}
-      {children}
-    </button>
   );
 }

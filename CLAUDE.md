@@ -4483,6 +4483,9 @@ nothing destructive purely additive and taking our current function and routing 
 … then we can go piece by piece and decide what's redundant."* This is the first slice, and the
 keystone: every other screen in that handoff is either a tab on this one or a link into it.
 
+> **The look landed in a second pass — see §5.39b**, which carries the global header, the layout
+> switch, the four-stage stepper and the read-only snapshot. The rules below still hold.
+
 **Route `/patient/:itemId?board=<boardId>`** — `pages/PatientPage.tsx`,
 `components/patient/{OnboardingView,PatientCommsColumn}.tsx`,
 `hooks/patient/usePatientRecord.ts`, `lib/patient/patientScreen.ts` (+ tests).
@@ -4553,14 +4556,100 @@ Brandon's "Open Profile Page". ⚠️ It sits BESIDE the pane's original *Open o
 is unchanged; replacing a working door with a new one is the destructive change this build promised
 not to make, and the test asserts both are present.
 
-**Not built in this slice, deliberately:** the global header and its tabs (a header rewrite cannot
-be additive — put it behind a flag, the `SHOW_CHASE_COLUMN` / `ORDERING_FROM_COMMAND_CENTER`
-pattern); the abilities/`admins[]`/`homeView` model (⚠️ when it lands, **default every ability ON**
-until the Users page is filled in, or the first deploy reads an `access.json` with no `perms` and
-everyone fails closed — the same reasoning as `isBootstrapMode`); the Subscription Profile | Orders
-tabs; the widened global search. §5.38 covers the snapshot question the handoff opens with.
+### 5.39b The redesign SHELL — Brandon's global header, and the switch that makes it additive
+Josh, 2026-09-18, on the first slice: *"nope i see nothing — the big change here is the ui"*, then
+*"he mostly put his time into the html file, follow it closely"*. The first slice built the
+plumbing and left the look; this is the look. **No board change; app only.**
 
-**Keep-in-agreement:** `lib/patient/patientScreen.ts` `stepOpenHref` ⇄
+⚠️⚠️ **THE SWITCH IS BRANDON'S OWN, NOT AN INVENTION.** His mockup carries a toolbar control
+reading *"Layout: the redesign"* / *"Layout: as today (for comparison)"*, and the file opens on the
+redesign. Porting it with the design is what makes a whole-app navigation change additive — the one
+thing a new global header cannot be on its own. `lib/shell/layout.ts` + `hooks/shell/useShellLayout`
+(localStorage, **default `redesign`** per Josh: *"everyone, on by default"*); the control is in the
+header's gear menu.
+⚠️ **"As today" must be BYTE-IDENTICAL or the escape hatch is not one.** With the toggle off
+`AppShell` returns `<>{children}</>` — no wrapper element, no class, and therefore no reach for
+`shell.css`, every rule of which is scoped under `.cc-shell`. `patientScreen.test.ts` pins that
+exact line, because the moment that branch renders a `<div>` the promise stops being true.
+
+**The header** (`components/shell/{AppShell,GlobalHeader,GlobalSearch}.tsx`, `pages/shell.css`) —
+brand · four section TABS · the global patient search · Users · the gear. ⚠️ **Every tab points at a
+page that already exists**, which is the "route our current function into his new look" instruction
+taken literally: My Dashboard → `/`, Communications → `/assigned-patients`, Inventory →
+`/orders?view=stock` (the Cardinal SKU tracker, §5.35), Reports & Metrics →
+`/system-mgmt?tab=operations`.
+⚠️ **Reports & Metrics points at Operations DELIBERATELY** (Josh, 2026-09-18). Brandon draws a
+Patient Pipeline Tracker that does not exist here and whose numbers are specified nowhere; his own
+feature audit calls Operations' grouping *"the most sensible map of the roles anywhere in the app"*.
+A tab opening a page of invented numbers is worse than one opening a real page under a borrowed
+name.
+
+⚠️⚠️ **THE FIT OVERRIDES ARE WHAT MAKE THIS ADDITIVE RATHER THAN A REWRITE OF 30 PAGES.** Every
+existing page sizes itself against the viewport (`min-h-screen`, and `h-screen` on the
+Communications hub); under a 56px header those are 56px too tall — a second scrollbar, and on an
+`h-screen` page the composer at its foot below the fold, which is §7's Communications-tab failure
+exactly. `shell.css` shortens both by `var(--cc-head)`; two classes beat Tailwind's one, so it needs
+no `!important`, and it vanishes with the shell. ⚠️ **That failure only reproduces with a REAL,
+LONG list** — §7 records a correct fix being "disproved" against a two-row fixture and reverted.
+Measured live: the patient screen sits at exactly `top: 56`, height `844` in a 900px window.
+
+⚠️ **The global search is a REACH change, not a new capability.** The search itself already exists
+and is already live per keystroke (§7); what moves is where it lives — Brandon's audit calls it out
+as *"the only cross-board search in the app, and it is two clicks from home"*. Mounting
+`useLiveSearch` with an empty query asks Monday nothing, so a header on every page costs nothing
+until somebody types. Rows open the **patient screen**; an order row still opens `/orders`, because
+an order is not a patient record.
+⚠️ Its non-result states are three different sentences — searching · too short · the read failed ·
+nothing matched. Collapsing them is how a rep concludes a patient is not in the system when Monday
+simply 503'd (§9).
+
+⚠️ **The home sidebar's wordmark is hidden INSIDE the shell only** (`[data-cc-brand]`), because two
+"Command Center" blocks stacked was the first thing visible when the header rendered. Hidden in
+`shell.css` rather than deleted in `Index.tsx`, so the sidebar is untouched with the toggle off, and
+targeted by a **data attribute, never a utility class** — `bg-gradient-navy` is on several page
+headers and a `.w-9` inside one could be any icon.
+
+**The patient screen was rebuilt to his layout at the same time**: the top bar card (name · DOB ·
+phone + the **Onboarding | Subscription** toggle), the four-stage stepper, the read-only snapshot,
+stage notes, and the `.pt-side` right column. It renders **no header of its own** — it is inside the
+shell, and a second navy bar on one screen is the thing that would say loudest that two designs were
+stapled together.
+
+⚠️ **The stepper is FOUR stages, not the six boards of `PIPELINE_ORDER`.** His is
+`repeat(4, 1fr)` and his `SNAP_ORDER` keys 0–3: DTC Intake folds into Intake (read-only, no page —
+§3) and Subscription is the other VIEW. `MACRO_STAGES` is that mapping.
+⚠️ **"Done" is decided by HOW FAR THE PATIENT GOT, not by that board's own flag.** A patient live on
+Insurance completed Medical Necessity whether or not that item's Completed group read correctly —
+the later record's existence IS the evidence (§5.38). Reading `isCompleted` alone would draw a
+finished stage as unstarted the moment a group id moved, which is §5.18's hand-maintained-list
+hazard.
+
+⚠️⚠️ **THE SNAPSHOT IS THE COMPLETED BOARD RECORD, AND WE ALREADY HAD IT** (Josh, 2026-09-18:
+*"this is just rendering the completed version of the profile at that stage as read only, we already
+have this"*). Brandon's mockup labels its own cards a **"Stand-in"** and says the live build should
+render *"the actual tool … only the navy header and the patient header card removed"* — which is the
+13-page shell/body split. It is not needed: §5.38 is the mechanism, `buildStageDetail` already maps
+each board's columns to the fields a rep wants, and `?completedStage=` already opens the real tool in
+review mode. Both are reused rather than re-derived, and the panel links to the real page beside
+them.
+⚠️ Granularity is **per BOARD, not per sub-stage** — Medical Evaluation spans evaluate → send
+request → confirm receipt → chase → doctor appointments on ONE item, so a column overwritten later
+in the same board reads as though it always said that. The panel names the record it is showing
+rather than implying a per-step history it cannot have.
+
+**Still not built, deliberately:** the per-person home views (`bars` / `coordinator` / `oversight`
+with a toggle and a "Viewing whose" dropdown); the abilities/`admins[]`/`homeView` model (⚠️ when it
+lands, **default every ability ON** until the Users page is filled in, or the first deploy reads an
+`access.json` with no `perms` and everyone fails closed — the same reasoning as `isBootstrapMode`);
+the Users page; the Subscription Profile | Orders tabs; Brandon's combined fax bar (Josh,
+2026-09-18: add it beside `/fax-inbox` and the Comms Fax rail, **removing neither**).
+
+**Keep-in-agreement:** `shell.css`'s `--cc-head` ⇄ the `.gh` `min-height` — the fit overrides
+subtract exactly the header's height, and a header that grows without it puts every page 56px out.
+`GlobalHeader`'s four `to=` targets ⇄ `App.tsx`'s routes (`patientScreen.test.ts` asserts each one
+is a real route). `AppShell`'s `current` branch ⇄ the test that pins it as a bare fragment.
+
+**Keep-in-agreement:** `lib/patient/patientScreen.ts` `itemOpenHref` ⇄
 `systemMgmt/stageCompletion.COMPLETED_STAGE_ROUTES` ⇄ `useCompletedStageReview` — the screen is a
 second caller of §5.38's mechanism, so a board added to one must reach the others.
 `usePatientRecord` ⇄ `commsHub/dossierApi` — never fetch a board here directly; the dossier is the
@@ -7068,6 +7157,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 |---|---|
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A payer added on Monday isn't in the Command Center dropdown | §5.33 — Primary/General Insurance read `settings_str` live (`lib/profile/boardLabels.ts` + `hooks/profile/useBoardLabels.ts`); check it isn't in `NON_PAYER_LABELS`. If it is IN the picker but doesn't save, the write lost its live index. And a payer must exist on **all eight** payer columns — ME, Insurance, Welcome Call and Claims are the ones people forget. ⚠️ Monday assigns a DIFFERENT label id per board (this payer is 159/159/159/159 but **108** on ME, **7** on Insurance and Welcome Call, **3** on Claims); hops copy by label text so they are fine, but anything writing an index directly needs that board's own id |
+| The new header is missing, or a page sits under it wrong | §5.39b — the layout switch is in the header's gear menu (`lib/shell/layout.ts`, default `redesign`, per browser). A page 56px too tall means it sizes against the viewport and `shell.css`'s `.cc-shell .min-h-screen` / `.h-screen` overrides did not reach it. ⚠️ Reproduce with a REAL, long list — §7 records this being "disproved" against a two-row fixture and reverted |
+| A header tab opens the wrong thing / "where is Reports & Metrics?" | §5.39b — every tab points at an EXISTING page, and Reports & Metrics points at `/system-mgmt?tab=operations` deliberately (Josh, 2026-09-18): Brandon's Patient Pipeline Tracker has no data behind it in this build |
 | "Show what this stage looked like when the patient left it" / a handoff asks for stage snapshots | §5.38 — **the completed item on each board already IS the snapshot**; do not build a history store. `lib/systemMgmt/stageCompletion.ts` (which page, and when it completed) → `useCompletedStageReview` (review mode) → §7's completion badges. Granularity is per BOARD, not per sub-stage |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
 | "Open this patient's whole record" / where the redesign's patient screen lives | §5.39 — `/patient/:itemId?board=<boardId>` (`pages/PatientPage.tsx`). READ-ONLY and additive: it writes nothing and every action deep-links to the stage page. It is a thin view over the Comms Hub dossier (§5.28), keyed on the ITEM not the phone, fetched on open with no poll. A completed step opens in review mode via §5.38. The door in is the dossier pane's **Open profile page** button |
