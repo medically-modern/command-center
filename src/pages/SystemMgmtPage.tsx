@@ -81,6 +81,21 @@ import { boardStageLabel, boardTone } from "@/lib/systemMgmt/boardTone";
  * 2026-09-10), not deleted — the fetch, `removeEscalation`, the detail modal
  * and this union member all stay, so putting it back is uncommenting two
  * blocks. See the two `escalations` markers below.
+ *
+ * ⚠️⚠️ **`stageManager`, `operations` and `oversight` joined it 2026-09-18**
+ * (Josh: "remove system management, the search from there is now in the top
+ * bar, comment out stage maanger operations and oversight"). Same treatment,
+ * same reason: the `Tab` union members, the imports, the views and the render
+ * branches all stay, so each is two uncommented blocks away from coming back.
+ *
+ * ⚠️ **Oversight is NOT lost with its tab** — `/oversight` is its own
+ * full-screen route (`OversightPage` in `App.tsx`) and the redesign's gear menu
+ * points at that one now. Stage Manager and Operations have no second door, so
+ * commenting those two is a real removal, reversible by uncommenting.
+ *
+ * ⚠️ **Every commented tab falls through to Search**, so an old bookmark or a
+ * Back into `?tab=operations` lands somewhere real rather than on a tab with no
+ * button and no body.
  */
 type Tab = "search" | "escalations" | "communications" | "operations" | "stageManager" | "oversight";
 
@@ -104,11 +119,14 @@ const SystemMgmtPage = () => {
   // commented out: an old bookmark or a Back into `?tab=escalations` would
   // otherwise land on a tab with no button and no body — a blank page with no
   // way out.
+  // ⚠️ `operations`, `stageManager` and `oversight` fall through to Search with
+  // their tabs commented out (2026-09-18), for the same reason `escalations`
+  // does. Restore the three lines when the tabs come back.
   const initialTab: Tab =
     tabParam === "communications" ? "communications"
-    : tabParam === "operations" ? "operations"
-    : tabParam === "stageManager" ? "stageManager"
-    : tabParam === "oversight" ? "oversight"
+    // : tabParam === "operations" ? "operations"
+    // : tabParam === "stageManager" ? "stageManager"
+    // : tabParam === "oversight" ? "oversight"
     : "search";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
@@ -394,6 +412,8 @@ const SystemMgmtPage = () => {
               icon={<MessageSquare className="w-4 h-4" />}
               label="Communications"
             />
+          {/* ── stageManager · operations · oversight — commented out
+                 2026-09-18, see the header. Oversight lives on at /oversight.
             <TabBtn
               active={activeTab === "stageManager"}
               onClick={() => selectTab("stageManager")}
@@ -412,6 +432,7 @@ const SystemMgmtPage = () => {
               icon={<BarChart3 className="w-4 h-4" />}
               label="Oversight"
             />
+          ── */}
           </nav>
         </div>
       </header>

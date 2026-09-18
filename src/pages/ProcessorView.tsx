@@ -12,7 +12,18 @@ export default function ProcessorView({ profile, email }: { profile: ProcessorPr
   const order = orderedRoleIds(profile);
   return (
     <div className="min-h-screen bg-gradient-subtle">
-      <header className="bg-gradient-navy text-white px-6 py-4 flex items-center gap-3 shadow-lg">
+      {/* ⚠️ `data-cc-chrome` is a hook for the redesign shell ONLY (§5.39c):
+          inside it the global header already carries the wordmark AND the
+          softphone badge, so this bar would be a second navy strip saying the
+          same thing — the "two designs stapled together" look §5.39b exists to
+          avoid. Nothing is lost when it is hidden: whose screen this is comes
+          from the "<name>'s work" heading directly below (and, on a borrowed
+          view, from the banner above). With the shell off nothing reads this
+          attribute and the page renders exactly as before. */}
+      <header
+        data-cc-chrome
+        className="bg-gradient-navy text-white px-6 py-4 flex items-center gap-3 shadow-lg"
+      >
         <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
           <Stethoscope className="w-5 h-5" />
         </div>

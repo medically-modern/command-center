@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { Shield, LayoutDashboard, Stethoscope, KeyRound } from "lucide-react";
 import { processorPeople, type Person } from "@/lib/people";
 import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
+import { useShellLayout } from "@/hooks/shell/useShellLayout";
+import { hasAbility } from "@/lib/shell/abilities";
 
 const Index = () => {
   /**
@@ -22,6 +24,30 @@ const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { access, email, config } = useAccessContext();
+  const [layout] = useShellLayout();
+
+  /**
+   * ⚠️⚠️ **THE ROSTER SIDEBAR COMES OFF FOR WHOEVER HAS THE THING THAT REPLACES
+   * IT** (Josh, 2026-09-18: "remove the managers processors view on the left
+   * side bar (we have per patient views set up right?)").
+   *
+   * The replacement is the redesign shell's "Viewing: <person>" dropdown
+   * (§5.39c), which shows a person's home screen properly rather than their
+   * bars in a pane. So the condition is BOTH — the shell is on, and this person
+   * holds `viewOthers`:
+   *
+   *   · `layout === "current"` keeps the sidebar, so the escape hatch stays a
+   *     real escape hatch (§5.39b) and turning the shell off restores today's
+   *     screen exactly;
+   *   · `viewOthers` is opt-in and granted to two people, so removing the
+   *     roster for every manager would take the only way Corey, Janelle and
+   *     Katie have of looking at somebody's workload and give them nothing
+   *     back. Nobody loses a capability they were not handed a better one for.
+   *
+   * ⚠️ To take it off the other managers too, grant them `viewOthers` on
+   * `/access` — do NOT widen this condition, or they are stranded.
+   */
+  const rosterReplaced = layout === "redesign" && hasAbility(email, config, "viewOthers");
 
   const visiblePeople = processorPeople(config);
 
@@ -39,6 +65,24 @@ const Index = () => {
   // Processors get a stripped, no-sidebar view of only their assigned bars.
   if (access.type === "processor") {
     return <ProcessorView profile={access.profile} email={email} />;
+  }
+
+  if (rosterReplaced) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex">
+        <div className="flex-1 flex flex-col min-w-0">
+          <DashboardMainView person={selectedPerson} />
+        </div>
+        {/* ⚠️ THE THEME BUTTON IS ALSO SIGN-OUT, and the sidebar was the only
+            place it lived on this screen — dropping the sidebar without it
+            would leave a manager with no way to sign out at all. Same fixed
+            bottom-left spot `ProcessorView` already uses, so the two home
+            screens agree about where it is. */}
+        <div className="fixed bottom-4 left-4 z-40">
+          <ThemePickerButton />
+        </div>
+      </div>
+    );
   }
 
   return (

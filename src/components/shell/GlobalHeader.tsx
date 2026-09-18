@@ -9,15 +9,17 @@
  *   My Dashboard       → `/`                        (today's home)
  *   Communications     → `/assigned-patients`       (the RingCentral hub)
  *   Inventory          → `/orders?view=stock`       (the Cardinal SKU tracker)
- *   Reports & Metrics  → `/system-mgmt?tab=operations`  (Josh, 2026-09-18)
  *
- * ⚠️ **Reports & Metrics points at Operations DELIBERATELY.** Brandon's mockup
- * draws a Patient Pipeline Tracker that does not exist in this build, and the
- * numbers behind it are not specified anywhere. Operations is the closest real
- * thing (the 9 AM baseline against live counts, grouped by stage — his own
- * feature audit calls that grouping "the most sensible map of the roles
- * anywhere in the app"). Pointing a tab at a page of invented numbers would be
- * worse than pointing it at a real one under a borrowed name.
+ * ⚠️⚠️ **REPORTS & METRICS IS COMMENTED OUT, AND IT NEEDS A DECISION.** It
+ * pointed at `/system-mgmt?tab=operations` (Josh's own pick, 2026-09-18,
+ * because Brandon's Patient Pipeline Tracker does not exist in this build and
+ * its numbers are specified nowhere) — and later the same day Josh asked for
+ * Operations to be commented out. The two instructions collide: a tab whose
+ * only real destination has been switched off is a dead link, and a dead link
+ * in primary navigation is worse than a missing tab. So it is commented rather
+ * than repointed at something invented. Three ways back, in preference order:
+ * uncomment the Operations tab in `SystemMgmtPage` and restore this; point it
+ * at `/oversight` (real, but that is not "reports"); or build the tracker.
  *
  * ⚠️ **Nothing here is gated on an ability yet.** The abilities model
  * (`admins[]`, `perms`) is a later phase, and §5.39 records the rule for when
@@ -27,8 +29,10 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { BarChart3, Grid3x3, MessageSquare, Package, Settings, Stethoscope, Users } from "lucide-react";
+import { Grid3x3, LogOut, MessageSquare, Package, Settings, Stethoscope, Users } from "lucide-react";
+import { getUser, signOut } from "@/lib/shared/auth";
 import { GlobalSearch } from "./GlobalSearch";
+import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
 import { useAccessContext } from "@/components/AccessProvider";
 import { hasAbility, isAdmin } from "@/lib/shell/abilities";
@@ -72,14 +76,15 @@ const TABS: Tab[] = [
     match: (p, s) => p === "/orders" && s.includes("view=stock"),
     ability: "inventory",
   },
-  {
-    key: "reports",
-    label: "Reports & Metrics",
-    to: "/system-mgmt?tab=operations",
-    icon: BarChart3,
-    match: (p, s) => p === "/system-mgmt" && s.includes("tab=operations"),
-    ability: "reports",
-  },
+  // ── Reports & Metrics — commented out 2026-09-18, see the header ──
+  // {
+  //   key: "reports",
+  //   label: "Reports & Metrics",
+  //   to: "/system-mgmt?tab=operations",
+  //   icon: BarChart3,
+  //   match: (p, s) => p === "/system-mgmt" && s.includes("tab=operations"),
+  //   ability: "reports",
+  // },
 ];
 
 export function GlobalHeader() {
@@ -133,6 +138,13 @@ export function GlobalHeader() {
       <GlobalSearch />
 
       <div className="right">
+        {/* The softphone, beside Users (Josh, 2026-09-18). ⚠️ It renders for
+            ASSIGNED CALL ANSWERERS ONLY (§5.13b) and returns null for everybody
+            else — there is no line to report on for somebody who is never rung.
+            The `compact` form is the same component, so the gate and the tone
+            rules cannot drift from the home badge's. */}
+        <CallConnectionBadge compact />
+
         {/* ⚠️ Admins only, per Brandon — and `isAdmin` returns true for every
             MANAGER while `admins` is empty (§5.39c), which is every config
             today. So this renders exactly as it did until somebody names the
@@ -176,12 +188,22 @@ export function GlobalHeader() {
               </button>
               <div className="divider" />
               <div className="eyebrow">Manager</div>
-              <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/system-mgmt?tab=oversight"); }}>
+              {/* ⚠️ `/oversight`, NOT `/system-mgmt?tab=oversight` — that tab is
+                  commented out (2026-09-18). Oversight has its own full-screen
+                  route (`OversightPage`), which is why commenting the tab took
+                  nothing away; Stage Manager and Operations have no second
+                  door and really are off until somebody uncomments them. */}
+              <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/oversight"); }}>
                 Pipeline Oversight
               </button>
+              {/* ── System Management — removed from the menu 2026-09-18
+                     (Josh: "remove system management, the search from there is
+                     now in the top bar"). The route still exists, so a
+                     bookmark works; it just is not advertised here any more.
               <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/system-mgmt"); }}>
                 System Management
               </button>
+              ── */}
               {/* ⚠️ BOTH fax screens are listed, deliberately (Josh, 2026-09-18):
                   Brandon's combined bar was added beside the Fax Inbox rather
                   than replacing it, so both stay reachable until we trim. */}
@@ -190,6 +212,20 @@ export function GlobalHeader() {
               </button>
               <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/fax-inbox"); }}>
                 Fax Inbox
+              </button>
+              {/* ⚠️⚠️ **SIGN OUT LIVES HERE BECAUSE THE FLOATING ONE CAN BE
+                  COVERED.** `ThemePickerButton` is the app's sign-out, and on
+                  the no-sidebar home (§5.39c) it is the only one — but it sits
+                  at `fixed bottom-4 left-4 z-40` and the call-status notices
+                  sit at the SAME corner with `z-[60]`, so an unhealthy call
+                  stream hides it. Measured in a browser, not reasoned about.
+                  Losing the theme picker behind a notice is a nuisance; losing
+                  sign-out is not, so it gets a route that nothing can cover. */}
+              <div className="divider" />
+              <div className="eyebrow">{getUser()?.email || "Signed in"}</div>
+              <button className="opt" role="menuitem" onClick={signOut}>
+                <LogOut style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                Sign out
               </button>
             </div>
           )}

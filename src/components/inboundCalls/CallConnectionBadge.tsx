@@ -14,6 +14,20 @@
  * Beside it, a MUTE for the ringtone (Josh, 2026-09-14). Per browser, so it
  * silences the tab that actually rings whichever tab it is pressed in; cards
  * and Answer are untouched — this is the speaker, not the assignment.
+ *
+ * ⚠️ **`compact` is the SAME COMPONENT, not a second one** (Josh, 2026-09-18 —
+ * "move to top bar next to users, make it simpler. just a small ui componet and
+ * button that moves to this tab, show it with an icon instead of explaining").
+ * It is the global header's version: two icon buttons, the sentence in the
+ * tooltip instead of on screen. A separate header component would be a second
+ * copy of the `canAnswerCalls` gate and the tone rules — and those decide
+ * whether somebody's phone rings, so a copy that drifts is a rep who never
+ * learns they are offline. Everything above the `return` is shared.
+ *
+ * ⚠️ **The MUTE rides along in compact, and that is not decoration.** With the
+ * home sidebar off (§5.39c) the header is the only badge a manager has, so
+ * dropping the speaker here would take the ringtone mute away from them
+ * entirely — it lives nowhere else.
  */
 import { useEffect, useState } from "react";
 import { Loader2, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
@@ -23,7 +37,14 @@ import { canAnswerCalls } from "@/lib/accessStore";
 import { authRequired } from "@/lib/shared/auth";
 import { cn } from "@/lib/utils";
 
-export default function CallConnectionBadge({ className }: { className?: string }) {
+export default function CallConnectionBadge({
+  className,
+  compact = false,
+}: {
+  className?: string;
+  /** The global header's icon-only form (§5.39c). */
+  compact?: boolean;
+}) {
   const { email, config } = useAccessContext();
   const phone = useSoftphone();
   const enabled = !authRequired() || canAnswerCalls(email, config);
@@ -65,6 +86,57 @@ export default function CallConnectionBadge({ className }: { className?: string 
   } else if (reg === "error") {
     tone = "red";
     label = "Not connected for calls";
+  }
+
+  const StateIcon = pending ? Loader2 : connected ? PhoneCall : PhoneOff;
+
+  if (compact) {
+    // ⚠️ The phone IS the takeover button when another tab holds the line —
+    // Josh's "a button that moves to this tab". When this tab already has it
+    // there is nothing to move, so it is inert and only reports.
+    const canTake = elsewhere && !phone.call;
+    return (
+      <span className={cn("cc-phone", className)} role="status">
+        <button
+          type="button"
+          className={cn("ib", `cc-phone-${tone}`)}
+          onClick={canTake ? phone.takeOver : undefined}
+          // ⚠️ Not `disabled`: a disabled button shows no tooltip in most
+          // browsers, and the tooltip is the entire explanation in this form.
+          aria-disabled={!canTake}
+          title={
+            elsewhere
+              ? phone.call
+                ? "Calls ring in another tab — wait for that call to finish"
+                : "Calls ring in another tab — click to ring in this one"
+              : detail
+                ? `${label} — ${detail}`
+                : label
+          }
+          aria-label={label}
+        >
+          <StateIcon style={{ width: 16, height: 16 }} className={pending ? "animate-spin" : undefined} />
+        </button>
+        <button
+          type="button"
+          className={cn("ib", phone.ringMuted && "cc-phone-muted")}
+          onClick={() => phone.setRingMuted(!phone.ringMuted)}
+          title={
+            phone.ringMuted
+              ? "Ringtone muted in this browser — click to unmute"
+              : "Mute the ringtone in this browser"
+          }
+          aria-label={phone.ringMuted ? "Unmute ringtone" : "Mute ringtone"}
+          aria-pressed={phone.ringMuted}
+        >
+          {phone.ringMuted ? (
+            <VolumeX style={{ width: 16, height: 16 }} />
+          ) : (
+            <Volume2 style={{ width: 16, height: 16 }} />
+          )}
+        </button>
+      </span>
+    );
   }
 
   return (

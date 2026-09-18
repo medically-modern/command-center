@@ -96,6 +96,22 @@
 }
 .cc-shell .gh .ib:hover, .cc-shell .gh .ib.active { background: hsl(0 0% 100% / 0.12); color: #fff; }
 
+/* ── The softphone, as two icons (§5.39c) ────────────────────────────────────
+   Josh, 2026-09-18: "move to top bar next to users, make it simpler … show it
+   with an icon instead of explaining". The sentence lives in the tooltip; the
+   colour is the whole of what a glance needs to read.
+   ⚠️ Tinted with `color` only — these sit on the navy bar, so a background per
+   state would be four chips fighting the two beside them. */
+.cc-shell .gh .cc-phone { display: inline-flex; align-items: center; gap: 2px; }
+.cc-shell .gh .cc-phone .ib { padding: 0 6px; }
+.cc-shell .gh .cc-phone-green { color: hsl(152 76% 64%); }
+.cc-shell .gh .cc-phone-amber { color: hsl(38 96% 68%); }
+.cc-shell .gh .cc-phone-red   { color: hsl(0 84% 71%); }
+.cc-shell .gh .cc-phone-grey  { color: hsl(210 40% 98% / 0.5); }
+.cc-shell .gh .cc-phone-muted { color: hsl(38 96% 68%); }
+/* Not connected, and nothing to click — say so with the cursor too. */
+.cc-shell .gh .cc-phone .ib[aria-disabled="true"] { cursor: default; }
+
 /* ── Global search — the door into any patient, on every page ─────────────── */
 .cc-shell .gsearch { flex: 1; max-width: 520px; position: relative; margin: 0 auto; }
 .cc-shell .gsearch input {
@@ -190,3 +206,5 @@
    utility-based rule here would blank things on pages this has no business
    touching. */
 .cc-shell [data-cc-brand] { display: none; }
+/* A page's own navy header, where the global one already says it (§5.39c). */
+.cc-shell [data-cc-chrome] { display: none; }

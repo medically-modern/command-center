@@ -218,6 +218,14 @@ async function fetchAccess(): Promise<{ data: AccessConfig; sha: string | null }
       // Absent on a file written before 2026-09-14 (and on prod until its own
       // admin sets one): nobody is assigned, nobody is rung. Never inferred.
       callAnswerers: Array.isArray(parsed.callAnswerers) ? parsed.callAnswerers : [],
+      // ⚠️⚠️ **THIS READ IS A WHITELIST, so a key missing from it is written by
+      // `saveAccess` and then THROWN AWAY by the next 10s poll.** `admins` was
+      // exactly that when it shipped (2026-09-18): the toggle wrote the file
+      // correctly and the list vanished a few seconds later, with nothing
+      // erroring — a setting that will not stick and does not say why.
+      // `perms` and `homeView` are safe only because they ride INSIDE
+      // `processors`. Anything new at the TOP level has to be added here too.
+      admins: Array.isArray(parsed.admins) ? parsed.admins.filter((a: unknown) => typeof a === "string") : undefined,
     },
     sha: json.sha,
   };

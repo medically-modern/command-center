@@ -260,3 +260,23 @@ describe("⚠️ the shipped access.json", () => {
     ]);
   });
 });
+
+
+/**
+ * ⚠️ `fetchAccess` rebuilds the config from a WHITELIST of keys, so a top-level
+ * field it does not name is saved to the file and then dropped by the next 10s
+ * poll — the setting reverts a few seconds after it is ticked, and nothing
+ * errors. `admins` shipped that way. This scans the read for every top-level
+ * key the model has, so the next one added cannot repeat it.
+ */
+describe("⚠️ every top-level access field survives the read-back", () => {
+  it("fetchAccess carries admins, not just managers/processors/callAnswerers", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(__dirname, "..", "accessStore.ts"), "utf8");
+    const read = src.slice(src.indexOf("async function fetchAccess"), src.indexOf("async function saveAccess"));
+    for (const key of ["managers", "processors", "callAnswerers", "admins"]) {
+      expect(read, `fetchAccess drops \`${key}\``).toContain(`${key}:`);
+    }
+  });
+});

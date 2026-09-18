@@ -4663,6 +4663,60 @@ request → confirm receipt → chase → doctor appointments on ONE item, so a 
 in the same board reads as though it always said that. The panel names the record it is showing
 rather than implying a per-step history it cannot have.
 
+**The header carries the softphone, the home roster comes off, and System Management is off the
+menu** (Josh, 2026-09-18, three asks in one message). **No board change; app only.**
+- **The softphone is `CallConnectionBadge compact`** — the SAME component, not a header copy of it
+  (*"move to top bar next to users, make it simpler. just a small ui componet and button that moves
+  to this tab, show it with an icon instead of explaining"*). Two icon buttons: the phone, which IS
+  the takeover when another tab holds the line and is inert when this one does, and the ringtone
+  mute. The sentence lives in the `title`. ⚠️ A separate header component would be a second copy of
+  the `canAnswerCalls` gate and the tone rules, and those decide whether somebody's phone rings — a
+  copy that drifts is a rep who never learns they are offline. ⚠️ The mute rides along because with
+  the home sidebar off the header is the only badge a manager has, and the speaker lives nowhere
+  else. ⚠️ The phone button is `aria-disabled`, never `disabled`: a disabled button shows no tooltip
+  in most browsers, and the tooltip is the entire explanation in this form.
+- **The Managers/Processors roster leaves the home page — for whoever has the thing that replaces
+  it** (*"remove the managers processors view on the left side bar"*). The condition is BOTH
+  `layout === "redesign"` AND `viewOthers`: the layout half keeps "as today" untouched, and the
+  ability half means Corey, Janelle and Katie do not lose the only way they have of looking at
+  somebody's workload and get nothing back. ⚠️ **To take it off them too, grant them `viewOthers`
+  — do NOT widen the condition**, or they are stranded (§5.10 · §5.20 · §5.31c).
+  ⚠️⚠️ **`ThemePickerButton` IS SIGN-OUT**, and the sidebar was its only home on that screen, so
+  the replacement renders it at the same fixed bottom-left spot `ProcessorView` uses — **and sign-out
+  is ALSO in the header's gear menu**, because that floating button is `z-40` and the call-status
+  notices sit at the same corner at `z-[60]`: an unhealthy call stream covers it. Measured in a
+  browser, not reasoned about. Losing the colour picker behind a notice is a nuisance; losing
+  sign-out is not.
+- ⚠️ **`ProcessorView`'s own navy header is hidden inside the shell** (`data-cc-chrome`, the
+  `data-cc-brand` pattern): the global header already carries the wordmark and the badge, so it
+  rendered as a second navy strip saying the same thing — the "two designs stapled together" look
+  §5.39b exists to avoid. Nothing is lost: whose screen it is comes from the "<name>'s work" heading
+  below and, on a borrowed view, from the banner. ⚠️ Scoped to `.cc-shell`, or it would hide that
+  header for every processor with the redesign OFF.
+- ⚠️ **The empty state had to follow the sidebar** — it read *"Select a team member from the
+  sidebar"* with no sidebar on screen, an instruction pointing at nothing, which reads as the page
+  being broken. Found by RENDERING it (§5.30d's rule), not by reading the code.
+- **System Management: `stageManager` · `operations` · `oversight` are COMMENTED OUT**, its button
+  is off the manager dashboard in the redesign layout, and it is off the gear menu (*"remove system
+  management, the search from there is now in the top bar, comment out stage maanger operations and
+  oversight"*). Same treatment as `escalations` (§7): the `Tab` union members, the imports, the
+  views and the render branches all stay, and each commented tab **falls through to Search** so an
+  old bookmark is not a blank page. ⚠️ **Oversight is not lost with its tab** — `/oversight` is its
+  own full-screen route and the gear menu points there now; **Stage Manager and Operations have no
+  second door**, so those two really are off until somebody uncomments them.
+- ⚠️⚠️ **Reports & Metrics is commented out of the header, and it needs a DECISION.** It pointed at
+  `/system-mgmt?tab=operations` — Josh's own pick that morning — and Operations was switched off
+  that afternoon. The two instructions collide, and a tab in primary navigation pointing at a
+  switched-off page is worse than a missing tab, so it is commented rather than repointed at
+  something invented. Three ways back, in preference order: uncomment the Operations tab and restore
+  it; point it at `/oversight` (real, but that is not "reports"); or build Brandon's tracker.
+- ⚠️⚠️ **`fetchAccess` REBUILDS THE CONFIG FROM A WHITELIST OF KEYS, so a top-level field missing
+  from it is saved to the file and then thrown away by the next 10s poll.** `admins` was exactly
+  that when §5.39c shipped: the toggle wrote GitHub correctly and the list vanished seconds later,
+  with nothing erroring — a setting that will not stick and does not say why. `perms` and `homeView`
+  survived only because they ride INSIDE `processors`. Anything new at the top level goes in that
+  read too; `abilities.test.ts` scans it.
+
 **Still not built, deliberately:** the per-person home views (`bars` / `coordinator` / `oversight`
 with a toggle and a "Viewing whose" dropdown); the abilities/`admins[]`/`homeView` model (⚠️ when it
 lands, **default every ability ON** until the Users page is filled in, or the first deploy reads an
@@ -7322,6 +7376,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The new header is missing, or a page sits under it wrong | §5.39b — the layout switch is in the header's gear menu (`lib/shell/layout.ts`, default `redesign`, per browser). A page 56px too tall means it sizes against the viewport and `shell.css`'s `.cc-shell .min-h-screen` / `.h-screen` overrides did not reach it. ⚠️ Reproduce with a REAL, long list — §7 records this being "disproved" against a two-row fixture and reverted |
 | Somebody lost a button, or a tab vanished for them | §5.39c — abilities are on `access.json` under the person's `perms`, edited on `/access`. ⚠️ **Absent means ON**, so a missing button means somebody explicitly turned it off, never that the field is unset. A MANAGER keeps every ability whatever `perms` says |
 | "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |
+| The phone icon in the top bar is red / there is no phone icon | §5.39c — it is `CallConnectionBadge compact`, the same component as the home badge, and it renders for **assigned call answerers only** (§5.13b). Red with "the line is full" is RingCentral's five registrations (§5.13b); amber "another tab" means click it to move the line here. No icon at all ⇒ not in `callAnswerers` on `/access` |
+| The Managers/Processors sidebar is gone from my home page | §5.39c — deliberate, and only for people who hold `viewOthers` in the redesign layout (the "Viewing" dropdown replaces it). Everybody else still has it. Sign-out moved with it: the gear menu, and the floating button bottom-left |
+| Stage Manager / Operations / Oversight are missing from System Management | §5.39c — commented out 2026-09-18, not deleted; `?tab=` for each falls through to Search. **Oversight lives on at `/oversight`** (gear menu → Pipeline Oversight). Stage Manager and Operations have no second door — uncomment two blocks in `SystemMgmtPage.tsx` to bring them back |
+| A setting ticked on `/access` reverts a few seconds later | §5.39c — `fetchAccess` rebuilds the config from a whitelist, so a top-level key it does not name is written to GitHub and dropped by the next 10s poll. `admins` did this. `perms`/`homeView` are safe because they sit inside `processors` |
 | "Let me see what a processor sees" / the Viewing dropdown is missing or shows me myself | §5.39c — the dropdown needs **`viewOthers`, which is OPT-IN**: granted to josh@ and brandon@ only, and a manager does **not** get it for being a manager. Missing dropdown ⇒ check `perms.viewOthers === true` on that person's **processor** entry (a pure manager with no processor entry cannot hold it). Dropdown present but the screen does not change ⇒ that is the `<Index />` bug, fixed 2026-09-18; the borrow must render `ProcessorView` with the borrowed profile. A stale `?viewing=` says so in amber rather than quietly showing you yourself. The grant does not cross a prod sync — tick it once on prod's `/access` |
 | A fax doesn't match an office, or "view fax is broken" | §5.39c — `/fax` is the combined bar; `/fax-inbox` and the Comms Fax tab still exist beside it. The join strips `@rcfax.com` via `faxDigits` and reads BOTH the patient boards and the Doctor Database; an unmatched number usually means the office sent from a different line than the one we fax to (§5.28, audited clean). A blank viewer means the attachment URI went in without `fetchFaxBlobUrl` |
 | A header tab opens the wrong thing / "where is Reports & Metrics?" | §5.39b — every tab points at an EXISTING page, and Reports & Metrics points at `/system-mgmt?tab=operations` deliberately (Josh, 2026-09-18): Brandon's Patient Pipeline Tracker has no data behind it in this build |

@@ -2,6 +2,7 @@ import { ROLES } from "@/lib/config";
 import type { Person } from "@/lib/people";
 import { BarChart3, Eye, LayoutDashboard, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useShellLayout } from "@/hooks/shell/useShellLayout";
 import { DailyBurndown } from "./DailyBurndown";
 import { useFilteredRoleCounts } from "@/hooks/useFilteredRoleCounts";
 import { orderedRoleIds } from "@/lib/roleView";
@@ -17,11 +18,25 @@ interface Props {
  */
 export function DashboardMainView({ person }: Props) {
   const navigate = useNavigate();
+  const [layout] = useShellLayout();
+  /**
+   * ⚠️ **The System Management button is hidden in the redesign layout**
+   * (Josh, 2026-09-18: "remove system management, the search from there is now
+   * in the top bar"). Its Search is the header's global search, its
+   * Communications is a header tab, and Stage Manager / Operations / Oversight
+   * are commented out of that page — so the button leads to a screen with one
+   * tab on it, which the top bar already gives you.
+   *
+   * ⚠️ Gated on the LAYOUT, not deleted: with the shell off this screen is
+   * exactly as it was, which is what keeps the toggle a real escape hatch
+   * (§5.39b). `/system-mgmt` is still a route, so a bookmark still works.
+   */
+  const hideSysMgmt = layout === "redesign";
   // Hooks run unconditionally (before the no-person early return).
   const { counts, loading } = useFilteredRoleCounts(person?.profile);
   const order = orderedRoleIds(person?.profile);
 
-  const SysMgmtButton = (
+  const SysMgmtButton = hideSysMgmt ? null : (
     <button
       onClick={() => navigate("/system-mgmt")}
       title="Open System Management"
@@ -44,8 +59,15 @@ export function DashboardMainView({ person }: Props) {
               <LayoutDashboard className="w-8 h-8 text-primary" />
             </div>
             <h2 className="text-xl font-semibold text-foreground">Dashboard</h2>
+            {/* ⚠️ The copy has to follow the sidebar. With the roster replaced
+                by the header's "Viewing" dropdown (§5.39c) this used to read
+                "Select a team member from the sidebar" with no sidebar on
+                screen — an instruction pointing at something that is not there,
+                which reads as the page being broken. Found by RENDERING it. */}
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Select a team member from the sidebar to view their assigned roles and workload.
+              {hideSysMgmt
+                ? "Pick somebody in “Viewing”, up in the top bar, to see their home screen exactly as they see it."
+                : "Select a team member from the sidebar to view their assigned roles and workload."}
             </p>
           </div>
         </div>
