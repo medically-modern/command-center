@@ -26,8 +26,11 @@
  * coordinator arrives, this is a FILTER over the same lists, never routing.
  *
  * Escalated patients render nowhere here — "this user should not see this" —
- * and are counted in each column's footer; they are worked from Oversight's
- * manager columns (§7, §5.34).
+ * and they are worked from Oversight's manager columns (§7, §5.34).
+ * ⚠️ They are no longer COUNTED here either: the footers that carried that
+ * number went with Brandon's 2026-09-17 list (see the note above
+ * `ColumnLists`). `intakeBuckets` still computes `withManager`, so the count
+ * is one line away if it is ever wanted back.
  *
  * Confirm Receipt + Chase Clinicals is NOT on this page. It was hidden behind
  * a flag on 2026-09-10 and is not part of the 2026-09-14 design; its rules
@@ -270,7 +273,6 @@ export default function CareCoordinatorPage() {
   const user = getUser();
   const who = access.type === "processor" ? access.profile.name || user?.name || user?.email : user?.name || user?.email;
 
-  const ex = intakeB.excluded;
   const intakeNextUp = nextUp(intakeB.scheduledToday);
   const welcomeNextUp = nextUp(welcomeB.scheduledToday);
 
