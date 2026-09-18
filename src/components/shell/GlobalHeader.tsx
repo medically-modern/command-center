@@ -29,7 +29,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Grid3x3, LogOut, MessageSquare, Package, Settings, Stethoscope, Users } from "lucide-react";
+import { Activity, ArrowRightLeft, BarChart3, ChevronDown, Grid3x3, KeyRound, ListChecks, LogOut, MessageSquare, Package, Settings, Sliders, Stethoscope, Users } from "lucide-react";
 import { getUser, signOut } from "@/lib/shared/auth";
 import { GlobalSearch } from "./GlobalSearch";
 import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
@@ -91,10 +91,16 @@ export function GlobalHeader() {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const [layout, setLayout] = useShellLayout();
-  const { email, config } = useAccessContext();
+  const { email, config, access } = useAccessContext();
   const admin = isAdmin(email, config);
+  /** Manager tools are for managers. `isAdmin` is true for every manager while
+   *  `admins` is empty (§5.39c), so today this is the same set — but the two
+   *  answer different questions and must not be conflated. */
+  const managerish = access.type === "manager";
   const [menu, setMenu] = useState(false);
   const menuBox = useRef<HTMLSpanElement>(null);
+  const [manage, setManage] = useState(false);
+  const manageBox = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (!menu) return;
@@ -104,6 +110,15 @@ export function GlobalHeader() {
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);
   }, [menu]);
+
+  useEffect(() => {
+    if (!manage) return;
+    const away = (e: MouseEvent) => {
+      if (manageBox.current && !manageBox.current.contains(e.target as Node)) setManage(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [manage]);
 
   return (
     <header className="gh">
@@ -144,6 +159,62 @@ export function GlobalHeader() {
             The `compact` form is the same component, so the gate and the tone
             rules cannot drift from the home badge's. */}
         <CallConnectionBadge compact />
+
+        {/* ⚠️⚠️ **MANAGE ▾ IS WHERE THREE FEATURES LIVE THAT OTHERWISE HAVE NO
+            DOOR AT ALL.** Stage Manager ("move a patient between stages") and
+            Operations ("today's baseline vs live") exist only as tabs of
+            `/system-mgmt`, and the redesign took the System Management button
+            off the dashboard — so when those tabs were commented out on
+            2026-09-18 the two features left the app completely. Josh, later
+            that day: *"function should be lossless and will decide what gets
+            cut later"*. Brandon's mockup header carries this exact menu
+            (Oversight · Operations · Stage Manager · Access & permissions), so
+            restoring them here is his design rather than a departure from it.
+
+            ⚠️ Manager-gated, not admin-gated: these are manager tools, and
+            `/access` is already reachable for admins via the Users button
+            beside this. */}
+        {managerish && (
+          <span style={{ position: "relative" }} ref={manageBox}>
+            <button
+              className="ib"
+              onClick={() => setManage((m) => !m)}
+              title="Manager tools"
+              aria-haspopup="menu"
+              aria-expanded={manage}
+            >
+              <Sliders style={{ width: 16, height: 16 }} />
+              <span className="lbl">Manage</span>
+              <ChevronDown style={{ width: 12, height: 12 }} />
+            </button>
+            {manage && (
+              <div className="menu" role="menu">
+                <div className="eyebrow">Managers</div>
+                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/oversight"); }}>
+                  <BarChart3 style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                  Oversight
+                </button>
+                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/system-mgmt?tab=operations"); }}>
+                  <Activity style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                  Operations
+                </button>
+                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/system-mgmt?tab=stageManager"); }}>
+                  <ArrowRightLeft style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                  Stage Manager
+                </button>
+                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/system-mgmt"); }}>
+                  <ListChecks style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                  System Management
+                </button>
+                <div className="divider" />
+                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/access"); }}>
+                  <KeyRound style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                  Access &amp; permissions
+                </button>
+              </div>
+            )}
+          </span>
+        )}
 
         {/* ⚠️ Admins only, per Brandon — and `isAdmin` returns true for every
             MANAGER while `admins` is empty (§5.39c), which is every config

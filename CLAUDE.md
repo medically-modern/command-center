@@ -4697,20 +4697,26 @@ menu** (Josh, 2026-09-18, three asks in one message). **No board change; app onl
 - ⚠️ **The empty state had to follow the sidebar** — it read *"Select a team member from the
   sidebar"* with no sidebar on screen, an instruction pointing at nothing, which reads as the page
   being broken. Found by RENDERING it (§5.30d's rule), not by reading the code.
-- **System Management: `stageManager` · `operations` · `oversight` are COMMENTED OUT**, its button
-  is off the manager dashboard in the redesign layout, and it is off the gear menu (*"remove system
-  management, the search from there is now in the top bar, comment out stage maanger operations and
-  oversight"*). Same treatment as `escalations` (§7): the `Tab` union members, the imports, the
-  views and the render branches all stay, and each commented tab **falls through to Search** so an
-  old bookmark is not a blank page. ⚠️ **Oversight is not lost with its tab** — `/oversight` is its
-  own full-screen route and the gear menu points there now; **Stage Manager and Operations have no
-  second door**, so those two really are off until somebody uncomments them.
+- ❌ **System Management: `stageManager` · `operations` · `oversight` were COMMENTED OUT**, its
+  button taken off the manager dashboard in the redesign layout and off the gear menu (*"remove
+  system management, the search from there is now in the top bar, comment out stage maanger
+  operations and oversight"*), each commented tab falling through to Search so an old bookmark was
+  not a blank page. ✅ **REVERSED THE SAME DAY — §5.39f.** The sentence below it, *"Stage Manager
+  and Operations have no second door, so those two really are off until somebody uncomments them"*,
+  was correct and was the whole problem: that tab is the ONLY door either tool has, so switching it
+  off took them out of the product. They are back, under a **Manage ▾** menu Brandon's own mockup
+  carries. Only the dashboard's System Management BUTTON stays hidden in the redesign, because the
+  header now carries the same destination.
 - ⚠️⚠️ **Reports & Metrics is commented out of the header, and it needs a DECISION.** It pointed at
   `/system-mgmt?tab=operations` — Josh's own pick that morning — and Operations was switched off
-  that afternoon. The two instructions collide, and a tab in primary navigation pointing at a
-  switched-off page is worse than a missing tab, so it is commented rather than repointed at
-  something invented. Three ways back, in preference order: uncomment the Operations tab and restore
-  it; point it at `/oversight` (real, but that is not "reports"); or build Brandon's tracker.
+  that afternoon, so a tab in primary navigation pointed at a switched-off page. **Operations is
+  live again (§5.39f) and reachable from Manage ▾**, so the collision is gone and only the naming
+  question is left: this tab would be a second door to a page already on the Manage menu, under a
+  name ("Reports & Metrics") it does not have. Three ways forward, in preference order: uncomment it
+  pointing at Operations and accept the two doors; rename the tab to match what it opens; or build
+  Brandon's Patient Pipeline Tracker, whose numbers are specified nowhere. ⚠️ `shellRemovals
+  .test.ts` scans the **TABS array**, not the file, precisely because the Manage menu links there —
+  a whole-file scan would fail on the door and read as though the tab had come back.
 - ⚠️⚠️ **`fetchAccess` REBUILDS THE CONFIG FROM A WHITELIST OF KEYS, so a top-level field missing
   from it is saved to the file and then thrown away by the next 10s poll.** `admins` was exactly
   that when §5.39c shipped: the toggle wrote GitHub correctly and the list vanished seconds later,
@@ -4991,6 +4997,78 @@ blank card gone. A selected person renders their workload under a *"← Team"* l
 **Keep-in-agreement:** `TeamGrid.roleNoteFor` ⇄ `Index`'s `UserList` row copy · `TeamGrid`'s
 `onSelect` ⇄ `Index`'s `setSelectedKey` (`?user=`), never `?viewing=` · the `rosterReplaced` branch
 ⇄ `teamGrid.test.ts`, whose three wiring assertions are verified to fail on the blank-page version.
+
+### 5.39f The redesign is a UI rewrite, NOT a function rewrite (Sep 2026)
+Josh, 2026-09-18, after §5.39d and §5.39e: *"all of this is broken / audit everything to his
+breakdown / his ui should literally of just been a port to our altready perfectly funtional site
+just combing data"*, then the rule itself — **"same functionality that existed in the original
+needs to exist here, the ui is the re-write not the function, function should be lossless and will
+decide what gets cut later"** and *"his ui is what we move towards but our function is paramount
+and needs to remain"*. **No board change; app only.**
+
+⚠️⚠️ **THAT IS A STANDING RULE, NOT A ONE-OFF FIX, AND IT IS PINNED BY
+`components/shell/lossless.test.ts`.** Every tool the old shell could reach must still have a
+DOOR in the redesign layout. A page whose only entry point was a control the redesign deleted has
+left the product, however intact its route is — and it leaves silently, because the route still
+answers and the tests still pass. When a new surface replaces an old one, list what the old one
+could reach BEFORE deleting it; the test is the durable version of that list.
+
+**ONE PATTERN CAUSED EVERY FAILURE IN THIS BUILD.** §5.39d's one-way door, §5.39e's blank home
+page and the dead search rows below are the same mistake three times: **a new surface re-derived
+something the app already had**, instead of calling it. Where the build REUSED — the fax lookups,
+the home views, the stage bars, `useLiveSearch` — nothing broke at all. Reach for the existing
+module; a second derivation of a rule this app already owns is the §5.7/§5.17/§5.29 hand-synced
+hazard with a fresh coat of paint.
+
+**1. The two doors that were switched off — RESTORED.** §5.39b commented out System Management's
+`stageManager` · `operations` · `oversight` tabs on Josh's own word. Oversight survived (it has its
+own `/oversight` route); **Stage Manager and Operations did not, and that tab was their only door**,
+so *"move a patient between stages"* and *"today's baseline vs live"* were out of the product
+until this was noticed. All three tabs are live again, and `GlobalHeader` grew a **Manage ▾** menu —
+Oversight · Operations · Stage Manager · System Management · Access & permissions.
+⚠️ **The menu is Brandon's own**, not an invention: his mockup header carries exactly it (his
+line 1998), so the loss was ours, not his design's. Read the mockup before concluding the redesign
+cut something.
+⚠️ Gated on **`access.type === "manager"`**, deliberately not `isAdmin`: those are the same set
+today only because `admins` is empty (§5.39c), and they answer different questions.
+⚠️ `/access` is on it AND on `TeamGrid` (§5.39e), because the header's Users button is
+**admin-only** — a manager who is not an admin would otherwise have no route to it at all.
+
+**2. Every search hit dead-ended — FIXED.** A row on the new global search opened
+`/patient/:itemId?board=…`, and `PatientPage` handed `fetchDossierItemsForPick` a pick carrying
+`{itemId, boardId}` with **`name: ""` and `phone: ""`** — because a search row is the only caller
+that has an id and nothing else. That function looked the record up BY NAME, so every single row
+answered *"No board record was found for this item. It may have been deleted on Monday."*
+`fetchDossierItemById` reads the item directly and the name/phone fall back to it, so the trail is
+then found exactly as it always was.
+⚠️⚠️ **Monday's `items(ids:)` IS BOARD-AGNOSTIC** — it returns any item on the account, whatever
+board you had in mind — so the read asks for `board { id }` and **refuses a mismatch**. Without
+that, a stale or hand-typed `?board=` renders one board's item through another board's column map:
+every field blank or wrong, nothing erroring, and the patient's chart quietly belonging to somebody
+else. `dossierPickById.test.ts` pins it.
+⚠️ A failed read returns `null` and falls through to the name path rather than throwing — the
+by-id lookup is an accelerator for the one caller that lacks a name, never a new requirement.
+
+**3. Reference material lives in `_reference/brandon-redesign/`** — his handoff text, the
+sample-data mockup and the 2026-09-18 audit, kept out of `docs/` and `src/` so nothing mistakes it
+for a spec the code is generated from (Josh: *"to some folder that wont get confused in the repo"*).
+⚠️ **The REAL-DATA mockup is deliberately NOT in the repo**: it carries live patient rows, and this
+repo force-pushes to prod (§8). Read it from wherever he sent it and leave it there.
+
+**Known loss, still outstanding — nobody has decided these yet, so they are not bugs to fix
+quietly:** the patient screen's per-stage panels are LINKS, not the read-only real stage components
+his handoff asks for (§5.39 has the price — extending `reviewMode` across 13 pages plus a
+shell/body split of each); the global search matches name + phone + order identifiers while its
+placeholder promises *"name, DOB, phone, member ID, order #, doctor"* (the OLD System Management
+search had the same limits, so that is unbuilt spec rather than a regression); Subscription's
+Profile | Orders tabs; Reports & Metrics (§5.39b's naming question); and `comms` · `adjustOrders` ·
+`editProfile` exist as abilities that no action reads.
+
+**Keep-in-agreement:** `components/shell/lossless.test.ts` is the door list — a tool added to the
+redesign's navigation, or removed from it, belongs there · `GlobalHeader`'s Manage menu ⇄
+`SystemMgmtPage`'s `initialTab` and its five `TabBtn`s (a menu entry whose tab is commented out is
+the §5.39b failure again) · `dossierApi.fetchDossierItemById`'s board guard ⇄ `PatientPage`'s
+required `?board=` (§5.39).
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -7503,7 +7581,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |
 | The phone icon in the top bar is red / there is no phone icon | §5.39c — it is `CallConnectionBadge compact`, the same component as the home badge, and it renders for **assigned call answerers only** (§5.13b). Red with "the line is full" is RingCentral's five registrations (§5.13b); amber "another tab" means click it to move the line here. No icon at all ⇒ not in `callAnswerers` on `/access` |
 | The Managers/Processors sidebar is gone from my home page | §5.39e — it moved into the MAIN AREA as `TeamGrid` (a card per person), only for people who hold `viewOthers` in the redesign layout; "as today" keeps the rail. Sign-out moved with it: the gear menu, and the floating button bottom-left. ⚠️ If the home page is BLANK rather than showing the team, the `rosterReplaced` branch has gone back to rendering `DashboardMainView person={null}` — `teamGrid.test.ts` should have failed |
-| Stage Manager / Operations / Oversight are missing from System Management | §5.39c — commented out 2026-09-18, not deleted; `?tab=` for each falls through to Search. **Oversight lives on at `/oversight`** (gear menu → Pipeline Oversight). Stage Manager and Operations have no second door — uncomment two blocks in `SystemMgmtPage.tsx` to bring them back |
+| Stage Manager / Operations / Oversight are missing from System Management | §5.39f — they were commented out on 2026-09-18 and **restored the same day**; all three tabs are live and the header's **Manage ▾** menu opens each one. Missing again ⇒ `lossless.test.ts` should have failed. ⚠️ No Manage button at all means `access.type !== "manager"` — it is manager-gated, not admin-gated |
+| A manager tool has no way in / somebody asks where a page went | §5.39f — `components/shell/lossless.test.ts` is the door list, and the rule is Josh's: *"the ui is the re-write not the function, function should be lossless"*. Check Brandon's own mockup in `_reference/brandon-redesign/` before concluding the redesign cut it — his header carries the Manage menu that was missed. A route that still answers is NOT a door |
+| A search row opens "No board record was found for this item" | §5.39f — a search row is the only pick with an id and **no name**, so `fetchDossierItemsForPick` must resolve it by id (`fetchDossierItemById`) before looking for the trail. ⚠️ Monday's `items(ids:)` is board-agnostic, so that read refuses a `?board=` mismatch rather than rendering one board's item through another's column map; `dossierPickById.test.ts` pins both halves |
 | A setting ticked on `/access` reverts a few seconds later | §5.39c — `fetchAccess` rebuilds the config from a whitelist, so a top-level key it does not name is written to GitHub and dropped by the next 10s poll. `admins` did this. `perms`/`homeView` are safe because they sit inside `processors` |
 | "Let me see what a processor sees" / the Viewing dropdown is missing or shows me myself | §5.39c — the dropdown needs **`viewOthers`, which is OPT-IN**: granted to josh@ and brandon@ only, and a manager does **not** get it for being a manager. Missing dropdown ⇒ check `perms.viewOthers === true` on that person's **processor** entry (a pure manager with no processor entry cannot hold it). Dropdown present but the screen does not change ⇒ that is the `<Index />` bug, fixed 2026-09-18; the borrow must render `ProcessorView` with the borrowed profile. A stale `?viewing=` says so in amber rather than quietly showing you yourself. The grant does not cross a prod sync — tick it once on prod's `/access` |
 | A fax doesn't match an office, or "view fax is broken" | §5.39c — `/fax` is the combined bar; `/fax-inbox` and the Comms Fax tab still exist beside it. The join strips `@rcfax.com` via `faxDigits` and reads BOTH the patient boards and the Doctor Database; an unmatched number usually means the office sent from a different line than the one we fax to (§5.28, audited clean). A blank viewer means the attachment URI went in without `fetchFaxBlobUrl` |

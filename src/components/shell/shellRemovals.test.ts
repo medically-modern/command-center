@@ -102,24 +102,27 @@ describe("⚠️ the home roster comes off only where a replacement exists", () 
   });
 });
 
-describe("⚠️ System Management's tabs are commented out, not deleted", () => {
-  const page = read("pages/SystemMgmtPage.tsx");
-  const live = liveLines(page);
-
-  for (const tab of ["stageManager", "operations", "oversight"] as const) {
-    it(`has no live TabBtn for ${tab}`, () => {
-      expect(live).not.toContain(`selectTab("${tab}")`);
-    });
-
-    it(`?tab=${tab} falls through to Search rather than a blank page`, () => {
-      expect(live).not.toContain(`tabParam === "${tab}"`);
-    });
-
-    it(`keeps ${tab} in the Tab union and the body, so it can come back`, () => {
-      expect(page).toContain(`"${tab}"`);
-      expect(page).toContain(`activeTab === "${tab}"`);
-    });
-  }
+/**
+ * ⚠️⚠️ **REVERSED THE SAME DAY — the reachability assertions now live in
+ * `lossless.test.ts`, asserting the OPPOSITE of what this block used to.**
+ *
+ * Stage Manager, Operations and Oversight really were commented out on Josh's
+ * word (*"comment out stage maanger operations and oversight"*), and this block
+ * pinned that. It was the wrong thing to pin. Those three tabs are the ONLY
+ * door each of those tools has, so switching them off took "move a patient
+ * between stages" and "today's baseline vs live" out of the product
+ * altogether — which is the loss he named hours later: *"same functionality
+ * that existed in the original needs to exist here, the ui is the re-write not
+ * the function, function should be lossless and will decide what gets cut
+ * later"*. Brandon's own mockup header carries a **Manage ▾** menu listing all
+ * three, so keeping them is his design too; the loss was ours.
+ *
+ * ⚠️ A test that pins a REMOVAL is only ever as good as the removal. Before
+ * writing another one, check the thing being removed is reachable somewhere
+ * else — that is the whole of what went wrong here.
+ */
+describe("⚠️ System Management keeps its own tabs", () => {
+  const live = liveLines(read("pages/SystemMgmtPage.tsx"));
 
   it("keeps Search and Communications", () => {
     expect(live).toContain('selectTab("search")');
@@ -127,7 +130,7 @@ describe("⚠️ System Management's tabs are commented out, not deleted", () =>
   });
 });
 
-describe("⚠️ the header no longer advertises a dead destination", () => {
+describe("⚠️ the header advertises every live destination, and no dead one", () => {
   const header = read("components/shell/GlobalHeader.tsx");
   const live = liveLines(header);
 
@@ -137,15 +140,27 @@ describe("⚠️ the header no longer advertises a dead destination", () => {
     expect(liveLines(read("App.tsx"))).toContain('path="/oversight"');
   });
 
-  it("System Management is off the menu", () => {
-    expect(live).not.toContain('navigate("/system-mgmt")');
+  it("⚠️ System Management is back on the menu, under Manage", () => {
+    // Off it on 2026-09-18 — *"remove system management, the search from there
+    // is now in the top bar"* — which was true of SEARCH and of nothing else on
+    // that page: Stage Manager, Operations and Oversight all live there too, and
+    // each had no other door. Restored the same day under Brandon's own
+    // **Manage ▾** heading, which is where his mockup puts it.
+    // `lossless.test.ts` is the standing guard on all five entries.
+    expect(live).toContain('navigate("/system-mgmt")');
   });
 
-  it("⚠️ Reports & Metrics is off too — its destination is commented out", () => {
-    // A tab in PRIMARY navigation pointing at a switched-off page is worse than
-    // a missing tab. See the header comment for the three ways back.
-    expect(live).not.toContain("tab=operations");
-    expect(live).not.toContain("Reports & Metrics");
+  it("⚠️ Reports & Metrics is off the PRIMARY TABS — its destination is undecided", () => {
+    // A tab in primary navigation pointing at a page whose fate is undecided is
+    // worse than a missing tab (§5.39b names the three ways back).
+    //
+    // ⚠️ The scan is the TABS array, NOT the file: Operations itself is not
+    // lost — the Manage menu opens it, which is a different door answering a
+    // different question. A whole-file `not.toContain("tab=operations")` would
+    // fail on the door and read as though the tab had come back.
+    const tabs = live.slice(live.indexOf("const TABS"), live.indexOf("export function GlobalHeader"));
+    expect(tabs).not.toContain("tab=operations");
+    expect(tabs).not.toContain("Reports & Metrics");
     // …but the definition survives, so restoring it is uncommenting one block.
     expect(header).toContain("Reports & Metrics");
   });

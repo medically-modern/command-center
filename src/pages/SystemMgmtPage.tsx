@@ -119,14 +119,21 @@ const SystemMgmtPage = () => {
   // commented out: an old bookmark or a Back into `?tab=escalations` would
   // otherwise land on a tab with no button and no body — a blank page with no
   // way out.
-  // ⚠️ `operations`, `stageManager` and `oversight` fall through to Search with
-  // their tabs commented out (2026-09-18), for the same reason `escalations`
-  // does. Restore the three lines when the tabs come back.
+  // ⚠️⚠️ **`operations`, `stageManager` and `oversight` are BACK** (2026-09-18,
+  // second pass). They were commented out that afternoon on Josh's ask, and
+  // commenting the tab out took away the only door: Stage Manager and
+  // Operations exist nowhere else, so "move a patient between stages" and
+  // "today's baseline vs live" left the app entirely. Josh, later the same
+  // day: *"function should be lossless and will decide what gets cut later"* —
+  // and Brandon's own header carries a **Manage ▾** menu listing Oversight ·
+  // Operations · Stage Manager · Access, so his design never cut them either.
+  // They are reached from that menu now (`GlobalHeader`) rather than from a
+  // button on a dashboard the redesign replaced.
   const initialTab: Tab =
     tabParam === "communications" ? "communications"
-    // : tabParam === "operations" ? "operations"
-    // : tabParam === "stageManager" ? "stageManager"
-    // : tabParam === "oversight" ? "oversight"
+    : tabParam === "operations" ? "operations"
+    : tabParam === "stageManager" ? "stageManager"
+    : tabParam === "oversight" ? "oversight"
     : "search";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
@@ -412,8 +419,6 @@ const SystemMgmtPage = () => {
               icon={<MessageSquare className="w-4 h-4" />}
               label="Communications"
             />
-          {/* ── stageManager · operations · oversight — commented out
-                 2026-09-18, see the header. Oversight lives on at /oversight.
             <TabBtn
               active={activeTab === "stageManager"}
               onClick={() => selectTab("stageManager")}
@@ -432,7 +437,6 @@ const SystemMgmtPage = () => {
               icon={<BarChart3 className="w-4 h-4" />}
               label="Oversight"
             />
-          ── */}
           </nav>
         </div>
       </header>
