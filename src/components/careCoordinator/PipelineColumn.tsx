@@ -18,7 +18,7 @@
  * says where they are (Oversight's manager columns).
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, MessageSquare, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   progressLabel, progressPercent, type LoadProgress,
@@ -148,19 +148,41 @@ export function PipelineColumn({
   /** An amber line under the header — a read that could not be completed. */
   notice?: ReactNode;
   /**
-   * An optional control on the legend row — the Patient Intake column's
-   * Partial / Complete / All filter.
+   * The Patient Intake column's five-facet filter. Only that column has one.
    *
-   * ⚠️ It rides the legend row rather than getting a row of its own so that a
-   * column WITH a filter and a column WITHOUT one are the same height and
-   * their section bars line up. Brandon reported the heights drifting on
-   * 2026-09-16 and this is the same class of fault.
+   * ⚠️⚠️ **IT GETS ITS OWN FIXED-HEIGHT ROW, and riding the legend row is what
+   * broke the columns.** The original reasoning (2026-09-16) was sound for the
+   * control it was written for — the narrow Partial / Complete / All toggle
+   * fitted beside the legend, so one row stayed one row in both columns. The
+   * five-facet filter that replaced it on 2026-09-17 (§5.30e) is **454px wide
+   * and never wraps internally**, against a 235px legend: measured in a
+   * browser 2026-09-18, legend + gap + filter is **701px** while the column is
+   * 768 / 688 / 608 / 518 at 1600 / 1440 / 1280 / 1100. So it fitted at 1600
+   * and dropped to a second line at every other width, growing this row to
+   * 43px in THAT COLUMN ONLY — the section bars sat **17px** out at 1280 and
+   * 1100 and **59px** out at 1440. §5.30c's bug for the fourth time, live and
+   * unreported because it does not show at the 1600 it was checked at.
+   *
+   * Its own row with a floor, drawn in BOTH columns (empty on Welcome Call),
+   * makes the two heights equal by CONSTRUCTION rather than by fitting — so
+   * the next control that is wider than its predecessor cannot do this again.
    */
   controls?: ReactNode;
 }) {
   return (
     <section className="flex min-w-0 flex-col rounded-2xl border bg-muted/50 p-3 sm:p-4 dark:bg-muted/20" aria-label={title}>
-      <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
+      {/* ⚠️ Stacked by BREAKPOINT, never by content wrap. Side by side the two
+          halves need 659px in this column ("Patient Intake" 203 + gap 12 +
+          the horizon toggle 444) and 650px in the other one ("Welcome Call" is
+          **9px shorter**) — so between roughly 1400 and 1470 the intake header
+          wrapped to two lines and the welcome header did not, and every
+          section bar below sat **42px** out. Measured 2026-09-18: 87px vs 45px
+          at 1440, both 45 at 1500+, both 87 at 1380 and below. A nine-pixel
+          difference in two column titles is not something a fitting rule can
+          be trusted with, and 1440 is an ordinary laptop width. The explicit
+          breakpoint sits above the ~1450 the content needs, so both columns
+          are one line together or two lines together — never one each. */}
+      <header className="mb-3 flex flex-col gap-3 min-[1500px]:flex-row min-[1500px]:items-start min-[1500px]:justify-between">
         <h3 className="flex items-center gap-2 text-2xl font-bold leading-tight tracking-tight">
           <span className={cn("inline-block h-3 w-3 rounded-full", COLUMN_ACCENT[accent].dot)} aria-hidden />
           {title}
@@ -191,16 +213,26 @@ export function PipelineColumn({
           })}
         </div>
       </header>
-      {/* The legend Brandon asked for — the green left edge on a card is the
-          one piece of state with no words on it — plus whatever filter this
-          column carries. One row, always drawn, so the columns stay level. */}
-      <div className="mb-3 flex min-h-[26px] flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <i className="inline-block h-3.5 w-1 rounded-sm bg-[color:var(--mm-green)]" aria-hidden />
+      {/* The legend — the two pieces of state on a card that have no words on
+          them. Identical in both columns, so they cannot drift.
+          ⚠️ BOTH greens are named. Brandon asked for the edge on 2026-09-14
+          and for the counters on 2026-09-17 ("let's have the text and phone
+          icon turn a shade of green … and add a legend for that"); the
+          counters shipped green with only a tooltip, so a card carried two
+          greens meaning different things and the legend explained one. */}
+      <div className="mb-2 space-y-0.5 text-[11px] leading-snug text-muted-foreground">
+        <p className="flex items-center gap-1.5">
+          <i className="inline-block h-3.5 w-1 shrink-0 rounded-sm bg-[color:var(--mm-green)]" aria-hidden />
           Green edge = a call has been attempted
         </p>
-        {controls}
+        <p className="flex items-center gap-1.5">
+          <Phone className="h-3 w-3 shrink-0 text-[color:var(--mm-green)]" aria-hidden />
+          <MessageSquare className="h-3 w-3 shrink-0 text-[color:var(--mm-green)]" aria-hidden />
+          Green count = they answered or texted back this week
+        </p>
       </div>
+      {/* Always drawn, floor and all, even with nothing in it — see `controls`. */}
+      <div className="mb-3 flex min-h-[30px] w-full min-w-0 items-start">{controls}</div>
       {progress && <LoadBar progress={progress} label={title} />}
       {notice}
       <div className="space-y-4">{children}</div>

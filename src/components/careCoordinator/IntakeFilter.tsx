@@ -123,7 +123,17 @@ export function IntakeFilter({
 }) {
   const active = activeFacetCount(selection);
   return (
-    <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter Patient Intake">
+    /* ⚠️ `flex-nowrap` + scroll, never `flex-wrap`. These five chips are a
+       constant 454px and the column is 446px at the 1024 breakpoint where the
+       two columns first sit side by side — so wrapping drops one chip to a
+       second line in THIS column only and the section bars below it stop
+       matching the other column's (§5.30c, the bug this row exists to end).
+       Scrolling keeps the row one line at every width by construction. */
+    <div
+      className="flex w-full min-w-0 flex-nowrap items-center gap-1 overflow-x-auto"
+      role="group"
+      aria-label="Filter Patient Intake"
+    >
       {FACET_KEYS.map((f) => (
         <FacetMenu key={f} facet={f} leads={leads} groups={groups} selection={selection} onChange={onChange} />
       ))}

@@ -3098,9 +3098,27 @@ intake bookings ever, and the gateway's welcome index reported `indexed: 0` acro
   holding the credential and a model writing to a PHI column on a read-only page.
 - **The Scheduled section is the solid MM green with white text**; its count chip moved to
   `bg-white/25 text-white`, because `bg-foreground/80` on solid green is a near-black blob.
-- **A legend**: "Green edge = a call has been attempted", on a constant-height row in both column
-  headers. ⚠️ That row is also where the intake filter sits, so a column with a filter and one
-  without are the same height and their section bars line up.
+- **A legend in both column headers, two lines**: *"Green edge = a call has been attempted"* and —
+  from 2026-09-18 — *"Green count = they answered or texted back this week"* (the green counters
+  themselves are §5.30e). Brandon's green-icons note ended *"and add a legend for that"*, and that
+  half shipped as a **tooltip**, which nobody hovers.
+  ⚠️⚠️ **THE LEGEND AND THE INTAKE FILTER MUST NOT SHARE A ROW — they did, and it was a live
+  misalignment bug.** The sentence that used to sit here claimed sharing that row is what kept the
+  two columns level; the opposite was true. Measured in a browser 2026-09-18: the filter is **454px**
+  and the legend **235px**, so the pair fits on one line only at **≥1600** — below that Patient
+  Intake's header ran two lines while Welcome Call's ran one, and the section bars came apart by
+  **17px at 1100 and 1280, and 59px at 1440**. A second cause rode on top: the title *"Patient
+  Intake"* is **9px wider** than *"Welcome Call"*, so a `flex-wrap` header broke on one column and
+  not the other through the **1400–1470** band.
+  ⚠️ **The fix is by construction, not by tuning.** The controls get their **own** row with a
+  `min-h-[30px]` floor, drawn even when a column has no controls at all, and the header stacks on an
+  explicit `min-[1500px]:flex-row` rather than wrapping when it happens to run out of room. Delta is
+  **0 at every width tested** (1024 · 1100 · 1200 · 1280 · 1366 · 1400 · 1440 · 1470 · 1500 ·
+  1512 · 1600 · 1680 · 1920). `columnNotices.test.ts` scans for both halves.
+  ⚠️ `IntakeFilter`'s own group is `flex-nowrap overflow-x-auto` for the same reason one level
+  down: a wrapping filter is a variable-height filter, which re-creates the bug inside the row built
+  to contain it. ⚠️ The legend glyphs are the fixed `--mm-green`, never `foreground`/`background`
+  (§5.30d's dark-mode rule) — verified `oklch(0.62 0.1 175)` in dark mode.
 - **The booking-link dialog drops the call-type picker on a card** (`lockKind`) — the card has
   already answered it — and keeps it on the header button, which opens with no patient in hand.
   The type is still STATED: removing the control is not the same as removing the confirmation.
@@ -3192,7 +3210,9 @@ round trips and never Calendly reads; **one failed chunk fails the whole lookup*
 partial map is indistinguishable from "those patients have nothing booked".
 
 **Checked and correct, so don't re-investigate:** column heights track each other exactly through
-the Today/Future toggle and the form filter (2907/2907 · 821/821 · 356/356 px); the pill grid is
+the Today/Future toggle and the form filter (2907/2907 · 821/821 · 356/356 px — ⚠️ **measured at
+1600 wide, which turned out to be the one width where the header fitted on one line**; the columns
+were in fact 17–59px out at 1100–1440 until 2026-09-18, §5.30c); the pill grid is
 registered card to card (every card's slots at the same four x-positions, the Form track reserved
 and empty where a card carries no `status`); no horizontal page overflow at 1600/1280/1100/900;
 passed bookings render muted; `laneFor` puts back-to-back calls in one lane and a real overlap in
@@ -3276,6 +3296,10 @@ badge that could only ever say one thing.
   is **OUTBOUND-ONLY** (Josh, asked directly: *"they answered our call"*), so an inbound
   call somebody here picked up does not set it — the question the green phone answers is
   whether ringing this number works.
+  ⚠️ **His note ended *"and add a legend for that"*, and that half was missed** — the counters
+  turned green with a `title` tooltip and nothing on screen said what the colour meant. The second
+  legend line landed 2026-09-18 (§5.30c), and fixing where it goes turned up a live column
+  misalignment that had nothing to do with the legend.
 - **`Call Log (3)`** — the count Josh declined on 2026-09-16 (§5.16: the call log is
   rate-limited and fetched on open), now free because `useContactStates` is already
   reading the account-wide log for the green icons. It means **calls this week**, and
@@ -3358,8 +3382,10 @@ reverting four numbers, not by rebuilding it.
 **Keep-in-agreement:** `pills.coveragePathPill` ⇄ `intakeFilter.facetValue` (the filter must
 offer exactly what the card shows) · `PILL_SLOTS[variant]` ⇄ `PatientCard`'s `PillRow` ⇄
 `cards.tsx`' two slot builders · `contactState.reachedByCall` (outbound-only) ⇄ the green
-phone icon's tooltip · `activityTruncated` ⇄ `useContactStates.truncated` ⇄ the withheld
-call count.
+phone icon's tooltip **and the legend's second line** · `activityTruncated` ⇄
+`useContactStates.truncated` ⇄ the withheld call count · `PipelineColumn`'s legend block and its
+`min-h-[30px]` controls row ⇄ `IntakeFilter`'s `flex-nowrap` group — either one growing a
+`flex-wrap` puts the two columns' section bars back out of register (§5.30c).
 Files: `lib/careCoordinator/{intakeFilter,pills,scheduleEntries}.ts` (+ tests),
 `hooks/careCoordinator/{useBoardPoll,useCardNotes}.ts`,
 `components/careCoordinator/{BookingDetailsDialog,IntakeFilter,PatientCard,cards,ScheduleGrid}.tsx`,
@@ -7234,7 +7260,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient is in the wrong Today / Future grouping on the Care Coordinator dashboard | §5.30 — `workflow.followUpHorizon` (unscheduled: the follow-up DATE; blank = Today) and `classifyBooking` (scheduled: the booking's ET day). Intake's date is written by *Log call attempt*, Welcome Call's by +1 — both through `lib/careCoordinator/followUp.ts`. A Welcome Call patient in "Scheduled" with no booking on the board is right: welcome calls live in Calendly only, read through `POST /calendly/patients` |
 | The Care Coordinator's Welcome Call column says it couldn't check Calendly | §5.30 — `useWelcomeCallBookings` → gateway `POST /calendly/patients`; check `GET /calendly/patient/health`, then dtc-mm-form's `/api/calendly/health`. While it shows, every patient falls to Unscheduled and the notice is the only thing saying so — never read that as "nobody is booked" |
 | Patient Intake takes ages to load / the load bar reads wrong | §5.30 — it is 1,754 rows in four sequential Monday pages and that is inherent; the bar is `lib/careCoordinator/loadProgress.ts`. A bar with no percentage is CORRECT on a first-ever visit (Monday reports no total, so the denominator is remembered from the last complete run); one stuck at 99% means the fetch has not resolved, not that the maths is off |
-| The Care Coordinator dashboard shows a patient it shouldn't, or hides one it should | §5.30 — `lib/careCoordinator/workflow.ts` (`intakeBuckets` / `chaseBuckets` / `welcomeCallBuckets`, tested). Read the column's footer first: every excluded row is counted there with its reason. The page never writes, so nothing here can have moved a patient |
+| The Care Coordinator dashboard shows a patient it shouldn't, or hides one it should | §5.30 — `lib/careCoordinator/workflow.ts` (`intakeBuckets` / `chaseBuckets` / `welcomeCallBuckets`, tested); a patient a rep has already worked is in **Review Profile**, not excluded (§5.30f). ⚠️ The "Not shown: …" footers that used to name every exclusion were **deleted 2026-09-17** on Brandon's ask, so `intakeBuckets.excluded` is computed and rendered nowhere — read it in a test or a console, not on screen. The page never writes, so nothing here can have moved a patient |
+| The dashboard's two columns' section bars don't line up | §5.30c — a per-column header-height difference, four times now. The legend and the intake filter each get their **own** row (`min-h-[30px]`, drawn even when empty) and the header stacks on `min-[1500px]:flex-row`, never `flex-wrap`; `IntakeFilter`'s group is `flex-nowrap overflow-x-auto`. ⚠️ Reproduce at **1100, 1280 and 1440** — at 1600 the header fits on one line and both columns look right whatever is broken, which is how the 2026-09-16 pass measured it correct |
 | Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |
 | A text was sent but the patient never got it | §5.5 — `lib/shared/smsDelivery.ts` (status decides, code explains), rendered by `components/shared/SmsDeliveryNote.tsx`; the gateway half is `/messaging/conversation` in `services/monday-gateway/messaging.mjs` |
 | "Serving ≠ requested" fires on a normal cross-sell | `lib/finalConfirm/checkPack.ts` `droppedProducts` — C13 fires on a DROPPED product only; adding one is a cross-sell and is silent |

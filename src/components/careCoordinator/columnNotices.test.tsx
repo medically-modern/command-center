@@ -71,3 +71,69 @@ describe("the section bars", () => {
     expect(block).not.toMatch(/text-background|bg-foreground|text-foreground/);
   });
 });
+
+/**
+ * The column headers line up, at every width — measured, not reasoned about.
+ *
+ * ⚠️⚠️ **THE SECTION BARS SAT OUT OF LINE AT EVERY WIDTH BELOW 1600 AND
+ * NOBODY HAD LOOKED.** §5.30c/d record this class three times; measured in a
+ * browser on 2026-09-18 it was live again, in two independent places:
+ *
+ *  · the five-facet filter (2026-09-17) is **454px** and never wraps
+ *    internally, against a 235px legend, so legend + gap + filter is 701px
+ *    while the column is 768 / 688 / 608 / 518 at 1600 / 1440 / 1280 / 1100.
+ *    It fitted at 1600 and dropped to a second line everywhere else, in the
+ *    ONE column that has a filter: bars **17px** out at 1280 and 1100.
+ *  · "Patient Intake" is **9px wider** than "Welcome Call", so between about
+ *    1400 and 1470 the intake header wrapped and the welcome header did not:
+ *    bars **42px** out, at 1440 — an ordinary laptop width.
+ *
+ * Both are now equal BY CONSTRUCTION — a fixed-height row of its own for the
+ * filter, an explicit breakpoint for the header — rather than by fitting, so
+ * the next control that is wider than its predecessor cannot do it again.
+ * Verified in Chromium at 1024 · 1100 · 1200 · 1280 · 1366 · 1400 · 1440 ·
+ * 1470 · 1500 · 1512 · 1600 · 1680 · 1920: delta 0 at every one.
+ */
+describe("the column header cannot drift between the two columns", () => {
+  const col = read("src/components/careCoordinator/PipelineColumn.tsx");
+
+  it("gives the filter its own row instead of the legend's", () => {
+    // The legend block must not carry `controls` — that is what wrapped.
+    const legend = col.slice(col.indexOf("Green edge"), col.indexOf("{controls}"));
+    expect(legend).not.toContain("flex-wrap");
+    // …and the controls row is always drawn, with a floor, in BOTH columns.
+    expect(col).toMatch(/min-h-\[30px\][^>]*>\{controls\}</);
+  });
+
+  it("stacks the header by BREAKPOINT, never by content wrap", () => {
+    const header = col.slice(col.indexOf("<header"), col.indexOf("</header>"));
+    // `flex-wrap` here is the bug: it wraps on content, and the two titles are
+    // different widths, so one column wraps and the other does not.
+    expect(header).not.toContain("flex-wrap");
+    expect(header).toContain("flex-col");
+    expect(header).toMatch(/min-\[1500px\]:flex-row/);
+  });
+
+  /**
+   * Brandon asked for the counters to go green on 2026-09-17 *"and add a
+   * legend for that"*. They shipped green with a tooltip and no legend, so a
+   * card carried two green signals and the column explained one of them.
+   */
+  it("names BOTH green signals — the card edge and the counters", () => {
+    expect(col).toContain("Green edge");
+    expect(col).toContain("Green count");
+  });
+});
+
+describe("the intake filter", () => {
+  const filter = read("src/components/careCoordinator/IntakeFilter.tsx");
+
+  it("scrolls rather than wrapping, so its row is one line at every width", () => {
+    const group = filter.slice(filter.indexOf('role="group"') - 400, filter.indexOf('role="group"') + 80);
+    expect(group).toContain("flex-nowrap");
+    expect(group).toContain("overflow-x-auto");
+    // 454px of chips against a 446px column at the 1024 breakpoint: wrapping
+    // drops one chip to a second line in this column alone.
+    expect(group).not.toMatch(/\bflex-wrap\b/);
+  });
+});
