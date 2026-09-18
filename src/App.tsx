@@ -58,6 +58,7 @@ const AssignedPatientsPage = lazyWithReload(() => import("./pages/AssignedPatien
 
 // Orders — the New Order Board + Cardinal SKU Tracker, read-only (§5.35)
 const OrdersPage = lazyWithReload(() => import("./pages/OrdersPage"));
+const PatientPage = lazyWithReload(() => import("./pages/PatientPage"));
 
 const queryClient = new QueryClient();
 
@@ -156,6 +157,8 @@ const App = () => (
           {/* Orders — observation of the New Order Board (§5.35). ?orderId= deep-links
               an order, ?view=stock opens the Cardinal SKU Tracker table. */}
           <Route path="/orders" element={<OrdersPage />} />
+          {/* The patient screen (§5.39) — additive; every stage page is unchanged. */}
+          <Route path="/patient/:itemId" element={<PatientPage />} />
           <Route path="*" element={<Index />} />
         </Routes>
       </Suspense>

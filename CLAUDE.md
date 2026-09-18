@@ -4433,6 +4433,95 @@ never touches the board · `@rcfax.com` still accepted · blank clears) and
 `components/profile/emailOnRecord.test.tsx` (no editor without the prop · the refusal keeps the
 draft · the key · the page wiring · the intake page untouched).
 
+### 5.39 The patient screen — one record, read-only (Sep 2026)
+Josh, 2026-09-18, on Brandon's *Command Center Redesign* handoff: *"add his ui to the site,
+nothing destructive purely additive and taking our current function and routing it to his new look
+… then we can go piece by piece and decide what's redundant."* This is the first slice, and the
+keystone: every other screen in that handoff is either a tab on this one or a link into it.
+
+**Route `/patient/:itemId?board=<boardId>`** — `pages/PatientPage.tsx`,
+`components/patient/{OnboardingView,PatientCommsColumn}.tsx`,
+`hooks/patient/usePatientRecord.ts`, `lib/patient/patientScreen.ts` (+ tests).
+
+⚠️⚠️ **PURELY ADDITIVE, and that is a property to preserve rather than a phase.** It adds no
+writer, no mutation, no queue rule, no role count and no baseline change — so it CANNOT move a
+patient, and §5.8's counting contract is safe by construction. Every action deep-links to the stage
+page whose verified write path already does the work (§5.2). Two writers for one column is how they
+disagree — the reason `PhoneField` left the Welcome Call banner (§5.31d) and the Secondary
+Insurance select left `PatientInfoCard` (§5.31c). The one thing on screen that writes is
+`ConversationThread`'s composer, which is the existing component making the existing write.
+`patientScreen.test.ts` scans all five files for `mondayWrite`, `change_column_value` and
+`executeWritesWithVerification` — verified to fail when a writer is imported.
+
+**It is a thin view over the Comms Hub's dossier (§5.28), deliberately.** That module already
+answers "every board record for this human", already runs the two passes a completed record needs,
+already guards identity (`nameMatchAccepted`) and already caches per session. Re-implementing any
+of it here would be a second opinion on who a patient is.
+
+⚠️ **Keyed on the ITEM, never on a phone number.** The screen is opened from a record the rep has
+already picked, so `fetchDossierItemsForPick` admits it unconditionally and finds the rest of the
+trail through its OWN number — the same rule `DossierSearch` uses (§5.28), and the reason a patient
+on a shared line (18 of 3,140 numbers) opens on the person who was picked rather than on whoever
+wins the default ordering.
+
+⚠️ **`?board=` is REQUIRED.** A Monday item id does not say which board it is on, and the pick needs
+both. Every caller has it, so requiring it costs nothing and guessing would mean a board scan per
+open. A link without it renders a sentence saying so, never a blank screen.
+
+⚠️ **Fetched ON OPEN, never on a timer** (Josh's rule for this build). Every
+INCIDENT_2026-08-20 guard: the module-scope cache inside `dossierApi`, one in-flight request per
+item, a `want` ref so a slow answer cannot paint the previous patient's chart onto the open one,
+and a **failure that is not cached** so re-opening retries (§5.28's `fetchDirectoryNames` lesson).
+There is no poll — this is a reference view, and Refresh is the rep's. `patientScreen.test.ts`
+fails on a `setInterval`/`setTimeout` in the hook.
+
+⚠️ **Switching patient CLEARS the record before loading the next**, the §5.28 rule and correctness
+rather than polish: the name, every Open link and the outbound text's attribution all derive from
+`dossier`, so holding the previous patient puts one person's chart under another's header.
+
+⚠️ **THE PER-STAGE PANEL IS A LINK, NOT AN EMBEDDED RENDER — and that is the whole reason this
+slice is small.** Brandon's handoff asks for each stage tool to render inline, read-only. Three
+separate things hide in that: extending `reviewMode` from 4 pages to 13, making it disable every
+control rather than just the advance (§7 keeps notes and inline saves live **on purpose**), and
+splitting all 13 pages into shell + body so the middle can be embedded. The third is a refactor OF
+the stage tools, which this build is scoped out of. **The app already has the behaviour**:
+`stepOpenHref` opens a completed record at `?patientId=…&completedStage=<boardId>`, which is
+§5.38's mechanism and §7's review mode. Embedding later is a decision with a known price, not a
+blocker now.
+⚠️ `completedStage` is a **WRITE GATE**, not a banner flag — without it a rep reading history can
+re-advance a finished patient, and the advancer is what the board automations fire on. The test
+pins it and is verified to fail when the param is dropped.
+
+⚠️ **The Subscription toggle keys on the ROW'S EXISTENCE, never on a status** (Brandon's wording).
+The Subscription row is created at Final Profile Confirmation, so a patient stuck in Insurance whose
+row was created early can still open it — reading a status would hide exactly the patient the
+toggle exists to make reachable. Its Profile | Orders tabs are the EXISTING pages, linked rather
+than duplicated, so those columns keep one writer.
+
+⚠️ **A blank is an em dash and is MARKED missing, never a zero** (`infoFacts`). Missing and empty
+are different facts everywhere else in this app (§5.31f · §5.31g) and they are different here: a rep
+reading the strip on a call must be able to tell "nobody has answered that" from "the answer is
+none". A step on a board with no page says so rather than offering a dead link (§7's `UnworkableRow`
+rule).
+
+**The door in** is `components/commsHub/PatientDossierPanel`'s new **Open profile page** button —
+Brandon's "Open Profile Page". ⚠️ It sits BESIDE the pane's original *Open on \<board\>* link, which
+is unchanged; replacing a working door with a new one is the destructive change this build promised
+not to make, and the test asserts both are present.
+
+**Not built in this slice, deliberately:** the global header and its tabs (a header rewrite cannot
+be additive — put it behind a flag, the `SHOW_CHASE_COLUMN` / `ORDERING_FROM_COMMAND_CENTER`
+pattern); the abilities/`admins[]`/`homeView` model (⚠️ when it lands, **default every ability ON**
+until the Users page is filled in, or the first deploy reads an `access.json` with no `perms` and
+everyone fails closed — the same reasoning as `isBootstrapMode`); the Subscription Profile | Orders
+tabs; the widened global search. §5.38 covers the snapshot question the handoff opens with.
+
+**Keep-in-agreement:** `lib/patient/patientScreen.ts` `stepOpenHref` ⇄
+`systemMgmt/stageCompletion.COMPLETED_STAGE_ROUTES` ⇄ `useCompletedStageReview` — the screen is a
+second caller of §5.38's mechanism, so a board added to one must reach the others.
+`usePatientRecord` ⇄ `commsHub/dossierApi` — never fetch a board here directly; the dossier is the
+one identity rule.
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
 ⚠️⚠️ **TWO DIFFERENT SCREENS SHOW WELCOME CALL DATA, AND A NOTE ABOUT ONE IS NOT A NOTE ABOUT THE
@@ -6937,6 +7026,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A payer added on Monday isn't in the Command Center dropdown | §5.33 — Primary/General Insurance read `settings_str` live (`lib/profile/boardLabels.ts` + `hooks/profile/useBoardLabels.ts`); check it isn't in `NON_PAYER_LABELS`. If it is IN the picker but doesn't save, the write lost its live index. And a payer must exist on **all eight** payer columns — ME, Insurance, Welcome Call and Claims are the ones people forget. ⚠️ Monday assigns a DIFFERENT label id per board (this payer is 159/159/159/159 but **108** on ME, **7** on Insurance and Welcome Call, **3** on Claims); hops copy by label text so they are fine, but anything writing an index directly needs that board's own id |
 | "Show what this stage looked like when the patient left it" / a handoff asks for stage snapshots | §5.38 — **the completed item on each board already IS the snapshot**; do not build a history store. `lib/systemMgmt/stageCompletion.ts` (which page, and when it completed) → `useCompletedStageReview` (review mode) → §7's completion badges. Granularity is per BOARD, not per sub-stage |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
+| "Open this patient's whole record" / where the redesign's patient screen lives | §5.39 — `/patient/:itemId?board=<boardId>` (`pages/PatientPage.tsx`). READ-ONLY and additive: it writes nothing and every action deep-links to the stage page. It is a thin view over the Comms Hub dossier (§5.28), keyed on the ITEM not the phone, fetched on open with no poll. A completed step opens in review mode via §5.38. The door in is the dossier pane's **Open profile page** button |
 | A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
 | A recording won't play, or a call has no Play/⤓ at all | §5.16 — first check the call's AGE: RingCentral deletes recordings at **90 days** and keeps the log row, so an old call looks identical to one never recorded and the audio is unrecoverable. Inside 90 days, no audio means the call never connected (auto-recording is on for both directions, measured 760/774). A 403 on download is the `ReadCallRecording` permission |

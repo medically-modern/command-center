@@ -499,14 +499,28 @@ export function PatientDossierPanel({
         )}
       </div>
 
-      {/* ── 3. Open in the stage ────────────────────────────── */}
-      {active?.route && (
-        <div className="border-b border-border px-4 py-3">
+      {/* ── 3. Open in the stage, or on the patient screen ──── */}
+      {active && (
+        <div className="space-y-2 border-b border-border px-4 py-3">
+          {active.route && (
+            <Link
+              to={`${active.route}?patientId=${encodeURIComponent(active.itemId)}&from=system-mgmt`}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
+            >
+              Open on {active.boardName} <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
+          {/* ⚠️ ADDITIVE — this pane is unchanged in every other respect, and
+              "Open on <board>" above still goes exactly where it always did.
+              The patient screen (§5.39) is the redesign's full-width view of the
+              same record; this is the door Brandon's handoff calls "Open Profile
+              Page". It carries the BOARD because a Monday item id alone does not
+              say which board it is on. */}
           <Link
-            to={`${active.route}?patientId=${encodeURIComponent(active.itemId)}&from=system-mgmt`}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
+            to={`/patient/${encodeURIComponent(active.itemId)}?board=${active.boardId}`}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-semibold hover:bg-muted"
           >
-            Open on {active.boardName} <ArrowUpRight className="h-3.5 w-3.5" />
+            Open profile page <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
         </div>
       )}
