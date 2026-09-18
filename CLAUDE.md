@@ -4675,8 +4675,9 @@ menu** (Josh, 2026-09-18, three asks in one message). **No board change; app onl
   the home sidebar off the header is the only badge a manager has, and the speaker lives nowhere
   else. ⚠️ The phone button is `aria-disabled`, never `disabled`: a disabled button shows no tooltip
   in most browsers, and the tooltip is the entire explanation in this form.
-- **The Managers/Processors roster leaves the home page — for whoever has the thing that replaces
-  it** (*"remove the managers processors view on the left side bar"*). The condition is BOTH
+- **The Managers/Processors roster leaves the LEFT RAIL — and moves into the main area**
+  (*"remove the managers processors view on the left side bar"*). ⚠️⚠️ **It first shipped as a
+  REMOVAL, and that made a manager's home page blank — see §5.39e.** The condition is BOTH
   `layout === "redesign"` AND `viewOthers`: the layout half keeps "as today" untouched, and the
   ability half means Corey, Janelle and Katie do not lose the only way they have of looking at
   somebody's workload and get nothing back. ⚠️ **To take it off them too, grant them `viewOthers`
@@ -4945,6 +4946,51 @@ second writer) — two call sites is the requirement, not a duplication to tidy 
 only thing allowed to opt back in. All of it is scanned by
 `src/components/shell/layoutEscape.test.tsx`, every assertion verified to fail when its protection
 is removed.
+
+### 5.39e The roster was REMOVED, not moved — a manager's home page went blank (Sep 2026)
+Josh, 2026-09-18, on the same afternoon as §5.39d and in the same message: *"yeha the views are
+super wrong"*. §5.39d answered the half of that report about getting back out of the layout; this
+is the half it missed, and it is the bigger one. **No board change; app only.**
+
+⚠️⚠️ **`Index`'s `rosterReplaced` branch rendered `DashboardMainView person={null}`, which is an
+EMPTY CARD.** Taking the 340px Managers/Processors rail off left that branch with nothing to put
+in its place, so a manager's landing page — the first screen they open — was one 16px icon, the
+word *"Dashboard"*, and one line reading *"Pick somebody in Viewing, up in the top bar, to see
+their home screen exactly as they see it."* on 900px of empty page. Everything the rail carried
+went with it: who is on the team, how many role bars each one has, who is also a manager, the
+**Managers** tab (→ `/oversight`) and the **Manage Access** button. Found by RENDERING it
+(§5.30d's rule) — the code reads as a deliberate branch and the screenshot is a blank screen.
+
+⚠️ **The ask was the SIDEBAR, not the roster.** The list is the whole content of that screen, so
+it moves into the space removing the rail freed up — `components/shell/TeamGrid.tsx`, a card per
+person in the main area — which is Brandon's own instinct everywhere else in the redesign (wide
+content, no left rail). Nothing goes back on the left, and the two chrome controls come with it.
+⚠️ The replacement offered in its place was a dropdown that shows somebody **else's** home screen,
+so there was no view of your own left anywhere: a control whose only passing move is to stop
+looking at yourself. Same dead-end class as §5.10 · §5.20 · §5.31c · §5.39d.
+
+⚠️⚠️ **`?user=` and `?viewing=` ARE DIFFERENT QUESTIONS — do not collapse them.** `?user=` is what
+the rail always set and what the grid sets now: the MANAGER's view OF that person — their assigned
+bars, their per-role filters, their workload, editable on `/access`. `?viewing=` (§5.39c) renders
+that person's OWN home screen as they see it. Both are useful; whichever survives a merge, the
+other is lost. `teamGrid.test.ts` fails if the grid reaches for `viewing`.
+
+⚠️ **A selected person needs a way back** (`setSelectedKey("")` → *"← Team"*), or picking somebody
+is a one-way trip on a screen whose only other control borrows a different person's view.
+⚠️ **An empty roster is a real state** (a fresh config) and its copy names the move that fixes it,
+rather than reading like the blank page this component exists to replace.
+⚠️ `roleNoteFor` is ONE wording shared with the rail's own `UserList`, so the two screens cannot
+disagree about who is a manager or how many bars somebody has.
+⚠️ Renders **only inside the redesign**, because its one caller is the `rosterReplaced` branch,
+which is already gated on the layout AND on `viewOthers`. "As today" keeps the sidebar untouched.
+
+**Verified in a browser** at 1600 and 1100: eight person cards with names, role counts and manager
+shields, the Oversight and Manage Access buttons, no horizontal overflow, no page errors, and the
+blank card gone. A selected person renders their workload under a *"← Team"* link.
+
+**Keep-in-agreement:** `TeamGrid.roleNoteFor` ⇄ `Index`'s `UserList` row copy · `TeamGrid`'s
+`onSelect` ⇄ `Index`'s `setSelectedKey` (`?user=`), never `?viewing=` · the `rosterReplaced` branch
+⇄ `teamGrid.test.ts`, whose three wiring assertions are verified to fail on the blank-page version.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -7456,7 +7502,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Somebody lost a button, or a tab vanished for them | §5.39c — abilities are on `access.json` under the person's `perms`, edited on `/access`. ⚠️ **Absent means ON**, so a missing button means somebody explicitly turned it off, never that the field is unset. A MANAGER keeps every ability whatever `perms` says |
 | "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |
 | The phone icon in the top bar is red / there is no phone icon | §5.39c — it is `CallConnectionBadge compact`, the same component as the home badge, and it renders for **assigned call answerers only** (§5.13b). Red with "the line is full" is RingCentral's five registrations (§5.13b); amber "another tab" means click it to move the line here. No icon at all ⇒ not in `callAnswerers` on `/access` |
-| The Managers/Processors sidebar is gone from my home page | §5.39c — deliberate, and only for people who hold `viewOthers` in the redesign layout (the "Viewing" dropdown replaces it). Everybody else still has it. Sign-out moved with it: the gear menu, and the floating button bottom-left |
+| The Managers/Processors sidebar is gone from my home page | §5.39e — it moved into the MAIN AREA as `TeamGrid` (a card per person), only for people who hold `viewOthers` in the redesign layout; "as today" keeps the rail. Sign-out moved with it: the gear menu, and the floating button bottom-left. ⚠️ If the home page is BLANK rather than showing the team, the `rosterReplaced` branch has gone back to rendering `DashboardMainView person={null}` — `teamGrid.test.ts` should have failed |
 | Stage Manager / Operations / Oversight are missing from System Management | §5.39c — commented out 2026-09-18, not deleted; `?tab=` for each falls through to Search. **Oversight lives on at `/oversight`** (gear menu → Pipeline Oversight). Stage Manager and Operations have no second door — uncomment two blocks in `SystemMgmtPage.tsx` to bring them back |
 | A setting ticked on `/access` reverts a few seconds later | §5.39c — `fetchAccess` rebuilds the config from a whitelist, so a top-level key it does not name is written to GitHub and dropped by the next 10s poll. `admins` did this. `perms`/`homeView` are safe because they sit inside `processors` |
 | "Let me see what a processor sees" / the Viewing dropdown is missing or shows me myself | §5.39c — the dropdown needs **`viewOthers`, which is OPT-IN**: granted to josh@ and brandon@ only, and a manager does **not** get it for being a manager. Missing dropdown ⇒ check `perms.viewOthers === true` on that person's **processor** entry (a pure manager with no processor entry cannot hold it). Dropdown present but the screen does not change ⇒ that is the `<Index />` bug, fixed 2026-09-18; the borrow must render `ProcessorView` with the borrowed profile. A stale `?viewing=` says so in amber rather than quietly showing you yourself. The grant does not cross a prod sync — tick it once on prod's `/access` |

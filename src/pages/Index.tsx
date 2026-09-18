@@ -4,11 +4,12 @@ import ProcessorView from "@/pages/ProcessorView";
 import { DashboardMainView } from "@/components/dashboard/DashboardMainView";
 import { ThemePickerButton } from "@/components/ThemePicker";
 import { cn } from "@/lib/utils";
-import { Shield, LayoutDashboard, Stethoscope, KeyRound } from "lucide-react";
+import { Shield, LayoutDashboard, Stethoscope, KeyRound, ArrowLeft } from "lucide-react";
 import { processorPeople, type Person } from "@/lib/people";
 import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
 import { hasAbility } from "@/lib/shell/abilities";
+import { TeamGrid } from "@/components/shell/TeamGrid";
 
 const Index = () => {
   /**
@@ -71,7 +72,29 @@ const Index = () => {
     return (
       <div className="min-h-screen bg-gradient-subtle flex">
         <div className="flex-1 flex flex-col min-w-0">
-          <DashboardMainView person={selectedPerson} />
+          {/* ⚠️⚠️ **WITHOUT `TeamGrid` THIS BRANCH IS A BLANK SCREEN.** It used
+              to render `DashboardMainView person={null}` whenever nobody was
+              selected — an empty card reading "Pick somebody in Viewing, up in
+              the top bar", which is a manager's ENTIRE home page and which
+              offers no way to see anything of their own. Removing the 340px
+              roster rail was the ask; removing the roster was not, and the list
+              is the whole content of this screen. It moves into the space the
+              rail freed (§ TeamGrid's header). */}
+          {selectedPerson ? (
+            <>
+              <div className="border-b border-border bg-card px-8 pt-3">
+                <button
+                  onClick={() => setSelectedKey("")}
+                  className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Team
+                </button>
+              </div>
+              <DashboardMainView person={selectedPerson} />
+            </>
+          ) : (
+            <TeamGrid people={visiblePeople} onSelect={setSelectedKey} />
+          )}
         </div>
         {/* ⚠️ THE THEME BUTTON IS ALSO SIGN-OUT, and the sidebar was the only
             place it lived on this screen — dropping the sidebar without it
