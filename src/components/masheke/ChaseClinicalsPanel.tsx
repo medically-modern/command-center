@@ -82,6 +82,7 @@ import { toast } from "sonner";
 import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { AlertTriangle, Check, CheckCircle2, ChevronRight, ExternalLink, FileText, Loader2, Phone, Send } from "lucide-react";
 import { CalendarClock } from "lucide-react";
+import { isParachuteRoleMethod } from "@/lib/masheke/chaseMethods";
 import { DISTRICT_ENDOCRINE_DASHBOARD_URL } from "@/lib/shared/partnerDashboard";
 import { FileList, LoadingRow, MmStep } from "@/components/masheke/mmKit";
 import { MissingChecklist } from "@/components/masheke/MissingChecklist";
@@ -138,8 +139,12 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, patient.serving, patient.medicalNecessity, patient.mnRequestConsolidated]);
 
-  const isParachute = patient.clinicalsMethod === "Parachute";
-  const effectiveRole = roleMethod ?? (isParachute ? "parachute" : "fax");
+  // ⚠️ The fallback has to use the SAME split as the queue. `roleMethod` is
+  // optional and the one caller today always passes it, so this is latent —
+  // but a caller that did not would send a Dashboard or Email patient down the
+  // "fax" branch, which is what offers the fax re-send box below. There is no
+  // fax to re-send for either.
+  const effectiveRole = roleMethod ?? (isParachuteRoleMethod(patient.clinicalsMethod) ? "parachute" : "fax");
   // Cadence on Complete: every Clinicals Method (Fax/Email/Parachute/blank)
   // pushes the Next Action Date +3 business days.
   const nadBumpDays = 3;

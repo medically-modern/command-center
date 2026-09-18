@@ -102,6 +102,7 @@ const ME_STAGES = [
   { stage: "Chase Clinicals", method: "" },          // blank method counts as Fax (§5.9)
   { stage: "Chase Clinicals", method: "Email" },
   { stage: "Chase Clinicals", method: "Parachute" },
+  { stage: "Chase Clinicals", method: "Dashboard" },  // queues with Parachute (§5.9)
   { stage: "Doctor Appointment", method: "Fax" },
 ];
 // undefined = the column was never set (no index at all), which is a distinct

@@ -182,6 +182,12 @@ describe("patients waiting on a booked visit ride the Doctor Appointments row", 
     { label: "Attempt 4+ (email/parachute)", apptRow: MANAGER, chaseRow: "chase-email-parachute-escalations", escalationIndex: 0, extraCols: { [METHOD]: "Parachute", [MN_ATTEMPTS]: "Escalate" } },
     { label: "3rd+ round (email/parachute)", apptRow: MANAGER, chaseRow: "chase-email-parachute-escalated-3rd", escalationIndex: 0, extraCols: { [METHOD]: "Parachute", [EVAL_COUNTER]: "4" } },
     { label: "Proposed stuck (email/parachute)", apptRow: FINAL, chaseRow: "chase-email-parachute-proposed-stuck", escalationIndex: 2, extraCols: { [METHOD]: "Parachute" } },
+    // Dashboard shares that role, so it must be excluded from the SAME chase
+    // charts while a visit is booked — otherwise the everyday path puts a
+    // District Endocrine patient on two rows of one column.
+    { label: "Attempt 4+ (dashboard)", apptRow: MANAGER, chaseRow: "chase-email-parachute-escalations", escalationIndex: 0, extraCols: { [METHOD]: "Dashboard", [MN_ATTEMPTS]: "Escalate" } },
+    { label: "3rd+ round (dashboard)", apptRow: MANAGER, chaseRow: "chase-email-parachute-escalated-3rd", escalationIndex: 0, extraCols: { [METHOD]: "Dashboard", [EVAL_COUNTER]: "4" } },
+    { label: "Proposed stuck (dashboard)", apptRow: FINAL, chaseRow: "chase-email-parachute-proposed-stuck", escalationIndex: 2, extraCols: { [METHOD]: "Dashboard" } },
   ];
 
   it.each(CROSS_COLUMN)(
