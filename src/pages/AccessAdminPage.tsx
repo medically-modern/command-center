@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAccessContext } from "@/components/AccessProvider";
 import { ROLES } from "@/lib/config";
 import { MAX_CALL_ANSWERERS, type RoleFilter } from "@/lib/accessStore";
+import { AbilitiesEditor } from "@/components/shell/AbilitiesEditor";
 import { roleFilterFor, roleOrderNumber } from "@/lib/roleView";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -33,6 +34,9 @@ export default function AccessAdminPage() {
     setRoleFilter,
     setRoleOrder,
     setCallAnswerer,
+    setAbility,
+    setHomeView,
+    setAdmin,
   } = useAccessContext();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -259,6 +263,18 @@ export default function AccessAdminPage() {
                         <X className="w-3.5 h-3.5" /> Remove
                       </button>
                     </div>
+
+                    {/* ⚠️ Brandon's abilities + home view (§5.39c), ADDED beside
+                        the role grid rather than replacing it. Everything below
+                        is exactly as it was, so there is nothing to unwind. */}
+                    <AbilitiesEditor
+                      email={pe}
+                      config={config}
+                      isManager={isManager}
+                      onAbility={(a, on) => setAbility(pe, a, on)}
+                      onHomeView={(v, on) => setHomeView(pe, v, on)}
+                      onAdmin={(on) => setAdmin(pe, on)}
+                    />
 
                     {/* Roles: checkbox + filter + SOP order */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">

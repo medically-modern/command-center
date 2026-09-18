@@ -322,3 +322,52 @@ describe("nothing was taken away to make room for it", () => {
     }
   });
 });
+
+describe("phases 3–6 are additive too", () => {
+  it("⚠️ the home route still renders Index for anybody with one view", () => {
+    // Every access.json today has no `homeView`, which reads as ["bars"], so
+    // the home page is byte-identical on the deploy that adds the model.
+    const host = src("src/components/shell/HomeViewHost.tsx");
+    expect(host).toMatch(/if \(active === "bars"\)/);
+    expect(host).toMatch(/<Index \/>/);
+  });
+
+  it("⚠️ the coordinator and oversight views reuse the EXISTING pages", () => {
+    // Brandon redraws both from sample data and calls his coordinator screen "a
+    // rebuild, not a port". Rebuilding either would be a second copy of rules
+    // whose drift is silent — §5.30's keep-in-agreement list alone is twelve
+    // places long.
+    const host = src("src/components/shell/HomeViewHost.tsx");
+    expect(host).toMatch(/pages\/CareCoordinatorPage/);
+    expect(host).toMatch(/components\/oversight\/OversightTab/);
+  });
+
+  it("⚠️ the combined fax bar was ADDED, not swapped in", () => {
+    // Brandon says the Fax Inbox and the Comms Fax rail "should be one"; Josh
+    // said add it beside them and trim later. Both old doors must still exist.
+    const app = src("src/App.tsx");
+    expect(app).toMatch(/path="\/fax"/);
+    expect(app).toMatch(/path="\/fax-inbox"/);
+    expect(app).toMatch(/path="\/assigned-patients"/);
+  });
+
+  it("⚠️ the fax bar reuses the tested join rather than re-deriving it", () => {
+    // `faxDigits` strips the @rcfax.com before comparing; comparing the stored
+    // value to a phone number matches nothing, with no error (§5.28).
+    const page = src("src/pages/FaxBarPage.tsx");
+    expect(page).toMatch(/buildFaxDirectory/);
+    expect(page).toMatch(/fetchFaxMatches/);
+    expect(page).toMatch(/fetchDoctorDbByFax/);
+    // And it fetches the BYTES before handing them to the viewer.
+    expect(page).toMatch(/fetchFaxBlobUrl/);
+  });
+
+  it("⚠️ an ability gate never hides a tab by default", () => {
+    // `hasAbility` returns true for anything not explicitly turned off, so a
+    // gated tab renders for everybody until an admin says otherwise.
+    const header = src("src/components/shell/GlobalHeader.tsx");
+    expect(header).toMatch(/hasAbility\(email, config, t\.ability\)/);
+    expect(header).toMatch(/ability: "inventory"/);
+    expect(header).toMatch(/ability: "reports"/);
+  });
+});

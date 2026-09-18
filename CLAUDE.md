@@ -4675,6 +4675,99 @@ subtract exactly the header's height, and a header that grows without it puts ev
 `GlobalHeader`'s four `to=` targets ⇄ `App.tsx`'s routes (`patientScreen.test.ts` asserts each one
 is a real route). `AppShell`'s `current` branch ⇄ the test that pins it as a bare fragment.
 
+### 5.39c Abilities, home views, and the combined fax bar (Sep 2026)
+Phases 3–6 of the redesign, on Josh's standing terms: *"all additive, we'll trim together after"*.
+**No board change; app only.**
+
+⚠️⚠️ **EVERY ABILITY DEFAULTS TO ON, AND THAT IS THE WHOLE SAFETY PROPERTY** (Josh, asked
+directly). `lib/shell/abilities.ts` (+ tests) reads `ProcessorProfile.perms`, and **only an explicit
+`false` takes something away** — a missing `perms` object, a missing key inside one, an unrecognised
+value are all ON. Every `access.json` in existence was written before the field existed, so a strict
+read would fail the entire company closed on one deploy, on a page nobody could open to fix it
+because `admins` is empty too. Same reasoning as `isBootstrapMode` (§5.3): the safe default while a
+config is unset is the permissive one, because the restrictive one has no escape hatch.
+- Abilities: `comms · adjustOrders · viewOthers · reports · inventory · editProfile`. ⚠️ Brandon's
+  own rule — **they unlock BUTTONS; they never hide INFORMATION**, which is why there is no "can see
+  patients" ability. Somebody without `editProfile` reads the Subscription profile and cannot save
+  it; they are never told the patient does not exist.
+- ⚠️ **A MANAGER holds every ability whatever `perms` says.** Managers see the whole app today
+  (§5.3), and quietly narrowing them on the deploy that introduces the model is a change nobody
+  asked for. Narrowing a manager is a decision that needs its own conversation.
+- ⚠️ **An empty `admins` list means every MANAGER is an admin**, not that nobody is — the same
+  bootstrap trap one field over. Naming the first admin is what makes the list the rule.
+- ⚠️ `abilities.ts` imports `accessStore` **TYPE-ONLY** and keeps a five-line local copy of
+  `resolveAccess`'s manager/processor rule, because `accessStore` calls its writers and the runtime
+  import back would be a cycle — which ES modules tolerate right up until one side reads the other
+  at module-init time and gets `undefined`. That copy is the §5.7 hand-synced hazard, so
+  `abilities.test.ts` pins it against the real `resolveAccess` across bootstrap, manager and
+  processor configs rather than trusting it.
+
+**Home is a per-person VIEW** — `ProcessorProfile.homeView`, one or more of `bars` · `coordinator` ·
+`oversight`. `components/shell/{HomeViewHost,HomeViewSwitch}.tsx`.
+⚠️ **Missing or empty is `["bars"]`**, today's role bars, which is what everybody has now — so on
+the deploy that ships this the home page is byte-identical for everyone and the switch renders
+**nothing at all**, not an empty bar. A second view appears only for the person an admin gives one
+to. Verified in a browser: `homeSwitch: false` on a live home page.
+⚠️ **It lives at the ROUTE, not inside `Index`.** `Index.tsx` returns early for processors and
+carries helper components after its own closing brace, so wrapping its two branches in place is two
+edits to a file this has no business changing. As a route element it is one line in `App.tsx` and
+`Index` is untouched.
+⚠️ **`coordinator` and `oversight` render the EXISTING pages** — the live Care Coordinator dashboard
+(§5.30) and the live Oversight tab (§7), with their real rules and real counting contracts. Brandon
+redraws both from sample data and calls his coordinator screen *"a rebuild, not a port"*; rebuilding
+either here would be a second copy of rules whose drift is silent — §5.30's keep-in-agreement list
+alone is twelve places long. Both are `lazy`, so a person on the bars never downloads them.
+⚠️ **Borrowing somebody's view runs with YOUR permissions, not theirs**, and the banner says so. The
+other reading — that you are acting as that person — is how somebody does something they are not
+allowed to do and believes the app let them on purpose.
+⚠️ `withHomeView` **refuses to remove somebody's last view**: a home screen with nothing to render
+is a dead end with no way back, which §5.10 · §5.20 · §5.31c each record reversing.
+
+**The Users page is the EXISTING `/access` page with two rows added** (`components/shell/
+AbilitiesEditor.tsx`) — the role grid, the manager toggle and the call-answerer roster are all
+untouched, which is what "trim together after" needs: nothing here has to be unwound to go back.
+⚠️ Every ability renders **ON until somebody turns it off**, because that is what the config means;
+a checkbox that started unchecked would tell an admin the opposite of what the app does. ⚠️ A
+manager's abilities render **ON and DISABLED** — an editable checkbox there would write a value
+nothing reads, and an admin who unticks it and sees nothing change concludes the page is broken.
+
+**The header's Inventory and Reports tabs are ability-gated**, and the Users button is admin-only —
+Brandon's header does exactly that. ⚠️ Both render for everybody today, because `hasAbility` and
+`isAdmin` are permissive until a config says otherwise.
+
+**The combined fax bar is `/fax`** (`pages/FaxBarPage.tsx`) — the inbound list on the left, the
+sending office, its patients and the Update Clinicals action on the right.
+⚠️⚠️ **ADDED BESIDE `/fax-inbox` AND THE COMMS HUB'S FAX TAB, REPLACING NEITHER** (Josh,
+2026-09-18). Brandon's audit says the two *"should be one"* and he is right — but merging deletes a
+page, and the rule on this build is additive first. Both old doors stay, and both are listed in the
+gear menu.
+⚠️ Every piece is reused: `fetchInboundFaxesAll`, `fetchFaxMatches` + `fetchDoctorDbByFax` +
+the tested `buildFaxDirectory`, and `fetchFaxBlobUrl` into the shared viewer. Nothing re-derives a
+rule — the `@rcfax.com` strip in `faxDigits` in particular is the reason that join works at all
+(§5.28), and comparing the stored value to a phone number matches nothing with no error.
+⚠️ **The bytes are fetched THEN handed to the viewer as a blob URL.** Passing a RingCentral
+attachment URI straight in sends it down `fetchAssetBytes`, which tries a direct CORS fetch with no
+RC credential and then the worker's `/asset` proxy, which allowlists MONDAY hosts and refuses — that
+shipped broken once and was reported as "view fax is broken".
+⚠️ **Both halves of the lookup, always.** The patient boards say who WE are chasing; the Doctor
+Database (2,290 offices) says who the number belongs to at all. Searching only the boards reads a
+real, known office as unmatched — a dead end that looks like a broken lookup. And the empty state
+says what it MEANS (offices often send from a different line than the one we fax to), because a bare
+"no match" reads as the feature being broken.
+⚠️ **A failed read is not an empty inbox**, and the page says which — the §9 rule.
+
+**Phase 6 needed no work.** Brandon's stage-snapshot panel is the completed board record rendered
+read-only, which §5.38 already provides and §5.39b already wires.
+
+**Keep-in-agreement:** `abilities.ts`'s local `kindOf` ⇄ `accessStore.resolveAccess` (pinned by
+test). `ABILITIES` / `HOME_VIEWS` on `accessStore` ⇄ `AbilitiesEditor`'s rendering ⇄ the three
+`useAccess` writers. `GlobalHeader`'s `ability:` fields ⇄ `hasAbility`. `HomeViewHost`'s two lazy
+imports ⇄ the real pages — never a local rebuild of either.
+Files: `lib/shell/abilities.ts` (+ tests), `lib/accessStore.ts` (`Ability` · `HomeView` · `perms` ·
+`homeView` · `admins` · `setAbility` / `setHomeView` / `setAdmin`),
+`components/shell/{HomeViewHost,HomeViewSwitch,AbilitiesEditor,GlobalHeader}.tsx`,
+`components/AccessProvider.tsx`, `pages/{AccessAdminPage,FaxBarPage}.tsx`, `App.tsx`.
+
 **Keep-in-agreement:** `lib/patient/patientScreen.ts` `itemOpenHref` ⇄
 `systemMgmt/stageCompletion.COMPLETED_STAGE_ROUTES` ⇄ `useCompletedStageReview` — the screen is a
 second caller of §5.38's mechanism, so a board added to one must reach the others.
@@ -7184,6 +7277,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A payer added on Monday isn't in the Command Center dropdown | §5.33 — Primary/General Insurance read `settings_str` live (`lib/profile/boardLabels.ts` + `hooks/profile/useBoardLabels.ts`); check it isn't in `NON_PAYER_LABELS`. If it is IN the picker but doesn't save, the write lost its live index. And a payer must exist on **all eight** payer columns — ME, Insurance, Welcome Call and Claims are the ones people forget. ⚠️ Monday assigns a DIFFERENT label id per board (this payer is 159/159/159/159 but **108** on ME, **7** on Insurance and Welcome Call, **3** on Claims); hops copy by label text so they are fine, but anything writing an index directly needs that board's own id |
 | The new header is missing, or a page sits under it wrong | §5.39b — the layout switch is in the header's gear menu (`lib/shell/layout.ts`, default `redesign`, per browser). A page 56px too tall means it sizes against the viewport and `shell.css`'s `.cc-shell .min-h-screen` / `.h-screen` overrides did not reach it. ⚠️ Reproduce with a REAL, long list — §7 records this being "disproved" against a two-row fixture and reverted |
+| Somebody lost a button, or a tab vanished for them | §5.39c — abilities are on `access.json` under the person's `perms`, edited on `/access`. ⚠️ **Absent means ON**, so a missing button means somebody explicitly turned it off, never that the field is unset. A MANAGER keeps every ability whatever `perms` says |
+| "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |
+| A fax doesn't match an office, or "view fax is broken" | §5.39c — `/fax` is the combined bar; `/fax-inbox` and the Comms Fax tab still exist beside it. The join strips `@rcfax.com` via `faxDigits` and reads BOTH the patient boards and the Doctor Database; an unmatched number usually means the office sent from a different line than the one we fax to (§5.28, audited clean). A blank viewer means the attachment URI went in without `fetchFaxBlobUrl` |
 | A header tab opens the wrong thing / "where is Reports & Metrics?" | §5.39b — every tab points at an EXISTING page, and Reports & Metrics points at `/system-mgmt?tab=operations` deliberately (Josh, 2026-09-18): Brandon's Patient Pipeline Tracker has no data behind it in this build |
 | "Show what this stage looked like when the patient left it" / a handoff asks for stage snapshots | §5.38 — **the completed item on each board already IS the snapshot**; do not build a history store. `lib/systemMgmt/stageCompletion.ts` (which page, and when it completed) → `useCompletedStageReview` (review mode) → §7's completion badges. Granularity is per BOARD, not per sub-stage |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |

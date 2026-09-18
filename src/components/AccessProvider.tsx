@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import { useAccess, resolveAccess, type Access, type AccessConfig, type RoleFilter } from "@/lib/accessStore";
+import type { Ability, HomeView } from "@/lib/accessStore";
 import { authRequired, getUser, signOut } from "@/lib/shared/auth";
 import { Loader2, Lock, LogOut } from "lucide-react";
 
@@ -18,6 +19,11 @@ interface AccessCtxValue {
   setRoleOrder: (email: string, roleId: string, order: number | null) => void;
   /** False when the five browser-answering slots are already taken. */
   setCallAnswerer: (email: string, on: boolean) => boolean;
+  /* Brandon's abilities model (§5.39c). All three are no-ops for anyone who is
+     not a processor, and `setHomeView` refuses to remove somebody's last view. */
+  setAbility: (email: string, ability: Ability, on: boolean) => void;
+  setHomeView: (email: string, view: HomeView, on: boolean) => void;
+  setAdmin: (email: string, on: boolean) => void;
 }
 
 const Ctx = createContext<AccessCtxValue | null>(null);
@@ -54,6 +60,9 @@ export default function AccessProvider({ children }: { children: React.ReactNode
     setRoleFilter: acc.setRoleFilter,
     setRoleOrder: acc.setRoleOrder,
     setCallAnswerer: acc.setCallAnswerer,
+    setAbility: acc.setAbility,
+    setHomeView: acc.setHomeView,
+    setAdmin: acc.setAdmin,
   });
 
   if (!authRequired()) {

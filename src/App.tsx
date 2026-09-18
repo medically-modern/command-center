@@ -8,6 +8,7 @@ import { FileViewerHost } from "./components/shared/FileViewerModal";
 import IncomingCallHost from "./components/inboundCalls/IncomingCallHost";
 import ScheduledCallHost from "./components/scheduledCalls/ScheduledCallHost";
 import { AppShell } from "./components/shell/AppShell";
+import { HomeViewHost } from "./components/shell/HomeViewHost";
 import AuthGate from "./components/AuthGate";
 import AccessProvider from "./components/AccessProvider";
 
@@ -60,6 +61,7 @@ const AssignedPatientsPage = lazyWithReload(() => import("./pages/AssignedPatien
 // Orders — the New Order Board + Cardinal SKU Tracker, read-only (§5.35)
 const OrdersPage = lazyWithReload(() => import("./pages/OrdersPage"));
 const PatientPage = lazyWithReload(() => import("./pages/PatientPage"));
+const FaxBarPage = lazyWithReload(() => import("./pages/FaxBarPage"));
 
 const queryClient = new QueryClient();
 
@@ -123,7 +125,9 @@ const App = () => (
       <AppShell>
       <Suspense fallback={<Loading />}>
         <Routes>
-          <Route path="/" element={<Index />} />
+          {/* Brandon's per-person home view (§5.39c). With one view — which is
+              every config today — this renders <Index /> and nothing else. */}
+          <Route path="/" element={<HomeViewHost />} />
           <Route path="/evaluate" element={<EvaluatePage />} />
           <Route path="/send-request" element={<SendRequestPage />} />
           <Route path="/confirm-receipt" element={<ConfirmReceiptPage />} />
@@ -167,6 +171,9 @@ const App = () => (
           <Route path="/orders" element={<OrdersPage />} />
           {/* The patient screen (§5.39) — additive; every stage page is unchanged. */}
           <Route path="/patient/:itemId" element={<PatientPage />} />
+          {/* Brandon's combined fax bar (§5.39c) — ADDED beside /fax-inbox and
+              the Comms hub's Fax tab, replacing neither. */}
+          <Route path="/fax" element={<FaxBarPage />} />
           <Route path="*" element={<Index />} />
         </Routes>
       </Suspense>

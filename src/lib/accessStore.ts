@@ -1,3 +1,4 @@
+import { withAbility, withAdmin, withHomeView } from "@/lib/shell/abilities";
 /**
  * Per-email access control, persisted to the repo (public/data/access.json)
  * via the GitHub Contents API (same cross-device sync pattern as the rest), so it syncs
@@ -49,7 +50,54 @@ export interface ProcessorProfile {
    * whoever picks up there gets bridged instead of this person.
    */
   phoneNumber?: string;
+  /**
+   * Which abilities this person has (§5.39c). ⚠️ **ABSENT MEANS ON**, and an
+   * individual key absent means on too — see `abilities.ts`. Only an explicit
+   * `false` takes something away, because every access.json written before this
+   * shipped has no `perms` at all and reading that as "no abilities" would fail
+   * the whole company closed on one deploy.
+   */
+  perms?: Partial<Record<Ability, boolean>>;
+  /**
+   * Which home view(s) this person gets (§5.39c). Missing or empty → `["bars"]`,
+   * today's role bars, which is what everybody has now. Two or more puts a
+   * toggle on top of the home screen.
+   */
+  homeView?: HomeView[];
 }
+
+/**
+ * The abilities a person can be given (§5.39c), from Brandon's 2026-09-18
+ * mockup. ⚠️ **They unlock buttons; they never hide information** — his own
+ * wording, and the reason there is no "can see patients" ability here.
+ */
+export type Ability =
+  /** Text and call patients from the patient screen. */
+  | "comms"
+  /** Adjust an open order — the backorder substitution pick (§5.35). */
+  | "adjustOrders"
+  /** The "Viewing: <person>" dropdown on the home screen. */
+  | "viewOthers"
+  /** Open Reports & Metrics. */
+  | "reports"
+  /** Open Inventory — the Cardinal SKU tracker. */
+  | "inventory"
+  /** Change the Subscription profile; without it that page is read-only. */
+  | "editProfile";
+
+export const ABILITIES: readonly Ability[] = [
+  "comms",
+  "adjustOrders",
+  "viewOthers",
+  "reports",
+  "inventory",
+  "editProfile",
+] as const;
+
+/** Which screen a person lands on (§5.39c). */
+export type HomeView = "bars" | "coordinator" | "oversight";
+export const HOME_VIEWS: readonly HomeView[] = ["bars", "coordinator", "oversight"] as const;
+
 export interface AccessConfig {
   managers: string[];
   processors: Record<string, ProcessorProfile>;
@@ -62,6 +110,16 @@ export interface AccessConfig {
    * exempt from the cap.
    */
   callAnswerers: string[];
+  /**
+   * Who may open User management and change anyone else's bars, abilities and
+   * home view (§5.39c).
+   *
+   * ⚠️ **EMPTY MEANS EVERY MANAGER IS AN ADMIN**, deliberately — the same
+   * bootstrap reasoning as `noManagers` above. The first deploy reads an
+   * access.json with no `admins` key at all, and a strict read would lock every
+   * manager out of the page that sets it.
+   */
+  admins?: string[];
 }
 
 /**
@@ -348,6 +406,24 @@ export function useAccess() {
     });
   }, [mutate]);
 
+  /* ── Brandon's abilities model (§5.39c) ─────────────────────────────────
+     All three write through the pure helpers in `lib/shell/abilities`, which
+     own the defaults-ON rule and the "everyone keeps at least one view" refusal.
+     ⚠️ A helper returning null means the change was REFUSED (no such processor,
+     or it would have removed somebody's last home view) — the caller must not
+     write `prev` back as though it succeeded. */
+  const setAbility = useCallback((email: string, ability: Ability, on: boolean) => {
+    mutate((prev) => withAbility(prev, email, ability, on) ?? prev);
+  }, [mutate]);
+
+  const setHomeView = useCallback((email: string, view: HomeView, on: boolean) => {
+    mutate((prev) => withHomeView(prev, email, view, on) ?? prev);
+  }, [mutate]);
+
+  const setAdmin = useCallback((email: string, on: boolean) => {
+    mutate((prev) => withAdmin(prev, email, on));
+  }, [mutate]);
+
   return {
     config,
     loading,
@@ -361,5 +437,8 @@ export function useAccess() {
     setRoleFilter,
     setRoleOrder,
     setCallAnswerer,
+    setAbility,
+    setHomeView,
+    setAdmin,
   };
 }

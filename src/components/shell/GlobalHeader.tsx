@@ -30,6 +30,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { BarChart3, Grid3x3, MessageSquare, Package, Settings, Stethoscope, Users } from "lucide-react";
 import { GlobalSearch } from "./GlobalSearch";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
+import { useAccessContext } from "@/components/AccessProvider";
+import { hasAbility, isAdmin } from "@/lib/shell/abilities";
+import type { Ability } from "@/lib/accessStore";
 
 interface Tab {
   key: string;
@@ -38,6 +41,12 @@ interface Tab {
   icon: typeof Grid3x3;
   /** Which pathnames light this tab up. */
   match: (path: string, search: string) => boolean;
+  /**
+   * The ability that shows this tab, as Brandon's header has it. ⚠️ Absent
+   * means "always" — and an ability nobody has turned off is ON (§5.39c), so
+   * every tab renders for everybody until an admin says otherwise.
+   */
+  ability?: Ability;
 }
 
 const TABS: Tab[] = [
@@ -61,6 +70,7 @@ const TABS: Tab[] = [
     to: "/orders?view=stock",
     icon: Package,
     match: (p, s) => p === "/orders" && s.includes("view=stock"),
+    ability: "inventory",
   },
   {
     key: "reports",
@@ -68,6 +78,7 @@ const TABS: Tab[] = [
     to: "/system-mgmt?tab=operations",
     icon: BarChart3,
     match: (p, s) => p === "/system-mgmt" && s.includes("tab=operations"),
+    ability: "reports",
   },
 ];
 
@@ -75,6 +86,8 @@ export function GlobalHeader() {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const [layout, setLayout] = useShellLayout();
+  const { email, config } = useAccessContext();
+  const admin = isAdmin(email, config);
   const [menu, setMenu] = useState(false);
   const menuBox = useRef<HTMLSpanElement>(null);
 
@@ -100,7 +113,7 @@ export function GlobalHeader() {
       </Link>
 
       <nav className="topnav" aria-label="Sections">
-        {TABS.map((t) => {
+        {TABS.filter((t) => !t.ability || hasAbility(email, config, t.ability)).map((t) => {
           const Icon = t.icon;
           const active = t.match(pathname, search);
           return (
@@ -120,14 +133,20 @@ export function GlobalHeader() {
       <GlobalSearch />
 
       <div className="right">
-        <Link
-          className={`ib${pathname === "/access" ? " active" : ""}`}
-          to="/access"
-          title="Access & permissions"
-        >
-          <Users style={{ width: 16, height: 16 }} />
-          <span className="lbl">Users</span>
-        </Link>
+        {/* ⚠️ Admins only, per Brandon — and `isAdmin` returns true for every
+            MANAGER while `admins` is empty (§5.39c), which is every config
+            today. So this renders exactly as it did until somebody names the
+            first admin, and naming one is what makes the list the rule. */}
+        {admin && (
+          <Link
+            className={`ib${pathname === "/access" ? " active" : ""}`}
+            to="/access"
+            title="Access & permissions"
+          >
+            <Users style={{ width: 16, height: 16 }} />
+            <span className="lbl">Users</span>
+          </Link>
+        )}
 
         <span style={{ position: "relative" }} ref={menuBox}>
           <button
@@ -162,6 +181,12 @@ export function GlobalHeader() {
               </button>
               <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/system-mgmt"); }}>
                 System Management
+              </button>
+              {/* ⚠️ BOTH fax screens are listed, deliberately (Josh, 2026-09-18):
+                  Brandon's combined bar was added beside the Fax Inbox rather
+                  than replacing it, so both stay reachable until we trim. */}
+              <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/fax"); }}>
+                Faxes — with the sending office
               </button>
               <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/fax-inbox"); }}>
                 Fax Inbox
