@@ -3281,11 +3281,15 @@ badge that could only ever say one thing.
   ⚠️ it is WITHHELD when that read came back at its page cap (`activityTruncated`), because
   a clipped window under-counts and a number on screen is read as fact. `Call Log (0)` is a
   real answer and renders; no number at all means we could not stand behind one.
-- **The copy-number button is deleted** (`CopyPhoneButton`, from every header). ⚠️ It
-  shipped the day before, at Josh's own request (§5.31f) — the number is the label of a
-  `tel:` link, so dragging to select it starts a link drag. **That complaint is real and
-  is unaddressed again.** If it comes back it belongs somewhere other than this row, which
-  already carries Call, Text and Call Log.
+- **The copy-number button is deleted** (`CopyPhoneButton`, from every header).
+  ⚠️⚠️ **It was asked for on a DIFFERENT SCREEN and the deletion over-reached.** Katie wanted it on
+  the **Welcome Call stage page** (§5.31f) the day before; it shipped inside `masheke/mmKit`'s
+  shared `PatientContact`; Brandon's note here is about the **Care Coordinator card**, where it is
+  a fourth control on a row already carrying Call, Text and Call Log. Deleting it from
+  `PatientContact` took it off all ten headers, the stage page included, so **Katie's complaint is
+  unaddressed again** — the number is still a `tel:` link label and still cannot be dragged to
+  select. Restoring it on the stage page and not on this card satisfies both and is a prop on
+  `PatientContact`, not a rebuild. See §5.30's two-screens table.
 - **The text composer's title bar leads with the patient's name**, then the number. The
   number stays: on a patient with two numbers on file it is the only thing saying which
   one the composer is pointed at.
@@ -4035,11 +4039,14 @@ placeholder and read as an empty quantity (the §5.11 blank-with-no-error, and t
   banner also had it in an editable `PhoneField`, where select-and-copy worked; that field went with
   the banner's phone controls (§5.31c) and the tel: link became the only rendering. `CopyPhoneButton`
   sits with Call and Text in `masheke/mmKit`, so all ten headers that already show a number get it.
-  ⚠️⚠️ **DELETED 2026-09-17** (Brandon, via Josh: *"it's the little copy button next to text,
-  remove"*) — one day after it shipped. Katie's complaint above is real and is **unaddressed
-  again**: the number is still a `tel:` link label and still cannot be dragged to select. It went
-  because it is a fourth control on a row already carrying Call, Text and Call Log. If it comes
-  back, it belongs somewhere other than that row (§5.30e).
+  ⚠️⚠️ **DELETED 2026-09-17, ON A NOTE ABOUT ANOTHER SCREEN** (Brandon, via Josh: *"it's the
+  little copy button next to text, remove"*) — one day after it shipped. Brandon was looking at the
+  **Care Coordinator card** (§5.30e), where it is a fourth control on a crowded row; Katie's ask
+  was for **this** screen. Because it lived in the shared `PatientContact`, taking it off one took
+  it off all ten headers, so **Katie's complaint is unaddressed again**: the number is still a
+  `tel:` link label and still cannot be dragged to select. Restoring it HERE and not on the
+  dashboard card satisfies both, and is a prop on `PatientContact`. §5.30's two-screens table
+  exists because of this exact mix-up.
   ⚠️ It copied the DIGITS **as displayed**, not `tel:`'s stripped form — a rep is pasting into
   RingCentral, a payer portal or a note, and `+15555550100` is not what any of them want back. A
   clipboard refusal (insecure origin, permissions policy) says so rather than silently doing nothing.
@@ -4268,6 +4275,28 @@ never touches the board · `@rcfax.com` still accepted · blank clears) and
 draft · the key · the page wiring · the intake page untouched).
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
+
+⚠️⚠️ **TWO DIFFERENT SCREENS SHOW WELCOME CALL DATA, AND A NOTE ABOUT ONE IS NOT A NOTE ABOUT THE
+OTHER** (Josh, 2026-09-18, after exactly this mix-up undid a fix). Name the screen every time:
+
+| | **the Welcome Call STAGE page** | **the Care Coordinator DASHBOARD** |
+|---|---|---|
+| route | `/welcome-call` · `/final-confirm` | `/care-coordinator` |
+| role id | `welcomeCall` · `finalConfirm` | `scheduledCalls` |
+| who works it | the rep ON the welcome call | the coordinator BOOKING it |
+| what it is | the form that gathers the order and advances the stage | a read-only queue of who to ring |
+| writes | the whole Welcome Call send (§5.31) | **nothing** — every exit deep-links to a stage page |
+| files | `components/welcomeCall/*` · `lib/welcomeCall/*` | `components/careCoordinator/*` · `lib/careCoordinator/*` |
+| its notes | §5.31 · §5.31b · §5.31c · §5.31f | §5.30 · §5.30b–e |
+
+The dashboard's right-hand column **reads Welcome Call columns**, which is what makes the two easy
+to conflate — but it is a card in a list, not the stage page, and all they share is the low-level
+furniture (`masheke/mmKit`'s `PatientContact`, `profileStatus`, the notes stamp).
+⚠️ **Which is the trap: a change to a shared piece lands on BOTH.** It has already bitten once —
+Katie asked for a copy-number button on the *stage page* (§5.31f), it shipped inside
+`PatientContact`, Brandon asked for it off the *dashboard card* (§5.30e), and deleting it from
+`PatientContact` took it off the stage page too, silently undoing her fix. Scope a shared-component
+change to the screen that asked for it, or say out loud that it is going to both.
 
 > ✅ **REWRITTEN 2026-09-14 to Brandon's "Notes for masani dashboard (9/14/26)"** — read this
 > block first; the paragraphs below it describe the 2026-09-08 build and stand only where they
@@ -6293,6 +6322,13 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   after a session ran it unasked). Pushing to test's `main` is your job; pushing test's `main`
   onto **prod** is his, every time. It is a force-push that overwrites prod and cannot be undone
   by re-running it. Finish on test, say it is ready for prod, and stop. Full rule in §8.
+- **⚠️ Name the SCREEN, not the data.** Several screens surface the same board's columns — most
+  often the **Welcome Call stage page** (`/welcome-call`, the rep's form) and the **Care Coordinator
+  dashboard** (`/care-coordinator`, the coordinator's read-only queue, which reads Welcome Call
+  columns). A note about one is not a note about the other, and a change to a piece they share
+  (`masheke/mmKit`'s `PatientContact` above all) lands on both — that is how a button added for one
+  screen was deleted off the other. The table is at the top of §5.30; when a note is ambiguous, ask
+  which screen before building.
 - **Verify before you advance.** Any new write that a Monday automation keys on must go through
   `executeWritesWithVerification` with the trigger column as `stageColumnId`.
 - **⚠️ A stage advancer already holding its target value is a SILENT NO-OP — pass `expectedText`.**
