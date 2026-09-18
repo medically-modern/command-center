@@ -29,7 +29,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
-import { sendPatientToMonday, sendWelcomeCallTextToMonday, resetWelcomeCallText, sendNotesToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
+import { sendPatientToMonday, sendWelcomeCallTextToMonday, resetWelcomeCallText, sendNotesToMonday, sendSecondaryInsuranceToMonday, sendEmailToMonday } from "@/lib/welcomeCall/mondayWrite";
 import { BOARD_ID, COL } from "@/lib/welcomeCall/mondayApi";
 /* ⚠️ `EscalateButton` + `EscalationFormModal` are GONE from this page
    (2026-09-14). They wrote Escalation index 0 + a retired Escalation Notes
@@ -309,6 +309,30 @@ const WelcomeCallPage = () => {
     }
   };
 
+  /**
+   * Write the patient's email straight to the board (§5.31h) — the Messages
+   * card's inline editor.
+   *
+   * ⚠️ **Straight to the board, never into the page overlay**, for §5.32d's two
+   * reasons, and the second one is decisive here: **nothing on this stage writes
+   * `COL.email`** — it is read-only in `mondayMapping` and absent from
+   * `buildDataTasks`, so an overlay entry would sit there and never land at all.
+   * It would also light the header's Save button (`hasOverlay`) for work that is
+   * already durably written.
+   *
+   * The awaited `refetch()` puts the board's own value back on screen and cannot
+   * turn a landed write into a failure toast — it never rejects; a failed read
+   * lands in `error`, which is what `StaleDataNotice` renders. A failed WRITE
+   * throws, which is what keeps the editor open holding the rep's text.
+   */
+  const handleSaveEmail = async (email: string) => {
+    // Never resolve silently: the editor reports success on a resolved promise,
+    // so a quiet return would toast "saved" having written nothing.
+    if (!selected) throw new Error("No patient is open.");
+    await sendEmailToMonday(selected.id, email);
+    await refetch();
+  };
+
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
@@ -419,7 +443,7 @@ const WelcomeCallPage = () => {
                       `InsuranceAuthSection.OopBlock` (Josh, 2026-09-15), beside
                       the confirmed-amount field. Do not re-mount
                       `OopEstimateCard` here: it would render twice. */}
-                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} onResetWelcomeCallText={handleResetWelcomeCallText} onProposeStuck={() => setProposeOpen(true)} />
+                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} onResetWelcomeCallText={handleResetWelcomeCallText} onSaveEmail={handleSaveEmail} onProposeStuck={() => setProposeOpen(true)} />
                   {/* Order dates moved INTO Subscription & Logistics (form
                       section 7) on 2026-09-09 — Brandon: "under the cards, in
                       this section", not at the end of the call. */}

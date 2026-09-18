@@ -40,6 +40,7 @@ import {
   type EmailThreadSummary, type EmailThreadMessage,
 } from "@/lib/shared/emailThreads";
 import { formatPhone } from "@/lib/profile/workflow";
+import { isEmailAddress } from "@/lib/shared/emailCell";
 
 type Tab = "text" | "email";
 
@@ -59,8 +60,117 @@ const fromName = (from: string): string => {
   return m?.[1]?.trim() || from.replace(/[<>]/g, "").trim() || "Patient";
 };
 
+/**
+ * Add or correct the patient's email, in place (§5.31h).
+ *
+ * Rendered only when the host page passes `onSaveEmail` — see that prop. It owns
+ * the box and nothing else: the page owns the board write and the refetch, the
+ * same split `BenefitsPatientHeader`'s phone editor keeps (§5.32d).
+ *
+ * ⚠️ **Keyed by the patient at the call site**, so a draft can never survive a
+ * sidebar click. `onSave` is re-bound to whoever is open, so a surviving draft
+ * would write the PREVIOUS patient's address onto the OPEN one — §9's notes-box
+ * bug with an email address in it. The rest of this card resets its own boxes on
+ * `patientId` for the same reason.
+ *
+ * ⚠️ **The complaint is on screen BEFORE Save is pressed**, and Save names what
+ * to do rather than simply greying out: a disabled control with no stated reason
+ * is the dead end §5.10 · §5.20 · §5.31c each record reversing. `isEmailAddress`
+ * is the shared rule, not a second regex here.
+ *
+ * ⚠️ **Blank is a deliberate clear**, matching every other opt-in editor — and a
+ * failed write keeps the editor open with the rep's text, so they fix it rather
+ * than retype an address they just read off a call.
+ */
+function EmailAddressRow({
+  current, onSave,
+}: {
+  current: string;
+  onSave: (email: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(current);
+  const [saving, setSaving] = useState(false);
+
+  const value = draft.trim();
+  const malformed = !!value && !isEmailAddress(value);
+  const changed = value !== current;
+
+  const save = async () => {
+    if (malformed || !changed) return;
+    setSaving(true);
+    try {
+      await onSave(value);
+      toast.success(value ? "Email saved to Monday" : "Email cleared");
+      setEditing(false);
+    } catch (e) {
+      // Editor stays open, holding what they typed.
+      toast.error(e instanceof Error ? e.message : "Couldn't save the email");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div className="eth-head">
+        <span>{current ? "Email on file" : "No email on file"}</span>
+        <button
+          type="button"
+          className={current ? "btn secondary sm" : "btn primary sm"}
+          onClick={() => { setDraft(current); setEditing(true); }}
+        >
+          {current ? "Change email" : "Add email"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label className="fld full">
+        <div className="flabel">Patient email</div>
+        <input
+          type="email"
+          value={draft}
+          placeholder="patient@example.com"
+          autoFocus
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void save(); } }}
+        />
+      </label>
+      {malformed ? (
+        <p className="sugg-note" style={{ color: "#b91c1c" }}>
+          That doesn't look like an email address — it needs an @ and a domain.
+        </p>
+      ) : null}
+      <div className="pills" style={{ marginTop: 8 }}>
+        <button
+          type="button"
+          className="btn primary sm"
+          disabled={saving || malformed || !changed}
+          onClick={() => { void save(); }}
+        >
+          {saving ? "Saving…" : "Save to Monday"}
+        </button>
+        <button
+          type="button"
+          className="btn secondary sm"
+          disabled={saving}
+          onClick={() => { setDraft(current); setEditing(false); }}
+        >
+          Cancel
+        </button>
+      </div>
+      {!value && current ? (
+        <p className="sugg-note">Saving an empty box clears the address on the board.</p>
+      ) : null}
+    </div>
+  );
+}
+
 export function IntakeMessages({
-  patientId, email, phone, onTextSent,
+  patientId, email, phone, onTextSent, onSaveEmail,
 }: {
   patientId: string;
   email?: string;
@@ -68,6 +178,18 @@ export function IntakeMessages({
   phone?: string;
   /** Stamps the Call Log — the page owns that, so it is passed in. */
   onTextSent?: (body: string) => void;
+  /**
+   * OPT-IN: write the patient's email back to that board (§5.31h).
+   *
+   * ⚠️ Absent ⇒ byte-identical markup to before, which is what keeps the intake
+   * page unchanged: it already edits this column through `intakeEditsFor`, and
+   * a second writer for one column is how the two disagree (§5.31c's rule, and
+   * why the Secondary Insurance select left `PatientInfoCard`). Only Welcome
+   * Call passes it, because that stage has no other way to put an address on
+   * the record. The page owns the write and the refetch; this card owns the
+   * box the rep types into.
+   */
+  onSaveEmail?: (email: string) => Promise<void>;
 }) {
   const addr = (email ?? "").trim();
   const tel = (phone ?? "").trim();
@@ -451,9 +573,23 @@ export function IntakeMessages({
             )}
           </>
         )
-      ) : !addr ? (
-        <p className="sugg-note">No email address on file.</p>
       ) : (
+        <>
+          {onSaveEmail ? (
+            <EmailAddressRow key={patientId} current={addr} onSave={onSaveEmail} />
+          ) : null}
+
+          {!addr ? (
+            /* The row above already says there is none when it can DO something
+               about it; this line is for the pages that cannot. */
+            onSaveEmail ? (
+              <p className="sugg-note">
+                Add one to email this patient from here and to read their history.
+              </p>
+            ) : (
+              <p className="sugg-note">No email address on file.</p>
+            )
+          ) : (
         <>
           {/* ── previous conversations with this address ── */}
           <div className="eth-head">
@@ -561,6 +697,8 @@ export function IntakeMessages({
           <div className="mt-2">
             <span className="sugg-note">Sends as the Medically Modern mailbox.</span>
           </div>
+        </>
+          )}
         </>
       )}
     </section>

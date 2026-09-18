@@ -7,6 +7,7 @@ import { userInitials } from "@/lib/shared/auth";
 import { etToday } from "@/lib/masheke/etDate";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
+import { isEmailAddress } from "../shared/emailCell";
 import { appendIntakeToNotes } from "./callIntake";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
 import { assertTextLikeFits } from "../shared/longText";
@@ -773,4 +774,33 @@ export async function sendFollowUpToMonday(itemId: string, date: string): Promis
     writeStatusIndex(itemId, COL.followUp, FOLLOW_UP_STATUS_INDEX),
     writeDate(itemId, COL.followUpDate, date),
   ]);
+}
+
+/**
+ * Immediately push the patient's email to Monday (called from the Messages card's
+ * inline editor — §5.31h).
+ *
+ * ⚠️ **`writeText`, never samantha's `writeEmail`.** `COL.email` `text_mm1xc140` is a
+ * plain TEXT column, so the value is a bare JSON string; an `email_` column's
+ * `{email, text}` shape is refused there at HTTP 200 with a GraphQL `errors[]` —
+ * the app's most common silent failure (§10), and here it would read as "the
+ * address didn't save" with nothing erroring.
+ *
+ * ⚠️ **The rejection check runs BEFORE the write** (§5.32d's rule). Everything
+ * downstream joins on this exact string — the Calendly booking mirror (§5.15),
+ * the §5.31e "Call scheduled" chip and the Gmail thread read all match the
+ * address verbatim — so a typo does not fail loudly, it reads as "not booked"
+ * and "no previous emails" for ever. `isEmailAddress` is `shared/emailCell`'s,
+ * not a second regex: that module is deliberately permissive (it has to accept
+ * `<digits>@rcfax.com`, §5.5) and the one thing it must reject is whitespace.
+ *
+ * A BLANK is a deliberate clear, matching the phone editor beside it: refusing
+ * one would be a control with no passing move, and the rep types it back.
+ */
+export async function sendEmailToMonday(itemId: string, email: string): Promise<void> {
+  const value = email.trim();
+  if (value && !isEmailAddress(value)) {
+    throw new Error(`"${value}" doesn't look like an email address.`);
+  }
+  await writeText(itemId, COL.email, value);
 }

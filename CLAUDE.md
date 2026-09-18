@@ -4191,6 +4191,82 @@ a route that stops writing them fails **silently two boards later**. `costSharin
 the builder and asserts `buildAdvanceTasks` carries it; both halves are verified to fail when
 reverted.
 
+### 5.31h The patient's email is editable at Welcome Call (Sep 2026)
+Josh, 2026-09-18: *"can you add the ability to add email to the profile at the welcome call stage,
+put it somewhere that makes sense. adding it should save to monday so email can work on that page"*.
+**No board change; app only.**
+
+**Email `text_mm1xc140` was READ-ONLY on this board and on this stage there was no way to fill it
+in.** It is in the Welcome Call read set, `mondayMapping` maps it (`email: txt(COL.email)`), and
+**no Welcome Call send has ever written it** — `buildDataTasks` does not name the column. It
+arrives, or it does not, from the Insurance hop (automation 7918324247 copies Email), and a rep who
+learned an address on the call had nowhere to put it.
+
+⚠️ **THREE features on this page are dead without it, and all three fail SILENTLY.** The Messages
+card's email tab reads `No email address on file.` and stops; the §5.31e **Call scheduled** chip
+renders nothing, because the invitee email is the only join Calendly gives us; and the §5.15
+booking mirror can never match this patient at all. §5.31e's own measurement is the size of it:
+**9 of 52 live Welcome Call patients carried an email** on 2026-09-10 (8 of 39 in Welcome Call, 1
+of 13 in Final Profile Confirmation). So the email tab was a dead end for about five patients in
+six, and the only screen a rep could fix it from was the intake page, several stages back.
+
+**It lives in the Messages card, as an opt-in prop** — `components/profile/IntakeMessages`
+`onSaveEmail`, passed by `WelcomeCallForm` from `WelcomeCallPage.handleSaveEmail`, which calls
+`welcomeCall/mondayWrite.sendEmailToMonday` and then `refetch()`. The email tab is where the
+absence is visible and where the address is about to be used, so the control sits at the dead end
+rather than in a settings block somewhere else on the page.
+
+⚠️ **`onSaveEmail` ABSENT ⇒ byte-identical markup**, the §5.32d opt-in shape. That is what keeps
+the intake page unchanged: it mounts this same card and already edits this column through
+`intakeEditsFor`, and a second writer for one column is how the two disagree — the reason the
+Secondary Insurance select left `PatientInfoCard` (§5.31c) and the reason `PhoneField` was deleted
+from the banner (§5.31d). `emailOnRecord.test.tsx` scans `UnverifiedReferralsPage` for the prop
+and fails if it picks it up quietly.
+
+⚠️ **`writeText`, never samantha's `writeEmail`.** `text_mm1xc140` is a plain TEXT column, so the
+value is a bare JSON string; an `email_` column's `{email, text}` shape is refused there at HTTP
+200 with a GraphQL `errors[]` (§10's most common silent failure), which here would read as "the
+address didn't save" with nothing erroring.
+
+⚠️ **The rejection check runs BEFORE the write** (§5.32d's rule), and the reason is sharper here
+than for a phone number: everything downstream joins on this **exact string**. A typo does not
+fail, it reads as *"not booked"* on the chip and *"no previous emails"* in the tab, for ever. The
+shape test is `shared/emailCell.isEmailAddress` — the shared rule, never a second regex — which is
+deliberately permissive because it must accept `<digits>@rcfax.com` (§5.5); the one thing it must
+reject is whitespace. The complaint renders as the rep types, and Save names what to do rather
+than only greying out (§5.10 · §5.20 · §5.31c: a gate with no stated passing move).
+
+⚠️ **Straight to the board, never the page overlay.** `hasOverlay(selected.id)` is what lights the
+header's **Save Progress** button, so an email parked there would mark the patient dirty for work
+that is already durably written — and the Welcome Call send does not carry this column, so it
+would never land. Identical reasoning to the Auth Outstanding phone editor (§5.32d), for the same
+two independent reasons.
+
+⚠️ **`key={patientId}` on the editor.** `onSaveEmail` is re-bound to whoever is open, so a draft
+surviving a sidebar click would write the PREVIOUS patient's address onto the OPEN one — §9's
+notes-box bug with an email address in it. The behavioural test cannot isolate the key (the card's
+own effect resets the tab on a patient change and unmounts the email body anyway), so the SOURCE
+SCAN is what pins it; `emailOnRecord.test.tsx` says so in place rather than claiming more than it
+proves.
+
+⚠️ **A blank is a deliberate clear**, matching every other opt-in editor; a failed write keeps the
+box open holding what the rep typed, so they fix it rather than retype an address they just read
+off a call. `handleSaveEmail` **throws** when no patient is selected rather than resolving quietly
+— the editor reports success on a resolved promise, so a silent return would toast "saved" having
+written nothing.
+
+⚠️ CSS: the editor uses the page's own `.fld` / `.flabel` / `.pills` / `.eth-head` / `.sugg-note`
+and `.btn primary|secondary sm`, because a shadcn `<Button>` inside `.pf-root` renders unstyled
+(§9).
+
+**Keep-in-agreement:** `lib/welcomeCall/mondayWrite.sendEmailToMonday` (the only writer of
+`COL.email` on this board) ⇄ `WelcomeCallPage.handleSaveEmail` ⇄ `WelcomeCallForm`'s `onSaveEmail`
+⇄ `IntakeMessages`' opt-in prop. `shared/emailCell.isEmailAddress` is the shape test on both ends;
+never re-implement it. Tests: `lib/welcomeCall/emailWrite.test.ts` (plain text · trim · the refusal
+never touches the board · `@rcfax.com` still accepted · blank clears) and
+`components/profile/emailOnRecord.test.tsx` (no editor without the prop · the refusal keeps the
+draft · the key · the page wiring · the intake page untouched).
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
 > ✅ **REWRITTEN 2026-09-14 to Brandon's "Notes for masani dashboard (9/14/26)"** — read this
@@ -6643,6 +6719,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Can Text filled itself in / didn't | §5.31f — `POST /messaging/can-text` (gateway, Postgres-only) → `useCanTextEvidence` → `fillCanTextFromEvidence`. It fills a BLANK with "yes" and nothing else: no evidence means the rep is still asked, which is correct and not a failure. The archive starts 2026-08-01, so a patient last texted in June looks untexted. A wrong "yes" is overridden by pressing either button. ⚠️ It can never write "no" — that needs a carrier line-type lookup nobody has bought |
 | A rep can pick more infusion sets than the payer pays for | §5.31f — `QtySelect`'s `max` comes from `infusionSetCap` (§5.32g). A number above the cap still on screen is a value the BOARD holds; it is offered deliberately so it doesn't render as a placeholder |
 | Welcome Call texts/calls the wrong number, or the activity box misses history | §5.31f — the box and its Call/Text buttons read `activityNumbers(phoneSlotsFor(patient))`, i.e. the SLOTS. `phoneEdited` is dead on this board (nothing has written it since 2026-09-11) — do not reach for it. Only one number loads at a time; the Primary/Alternate toggle switches it. A box stuck on "Reading RingCentral…" meant a number `toE164` couldn't read — it says so now |
+| A Welcome Call patient has no email / the email tab is a dead end | §5.31h — the Messages card's inline editor, on this stage only (`IntakeMessages` `onSaveEmail`, wired by `WelcomeCallPage`). It writes `text_mm1xc140` as PLAIN TEXT and refuses a malformed address BEFORE the write, because the Calendly chip (§5.31e), the booking mirror (§5.15) and the Gmail thread read all join on the exact string. The intake page deliberately does NOT get the prop — it already edits that column through `intakeEditsFor` |
 | An infusion set is missing from the dropdown, or its stock pill is wrong | §5.31b — `lib/welcomeCall/infusionSelection.ts` filters by pump compatibility and excludes the other slot's set; `withCurrentSelection` means a value the BOARD holds is always shown, so a genuinely absent option was filtered. Stock is `stockApi` → `infusionStock`: "No stock data" means no tracker row for that label (re-run the name-join audit), "Stock unknown" means either a stale stamp or a row with no readable quantity — neither is a shortage |
 | Send is greyed out on Welcome Call with no obvious reason | §5.31b — the button and its reasons come from ONE array (`sendGates.unmetSendRequirements`), so the sentences under it are the answer. They apply to **Advance only**; the pump confirmation is hidden entirely when the serving sells no pump device |
 | A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |

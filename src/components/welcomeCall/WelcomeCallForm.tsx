@@ -104,6 +104,14 @@ interface Props {
    */
   onResetWelcomeCallText?: () => Promise<void>;
   /**
+   * Writes the patient's email to the board — the Messages card's inline editor
+   * (§5.31h). Passed straight through; the PAGE owns the write and the refetch.
+   *
+   * ⚠️ Optional so the preview/no-Monday environment renders the card read-only
+   * rather than offering a Save that cannot land.
+   */
+  onSaveEmail?: (email: string) => Promise<void>;
+  /**
    * Opens the Propose Stuck dialog — the SAME dialog the header's action bar
    * opens (Josh, 2026-09-14: *"add a second stuck button option down there …
    * both stuck buttons have same behavior"*).
@@ -377,7 +385,7 @@ function CapNote({ qty, cap, payerLabel }: { qty: number; cap: number; payerLabe
   );
 }
 
-export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSendWelcomeCallText, onResetWelcomeCallText, onProposeStuck }: Props) {
+export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSendWelcomeCallText, onResetWelcomeCallText, onSaveEmail, onProposeStuck }: Props) {
   // The no-column payload. Falls back to a blank one so a patient mapped before
   // this field existed (or a test fixture) still renders.
   const intake = patient.callIntake ?? emptyIntake();
@@ -1547,11 +1555,17 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             inside (CLAUDE.md §9) — IntakeMessages is already written to survive
             that, the rest of this form is not.
             No `onTextSent`: that prop stamps the intake page's Call Log column,
-            which this board doesn't have. */}
+            which this board doesn't have.
+            `onSaveEmail` IS passed, and only from here: this is the one stage
+            with no other way to put an address on the record, and without one
+            the email tab is dead for the ~80% of Welcome Call patients whose
+            column is blank (§5.31h). The intake page deliberately does not pass
+            it — it already edits this column through `intakeEditsFor`. */}
         <div className="pf-root mt-6">
           <IntakeMessages
             patientId={patient.id}
             email={patient.email}
+            onSaveEmail={onSaveEmail}
             /* ⚠️ The STARRED SLOT, not `phoneEdited ?? phone` — nothing on this
                board has written `phoneEdited` since the banner's phone editor
                was deleted on 2026-09-11 (§5.31c/§5.31f), so that read was pinned
