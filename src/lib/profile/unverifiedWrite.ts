@@ -21,7 +21,7 @@
 import {
   COL, GROUPS, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
   writePhone, writeEmail, writeLocation, writeDropdownIds, writeDropdownLabels,
-  readColumnTexts, moveItemToGroup, clearStatusColumn, writeDate,
+  readColumnTexts, moveItemToGroup, clearStatusColumn, writeDate, cleanNumberValue,
 } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { CLINICALS_METHOD_INDEX } from "./mondayMapping";
@@ -666,10 +666,81 @@ export interface AdvanceInput {
  * advancer is allowed to fire. The advancer itself is deliberately NOT here —
  * `executeWritesWithVerification` must receive it separately to hold it back.
  */
+/**
+ * The cost-sharing figures the Welcome Call out-of-pocket calculator quotes
+ * from — carried forward on the way to Medical Necessity.
+ *
+ * ⚠️ THE CALCULATOR NEVER READS STEDI'S OWN COLUMNS. Medical Necessity,
+ * Insurance and Welcome Call all carry a plain `Deductible Remaining`
+ * (`text_mm1xdzxw`) / `OOP Max Remaining` (`text_mm1xx5f`) pair, and that pair
+ * is what every downstream stage — and `welcomeCall/oopContext` — reads. The
+ * only thing that ever fills it is hop automation **7917676280**, which copies
+ * Profile Send Off's NUMERIC `Deductible Remaining` (`numeric_mm1zv64b`) and
+ * `OOP Max Remaining` (`numeric_mm1zxktp`) — i.e. the `working*` columns below,
+ * NOT `Stedi Individual Deductible Remaining`, which is where the benefits
+ * check actually writes its answer. Profile Send Off has no `text_mm1xdzxw`
+ * column at all, so nothing else can bridge the two.
+ *
+ * `mondayWrite.buildDataTasks` has bridged them on the `/profile` (Referral
+ * Intake) send since that page existed. **This route never did**, so every
+ * patient advancing through the DTC-intake pages reached Welcome Call with the
+ * deductible and the out-of-pocket maximum blank while Stedi's answer sat one
+ * column over on their own Profile Send Off row. Reported by Katie,
+ * 2026-09-18: *"every patient i have seen on welcome call has deductible not on
+ * file and OOP max not on file on the calculator"*. Measured the same day:
+ * 6/6 SNJ-sourced Welcome Call patients had a real Stedi answer upstream and an
+ * empty column downstream, against 4/4 manufacturer/patient referrals — which
+ * come through `/profile` — carrying both, matching exactly.
+ *
+ * ⚠️ It belongs in the ADVANCE batch and nowhere else: the hop reads these
+ * columns the moment the advancer flips, so they must be verified INDEXED
+ * before it fires. `buildAdvanceTasks` → `executeWritesWithVerification` with
+ * `Move to Onboarding` held back is exactly that guarantee (§ verifiedWrite);
+ * a plain write beside the advance would race it.
+ *
+ * ⚠️ Precedence is the rep's own value first, Stedi's second — identical to
+ * `buildDataTasks`, so the two routes cannot disagree about a patient's
+ * deductible. All five are written for the same reason: a builder that carried
+ * some of the pair would be a second, quieter version of this same bug.
+ *
+ * ⚠️ Cleaned with `cleanNumberValue` — the helper `writeNumber` itself uses,
+ * never a second copy of the regex. That function strips `$`/`%`/commas and
+ * then RETURNS EARLY when nothing is left, so a value like "%" writes nothing
+ * at all and must not be pushed as a task that would then fail verification and
+ * block the advance. `fn` still passes the RAW value, so the write is
+ * byte-identical to the one `buildDataTasks` performs.
+ * ⚠️ A cleaned **"0" is kept**, because `cleanNumberValue` returns a STRING and
+ * `"0"` is truthy. That is load-bearing rather than incidental: a met
+ * deductible is the most common real answer on this board, so treating it as
+ * "nothing to write" would blank the column for precisely the patients who owe
+ * nothing — the $0 Katie needs to be able to explain.
+ */
+export function buildCostSharingTasks(p: Patient): WriteTask[] {
+  const tasks: WriteTask[] = [];
+  const push = (label: string, columnId: string, raw: string) => {
+    if (!cleanNumberValue(raw ?? "")) return;
+    tasks.push({ label, columnId, fn: () => writeNumber(p.id, columnId, raw) });
+  };
+  push("Working Coinsurance", COL.workingCoinsurance,
+    p.workingCoinsurance || p.stediCoinsurance);
+  push("Working Deductible", COL.workingDeductible,
+    p.workingDeductible || p.stediIndividualDeductible);
+  push("Working Deductible Rem", COL.workingDeductibleRemaining,
+    p.workingDeductibleRemaining || p.stediIndividualDeductibleRemaining);
+  push("Working OOP Max", COL.workingOopMax,
+    p.workingOopMax || p.stediIndividualOopMax);
+  push("Working OOP Max Rem", COL.workingOopMaxRemaining,
+    p.workingOopMaxRemaining || p.stediIndividualOopMaxRemaining);
+  return tasks;
+}
+
 export function buildAdvanceTasks(p: Patient, opts: AdvanceInput): WriteTask[] {
   const all = [
     ...buildIntakeTasks(p.id, opts.edits, opts.liveIndex ?? {}),
     ...buildVerifiedInsuranceTasks(p.id, opts.verified, opts.liveIndex ?? {}),
+    // Carries the benefits-check answer into the columns the hop actually
+    // copies — without this the Welcome Call calculator has nothing to quote.
+    ...buildCostSharingTasks(p),
     ...buildDoctorTasks(p, opts.clinicLabelId ?? null),
   ];
 
