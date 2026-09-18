@@ -22,10 +22,38 @@
  * whole app today (§5.3), and quietly taking something away from them on the
  * deploy that introduces the model is a change nobody asked for. Narrowing a
  * manager is a decision, and it needs its own conversation.
+ *
+ * ⚠️⚠️ **ONE CARVE-OUT, AND IT RUNS THE OTHER WAY: `viewOthers` IS OPT-IN**
+ * (Josh, 2026-09-18 — "that's something that should ONLY be applied to me and
+ * brandon as users"). `OPT_IN_ABILITIES` lists it; an opt-in ability needs an
+ * explicit `perms.viewOthers === true` and is NOT covered by the manager
+ * blanket above, so Corey, Janelle and Katie do not get it for being managers.
+ *
+ * The carve-out does not contradict the default-ON rule, it is the same
+ * argument applied honestly. Default-ON exists because a config written before
+ * `perms` existed must not TAKE AWAY something people already have. Nobody has
+ * `viewOthers` today — it is brand new — so absent configuration is not a
+ * person being silently narrowed, it is a person who was never given it. And
+ * what it grants is a look at SOMEBODY ELSE's screen, where the safe direction
+ * is closed. There is no dead end either: a person without it still lands on
+ * their own home view, so nothing is unreachable.
+ *
+ * ⚠️ Adding a second entry to `OPT_IN_ABILITIES` needs the same two facts to be
+ * true of it — new, and not a way out of anywhere. Everything else stays ON.
  */
 import type { Ability, AccessConfig, HomeView, ProcessorProfile } from "@/lib/accessStore";
 
 const norm = (e: string) => (e || "").trim().toLowerCase();
+
+/**
+ * Abilities that are OFF until explicitly granted — see the header. A manager
+ * does not get these for being a manager; somebody has to tick the box.
+ */
+export const OPT_IN_ABILITIES: readonly Ability[] = ["viewOthers"] as const;
+
+export function isOptInAbility(a: Ability): boolean {
+  return OPT_IN_ABILITIES.includes(a);
+}
 
 /**
  * ⚠️ **Deliberately a LOCAL copy of `resolveAccess`'s shape, and the import above
@@ -52,13 +80,40 @@ function profileOf(email: string, cfg: AccessConfig): ProcessorProfile | null {
 }
 
 /**
+ * The stored `processors` entry for an email, whatever else this person is.
+ *
+ * ⚠️⚠️ **NOT `profileOf`, and the difference is the whole opt-in grant.**
+ * `kindOf` answers "manager or processor", so it returns `profile: null` for
+ * anybody in `managers[]` without ever looking them up — and the two people who
+ * hold `viewOthers` are in BOTH lists (the config's "dual" people, which
+ * `processorPeople` badges with a shield). Reading the grant through `kindOf`
+ * therefore finds nothing for exactly the users it was written for: ticked on
+ * the page, stored in the file, invisible to the app. Caught by a test.
+ */
+function storedProfile(email: string, cfg: AccessConfig): ProcessorProfile | null {
+  const e = norm(email);
+  const key = Object.keys(cfg.processors || {}).find((k) => norm(k) === e);
+  return key ? cfg.processors[key] ?? null : null;
+}
+
+/**
  * Does this person have this ability?
  *
  * ⚠️ Returns TRUE for anyone the config does not explicitly restrict — managers,
  * people in bootstrap mode, and every processor whose `perms` has no opinion.
+ * ⚠️ EXCEPT an `OPT_IN_ABILITIES` entry, which is the exact inverse: FALSE for
+ * everyone the config does not explicitly grant, managers included.
  */
 export function hasAbility(email: string, cfg: AccessConfig, ability: Ability): boolean {
   const { kind, profile } = kindOf(email, cfg);
+  // ⚠️ The opt-in carve-out is checked FIRST, above the manager blanket — that
+  // blanket is exactly what it has to escape, or every manager gets it.
+  // ⚠️ And it reads `storedProfile`, NOT the `profile` beside it: a dual
+  // manager+processor is `{kind: "manager", profile: null}`, which is both
+  // people who hold this today. See `storedProfile`.
+  // Only a stored `true` grants it, so no processor entry (a pure manager like
+  // Corey) is a no, and so is bootstrap mode.
+  if (isOptInAbility(ability)) return storedProfile(email, cfg)?.perms?.[ability] === true;
   // A manager, or bootstrap mode where everyone is one.
   if (kind === "manager") return true;
   // Somebody with no access at all is gated by AuthGate long before this; an
@@ -165,7 +220,8 @@ export const ABILITY_LABEL: Record<Ability, string> = {
 export const ABILITY_HINT: Record<Ability, string> = {
   comms: "Can text and call patients from the patient screen.",
   adjustOrders: "Can adjust an open order — the backorder substitution pick.",
-  viewOthers: "Gets the “Viewing” dropdown on the home screen, to look at anyone else's view.",
+  viewOthers:
+    "Off unless granted. Adds the “Viewing” dropdown on the home screen, which shows anyone else’s home screen exactly as they see it.",
   reports: "Can open Reports & Metrics.",
   inventory: "Shows the Inventory tab in the header.",
   editProfile: "Can change the Subscription profile. Without it, that page is read-only.",

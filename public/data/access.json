@@ -68,7 +68,10 @@
         "orders"
       ],
       "roleOrder": {},
-      "roleFilters": {}
+      "roleFilters": {},
+      "perms": {
+        "viewOthers": true
+      }
     },
     "brandon@medicallymodern.com": {
       "name": "brandon",
@@ -89,6 +92,9 @@
         "authOutstanding": "all",
         "submitAuth": "all",
         "dvs": "all"
+      },
+      "perms": {
+        "viewOthers": true
       }
     },
     "katie@medicallymodern.com": {

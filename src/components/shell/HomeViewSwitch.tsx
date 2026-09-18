@@ -6,6 +6,10 @@
  * `oversight`. Two or more puts a toggle on top; the `viewOthers` ability adds
  * a dropdown for looking at somebody else's.
  *
+ * ⚠️ **`viewOthers` is OPT-IN (§5.39c), so the dropdown is off unless granted.**
+ * It is not the manager blanket that turns it on — an admin ticks it per person
+ * (Josh and Brandon today). Everybody else sees no picker at all.
+ *
  * ⚠️ **WITH ONE VIEW AND NO ABILITY THIS RENDERS NOTHING AT ALL** — not an
  * empty bar, not a spacer. Every access.json today has no `homeView`, which
  * reads as `["bars"]` (§5.39c), so on the deploy that ships this the home page
@@ -35,6 +39,8 @@ export function HomeViewSwitch({
   viewingKey,
   onViewing,
   borrowedName,
+  missingViewing,
+  onClearViewing,
 }: {
   views: HomeView[];
   active: HomeView;
@@ -45,10 +51,19 @@ export function HomeViewSwitch({
   onViewing: (key: string) => void;
   /** Set when the screen is showing somebody else's view. */
   borrowedName: string | null;
+  /**
+   * Set when `?viewing=` names somebody the config no longer has.
+   *
+   * ⚠️ It is SAID rather than swallowed. Quietly falling back to your own screen
+   * while the URL still names them is the one failure this dropdown must not
+   * have: you would be looking at yourself believing you were looking at them.
+   */
+  missingViewing?: string | null;
+  onClearViewing?: () => void;
 }) {
   const showToggle = views.length > 1;
   const showPicker = people.length > 0;
-  if (!showToggle && !showPicker && !borrowedName) return null;
+  if (!showToggle && !showPicker && !borrowedName && !missingViewing) return null;
 
   return (
     <div className="border-b bg-card/60">
@@ -97,6 +112,22 @@ export function HomeViewSwitch({
           </label>
         )}
       </div>
+
+      {missingViewing && (
+        <div className="mx-6 mb-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs">
+          <b>Showing your own view.</b> “{missingViewing}” isn't in the access list any more, so
+          there is no view of theirs to show.{" "}
+          {onClearViewing && (
+            <button
+              type="button"
+              className="font-semibold text-primary hover:underline"
+              onClick={onClearViewing}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {borrowedName && (
         <div className="mx-6 mb-2.5 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs">

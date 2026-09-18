@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 import type { AccessConfig } from "@/lib/accessStore";
 import { resolveAccess } from "@/lib/accessStore";
 import {
+  OPT_IN_ABILITIES,
   hasAbility,
   homeViewsOf,
   isAdmin,
+  isOptInAbility,
   withAbility,
   withAdmin,
   withHomeView,
@@ -26,11 +28,16 @@ const TODAY: AccessConfig = {
 };
 
 describe("⚠️ the first deploy reads a config with none of this in it", () => {
-  it("gives every processor every ability", () => {
+  it("gives every processor every ability — except the opt-in ones", () => {
     // A strict read would fail the whole company closed, on a page nobody could
     // open to fix it — the `isBootstrapMode` reasoning (§5.3).
-    for (const a of ["comms", "adjustOrders", "viewOthers", "reports", "inventory", "editProfile"] as const) {
+    for (const a of ["comms", "adjustOrders", "reports", "inventory", "editProfile"] as const) {
       expect(hasAbility("masani@medicallymodern.com", TODAY, a), a).toBe(true);
+    }
+    // ⚠️ And the opt-in ones are OFF, which is the inverse and deliberate: they
+    // are new, so absent config is "never given it", not "silently narrowed".
+    for (const a of OPT_IN_ABILITIES) {
+      expect(hasAbility("masani@medicallymodern.com", TODAY, a), a).toBe(false);
     }
   });
 
@@ -161,4 +168,95 @@ describe("⚠️ the local kindOf copy agrees with resolveAccess", () => {
       }
     });
   }
+});
+
+
+/**
+ * ⚠️⚠️ **`viewOthers` runs BACKWARDS from every other ability** (Josh,
+ * 2026-09-18 — "that's something that should ONLY be applied to me and brandon
+ * as users"). It is off for everybody, including managers, until it is granted.
+ *
+ * The fixture below is the real access.json shape: Josh and Brandon are in BOTH
+ * `managers` and `processors`, and Corey is a manager with no processor entry at
+ * all — which is why the manager blanket had to be escaped rather than tuned.
+ */
+describe("⚠️ viewOthers is opt-in, and only for the people granted it", () => {
+  const REAL: AccessConfig = {
+    managers: [
+      "josh@medicallymodern.com",
+      "brandon@medicallymodern.com",
+      "corey@medicallymodern.com",
+      "katie@medicallymodern.com",
+    ],
+    processors: {
+      "josh@medicallymodern.com": { name: "josh", roles: [], perms: { viewOthers: true } },
+      "brandon@medicallymodern.com": { name: "brandon", roles: [], perms: { viewOthers: true } },
+      "katie@medicallymodern.com": { name: "katie", roles: ["profile"] },
+      "masani@medicallymodern.com": { name: "Masani", roles: [] },
+    },
+    callAnswerers: [],
+  };
+
+  it("is declared opt-in", () => {
+    expect(isOptInAbility("viewOthers")).toBe(true);
+    expect(isOptInAbility("reports")).toBe(false);
+  });
+
+  it("grants it to exactly Josh and Brandon", () => {
+    expect(hasAbility("josh@medicallymodern.com", REAL, "viewOthers")).toBe(true);
+    expect(hasAbility("brandon@medicallymodern.com", REAL, "viewOthers")).toBe(true);
+  });
+
+  it("⚠️ a MANAGER does NOT get it for being a manager", () => {
+    // Katie is a manager WITH a processor entry; Corey is a manager WITHOUT one.
+    // Both are no, by different routes — a missing profile is a no as well.
+    expect(hasAbility("katie@medicallymodern.com", REAL, "viewOthers")).toBe(false);
+    expect(hasAbility("corey@medicallymodern.com", REAL, "viewOthers")).toBe(false);
+  });
+
+  it("is off for an ordinary processor, and for somebody unknown", () => {
+    expect(hasAbility("masani@medicallymodern.com", REAL, "viewOthers")).toBe(false);
+    expect(hasAbility("stranger@medicallymodern.com", REAL, "viewOthers")).toBe(false);
+  });
+
+  it("⚠️ is off in BOOTSTRAP mode too, where everyone is otherwise a manager", () => {
+    // Nothing is stranded by that: there are no processors to look at yet, and
+    // everybody still lands on their own home view.
+    const boot: AccessConfig = { managers: [], processors: {}, callAnswerers: [] };
+    expect(hasAbility("anyone@medicallymodern.com", boot, "viewOthers")).toBe(false);
+    expect(hasAbility("anyone@medicallymodern.com", boot, "reports")).toBe(true);
+  });
+
+  it("leaves every OTHER ability exactly as it was", () => {
+    for (const a of ["comms", "adjustOrders", "reports", "inventory", "editProfile"] as const) {
+      expect(hasAbility("katie@medicallymodern.com", REAL, a), a).toBe(true);
+      expect(hasAbility("masani@medicallymodern.com", REAL, a), a).toBe(true);
+    }
+  });
+
+  it("can be revoked and re-granted through the ordinary writer", () => {
+    const off = withAbility(REAL, "josh@medicallymodern.com", "viewOthers", false)!;
+    expect(hasAbility("josh@medicallymodern.com", off, "viewOthers")).toBe(false);
+    const on = withAbility(off, "josh@medicallymodern.com", "viewOthers", true)!;
+    expect(hasAbility("josh@medicallymodern.com", on, "viewOthers")).toBe(true);
+  });
+});
+
+/**
+ * ⚠️ The shipped access.json is the thing the app actually reads, so the grant
+ * is asserted against the FILE rather than against a fixture. A config that
+ * loses it silently turns the dropdown off for the only two people who have it.
+ */
+describe("⚠️ the shipped access.json", () => {
+  it("grants viewOthers to Josh and Brandon, and to nobody else", async () => {
+    const cfg = (await import("../../../public/data/access.json")).default as unknown as AccessConfig;
+    const granted = Object.entries(cfg.processors || {})
+      .filter(([, p]) => p?.perms?.viewOthers === true)
+      .map(([e]) => e)
+      .sort();
+    expect(granted).toEqual([
+      "brandon@medicallymodern.com",
+      "josh@medicallymodern.com",
+    ]);
+  });
 });

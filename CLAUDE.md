@@ -4690,6 +4690,27 @@ config is unset is the permissive one, because the restrictive one has no escape
   own rule — **they unlock BUTTONS; they never hide INFORMATION**, which is why there is no "can see
   patients" ability. Somebody without `editProfile` reads the Subscription profile and cannot save
   it; they are never told the patient does not exist.
+- ⚠️⚠️ **ONE CARVE-OUT RUNS THE OTHER WAY: `viewOthers` IS OPT-IN** (Josh, 2026-09-18 — *"that's
+  something that should ONLY be applied to me and brandon as users"*). `OPT_IN_ABILITIES` lists it;
+  it needs an explicit `perms.viewOthers === true` and is **NOT covered by the manager blanket**, so
+  Corey, Janelle and Katie do not get it for being managers. That is the same argument as default-ON,
+  applied honestly: default-ON exists so a config written before `perms` cannot TAKE AWAY something
+  people already have, and nobody has `viewOthers` today — absent config is "never granted", not
+  "silently narrowed". What it grants is a look at somebody else's screen, where the safe direction
+  is closed, and it strands nobody (a person without it still lands on their own home view).
+  Granted in `access.json` to **josh@ and brandon@** and nobody else, which
+  `abilities.test.ts` asserts against the shipped FILE. ⚠️ A second entry in `OPT_IN_ABILITIES` needs
+  both facts to hold of it — new, and not a way out of anywhere.
+- ⚠️⚠️ **THE GRANT IS READ WITH `storedProfile`, NEVER `kindOf`/`profileOf`.** `kindOf` answers
+  "manager or processor" and returns `profile: null` for anybody in `managers[]` **without looking
+  them up** — and both people who hold this are in BOTH lists (the config's "dual" people,
+  `processorPeople` badges them with a shield). Reading the grant through it finds nothing for
+  exactly the two users it was written for: ticked on the page, stored in the file, invisible to the
+  app. It shipped that way for minutes and a test caught it.
+- ⚠️ **`AbilitiesEditor` keeps an opt-in ability EDITABLE for a manager**, unlike every other one
+  (which renders ON and disabled): both grantees are managers, so disabling it would make the only
+  grant the app reads unclickable on the only page that can set it. Its chip renders from
+  `hasAbility`, i.e. the real stored value, so what an admin sees is what the app does.
 - ⚠️ **A MANAGER holds every ability whatever `perms` says.** Managers see the whole app today
   (§5.3), and quietly narrowing them on the deploy that introduces the model is a change nobody
   asked for. Narrowing a manager is a decision that needs its own conversation.
@@ -4717,6 +4738,23 @@ edits to a file this has no business changing. As a route element it is one line
 redraws both from sample data and calls his coordinator screen *"a rebuild, not a port"*; rebuilding
 either here would be a second copy of rules whose drift is silent — §5.30's keep-in-agreement list
 alone is twelve places long. Both are `lazy`, so a person on the bars never downloads them.
+⚠️⚠️ **THE BORROW RENDERS `ProcessorView` DIRECTLY — NEVER `<Index />`**, and this is the "fake
+login" Josh asked for (2026-09-18: *"i want to test how it looks for a processor to view it, maybe
+we make a fake login?"*). It does not need to be a fake login: `ProcessorView` is driven entirely by
+the profile it is handed and reads no identity of its own, so rendering it with somebody else's
+profile IS their home screen — their bars, their SOP order, their per-role escalation filters.
+The first cut rendered `<Index />` for the `bars` view, and `Index` reads `useAccessContext()`
+itself and only takes its processor branch when the **signed-in** person is a processor — so a
+manager picking somebody got their own manager dashboard back: the URL changed, the banner
+appeared, the screen did not. `bars` is the only view anybody in the config has, so that was the
+borrow doing nothing, for everyone, every time. `homeViewBorrow.test.tsx` pins it (verified to fail
+on the old wiring).
+⚠️ **A `?viewing=` naming somebody the config no longer has is SAID, not swallowed** — an amber line
+and my own screen. Falling back silently while the URL still names them is the one failure this
+dropdown must not have: you would be looking at yourself believing you were looking at them.
+⚠️ The dropdown is given the **RESOLVED** key (email local part), not the raw URL value, or a
+hand-typed `?viewing=someone@medicallymodern.com` selects no option and reads "My view" while that
+person's screen is on show.
 ⚠️ **Borrowing somebody's view runs with YOUR permissions, not theirs**, and the banner says so. The
 other reading — that you are acting as that person — is how somebody does something they are not
 allowed to do and believes the app let them on purpose.
@@ -4762,11 +4800,16 @@ read-only, which §5.38 already provides and §5.39b already wires.
 **Keep-in-agreement:** `abilities.ts`'s local `kindOf` ⇄ `accessStore.resolveAccess` (pinned by
 test). `ABILITIES` / `HOME_VIEWS` on `accessStore` ⇄ `AbilitiesEditor`'s rendering ⇄ the three
 `useAccess` writers. `GlobalHeader`'s `ability:` fields ⇄ `hasAbility`. `HomeViewHost`'s two lazy
-imports ⇄ the real pages — never a local rebuild of either.
+imports ⇄ the real pages — never a local rebuild of either. `OPT_IN_ABILITIES` ⇄ the grants in
+`public/data/access.json` ⇄ `AbilitiesEditor`'s `locked` ⇄ the footer sentence naming the exception;
+`abilities.test.ts` reads the shipped file, so a lost grant fails the build rather than going quiet.
+⚠️ **The grant does NOT reach prod through a sync** — `sync-from-test.yml` preserves prod's own
+`access.json` (§8), deliberately, so on prod somebody ticks "View others' views" once on `/access`.
 Files: `lib/shell/abilities.ts` (+ tests), `lib/accessStore.ts` (`Ability` · `HomeView` · `perms` ·
 `homeView` · `admins` · `setAbility` / `setHomeView` / `setAdmin`),
-`components/shell/{HomeViewHost,HomeViewSwitch,AbilitiesEditor,GlobalHeader}.tsx`,
-`components/AccessProvider.tsx`, `pages/{AccessAdminPage,FaxBarPage}.tsx`, `App.tsx`.
+`components/shell/{HomeViewHost,HomeViewSwitch,AbilitiesEditor,GlobalHeader}.tsx`
+(+ `homeViewBorrow.test.tsx`), `components/AccessProvider.tsx`,
+`pages/{AccessAdminPage,FaxBarPage}.tsx`, `App.tsx`, `public/data/access.json`.
 
 **Keep-in-agreement:** `lib/patient/patientScreen.ts` `itemOpenHref` ⇄
 `systemMgmt/stageCompletion.COMPLETED_STAGE_ROUTES` ⇄ `useCompletedStageReview` — the screen is a
@@ -7279,6 +7322,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The new header is missing, or a page sits under it wrong | §5.39b — the layout switch is in the header's gear menu (`lib/shell/layout.ts`, default `redesign`, per browser). A page 56px too tall means it sizes against the viewport and `shell.css`'s `.cc-shell .min-h-screen` / `.h-screen` overrides did not reach it. ⚠️ Reproduce with a REAL, long list — §7 records this being "disproved" against a two-row fixture and reverted |
 | Somebody lost a button, or a tab vanished for them | §5.39c — abilities are on `access.json` under the person's `perms`, edited on `/access`. ⚠️ **Absent means ON**, so a missing button means somebody explicitly turned it off, never that the field is unset. A MANAGER keeps every ability whatever `perms` says |
 | "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |
+| "Let me see what a processor sees" / the Viewing dropdown is missing or shows me myself | §5.39c — the dropdown needs **`viewOthers`, which is OPT-IN**: granted to josh@ and brandon@ only, and a manager does **not** get it for being a manager. Missing dropdown ⇒ check `perms.viewOthers === true` on that person's **processor** entry (a pure manager with no processor entry cannot hold it). Dropdown present but the screen does not change ⇒ that is the `<Index />` bug, fixed 2026-09-18; the borrow must render `ProcessorView` with the borrowed profile. A stale `?viewing=` says so in amber rather than quietly showing you yourself. The grant does not cross a prod sync — tick it once on prod's `/access` |
 | A fax doesn't match an office, or "view fax is broken" | §5.39c — `/fax` is the combined bar; `/fax-inbox` and the Comms Fax tab still exist beside it. The join strips `@rcfax.com` via `faxDigits` and reads BOTH the patient boards and the Doctor Database; an unmatched number usually means the office sent from a different line than the one we fax to (§5.28, audited clean). A blank viewer means the attachment URI went in without `fetchFaxBlobUrl` |
 | A header tab opens the wrong thing / "where is Reports & Metrics?" | §5.39b — every tab points at an EXISTING page, and Reports & Metrics points at `/system-mgmt?tab=operations` deliberately (Josh, 2026-09-18): Brandon's Patient Pipeline Tracker has no data behind it in this build |
 | "Show what this stage looked like when the patient left it" / a handoff asks for stage snapshots | §5.38 — **the completed item on each board already IS the snapshot**; do not build a history store. `lib/systemMgmt/stageCompletion.ts` (which page, and when it completed) → `useCompletedStageReview` (review mode) → §7's completion badges. Granularity is per BOARD, not per sub-stage |

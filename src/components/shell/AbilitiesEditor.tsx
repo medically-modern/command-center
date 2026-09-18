@@ -15,6 +15,13 @@
  * ability whatever `perms` says, so an editable checkbox there would write a
  * value nothing reads — an admin unticks it, nothing changes, and they conclude
  * the page is broken.
+ *
+ * ⚠️⚠️ **EXCEPT an OPT-IN ability, which stays EDITABLE for a manager and starts
+ * OFF.** `viewOthers` is the one today (§5.39c), and both people who have it are
+ * managers — so disabling it here would make the only grant the app reads
+ * unclickable, on the only page that can set it. Its chip renders from the real
+ * stored value rather than from the manager blanket, so what an admin sees is
+ * what the app does.
  */
 import { Check, Eye, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +34,7 @@ import {
   hasAbility,
   homeViewsOf,
   isAdmin,
+  isOptInAbility,
 } from "@/lib/shell/abilities";
 import { ABILITIES, HOME_VIEWS, type AccessConfig, type Ability, type HomeView } from "@/lib/accessStore";
 
@@ -101,18 +109,22 @@ export function AbilitiesEditor({
         </div>
         <div className="flex flex-wrap gap-1.5">
           {ABILITIES.map((a) => {
+            // ⚠️ `hasAbility` already knows the opt-in rule, so the chip reads
+            // the real answer for BOTH kinds — never the manager blanket.
             const on = hasAbility(email, config, a);
+            const optIn = isOptInAbility(a);
+            const locked = isManager && !optIn;
             return (
               <button
                 key={a}
                 type="button"
-                disabled={isManager}
+                disabled={locked}
                 onClick={() => onAbility(a, !on)}
-                title={isManager ? "Managers have every ability" : ABILITY_HINT[a]}
+                title={locked ? "Managers have every ability" : ABILITY_HINT[a]}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs",
                   on ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600" : "border-border hover:bg-muted/40",
-                  isManager && "cursor-not-allowed opacity-60",
+                  locked && "cursor-not-allowed opacity-60",
                 )}
               >
                 {on && <Check className="h-3 w-3" />}
@@ -141,7 +153,8 @@ export function AbilitiesEditor({
         </div>
         <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
           <Eye className="mt-[1px] h-3 w-3 shrink-0" />
-          Abilities unlock buttons; they never hide a patient. Anything not turned off is on.
+          Abilities unlock buttons; they never hide a patient. Anything not turned off is on —
+          except <b>{ABILITY_LABEL.viewOthers}</b>, which is off until it is granted.
         </p>
       </div>
     </div>
