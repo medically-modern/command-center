@@ -183,6 +183,53 @@ async function boardSearch(board: BoardDef, colId: string, needle: string, limit
   }
 }
 
+/**
+ * ONE record, by its Monday item id — exact, not a search.
+ *
+ * ⚠️⚠️ **THIS IS WHAT THE PATIENT SCREEN NEEDS AND DID NOT HAVE, AND ITS ABSENCE
+ * BROKE EVERY SEARCH HIT** (Josh, 2026-09-18: *"nothing is working on search"*).
+ * `/patient/:itemId?board=` carries an item and a board and NOTHING ELSE — no
+ * name, no phone — so `PatientPage` built its pick with `name: ""`,
+ * `phone: ""`. `fetchDossierItemsForPick` then looked the record up by
+ * SEARCHING ITS NAME, which with an empty needle matches nothing, so every
+ * patient opened from the header search dead-ended on "No board record was
+ * found for this item. It may have been deleted on Monday." — a sentence that
+ * blames Monday for a lookup we never made.
+ *
+ * ⚠️ An id read is also strictly better than the name search it replaces even
+ * when a name IS supplied: `boardSearch` is `contains_text` capped at 25 rows,
+ * so a common surname could push the picked record off the end and the trail
+ * would silently start from the wrong anchor.
+ *
+ * Returns null when the id is not on that board, which is the ONE case where
+ * "deleted on Monday" is the honest sentence.
+ */
+async function fetchDossierItemById(boardId: number, itemId: string): Promise<DossierItem | null> {
+  const board = BOARDS.find((b) => b.boardId === boardId);
+  if (!board) return null;
+  try {
+    const data = await gql<{ items?: Array<RawItem & { board?: { id: string } }> }>(
+      `query ($ids: [ID!], $cols: [String!]) {
+         items (ids: $ids) {
+           id name board { id } group { id title } column_values (ids: $cols) { id text }
+         }
+       }`,
+      { ids: [String(itemId)], cols: dossierCols(board) },
+    );
+    const raw = data.items?.[0];
+    if (!raw) return null;
+    // ⚠️ `items(ids:)` is board-agnostic — it answers for ANY item id on the
+    // account. The columns are read with THIS board's ids, so mapping a record
+    // that lives somewhere else would read every field as blank and present it
+    // under the wrong board's name. A mismatch means the `?board=` in the URL
+    // is wrong, which is a caller bug, not a deleted patient.
+    if (raw.board?.id && String(raw.board.id) !== String(boardId)) return null;
+    return toDossierItem(board, raw);
+  } catch {
+    return null;
+  }
+}
+
 /** Session cache. The trail behind a number does not change while a rep reads
  *  a text, and they click through conversations quickly. */
 const dossierCache = new Map<string, DossierItem[]>();
@@ -323,26 +370,50 @@ export async function fetchDossierItemsForPick(pick: DossierPick): Promise<Dossi
   const cached = dossierCache.get(key);
   if (cached) return cached;
 
-  const e164 = toE164(pick.phone);
+  /**
+   * ⚠️⚠️ **THE PICKED RECORD IS RESOLVED BY ID FIRST, and everything else is
+   * derived from IT rather than from what the caller could supply.** The
+   * patient screen opens from a URL carrying only an item and a board
+   * (§5.39), so it passes blank name and phone — and the name search this
+   * used to start from matched nothing, which is why every header-search hit
+   * read "No board record was found" (§5.39f). Reading the id is exact, needs
+   * nothing from the caller, and is the one lookup that can honestly answer
+   * "this item is gone".
+   *
+   * ⚠️ The Comms Hub's own pick still supplies both, and still gets them used
+   * — `||` keeps the caller's values where it has them, so a record whose
+   * phone column is blank (the ordinary shape of a COMPLETED record, §5.28)
+   * still chases the trail through the number the rep was actually on.
+   */
+  const anchorItem = await fetchDossierItemById(pick.boardId, pick.itemId);
+  const name = pick.name || anchorItem?.name || "";
+  const phone = pick.phone || anchorItem?.phone || "";
+
+  const e164 = toE164(phone);
   const byNumber = e164 ? await fetchDossierItems(e164) : [];
   // The phone path keeps every PERSON on that number; we want only the one the
   // rep picked — `splitByPerson` would separate them again, but a foreign
   // household member's record must not even reach the cache under this key.
-  const mine = byNumber.filter((i) => personKey(i.name) === personKey(pick.name));
+  const mine = name ? byNumber.filter((i) => personKey(i.name) === personKey(name)) : [];
 
   let items = mine;
   if (!items.some((i) => i.itemId === pick.itemId)) {
+    // ⚠️ The by-id read above already IS the picked record; the name search
+    // survives only as the fallback for a board the id read could not map.
     const board = BOARDS.find((b) => b.boardId === pick.boardId);
-    const own = board
-      ? (await boardSearch(board, "name", pick.name)).map((it) => toDossierItem(board, it)).find((i) => i.itemId === pick.itemId)
-      : undefined;
+    const own =
+      anchorItem ??
+      (board && name
+        ? (await boardSearch(board, "name", name)).map((it) => toDossierItem(board, it)).find((i) => i.itemId === pick.itemId)
+        : undefined);
     if (own) {
       const anchor: PatientIdentity = { phone: own.phone, dob: own.dob };
+      const trailName = own.name || name;
       const byName = (
-        await Promise.all(BOARDS.map(async (b) => (await boardSearch(b, "name", pick.name)).map((it) => toDossierItem(b, it))))
+        await Promise.all(BOARDS.map(async (b) => (await boardSearch(b, "name", trailName)).map((it) => toDossierItem(b, it))))
       )
         .flat()
-        .filter((i) => i.name.trim().toLowerCase() === pick.name.trim().toLowerCase())
+        .filter((i) => i.name.trim().toLowerCase() === trailName.trim().toLowerCase())
         .filter((i) => i.itemId === pick.itemId || nameMatchAccepted(i, anchor));
       items = [...items, own, ...byName];
     }
