@@ -322,9 +322,25 @@ export const PAUSE_REASON_OPTIONS = [
   { id: 10, label: "OOP too expensive" },
 ];
 
+/**
+ * The Fax / Parachute picker's options, written BY INDEX.
+ *
+ * ⚠️ Every label the live board carries has to be here. `EditableStatusSelect`
+ * renders from this list, so a value the board holds and this list does not
+ * shows as an empty select rather than the patient's real method — the §5.11
+ * blank-with-no-error, and a rep "correcting" it overwrites a real value.
+ *
+ * Indices read back from `color_mm25t5q`'s `settings_str` (2026-09-18), never
+ * inferred: a write to an index the column does not have is dropped at HTTP
+ * 200 with nothing in the logs. `Dashboard` is id 3 there, the same id it
+ * carries on Medical Evaluation and the Doctor Database — but that agreement
+ * is a coincidence of those columns' histories, not a rule (§5.33).
+ */
 export const FAX_PARACHUTE_OPTIONS = [
   { index: 0, label: "Fax" },
   { index: 1, label: "Parachute" },
+  { index: 2, label: "Email" },
+  { index: 3, label: "Dashboard" },
 ];
 
 export const MR_STATUS_OPTIONS = [
