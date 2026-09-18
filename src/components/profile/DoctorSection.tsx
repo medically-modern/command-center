@@ -700,7 +700,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
                   <div className="lc">{r.clinic || "Clinic —"}</div>
                   <div className="la">{r.address || "No address on file"}</div>
                   <div className="li">{r.phone ? fmtPhoneUi(r.phone) : "No phone"}{r.fax ? ` · ${r.method === "Email" ? "Email" : "Fax"} ${fmtPhoneUi(r.fax)}` : ""}</div>
-                  <div><span className={`method-pill ${r.method === "Parachute" ? "chute" : r.method === "Email" ? "mail" : "fax"}`}>Method: {r.method || "—"}</span></div>
+                  <div><span className={`method-pill ${r.method === "Parachute" ? "chute" : r.method === "Email" ? "mail" : r.method === "Dashboard" ? "dash" : "fax"}`}>Method: {r.method || "—"}</span></div>
                 </div>
               ))}
             </div>
