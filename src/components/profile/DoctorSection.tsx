@@ -1,3 +1,4 @@
+import { dashboardDefaultMethod } from "@/lib/shared/partnerDashboard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Patient } from "@/lib/profile/workflow";
@@ -434,7 +435,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
   };
   const openAddLoc = () => {
     const d = selectedDoctor;
-    setForm({ ...emptyForm, name: d?.name ?? pt.doctorName, npi: d?.npi ?? pt.doctorNpi, method: "Fax" });
+    setForm({ ...emptyForm, name: d?.name ?? pt.doctorName, npi: d?.npi ?? pt.doctorNpi, method: dashboardDefaultMethod(pt.referralSource) ?? "Fax" });
     setLocMode("add");
   };
   const openNewDoctor = () => {
@@ -442,7 +443,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
     setForm({
       ...emptyForm, name: term || pt.doctorName, npi: "",
       phone: pt.doctorPhone, address: pt.clinicAddress, fax: splitFaxAddress(pt.doctorFax).local,
-      email: pt.doctorEmail, method: pt.clinicalsMethod || "Fax", clinic: pt.clinicName,
+      email: pt.doctorEmail, method: pt.clinicalsMethod || dashboardDefaultMethod(pt.referralSource) || "Fax", clinic: pt.clinicName,
     });
     setLocMode("new-doctor");
   };
@@ -642,7 +643,12 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
                 ...emptyForm,
                 name: cand ? `${cand.first_name} ${cand.last_name}` : (paraTerm || pt.doctorName),
                 npi: cand?.npi ?? pt.doctorNpi,
-                method: cand ? (cand.signature_count > THRESHOLD ? "Parachute" : "Fax") : "Fax",
+                // ⚠️ The dashboard default outranks the Parachute
+                // signature-count suggestion: for a practice whose requests go
+                // to their own dashboard, how many orders they have signed in
+                // Parachute is beside the point.
+                method: dashboardDefaultMethod(pt.referralSource)
+                  ?? (cand && cand.signature_count > THRESHOLD ? "Parachute" : "Fax"),
                 address: pt.clinicAddress, phone: pt.doctorPhone,
               });
               setLocMode("new-doctor");

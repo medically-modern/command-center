@@ -23,3 +23,34 @@
 
 /** District Endocrine's partner dashboard. Opens in a new tab; rep signs in. */
 export const DISTRICT_ENDOCRINE_DASHBOARD_URL = "https://district-endocrine.medicallymodern.com/";
+
+/**
+ * Referral Sources whose clinicals come through a partner dashboard.
+ *
+ * ⚠️ Both spellings. The board label was corrected from "District Endochrine"
+ * to "District Endocrine" (Sept 2026) and a status column stores the label id,
+ * so every live row renders the new text — but the partner dashboard matches
+ * both for the same reason, and a label deleted and re-created would come back
+ * under whichever spelling somebody typed. Matching both costs nothing; the
+ * failure it guards is a doctor silently defaulting to Fax.
+ */
+const DASHBOARD_REFERRAL_SOURCES = ["District Endocrine", "District Endochrine"];
+
+/**
+ * The Clinicals Method a NEW doctor should default to for this patient, or
+ * `null` to leave the caller's own default alone.
+ *
+ * The doctor form defaults to `Fax`, and for a practice we never fax that is
+ * how a Dashboard doctor silently becomes a Fax one — the mistake a rep makes
+ * by not touching the dropdown, which only surfaces at Advance to MN (§5.19b
+ * records the same shape for Parachute doctors with no fax).
+ *
+ * ⚠️ Returns null rather than "Fax" so a caller with a better guess of its own
+ * — the Parachute signature-count suggestion — keeps it. This only ever
+ * overrides that guess for a partner whose requests genuinely go to a
+ * dashboard, which is the one case where the signature count is beside the
+ * point.
+ */
+export function dashboardDefaultMethod(referralSource: string | null | undefined): "Dashboard" | null {
+  return DASHBOARD_REFERRAL_SOURCES.includes((referralSource ?? "").trim()) ? "Dashboard" : null;
+}
