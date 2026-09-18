@@ -41,6 +41,7 @@ import ProcessorView from "@/pages/ProcessorView";
 import { useAccessContext } from "@/components/AccessProvider";
 import { HomeViewSwitch } from "./HomeViewSwitch";
 import { hasAbility, homeViewsOf } from "@/lib/shell/abilities";
+import { useShellLayout } from "@/hooks/shell/useShellLayout";
 import { processorPeople } from "@/lib/people";
 import type { HomeView, ProcessorProfile } from "@/lib/accessStore";
 
@@ -59,8 +60,24 @@ const norm = (e: string) => (e || "").trim().toLowerCase();
 export function HomeViewHost() {
   const [params, setParams] = useSearchParams();
   const { email, config } = useAccessContext();
+  const [layout] = useShellLayout();
 
-  const canViewOthers = hasAbility(email, config, "viewOthers");
+  /**
+   * ⚠️⚠️ **THE WHOLE MODEL IS PART OF THE REDESIGN, SO IT IS OFF IN "AS TODAY".**
+   * This host sits at the ROUTE, i.e. OUTSIDE `AppShell` — so without this gate
+   * the "Viewing" strip rendered above the old manager dashboard with no header
+   * over it: a bare white bar and a dropdown floating on a screen that is meant
+   * to be byte-identical to the app before any of this existed (Josh,
+   * 2026-09-18, with a screenshot of exactly that). "As today" has to mean
+   * today, or the escape hatch is not one (§5.39b).
+   *
+   * ⚠️ Nothing is stranded by it: "as today" keeps the Managers/Processors
+   * roster, which is the screen this dropdown replaces — pick a person there
+   * and you get their workload, which is the job either control does.
+   */
+  const redesign = layout === "redesign";
+
+  const canViewOthers = redesign && hasAbility(email, config, "viewOthers");
   const viewingKey = canViewOthers ? params.get(VIEWING) || "" : "";
 
   const people = useMemo(
@@ -96,7 +113,14 @@ export function HomeViewHost() {
 
   /** Whose views the toggle is offering: theirs while borrowing, else mine. */
   const ownerEmail = borrowed ? borrowed.email : email;
-  const views = useMemo(() => homeViewsOf(ownerEmail, config), [ownerEmail, config]);
+  // ⚠️ `["bars"]` in "as today" — one view, so `HomeViewSwitch` renders null and
+  // the branch below is `<Index />` and nothing else. Gating only the PICKER
+  // would still put a toggle bar over the old layout for anybody holding a
+  // second view.
+  const views = useMemo(
+    () => (redesign ? homeViewsOf(ownerEmail, config) : (["bars"] as HomeView[])),
+    [redesign, ownerEmail, config],
+  );
 
   const raw = params.get(VIEW) as HomeView | null;
   // An unrecognised or no-longer-granted view falls back to the first one this

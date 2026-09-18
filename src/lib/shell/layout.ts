@@ -56,3 +56,40 @@ export function writeLayout(next: ShellLayout): void {
 /** Fired on the window so every mounted reader updates at once; `storage` only
  *  fires in OTHER tabs, so a same-tab toggle needs its own signal. */
 export const LAYOUT_EVENT = "mm-shell-layout-change";
+
+/**
+ * ⚠️⚠️ **`?layout=redesign` — THE RECOVERY ROUTE, and it exists because this
+ * shipped as a ONE-WAY DOOR** (Josh, 2026-09-18). The toggle was in the global
+ * header's gear menu alone, and "as today" removes the header: switching away
+ * deleted the only control that could switch back, from every page at once.
+ * The settings popover now carries the toggle in both layouts — but that
+ * popover is not on EVERY page (the patient screen and the stage pages have no
+ * settings menu), so a link is the one route that works from wherever somebody
+ * is stuck. Send them `…/?layout=redesign`.
+ *
+ * ⚠️ **At module init, BEFORE React mounts** — deliberately not a hook. A
+ * layout that renders a broken or empty screen is exactly when a hook inside
+ * that tree will not run, and the recovery has to work anyway. It also means
+ * one execution rather than one per `useShellLayout` caller.
+ *
+ * ⚠️ The param is STRIPPED with `replaceState` once applied: leaving it on the
+ * URL makes every later in-app navigation carry an instruction the person gave
+ * once, and a copied link would re-flip somebody else's browser.
+ */
+export function applyLayoutFromUrl(): void {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const want = params.get("layout");
+    if (want !== "redesign" && want !== "current") return;
+    writeLayout(want);
+    params.delete("layout");
+    const qs = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash,
+    );
+  } catch {
+    /* A URL we cannot read is not worth failing the app's first paint over. */
+  }
+}

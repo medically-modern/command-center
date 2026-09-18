@@ -23,6 +23,16 @@
  * `AppShell`), which is where the brand, the section tabs and the patient search
  * live. A second header would put two navy bars on one screen.
  *
+ * ⚠️⚠️ **WHICH IS WHY IT CARRIES ITS OWN BACK CONTROL.** Relying on the shell
+ * for navigation made this screen a DEAD END in the "as today" layout — no
+ * header, no back, nothing: measured 0 controls leading anywhere (Josh,
+ * 2026-09-18). A back button is the app's standing convention anyway (§9,
+ * history-first `useBackNavigation`), and the shell's header carries tabs but
+ * no BACK, so this is right in both layouts rather than a patch for one.
+ * ⚠️ It renders in EVERY branch, the two error states included — a page that
+ * says "this link is missing the board" and offers no way off it is the same
+ * trap one screen smaller.
+ *
  * ⚠️ **`?board=` is required and that is deliberate.** A Monday item id does not
  * say which board it is on, and `fetchDossierItemsForPick` needs both. Every
  * caller has it — a search hit, a Comms Hub match — so requiring it costs
@@ -30,7 +40,8 @@
  */
 import { useCallback, useMemo } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowUpRight, ClipboardList, RefreshCw, RotateCw } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, ClipboardList, RefreshCw, RotateCw } from "lucide-react";
+import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { OnboardingView } from "@/components/patient/OnboardingView";
 import { PatientCommsColumn } from "@/components/patient/PatientCommsColumn";
 import { usePatientRecord } from "@/hooks/patient/usePatientRecord";
@@ -112,6 +123,7 @@ export default function PatientPage() {
   if (!itemId || !boardId) {
     return (
       <div className="cc-pt">
+        <BackRow />
         <div className="pt-main">
           <div className="notice amber">
             This link is missing the board it belongs to, so the patient can't be looked up. Open
@@ -124,6 +136,7 @@ export default function PatientPage() {
 
   return (
     <div className="cc-pt">
+      <BackRow />
       {!configured ? (
         <div className="pt-main">
           <div className="notice amber">
@@ -257,5 +270,23 @@ function SubscriptionView({ item }: { item: { itemId: string; groupTitle: string
         these columns.
       </p>
     </section>
+  );
+}
+
+/**
+ * Back, history-first (§9) — the same `useBackNavigation` every other page uses,
+ * so a rep who arrived from Search, the Communications hub or a role page lands
+ * exactly where they were. ⚠️ Not gated on the layout: the redesign's header has
+ * tabs but no back, so this screen needs one in both.
+ */
+function BackRow() {
+  const { goBack } = useBackNavigation();
+  return (
+    <div className="pt-back">
+      <button type="button" onClick={goBack}>
+        <ArrowLeft style={{ width: 14, height: 14 }} />
+        Back
+      </button>
+    </div>
   );
 }

@@ -4717,12 +4717,10 @@ menu** (Josh, 2026-09-18, three asks in one message). **No board change; app onl
   survived only because they ride INSIDE `processors`. Anything new at the top level goes in that
   read too; `abilities.test.ts` scans it.
 
-**Still not built, deliberately:** the per-person home views (`bars` / `coordinator` / `oversight`
-with a toggle and a "Viewing whose" dropdown); the abilities/`admins[]`/`homeView` model (⚠️ when it
-lands, **default every ability ON** until the Users page is filled in, or the first deploy reads an
-`access.json` with no `perms` and everyone fails closed — the same reasoning as `isBootstrapMode`);
-the Users page; the Subscription Profile | Orders tabs; Brandon's combined fax bar (Josh,
-2026-09-18: add it beside `/fax-inbox` and the Comms Fax rail, **removing neither**).
+**Still not built, deliberately:** the Subscription Profile | Orders tabs on the patient screen;
+the widened global search (DOB, member id, doctor name/phone, insurance name). The per-person home
+views, the abilities model, the Users page and the combined fax bar all landed the same day —
+§5.39c.
 
 **Keep-in-agreement:** `shell.css`'s `--cc-head` ⇄ the `.gh` `min-height` — the fit overrides
 subtract exactly the header's height, and a header that grows without it puts every page 56px out.
@@ -4870,6 +4868,83 @@ Files: `lib/shell/abilities.ts` (+ tests), `lib/accessStore.ts` (`Ability` · `H
 second caller of §5.38's mechanism, so a board added to one must reach the others.
 `usePatientRecord` ⇄ `commsHub/dossierApi` — never fetch a board here directly; the dossier is the
 one identity rule.
+
+### 5.39d The layout switch shipped as a ONE-WAY DOOR — the 2026-09-18 audit
+Josh, hours after §5.39b/§5.39c went in, with a screenshot: *"yeha the views are super wrong, this
+is broken i saw it for a minute and then pressed show me the original view and never was able to
+get back / also audit the view logic something there is horribly broken"*. **No board change; app
+only.** Four defects, all mine, all found in code and then confirmed in a browser.
+
+⚠️⚠️ **1. THE WAY OUT WAS INSIDE THE THING YOU WERE LEAVING.** `setLayout` had exactly one call
+site — the global header's gear menu — and "as today" is defined by not rendering that header. So
+choosing it deleted the only control that could undo it, on every page at once, for as long as the
+browser kept that `localStorage` key. That is the dead end §5.10 · §5.20 · §5.31c · §5.32c each
+record reversing, except this one locked a person out of a whole layout rather than a queue.
+The switch now lives in **`ThemePicker`'s `ThemeList`** — the popover BODY shared by
+`SidebarThemePicker` (the old layout's sidebar gear) and `ThemePickerButton` (the floating gear the
+redesign home and `ProcessorView` use) — so one edit put it in both layouts and it cannot drift
+between them. The gear menu keeps its copy; two writers is the point.
+
+⚠️⚠️ **2. `?layout=redesign` IS THE RECOVERY ROUTE, and it is not a nicety.** The settings popover
+is not on every page: the patient screen, the stage pages and the queue pages have no settings menu
+at all, so somebody stuck THERE still had nothing to press. `applyLayoutFromUrl()` runs in
+`main.tsx` **at module init, before `createRoot`** — deliberately not a hook, because the moment a
+recovery is needed is exactly the moment the tree may render nothing useful, and a hook inside a
+broken tree does not run. It **strips the param** with `replaceState` once applied: left on the URL
+it rides every later in-app navigation, and a copied link would re-flip somebody else's browser.
+An unrecognised value is ignored rather than becoming a third state (§5.20's `networkAnswer` rule).
+**Tell a stuck person to open the app with `?layout=redesign` appended.**
+
+⚠️⚠️ **3. `HomeViewSwitch` BLED INTO "as today" — the stray white "Viewing / My view" strip in the
+screenshot.** `HomeViewHost` is mounted at the ROUTE, i.e. outside `AppShell`, so the layout switch
+never reached it: the old dashboard rendered with a redesign control bolted on top. That broke the
+byte-identical promise §5.39b's whole argument rests on. It is gated now — `redesign &&
+hasAbility(…, "viewOthers")` for the dropdown, and `views` collapses to `["bars"]` outside the
+redesign, so "as today" renders exactly `ProcessorView`/`Index` and nothing else.
+
+⚠️ **4. The patient screen was a DEAD END in "as today".** `/patient/:itemId` renders no header of
+its own (§5.39b: a second navy bar on one screen is what says loudest that two designs were
+stapled together) — correct inside the shell, and measured `anyNavOut: 0` outside it. It carries
+its own `<BackRow />` now, in **every** `cc-pt` branch including the error one, on
+`useBackNavigation` so it obeys §9's history-first rule.
+
+⚠️⚠️ **And one found while verifying: THE CALL NOTICES SAT ON THE SETTINGS BUTTON AND SWALLOWED THE
+CLICK.** `IncomingCallHost`'s status stack was `fixed bottom-4 left-4 z-[60] pointer-events-auto`;
+`ThemePickerButton` is `fixed bottom-4 left-4 z-40`, and the old sidebar puts its gear and **Manage
+Access** in the same corner. Playwright reported it outright — *"subtree intercepts pointer
+events"* — on the very click this fix depends on. So a rep whose call stream was unhealthy could
+not leave the layout, could not sign out, and could not reach `/access`; and an unhealthy stream is
+routine, because **every gateway deploy drops every open SSE stream**.
+⚠️ **Fixed BY CONSTRUCTION, not by tuning the offset** (§5.30c's rule): the stack is
+`pointer-events-none`, so it can never intercept anything — whatever corner it sits in, however
+tall it grows (it is 124px with both notices up), and whatever a page puts behind it. That is what
+the card stack at `top-4 right-4` already does. The one interactive thing in either notice —
+`CallStreamStatus`' **Reload**, which renders only when the stream is dead — takes
+`pointer-events-auto` back for itself. `bottom-14` stays, but only so the button is SEEN: an
+escape hatch you can click through an opaque notice is not a findable one.
+> Measured before and after at 1600×900: **Manage Access `clickable: false` → `true`**, Settings
+> false → true. Manage Access was covered at `bottom-4` too, so that half was pre-existing and is
+> fixed with it.
+
+**Verified in a browser, not reasoned about** (§5.30d's rule), at 1600×900 against the real
+`access.json`: from "as today" the sidebar gear opens, reads *"Switch to the new layout"*, and the
+click restores the header and writes `redesign`; `?layout=redesign` on `/patient/12345?board=…`
+restores the header and leaves `?board=18410804557` behind; the patient screen in "as today" has
+one Back button and no header; and the old home renders its roster, its System Management button
+and NO Viewing strip, with no `.cc-shell` wrapper anywhere.
+> ⚠️ `rosterSidebar: true` for a processor in a local harness is an ARTIFACT, not a regression:
+> with `VITE_GOOGLE_CLIENT_ID` blank, `AccessProvider`'s `if (!authRequired()) return manager`
+> makes every visitor a manager. Blank the client id to get past the auth gate, then read the
+> result as a manager's.
+
+**Keep-in-agreement:** `ThemePicker`'s `ThemeList` (the toggle) ⇄ `GlobalHeader`'s gear menu (the
+second writer) — two call sites is the requirement, not a duplication to tidy · `applyLayoutFromUrl`
+⇄ `main.tsx`, which must call it **before** `createRoot` · `HomeViewHost`'s `redesign` gate ⇄
+`AppShell`'s bare-fragment branch, which is what "as today" means · `IncomingCallHost`'s
+`pointer-events-none` stack ⇄ `CallStreamStatus`' `pointer-events-auto` Reload — the second is the
+only thing allowed to opt back in. All of it is scanned by
+`src/components/shell/layoutEscape.test.tsx`, every assertion verified to fail when its protection
+is removed.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -7373,7 +7448,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 |---|---|
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A payer added on Monday isn't in the Command Center dropdown | §5.33 — Primary/General Insurance read `settings_str` live (`lib/profile/boardLabels.ts` + `hooks/profile/useBoardLabels.ts`); check it isn't in `NON_PAYER_LABELS`. If it is IN the picker but doesn't save, the write lost its live index. And a payer must exist on **all eight** payer columns — ME, Insurance, Welcome Call and Claims are the ones people forget. ⚠️ Monday assigns a DIFFERENT label id per board (this payer is 159/159/159/159 but **108** on ME, **7** on Insurance and Welcome Call, **3** on Claims); hops copy by label text so they are fine, but anything writing an index directly needs that board's own id |
-| The new header is missing, or a page sits under it wrong | §5.39b — the layout switch is in the header's gear menu (`lib/shell/layout.ts`, default `redesign`, per browser). A page 56px too tall means it sizes against the viewport and `shell.css`'s `.cc-shell .min-h-screen` / `.h-screen` overrides did not reach it. ⚠️ Reproduce with a REAL, long list — §7 records this being "disproved" against a two-row fixture and reverted |
+| The new header is missing, or a page sits under it wrong | §5.39b — the layout switch is in the **settings popover in BOTH layouts** and in the header's gear menu (`lib/shell/layout.ts`, default `redesign`, per browser). A page 56px too tall means it sizes against the viewport and `shell.css`'s `.cc-shell .min-h-screen` / `.h-screen` overrides did not reach it. ⚠️ Reproduce with a REAL, long list — §7 records this being "disproved" against a two-row fixture and reverted |
+| **"I switched to the old view and can't get back"** | §5.39d — open the app with **`?layout=redesign`** appended; it applies and strips itself. That is the route for a page with no settings menu (the patient screen, every stage page). From the home page or `ProcessorView` the settings gear's popover carries the toggle in both layouts. Nuclear option: clear `mm-shell-layout` in localStorage |
+| A redesign control appears over the OLD layout (a stray "Viewing" strip) | §5.39d — `HomeViewHost` is mounted at the ROUTE, outside `AppShell`, so it must gate on the layout itself. Anything else mounted outside the shell has the same trap; `layoutEscape.test.tsx` pins this one |
+| A button in the bottom-left corner won't take a click (sign-out, Manage Access, the layout toggle) | §5.39d — `IncomingCallHost`'s call-status stack is there at `z-[60]` and covered them. It is `pointer-events-none` now, so it cannot intercept whatever it covers; if it recurs, something put `pointer-events-auto` back on the stack rather than on the one control that needs it |
+| The patient screen has no way out | §5.39d — it renders no header of its own by design (§5.39b), so it carries its own `<BackRow />` on `useBackNavigation` in every `cc-pt` branch, error branch included |
 | Somebody lost a button, or a tab vanished for them | §5.39c — abilities are on `access.json` under the person's `perms`, edited on `/access`. ⚠️ **Absent means ON**, so a missing button means somebody explicitly turned it off, never that the field is unset. A MANAGER keeps every ability whatever `perms` says |
 | "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |
 | The phone icon in the top bar is red / there is no phone icon | §5.39c — it is `CallConnectionBadge compact`, the same component as the home badge, and it renders for **assigned call answerers only** (§5.13b). Red with "the line is full" is RingCentral's five registrations (§5.13b); amber "another tab" means click it to move the line here. No icon at all ⇒ not in `callAnswerers` on `/access` |

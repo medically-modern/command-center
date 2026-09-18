@@ -15,7 +15,9 @@
  * failure.
  *
  * Positioned by its host (IncomingCallHost stacks it with SoftphoneStatus in
- * the bottom-left corner), not by itself.
+ * the bottom-left corner), not by itself. ⚠️ That stack is
+ * `pointer-events-none`, so this card must not assume it can be clicked — the
+ * Reload button opts back in explicitly and nothing else here may.
  */
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -56,9 +58,15 @@ export default function CallStreamStatus({ connected, error }: Props) {
         </span>
       </span>
       {dead && (
+        // ⚠️ `pointer-events-auto` takes the click back for this one control.
+        // The stack that positions these notices is `pointer-events-none`, so
+        // a notice can never cover the settings button, Manage Access or
+        // anything else a page puts in that corner (IncomingCallHost has the
+        // measurement). This is the only interactive thing in either notice,
+        // so it is the only thing that opts back in.
         <button
           onClick={() => window.location.reload()}
-          className="ml-1 shrink-0 rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium hover:bg-destructive/10"
+          className="pointer-events-auto ml-1 shrink-0 rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium hover:bg-destructive/10"
         >
           Reload
         </button>

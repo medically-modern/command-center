@@ -5,9 +5,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { Settings, LogOut } from "lucide-react";
+import { Settings, LogOut, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authRequired, signOut, getUser } from "@/lib/shared/auth";
+import { useShellLayout } from "@/hooks/shell/useShellLayout";
 
 const THEMES = [
   { id: "default", label: "Clinical Blue", swatch: "bg-blue-600" },
@@ -81,9 +82,39 @@ export function ThemePickerButton({ className }: { className?: string }) {
   );
 }
 
+/**
+ * The settings popover's body, shared by the sidebar and the floating button.
+ *
+ * ⚠️⚠️ **THE LAYOUT TOGGLE LIVES HERE BECAUSE THIS POPOVER EXISTS IN BOTH
+ * LAYOUTS** (Josh, 2026-09-18: *"i saw it for a minute and then pressed show me
+ * the original view and never was able to get back"*). It shipped in the global
+ * header's gear menu ALONE — and "as today" removes the header, so switching
+ * away deleted the only control that could switch back. A one-way door out of
+ * the redesign, which is the exact dead end §5.10 · §5.20 · §5.31c · §5.32c
+ * each record reversing, and it cost Josh the app for an afternoon.
+ *
+ * ⚠️ The gear menu keeps its copy — it is Brandon's own placement and it is
+ * where somebody in the redesign looks. Both read and write the one
+ * `useShellLayout` hook, so they cannot disagree; what matters is that at least
+ * one of them renders in EVERY layout. Never leave this the only one either:
+ * this popover is not on every page, so `?layout=` (lib/shell/layout.ts) is the
+ * recovery route from a page that has neither.
+ */
 function ThemeList({ theme, setTheme }: { theme: string; setTheme: (t: string) => void }) {
+  const [layout, setLayout] = useShellLayout();
   return (
     <>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5 px-1">
+        Layout
+      </p>
+      <button
+        onClick={() => setLayout(layout === "redesign" ? "current" : "redesign")}
+        className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-left transition-colors hover:bg-muted text-muted-foreground hover:text-foreground"
+      >
+        <LayoutGrid className="h-3.5 w-3.5 shrink-0" />
+        {layout === "redesign" ? "Switch to the layout as it was" : "Switch to the new layout"}
+      </button>
+      <div className="my-2 border-t border-border" />
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5 px-1">
         Theme
       </p>

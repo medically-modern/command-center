@@ -279,3 +279,15 @@
   .cc-pt .pt-screen { grid-template-columns: minmax(0, 1fr); }
   .cc-pt .pt-side { border-left: 0; border-top: 1px solid var(--bd); max-height: 60vh; }
 }
+
+/* Back — the screen's own way out (§5.39). It relies on no header, because in
+   the "as today" layout there isn't one and this page was a dead end without
+   it. Quiet by design: the top bar card below is the page's real heading. */
+.cc-pt .pt-back { padding: 10px 16px 0; }
+.cc-pt .pt-back button {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 8px;
+  font-size: 12px; font-weight: 600;
+  color: hsl(var(--muted-foreground)); background: none; border: 0; cursor: pointer;
+}
+.cc-pt .pt-back button:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }

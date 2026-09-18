@@ -344,8 +344,28 @@ export default function IncomingCallHost() {
   // what a dead stream, or a full line, looks like.
   return (
     <>
+      {/* ⚠️⚠️ **THIS STACK SAT ON THE SETTINGS BUTTON AND SWALLOWED THE CLICK.**
+          `ThemePickerButton` is `fixed bottom-4 left-4 z-40` on `ProcessorView`
+          and on the no-sidebar home, and the old sidebar puts its own settings
+          gear plus Manage Access in the same corner — so at `bottom-4 z-[60]`
+          with pointer events on, these notices covered all three. That button
+          is sign-out AND the layout escape hatch (§5.39b), so "covered" meant a
+          rep with an unhealthy call stream could not leave the layout or the
+          app. Measured in a browser, not reasoned about: the click was
+          reported intercepted by this div.
+
+          ⚠️ **Fixed BY CONSTRUCTION, not by tuning the offset.** These notices
+          only report, so `pointer-events-none` on the stack means they can
+          never intercept anything — whatever corner they sit in, however tall
+          they grow, and whatever a page puts behind them. That is the same
+          thing the card stack below already does, for the same reason; the one
+          interactive thing in here (`CallStreamStatus`' Reload, which renders
+          only when the stream is dead) takes `pointer-events-auto` back for
+          itself. `bottom-14` is then only about being SEEN: it clears the 32px
+          button visually, so the escape hatch stays findable rather than
+          merely clickable-through. */}
       {enabled && (
-        <div className="fixed bottom-4 left-4 z-[60] flex flex-col gap-2 pointer-events-auto">
+        <div className="fixed bottom-14 left-4 z-[60] flex flex-col gap-2 pointer-events-none">
           <CallStreamStatus connected={connected} error={error} />
           <SoftphoneStatus enabled={phone.enabled} registration={phone.registration} error={phone.registrationError} />
         </div>
