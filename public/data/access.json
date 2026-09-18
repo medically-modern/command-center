@@ -104,7 +104,10 @@
         "doctorAppointments",
         "intakeCleanup",
         "welcomeCall"
-      ]
+      ],
+      "perms": {
+        "comms": false
+      }
     },
     "janelle@medicallymodern.com": {
       "name": "janelle",
