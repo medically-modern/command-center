@@ -68,6 +68,8 @@ import { MethodBar } from "@/components/masheke/MethodBar";
 import { buildRequestTemplate, titleCase } from "@/lib/masheke/requestTemplate";
 import { generateMnRequestPdf } from "@/lib/masheke/mnRequestPdf";
 import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
+import { isPortalMethod } from "@/lib/masheke/requestDelivery";
+import { DISTRICT_ENDOCRINE_DASHBOARD_URL } from "@/lib/shared/partnerDashboard";
 import { toast } from "sonner";
 import {
   Check,
@@ -80,6 +82,7 @@ import {
   Printer,
   Phone,
   Globe,
+  ExternalLink,
   AlertTriangle,
   ChevronRight,
   Upload,
@@ -418,13 +421,17 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
       return;
     }
     setCompleting(true);
-    const isParachute = patient.clinicalsMethod === "Parachute";
-    // Parachute skips Confirm Receipt (rep handles receipt-confirmation in the
-    // Parachute portal directly), so we route straight to Chase Clinicals.
-    const nextStage = isParachute ? "Chase Clinicals" : "Confirm Receipt";
+    // A portal method (Parachute, Dashboard) skips Confirm Receipt — the rep
+    // handles receipt-confirmation in the portal itself and there is no fax or
+    // email whose arrival anybody here could confirm — so we route straight to
+    // Chase Clinicals. ⚠️ Email does NOT: it shares the chase ROLE with these
+    // two but is still sent by us, so it keeps the Confirm Receipt hop. See
+    // lib/masheke/requestDelivery.ts for why that is two lists, not one.
+    const viaPortal = isPortalMethod(patient.clinicalsMethod);
+    const nextStage = viaPortal ? "Chase Clinicals" : "Confirm Receipt";
     // → Confirm Receipt: +1 business day (fax/email needs a day to land before
-    // the receipt call). Parachute → Chase Clinicals: +3 business days.
-    const nextAction = toIsoDate(addBusinessDays(etNow(), isParachute ? 3 : 1));
+    // the receipt call). Portal → Chase Clinicals: +3 business days.
+    const nextAction = toIsoDate(addBusinessDays(etNow(), viaPortal ? 3 : 1));
     const sentAt = new Date();
     const sentIso = sentAt.toISOString();
     const tasks: WriteTask[] = [];
@@ -512,7 +519,10 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
   const ipMissing = missingForScript("ip");
 
   const method = patient.clinicalsMethod ?? "Fax";
-  const isParachute = method === "Parachute";
+  // Portal-delivered: no Generate Scripts step, composer collapsed, and
+  // "Request Sent" as the primary action. Parachute and Dashboard; deliberately
+  // NOT Email (lib/masheke/requestDelivery.ts).
+  const viaPortal = isPortalMethod(method);
   const isFaxOrEmail = method === "Fax" || method === "Email";
   const mnLetterPresent = mondayFiles.mnRequestLetter.length > 0;
 
@@ -533,7 +543,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
     />
   );
 
-  const sendStepNum = isParachute ? 2 : 3;
+  const sendStepNum = viaPortal ? 2 : 3;
   void sendStepNum;
 
   const handleAddNote = (text: string) => {
@@ -623,15 +633,15 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
         <MethodComms patient={patient} method={method} />
       </MmStep>
 
-      {/* ── Step 3 — Generate Scripts (fax/email; for Parachute it sits inside the Send drawer) ── */}
-      {!isParachute && (
+      {/* ── Step 3 — Generate Scripts (fax/email; for a portal method it sits inside the Send drawer) ── */}
+      {!viaPortal && (
         <MmStep num={3} title="Generate Scripts">
           {generateScriptsBlock}
         </MmStep>
       )}
 
       {/* ── Step 4 — Send the Request ── */}
-      <MmStep num={isParachute ? 3 : 4} title="Send the Request">
+      <MmStep num={viaPortal ? 3 : 4} title="Send the Request">
         <SendRequestComposer
           key={`${patient.id}:${resetVersion}`}
           patient={patient}
@@ -645,7 +655,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
           completing={completing}
           sentNow={sentNow}
           sentAtIso={sentAtIso}
-          generateSlot={isParachute ? generateScriptsBlock : undefined}
+          generateSlot={viaPortal ? generateScriptsBlock : undefined}
         />
       </MmStep>
     </div>
@@ -701,31 +711,44 @@ function formatPhone(raw?: string): string {
 }
 
 
-/** Method badge (Fax / Email / Parachute) for the top bar. Parachute links out. */
+/**
+ * Method badge (Fax / Email / Parachute / Dashboard) for the top bar.
+ *
+ * A portal method links out to the portal that will actually carry the
+ * request. ⚠️ Both hrefs are plain constants: a browser only allows a new tab
+ * during user activation, so an href that had to be resolved first would be
+ * blocked in Safari and open blank in Chrome (see partnerDashboard.ts, which
+ * is also why the dashboard link is the roster and not a per-patient URL).
+ */
 function MethodBadge({ method }: { method: string }) {
   const isFax = method === "Fax";
   const isEmail = method === "Email";
-  const isParachute = method === "Parachute";
-  const known = isFax || isEmail || isParachute;
+  const isDashboard = method === "Dashboard";
+  const portal = isDashboard
+    ? { href: DISTRICT_ENDOCRINE_DASHBOARD_URL, title: "Open the District Endocrine dashboard" }
+    : method === "Parachute"
+      ? { href: "https://www.parachutehealth.com/", title: "Open Parachute Health" }
+      : null;
+  const known = isFax || isEmail || !!portal;
   const cls = `inline-flex items-center gap-2 rounded-xl px-5 py-3.5 text-xl font-extrabold tracking-tight shrink-0 ${
     known ? "text-white" : "bg-muted text-muted-foreground"
   }`;
-  const style = known ? { background: isParachute ? "var(--mm-green)" : "var(--mm-teal)" } : undefined;
+  const style = known ? { background: portal ? "var(--mm-green)" : "var(--mm-teal)" } : undefined;
   const inner = (
     <>
-      {isEmail ? <Mail className="h-[22px] w-[22px]" /> : isFax ? <Printer className="h-[22px] w-[22px]" /> : isParachute ? <Globe className="h-[22px] w-[22px]" /> : null}
+      {isEmail ? <Mail className="h-[22px] w-[22px]" /> : isFax ? <Printer className="h-[22px] w-[22px]" /> : isDashboard ? <ExternalLink className="h-[22px] w-[22px]" /> : portal ? <Globe className="h-[22px] w-[22px]" /> : null}
       {method}
     </>
   );
-  if (isParachute) {
+  if (portal) {
     return (
       <a
-        href="https://www.parachutehealth.com/"
+        href={portal.href}
         target="_blank"
         rel="noopener noreferrer"
         className={`${cls} hover:opacity-90 transition-opacity`}
         style={style}
-        title="Open Parachute Health"
+        title={portal.title}
       >
         {inner}
       </a>
@@ -1058,8 +1081,10 @@ function SendRequestComposer({
   const [cc, setCc] = useState<string[]>([]);
   const [ccInput, setCcInput] = useState("");
   const [subject, setSubject] = useState(`Medical necessity documentation for ${titleCase(patient.name || "")}`);
-  const isParachute = method === "Parachute";
-  const [open, setOpen] = useState(!isParachute);
+  // Parachute and Dashboard alike: the portal carries the request, so the
+  // composer starts collapsed and the fax/email inside it is the rare fallback.
+  const viaPortal = isPortalMethod(method);
+  const [open, setOpen] = useState(!viaPortal);
   const [files, setFiles] = useState<File[]>([]);
   // ── Delivery status of the request that was actually sent ──────────────
   // The whole reason the send no longer advances: RingCentral accepts a fax
@@ -1100,7 +1125,7 @@ function SendRequestComposer({
   // Almost every request should carry an attachment — a missing one pops a
   // clear confirmation modal (instead of an easy-to-miss inline note).
   const trySend = () => {
-    if (!isParachute && files.length === 0) {
+    if (!viaPortal && files.length === 0) {
       setShowNoFile(true);
       return;
     }
@@ -1108,14 +1133,14 @@ function SendRequestComposer({
   };
   return (
     <div className="space-y-5">
-      {isParachute && (
+      {viaPortal && (
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronRight className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`} />
-          {open ? "Hide request template" : "Show request template (optional for Parachute)"}
+          {open ? "Hide request template" : `Show request template (optional for ${method})`}
         </button>
       )}
       {open && (
@@ -1232,10 +1257,11 @@ function SendRequestComposer({
         )}
       </div>
       </div>
-      {/* Parachute: the actual fax/email send lives INSIDE the optional template
-          (rarely used — the portal usually delivers the request). Advancing the
-          stage is the always-visible "Request Sent" button below. */}
-      {isParachute && (
+      {/* Portal methods: the actual fax/email send lives INSIDE the optional
+          template (rarely used — the portal usually delivers the request).
+          Advancing the stage is the always-visible "Request Sent" button
+          below, which the rep presses to confirm they sent it in the portal. */}
+      {viaPortal && (
         <div className="flex justify-end">
           <Button onClick={trySend} disabled={sending} variant="outline" className="gap-2">
             {sending ? (
@@ -1253,7 +1279,7 @@ function SendRequestComposer({
         </>
       )}
 
-      {/* Notes — always visible (rep still logs notes after a Parachute send) */}
+      {/* Notes — always visible (rep still logs notes after a portal send) */}
       <div className="rounded-2xl border p-5" style={{ borderColor: "var(--mm-card-border)" }}>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
           Notes — anything else the team should know <span className="normal-case font-normal">(optional)</span>
@@ -1305,7 +1331,7 @@ function SendRequestComposer({
         })()}
       </div>
 
-      {!isParachute && files.length === 0 && (
+      {!viaPortal && files.length === 0 && (
         <div
           className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
           style={{ background: "oklch(0.98 0.03 95)", borderColor: "oklch(0.85 0.08 85)", color: "oklch(0.5 0.08 70)" }}
@@ -1314,12 +1340,40 @@ function SendRequestComposer({
           No attachment added yet — most requests should include a script template.
         </div>
       )}
+      {/* Dashboard: where the request is actually sent. Sits beside Request
+          Sent because that is the order the rep does it in — open the
+          dashboard, send it there, then confirm here.
+          ⚠️ Keyed on the PATIENT's method, never on `viaPortal`: Parachute
+          shares that predicate and must keep linking to Parachute Health. */}
+      {method === "Dashboard" && (
+        <div className="rounded-2xl border p-5" style={{ borderColor: "var(--mm-card-border)" }}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+            Send it on the partner dashboard
+          </p>
+          <a
+            href={DISTRICT_ENDOCRINE_DASHBOARD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm bg-[color:var(--mm-teal)] hover:opacity-90 transition-opacity"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open District Endocrine dashboard
+          </a>
+          <p className="text-xs text-muted-foreground mt-2">
+            Sign in, then find {patient.name || "the patient"} on the roster. Press
+            Request Sent below once the message is on their thread.
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-4" style={{ borderColor: "var(--mm-card-border)" }}>
         <span />
         <div className="flex items-center gap-3">
-          {isParachute ? (
-            // Primary action for Parachute — advances the stage no matter what
-            // (the fax/email above is optional and rarely used).
+          {viaPortal ? (
+            // Primary action for a portal method — the rep presses it to
+            // confirm they sent the request in the portal, and it advances the
+            // stage no matter what (the fax/email above is optional and rarely
+            // used). No auto-advance and no Monday column gates it: the same
+            // single button Parachute has always had.
             <Button
               onClick={onMarkComplete}
               disabled={completing}

@@ -79,3 +79,48 @@ describe("the send records, it does not advance", () => {
     expect(PANEL).toContain("disabled={completing || !hasSentRequest}");
   });
 });
+
+/**
+ * A portal method skips Confirm Receipt — and Email must not (Sept 2026).
+ *
+ * `Dashboard` joined Parachute as a portal method: the request is carried by
+ * the partner's dashboard, so there is no fax or email whose arrival anybody
+ * here could confirm, and the stage advances straight to Chase Clinicals on a
+ * button the rep presses to say they sent it.
+ *
+ * ⚠️ The regression this guards is the tempting one: `Dashboard` also shares
+ * the CHASE ROLE with Parachute AND Email (`chaseMethods.ts`), so a later
+ * reader is one edit away from routing Send Request off that list instead.
+ * Doing so would stop every Email patient passing through Confirm Receipt —
+ * silently, because the stage would simply never be entered. Scanned rather
+ * than executed for the reason the file's header gives.
+ */
+describe("Send Request routes on delivery, not on the chase role", () => {
+  it("decides the next stage with isPortalMethod", () => {
+    expect(PANEL).toContain("const viaPortal = isPortalMethod(patient.clinicalsMethod);");
+    expect(PANEL).toContain('const nextStage = viaPortal ? "Chase Clinicals" : "Confirm Receipt";');
+  });
+
+  it("never routes Send Request off the chase-role list", () => {
+    // chaseMethods.ts is the QUEUE; using it here would drag Email in with it.
+    expect(PANEL).not.toContain("isParachuteRoleMethod");
+    expect(PANEL).not.toContain("PARACHUTE_ROLE_METHODS");
+  });
+
+  it("does not hardcode the old Parachute-only test anywhere", () => {
+    expect(PANEL).not.toContain('clinicalsMethod === "Parachute"');
+    expect(PANEL).not.toContain('method === "Parachute";');
+  });
+
+  it("gives a portal method the collapsed composer and no Generate Scripts step", () => {
+    expect(PANEL).toContain("const [open, setOpen] = useState(!viaPortal);");
+    expect(PANEL).toContain("{!viaPortal && (");
+    expect(PANEL).toContain("generateSlot={viaPortal ? generateScriptsBlock : undefined}");
+  });
+
+  it("keeps the dashboard link keyed on the patient's own method, not the portal set", () => {
+    // Parachute shares `viaPortal` and must keep linking to Parachute Health.
+    expect(PANEL).toContain('{method === "Dashboard" && (');
+    expect(PANEL).toContain("DISTRICT_ENDOCRINE_DASHBOARD_URL");
+  });
+});
