@@ -108,7 +108,8 @@
       "perms": {
         "comms": false,
         "adjustOrders": false,
-        "reports": false
+        "reports": false,
+        "inventory": false
       }
     },
     "janelle@medicallymodern.com": {
