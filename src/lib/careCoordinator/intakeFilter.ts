@@ -16,7 +16,7 @@
  * that is what makes "Photo upload" work. Brandon asked for it as an insurance
  * option; it is not a payer and it is not on the General Insurance column at
  * all — it is `Insurance Provided Via = "Photo of card"`, which the card
- * already renders as **"Card on file"** because 18 of the 20 live rows that
+ * already renders as **"Photo upload"** because 19 of the 23 live rows that
  * answered it have a blank carrier (§5.30c, `pills.intakeInsurance`). Deriving
  * the list from `facetValue`, the same function the pill calls, means the
  * option and the pill are the same string by construction. Hardcoding a payer

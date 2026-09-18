@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  Copy,
   FileText,
   Loader2,
   Mail,
@@ -540,21 +541,66 @@ export function formatPhoneNice(raw?: string): string {
   return raw;
 }
 
-/* ⚠️ `CopyPhoneButton` — the small copy-to-clipboard button that sat between
-   Text and Call Log — was DELETED on 2026-09-17 (Brandon, via Josh: "it's the
-   little copy button next to text, remove").
-
-   It shipped the day before (§5.31f), because the number renders as the label
-   of a `tel:` link and dragging to select it starts a link drag instead of a
-   selection, so a rep pasting into RingCentral or a payer portal had nothing to
-   copy from. That complaint is real and is now UNADDRESSED again: selecting the
-   number off a patient header is still awkward. It was removed anyway because
-   it is a fourth control on a row that already carries Call, Text and Call Log,
-   on screens whose complaint is crowding.
-
-   If it comes back, it should come back somewhere that is not this row — the
-   header's own name/DOB line, or a right-click affordance — not as a fifth
-   button here. Deleted rather than left unimported: §5.11's rule. */
+/**
+ * Copy the patient's number to the clipboard.
+ *
+ * ⚠️ **OPT-IN, and the opt-in IS the fix** (Josh, 2026-09-18: "welcome call
+ * only should have it not care cordinator"). Katie asked for this on the
+ * **Welcome Call stage page** (§5.31f) — the number renders as the label of a
+ * `tel:` link, so dragging across it starts a link drag rather than a
+ * selection and there is nothing to copy from. It shipped 2026-09-17 inside
+ * this shared component, which put it on all ten headers; Brandon then asked
+ * for it off the **Care Coordinator card** (§5.30e), where it was a fourth
+ * control on a crowded row, and deleting it here took it off the stage page
+ * too, undoing her fix. Two different screens — §5.30's table.
+ *
+ * So it is a prop. `showCopy` absent ⇒ byte-identical to the row every other
+ * header has had; only `welcomeCall/PatientActivityCard` passes it. A future
+ * screen that wants it opts in and says so, rather than inheriting it.
+ *
+ * ⚠️ It copies the DIGITS **as displayed**, not `tel:`'s stripped form — a rep
+ * is pasting into RingCentral, a payer portal or a note, and `+15555550100` is
+ * not what any of them want back.
+ *
+ * ⚠️ A clipboard refusal (insecure origin, a permissions policy, an old
+ * browser) SAYS SO rather than silently doing nothing: a copy button that
+ * quietly fails is worse than no button, because the rep pastes whatever was
+ * on the clipboard before.
+ */
+function CopyPhoneButton({ display }: { display: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  useEffect(() => {
+    if (state === "idle") return;
+    const t = setTimeout(() => setState("idle"), 1600);
+    return () => clearTimeout(t);
+  }, [state]);
+  return (
+    <button
+      type="button"
+      title={state === "failed" ? "Couldn't copy — select the number and copy it manually" : `Copy ${display}`}
+      aria-label={`Copy ${display}`}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(display);
+          setState("copied");
+        } catch {
+          setState("failed");
+        }
+      }}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm font-semibold shadow-sm transition-colors",
+        state === "failed"
+          ? "border-rose-300 bg-rose-50 text-rose-700"
+          : state === "copied"
+            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+            : "border-border bg-background text-foreground hover:bg-muted",
+      )}
+    >
+      <Copy className="h-3.5 w-3.5 shrink-0" />
+      {state === "copied" ? "Copied" : state === "failed" ? "Couldn't copy" : "Copy"}
+    </button>
+  );
+}
 
 /** Days-in-stage pill — shown right-aligned with the patient name, with a
  *  "Days in Stage:" label in front. */
@@ -580,7 +626,7 @@ export function DaysInStagePill({ value }: { value?: string }) {
 export function PatientContact({
   phone, textPrefill, textOpen, onTextOpenChange, onTextSent, hideCallHistory,
   textTone, callHistoryLabel, callHistoryIcon, callHistoryCount,
-  patientName,
+  patientName, showCopy,
 }: {
   phone?: string;
   /**
@@ -604,6 +650,14 @@ export function PatientContact({
   textTone?: "green";
   callHistoryLabel?: string;
   callHistoryIcon?: "list";
+  /** Render the Copy-number button between Text and Call Log.
+   *
+   *  ⚠️ **Welcome Call passes this and nothing else does** (Josh, 2026-09-18).
+   *  See `CopyPhoneButton` above: the ask was for the Welcome Call stage page,
+   *  the removal came from a note about the Care Coordinator card, and this
+   *  prop is what keeps the two screens apart. `copyPhoneScope.test.ts` fails
+   *  the build if another caller picks it up. */
+  showCopy?: boolean;
   /** Drop the "Calls" pop-up button.
    *
    *  Only Welcome Call passes this: its RingCentral activity box has a Calls
@@ -645,6 +699,7 @@ export function PatientContact({
         onSent={onTextSent}
         tone={textTone}
       />
+      {showCopy && <CopyPhoneButton display={display} />}
       {!hideCallHistory && (
         <CallHistoryButton
           phone={tel}

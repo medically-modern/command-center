@@ -121,7 +121,14 @@ export function PatientActivityCard({ numbers }: { numbers: ActivityNumber[] }) 
               pop-up is suppressed because the Calls TAB below is the same
               history. ⚠️ It dials and texts the SELECTED number, so a rep
               reading the alternate's thread replies on the alternate. */}
-          <PatientContact phone={phone} hideCallHistory />
+          {/* ⚠️ `showCopy` is THIS SCREEN's, and nowhere else's (Josh,
+              2026-09-18). Katie asked for a copy-number control here because
+              the number is a `tel:` link label and cannot be dragged to
+              select; it shipped inside the shared `PatientContact` and was
+              then removed on a note about the Care Coordinator CARD, which
+              took it off this page too. The prop is what keeps the two
+              screens apart — see §5.30's two-screens table. */}
+          <PatientContact phone={phone} hideCallHistory showCopy />
         </div>
       </div>
 

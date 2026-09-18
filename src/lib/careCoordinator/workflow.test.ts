@@ -31,6 +31,7 @@ const lead = (over: Partial<IntakeLead> = {}): IntakeLead => ({
   insuranceProvidedVia: "Entered manually", insuranceOther: "",
   providedDoctorName: "Dr. Provided", providedClinicPhone: "5555550100",
   ipCoveragePath: "", cgmCoveragePath: "Insulin",
+  insuranceCardUrl: "", stediError: "", stediActive: "Yes", stediPlanName: "Test Plan",
   ...over,
 });
 
@@ -237,7 +238,7 @@ describe("intakeBuckets — the left column", () => {
     expect(nextUp(b.scheduledToday)?.item.id).toBe("now");
   });
 
-  it("excludes, in order: imported · clean-up · call done · send-request-now · nurturing", () => {
+  it("excludes, in order: clean-up · imported · nurturing — and call-done / send-now are REVIEW now", () => {
     const b = intakeBuckets([
       lead({ id: "imp", dropOffStep: "", referralType: "Doctor", referralSource: "SNJ [2.0]" }),
       lead({ id: "cu", groupId: "group_mm6c3rhb" }),
@@ -246,8 +247,58 @@ describe("intakeBuckets — the left column", () => {
       lead({ id: "fresh", createdAt: hoursAgo(READY_AFTER_HOURS - 1) }),
       lead({ id: "ready", createdAt: hoursAgo(READY_AFTER_HOURS + 1) }),
     ], ctx);
-    expect(b.excluded).toEqual({ imported: 1, cleanUp: 1, callDone: 1, sendNow: 1, nurturing: 1 });
+    expect(b.excluded).toEqual({ imported: 1, cleanUp: 1, nurturing: 1 });
     expect(b.unscheduledToday.map((r) => r.item.id)).toEqual(["ready"]);
+    // The two former exclusions are a LIST now, not a count (Josh, 2026-09-18).
+    expect(b.reviewProfile.map((r) => r.item.id).sort()).toEqual(["done", "send"]);
+  });
+
+  it("Review Profile: both routes in, and an ABANDONED 'Send request now' is not one", () => {
+    const b = intakeBuckets([
+      lead({ id: "callDone", intakeCallComplete: "Yes", dropOffStep: "Step 4 - Doctor" }),
+      lead({ id: "sendNow", dropOffStep: "Completed", proceedPreference: "Send request now" }),
+      // ⚠️ Chose "Send request now" and then abandoned the form — they never
+      // reached the end, so that is not an authorisation to send anything.
+      lead({ id: "abandoned", dropOffStep: "Step 5 - Insurance", proceedPreference: "Send request now" }),
+    ], ctx);
+    expect(b.reviewProfile.map((r) => r.item.id).sort()).toEqual(["callDone", "sendNow"]);
+    expect(b.unscheduledToday.map((r) => r.item.id)).toEqual(["abandoned"]);
+  });
+
+  it("Review Profile is checked BEFORE the import gate — a rep-typed referral still shows", () => {
+    // No Drop-off Step at all (never touched the web form), but a rep ticked
+    // the intake call. Under the old exclusions this row was counted and never
+    // listed; `isFormLead` would still drop it if the order were reversed.
+    const b = intakeBuckets([lead({ id: "ccx", dropOffStep: "", intakeCallComplete: "Yes" })], ctx);
+    expect(b.reviewProfile.map((r) => r.item.id)).toEqual(["ccx"]);
+    expect(b.excluded.imported).toBe(0);
+  });
+
+  it("a logged attempt moves a Review Profile patient to Unscheduled (Brandon's own rule)", () => {
+    const b = intakeBuckets([
+      lead({ id: "rung", intakeCallComplete: "Yes", attemptCounter: "1", followUpDate: "2026-09-09" }),
+    ], ctx);
+    expect(b.reviewProfile).toEqual([]);
+    // The attempt pushed the follow-up to tomorrow, so they land in Future.
+    expect(b.unscheduledFuture.map((r) => r.item.id)).toEqual(["rung"]);
+  });
+
+  it("an escalation and a booking both still win over Review Profile", () => {
+    const b = intakeBuckets([
+      lead({ id: "esc", intakeCallComplete: "Yes", intakeEscalation: "Manager Escalation Required" }),
+      lead({ id: "booked", intakeCallComplete: "Yes", scheduledCallTime: `${TODAY} 15:30:00`, bookingStatus: "Scheduled" }),
+    ], ctx);
+    expect(b.reviewProfile).toEqual([]);
+    expect(b.withManager).toBe(1);
+    expect(b.scheduledToday.map((r) => r.item.id)).toEqual(["booked"]);
+  });
+
+  it("Review Profile is longest-waiting first", () => {
+    const b = intakeBuckets([
+      lead({ id: "new", intakeCallComplete: "Yes", createdAt: hoursAgo(50) }),
+      lead({ id: "old", intakeCallComplete: "Yes", createdAt: hoursAgo(600) }),
+    ], ctx);
+    expect(b.reviewProfile.map((r) => r.item.id)).toEqual(["old", "new"]);
   });
 
   it("the automated window only holds a lead nobody has rung yet", () => {
@@ -398,7 +449,8 @@ describe("summarize — the header overview", () => {
       wc({ id: "z", escalation: "Escalation Required" }),
     ], ctx);
     expect(columnSummary(intake)).toEqual({
-      today: { scheduled: 1, unscheduled: 2 }, future: { scheduled: 1, unscheduled: 1 }, total: 5, overdue: 1,
+      today: { scheduled: 1, unscheduled: 2 }, future: { scheduled: 1, unscheduled: 1 },
+      review: 0, total: 5, overdue: 1,
     });
     expect(summarize(intake, w)).toMatchObject({
       total: 5 + 2, overdue: 1,

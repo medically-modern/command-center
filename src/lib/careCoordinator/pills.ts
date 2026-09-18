@@ -188,11 +188,18 @@ export function pillTone(slot: PillSlotKey, value: string, variant: PillVariant 
 /**
  * What the Insurance slot says for a Patient Intake lead.
  *
- * ⚠️ **A CARD PHOTO IS AN ANSWER.** Of the 20 live rows that answered "Photo
- * of card", 18 have a BLANK General Insurance — the carrier is on the photo and
+ * ⚠️ **A CARD PHOTO IS AN ANSWER.** Of the 23 live rows that answered "Photo
+ * of card", 19 have a BLANK General Insurance — the carrier is on the photo and
  * nobody has typed it in yet — so reading the status column alone rendered
  * nothing at all for exactly the patients who had supplied the most (Brandon,
- * on Debra Collins). "Card on file" is the honest thing to say about them.
+ * on Debra Collins).
+ *
+ * ⚠️ The words are **"Photo upload"** from 2026-09-18 (Brandon: *"Change to
+ * 'Photo upload'"*), not "Card on file". On the card the pill is a BUTTON that
+ * opens the photo (`cards.tsx` → `openFileViewer`), so it names the thing it
+ * opens. ⚠️ It is also the string the intake filter offers, because
+ * `intakeFilter.facetValue` calls this function rather than carrying a list —
+ * rename it here and the facet renames itself.
  *
  * ⚠️ **"Not provided" must stay BLANK.** It is a real answer, and it is the one
  * answer that is not insurance information; showing it would put a green pill
@@ -202,6 +209,11 @@ export function pillTone(slot: PillSlotKey, value: string, variant: PillVariant 
  * the free-text column behind it wins where it has anything (3 live rows:
  * "Health partners", "QualChoice", "CHRISTUS HEALTH PLAN").
  */
+/** The Insurance pill's words for a patient whose only answer was a card
+ *  photo. Exported because `cards.tsx` keys the pill's open-the-photo action
+ *  off it — two copies of the string is how the button stops matching. */
+export const PHOTO_UPLOAD = "Photo upload";
+
 export function intakeInsurance(lead: {
   generalInsurance: string;
   insuranceProvidedVia: string;
@@ -213,7 +225,7 @@ export function intakeInsurance(lead: {
   if (general === "Other") return other || "Other";
 
   switch ((lead.insuranceProvidedVia || "").trim()) {
-    case "Photo of card": return "Card on file";
+    case "Photo of card": return PHOTO_UPLOAD;
     case "Entered manually": return other || "Entered manually";
     default: return "";
   }

@@ -10,7 +10,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { PipelineColumn, Section } from "./PipelineColumn";
 import { emptyProgress } from "@/lib/careCoordinator/loadProgress";
 
-const summary = { today: { scheduled: 2, unscheduled: 5 }, future: { scheduled: 1, unscheduled: 3 }, total: 11, overdue: 1 };
+const summary = { today: { scheduled: 2, unscheduled: 5 }, future: { scheduled: 1, unscheduled: 3 }, review: 0, total: 11, overdue: 1 };
 
 const column = (progress: React.ComponentProps<typeof PipelineColumn>["progress"], onHorizon = vi.fn()) =>
   render(

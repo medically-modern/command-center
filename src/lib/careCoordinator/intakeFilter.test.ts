@@ -19,6 +19,7 @@ const lead = (over: Partial<IntakeLead> = {}): IntakeLead => ({
   insuranceProvidedVia: "", insuranceOther: "", calendlyEventUri: "",
   providedDoctorName: "", providedClinicPhone: "",
   ipCoveragePath: "OOW Pump", cgmCoveragePath: "Insulin",
+  insuranceCardUrl: "", stediError: "", stediActive: "Yes", stediPlanName: "Test Plan",
   ...over,
 });
 
@@ -35,12 +36,12 @@ describe("facetValue", () => {
   it('offers "Photo upload" as Brandon asked — under the name the card shows it', () => {
     // ⚠️ He asked for "Photo upload" as an insurance option. It is not a payer
     // and is not on the General Insurance column at all: it is Insurance
-    // Provided Via = "Photo of card", which the card renders as "Card on file"
+    // Provided Via = "Photo of card", which the card renders as "Photo upload"
     // because 18 of the 20 live rows that answered it have a blank carrier.
     // Deriving from `intakeInsurance` is what makes the option and the pill the
     // same string rather than two spellings of one idea.
     const l = lead({ generalInsurance: "", insuranceProvidedVia: "Photo of card" });
-    expect(facetValue(l, "insurance", GROUPS)).toBe("Card on file");
+    expect(facetValue(l, "insurance", GROUPS)).toBe("Photo upload");
   });
 
   it('treats a "Not Serving" path as blank, exactly as the pill does', () => {

@@ -69,7 +69,8 @@ import { contactKey } from "@/lib/contactState/contactState";
 import { IntakeFilter } from "@/components/careCoordinator/IntakeFilter";
 import { PipelineColumn, Section } from "@/components/careCoordinator/PipelineColumn";
 import {
-  IntakeScheduledCard, IntakeUnscheduledCard, WelcomeScheduledCard, WelcomeUnscheduledCard,
+  IntakeReviewCard, IntakeScheduledCard, IntakeUnscheduledCard,
+  WelcomeScheduledCard, WelcomeUnscheduledCard,
   type CardExtras,
 } from "@/components/careCoordinator/cards";
 import { ScheduleGrid } from "@/components/careCoordinator/ScheduleGrid";
@@ -190,6 +191,11 @@ export default function CareCoordinatorPage() {
   const intakeNoteIds = useMemo(() => [
     ...intakeB.scheduledToday, ...intakeB.scheduledFuture,
     ...intakeB.unscheduledToday, ...intakeB.unscheduledFuture,
+    // ⚠️ Review Profile rides the SAME batched notes read. Left out, those
+    // cards would each show an empty notes line for ever — and the notes are
+    // how a coordinator sees what the last call found out, which on this
+    // bucket is the whole job (§5.30e: one request per COLUMN, never per card).
+    ...intakeB.reviewProfile,
   ].map((e) => e.item.id), [intakeB]);
   const welcomeNoteIds = useMemo(() => [
     ...welcomeB.scheduledToday, ...welcomeB.scheduledFuture,
@@ -380,6 +386,10 @@ export default function CareCoordinatorPage() {
                   <IntakeUnscheduledCard key={e.item.id} entry={e} today={today} onBookingLink={linkForIntake}
                     extras={extrasFor(e.item.id, e.item.phone, intakeNotes)} />
                 ))}
+                review={intakeB.reviewProfile.map((e) => (
+                  <IntakeReviewCard key={e.item.id} entry={e} today={today} onBookingLink={linkForIntake}
+                    extras={extrasFor(e.item.id, e.item.phone, intakeNotes)} />
+                ))}
               />
             )}
           </PipelineColumn>
@@ -431,11 +441,13 @@ export default function CareCoordinatorPage() {
  * drift out of alignment: the switch drew only under Today, so flipping a
  * column to Future changed the height of its Scheduled bar.
  */
-function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled }: {
+function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled, review }: {
   horizon: Horizon;
   scheduledToday: React.ReactElement[];
   scheduledFuture: React.ReactElement[];
   unscheduled: React.ReactElement[];
+  /** Review Profile — Patient Intake only; omitted on Welcome Call. */
+  review?: React.ReactElement[];
 }) {
   const scheduled = horizon === "future" ? scheduledFuture : scheduledToday;
   return (
@@ -446,6 +458,19 @@ function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled }: 
       <Section title="Unscheduled" count={unscheduled.length} tone="unscheduled">
         {unscheduled}
       </Section>
+      {/* ⚠️ Rendered under TODAY only, and that is the rule rather than a
+          layout choice: nothing dates a Review Profile patient — no follow-up
+          date, no booking — so they belong to neither horizon, and "Future"
+          promises a date that will bring them back. Today is where a
+          coordinator looks for work with no clock on it (§5.30's blank-date
+          rule for Unscheduled, one bucket over). A logged attempt gives them a
+          date and moves them to Unscheduled → Future, which is the whole
+          transition Brandon described. */}
+      {review && horizon === "today" && (
+        <Section title="Review Profile" count={review.length} tone="review">
+          {review}
+        </Section>
+      )}
     </>
   );
 }

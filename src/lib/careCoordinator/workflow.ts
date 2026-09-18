@@ -124,6 +124,15 @@ export interface IntakeLead {
   providedClinicPhone: string;
   ipCoveragePath: string;
   cgmCoveragePath: string;
+  /** The insurance card photo's asset URL, or blank. The Insurance pill opens
+   *  it; blank means the pill is inert, which is what a "Photo of card" row
+   *  with no file on it must look like (one live row is exactly that). */
+  insuranceCardUrl: string;
+  /** The three eligibility facts `intakeBlocker` reads. Written by
+   *  `stedi-monday-integration`, never by this app. */
+  stediError: string;
+  stediActive: string;
+  stediPlanName: string;
 }
 
 export interface ChaseItem {
@@ -560,14 +569,36 @@ export function isIntakeEscalated(lead: Pick<IntakeLead, "intakeEscalation">): b
 
 export type IntakeExclusion =
   | "imported"      // never touched the form — the DME / referral rows in the form groups
-  | "callDone"      // Intake Call Complete = Yes
-  | "sendNow"       // completed form, chose "Send request now" — no call wanted
   | "nurturing"     // inside the 48-hour automated window
   | "cleanUp";      // unbooked patient already in Profile Clean-Up — not a call
+/* ⚠️ `callDone` and `sendNow` are GONE from this union (Josh, 2026-09-18) —
+   they are the Review Profile section now, not exclusions. See
+   `needsProfileReview`: those two exclusions between them hid every patient
+   who does not need a call, which is exactly the population a coordinator has
+   work to do on. */
 
 export interface IntakeBuckets extends ColumnBuckets<IntakeLead> {
+  /**
+   * Form-completed patients who asked us to send the request without a call,
+   * and patients a rep has already called — i.e. nobody to ring, a profile to
+   * check and advance (Brandon, 2026-09-17: "create a 3rd grouping, intake
+   * side only … Review Profile"; Josh, 2026-09-18: fold Intake Call Complete
+   * in with it).
+   */
+  reviewProfile: ReviewEntry<IntakeLead>[];
   /** Why the rest of the groups' rows are not on this screen. Counts only. */
   excluded: Record<IntakeExclusion, number>;
+}
+
+export interface ReviewEntry<T> {
+  item: T;
+  /** Days-since-intake ordering, oldest first — the same clock the Unscheduled
+   *  list uses, because it is the same "who has waited longest" question. */
+  waitingMs: number;
+  /** The first advance-unlock condition this patient fails, or "" when nothing
+   *  this dashboard can see is blocking them. ⚠️ NEVER read an empty string as
+   *  "ready to advance" — see `intakeBlocker`. */
+  blocker: string;
 }
 
 export interface IntakeContext extends BucketContext {
@@ -615,14 +646,94 @@ export function formCompletion(
  * after that the exclusions are checked cheapest-fact-first so the count a row
  * lands in is the FIRST reason it isn't a call, not an arbitrary one.
  */
+/**
+ * Does this patient need a PROFILE REVIEW rather than a phone call?
+ *
+ * Two routes in, and §5.20 says they are one signal from two sources: the
+ * patient chose **"Send request now"** on a form they finished, or a rep
+ * ticked **Intake Call Complete** — which `profile/intakeUnlock.ts` calls
+ * "the rep-side equivalent of the patient choosing Send request now" and
+ * treats as the same unlock condition. One bucket, therefore.
+ *
+ * ⚠️ Both used to be EXCLUSIONS (`sendNow`, `callDone`), and between them they
+ * hid the whole population from this dashboard. `callDone` was the worse half:
+ * it exists to drop patients who do not need a call, and on 2026-09-18 the ONE
+ * live row carrying it was Savannah French — a patient a rep HAD called, filled
+ * in, and could not advance because her benefits check failed twice. The
+ * exclusion hid exactly the patient it should have surfaced. Hence `blocker`.
+ *
+ * ⚠️ The form-completed half requires **both** halves. "Send request now" on an
+ * ABANDONED form is not an authorisation to send anything — the patient never
+ * reached the end — and those rows stay in the calling queue. Intake Call
+ * Complete stands alone by contrast, because a rep ticking it is a statement
+ * about a call that happened, whatever the patient did with the web form
+ * (§5.24: a partial completed by a rep advances by the same path).
+ */
+export function needsProfileReview(
+  lead: Pick<IntakeLead, "dropOffStep" | "proceedPreference" | "intakeCallComplete">,
+): boolean {
+  if ((lead.intakeCallComplete ?? "").trim().toLowerCase() === "yes") return true;
+  return (lead.dropOffStep ?? "").trim().toLowerCase() === "completed"
+    && /send request now/i.test(lead.proceedPreference ?? "");
+}
+
+/**
+ * The first advance-unlock condition this patient fails, in words, or `""`.
+ *
+ * ⚠️⚠️ **`""` MEANS "NOTHING WE CAN SEE", NEVER "READY TO ADVANCE".** This is a
+ * deliberately NARROWER read than `profile/intakeUnlock.evaluateUnlock`, which
+ * is the authority and runs on the profile page against the full 104-column
+ * record. This dashboard reads ~27 columns, so it can be sure about the
+ * benefits conditions and can MISS a coverage-path one: `cgmInPlay` there also
+ * consults Provided CGM Preference and CGM Data Awareness, neither of which is
+ * in this read, so a CGM patient whose only CGM signal is one of those is not
+ * flagged here. Under-reporting is the safe direction — the rep opens the
+ * profile and gets the real checklist — and it is why the card prints the
+ * blocker when there is one and prints NOTHING when there isn't, rather than a
+ * green "ready" it cannot stand behind. Same relationship §5.18 records
+ * between `systemProfileStatus` and the per-board adapters: narrower, never
+ * contradictory.
+ *
+ * The order mirrors `evaluateUnlock`'s conditions, minus `authorised` — which
+ * is the membership rule of this bucket and therefore always passes.
+ */
+export function intakeBlocker(
+  lead: Pick<IntakeLead,
+    "stediError" | "stediActive" | "stediPlanName" | "requestType" | "pumpNeed" |
+    "cgmCoveragePath" | "ipCoveragePath">,
+): string {
+  const err = (lead.stediError ?? "").trim();
+  // ⚠️ `stediRanCleanly` treats ANY error text as a failed run, whatever else
+  // came back — a failure means the identifiers did not match, not that the
+  // patient is ineligible, so it is never a verdict about coverage.
+  if (err) return `Benefits check failed — ${err}`;
+
+  const active = (lead.stediActive ?? "").trim();
+  if (!active && !(lead.stediPlanName ?? "").trim()) return "Benefits check hasn't run";
+  // Mirrors `intakeUnlock.coverageActive` exactly.
+  if (!["yes", "active", "true"].includes(active.toLowerCase())) {
+    return "Coverage came back inactive";
+  }
+
+  const req = lead.requestType ?? "";
+  const cgmInPlay = Boolean((lead.cgmCoveragePath ?? "").trim()) || /cgm|monitor/i.test(req);
+  if (cgmInPlay && !(lead.cgmCoveragePath ?? "").trim()) return "CGM Coverage Path not chosen";
+  const pumpInPlay = Boolean((lead.ipCoveragePath ?? "").trim() || (lead.pumpNeed ?? "").trim())
+    || /pump/i.test(req);
+  if (pumpInPlay && !(lead.ipCoveragePath ?? "").trim()) return "Insulin Pump Coverage Path not chosen";
+
+  return "";
+}
+
 export function intakeBuckets(leads: IntakeLead[], ctx: IntakeContext): IntakeBuckets {
   const scheduledToday: ScheduledEntry<IntakeLead>[] = [];
   const scheduledFuture: ScheduledEntry<IntakeLead>[] = [];
   const unscheduledToday: UnscheduledEntry<IntakeLead>[] = [];
   const unscheduledFuture: UnscheduledEntry<IntakeLead>[] = [];
+  const reviewProfile: ReviewEntry<IntakeLead>[] = [];
   let withManager = 0;
   const excluded: Record<IntakeExclusion, number> = {
-    imported: 0, callDone: 0, sendNow: 0, nurturing: 0, cleanUp: 0,
+    imported: 0, nurturing: 0, cleanUp: 0,
   };
   const readyAfterMs = READY_AFTER_HOURS * 3_600_000;
 
@@ -639,17 +750,31 @@ export function intakeBuckets(leads: IntakeLead[], ctx: IntakeContext): IntakeBu
       continue;
     }
 
-    // From here down: nobody booked. Is this a patient to ring?
-    if (!isFormLead(lead)) { excluded.imported++; continue; }
+    // From here down: nobody booked.
     if (!ctx.formGroupIds.includes(lead.groupId)) { excluded.cleanUp++; continue; }
-    if ((lead.intakeCallComplete ?? "").trim().toLowerCase() === "yes") { excluded.callDone++; continue; }
-    if (
-      (lead.dropOffStep ?? "").trim().toLowerCase() === "completed" &&
-      /send request now/i.test(lead.proceedPreference ?? "")
-    ) { excluded.sendNow++; continue; }
 
     const waited = waitingMs(lead.createdAt, ctx.nowMs);
     const attempts = toCount(lead.attemptCounter);
+
+    /* ⚠️ REVIEW PROFILE IS CHECKED BEFORE `isFormLead`, deliberately. The
+       intake call can be ticked on a patient who never touched the web form —
+       a CareCentrix referral typed in by a rep (§5.20) — and the import gate
+       below would drop them into a count nothing renders. The 8/25 SNJ import
+       carries none of these three columns, so it cannot leak in this way.
+
+       ⚠️ A LOGGED ATTEMPT MOVES THEM OUT, and that is Brandon's own rule:
+       "if she can't reach them she presses log call attempt and that moves
+       them into Unscheduled instead of Review Profile". `logContactAttempt`
+       bumps the counter and pushes Follow Up Date to tomorrow, so they fall
+       through to Unscheduled → Future — which is where "ring them tomorrow"
+       belongs. On 2026-09-18 exactly 1 of the 27 rows here had an attempt. */
+    if (attempts === 0 && needsProfileReview(lead)) {
+      reviewProfile.push({ item: lead, waitingMs: waited, blocker: intakeBlocker(lead) });
+      continue;
+    }
+
+    // Is this a patient to ring?
+    if (!isFormLead(lead)) { excluded.imported++; continue; }
     // The automated window only applies before anybody has rung them — a
     // patient a rep already called is already being worked.
     if (attempts === 0 && waited < readyAfterMs) { excluded.nurturing++; continue; }
@@ -672,7 +797,14 @@ export function intakeBuckets(leads: IntakeLead[], ctx: IntakeContext): IntakeBu
     (a.followUpDate < b.followUpDate ? -1 : a.followUpDate > b.followUpDate ? 1 : 0) ||
     b.waitingMs - a.waitingMs || a.item.name.localeCompare(b.item.name));
 
-  return { scheduledToday, scheduledFuture, unscheduledToday, unscheduledFuture, withManager, excluded };
+  // Longest-waiting first — the same clock and the same reason as Unscheduled
+  // Today: nothing ages a patient out of this queue on its own (§5.10).
+  reviewProfile.sort((a, b) => b.waitingMs - a.waitingMs || a.item.name.localeCompare(b.item.name));
+
+  return {
+    scheduledToday, scheduledFuture, unscheduledToday, unscheduledFuture,
+    reviewProfile, withManager, excluded,
+  };
 }
 
 /* ── Chase (Confirm Receipt + Chase Clinicals) — kept for the day the column
@@ -840,18 +972,35 @@ export function welcomeCallBuckets(
 export interface ColumnSummary {
   today: { scheduled: number; unscheduled: number };
   future: { scheduled: number; unscheduled: number };
+  /**
+   * Review Profile — Patient Intake only; always 0 on Welcome Call.
+   *
+   * ⚠️ It is in `total` and deliberately NOT in the two Today / Future chips.
+   * Those chips ARE the horizon toggle, and Review Profile has no horizon —
+   * nothing dates these patients, which is the whole reason they need looking
+   * at. Adding a third line to one chip and not the other is also how the two
+   * columns stopped lining up twice before (§5.30c, §5.30d), since Welcome
+   * Call has no Review section. The count is on the section bar, where a
+   * coordinator reads it beside the list it describes.
+   */
+  review: number;
   /** Everything the coordinator can pick up in this column, both horizons. */
   total: number;
   /** Unscheduled patients whose follow-up date has already passed. */
   overdue: number;
 }
 
-export function columnSummary<T>(b: ColumnBuckets<T>): ColumnSummary {
+export function columnSummary<T>(
+  b: ColumnBuckets<T> & { reviewProfile?: ReviewEntry<T>[] },
+): ColumnSummary {
   const overdue = b.unscheduledToday.filter((e) => e.overdueDays > 0).length;
+  const review = b.reviewProfile?.length ?? 0;
   return {
     today: { scheduled: b.scheduledToday.length, unscheduled: b.unscheduledToday.length },
     future: { scheduled: b.scheduledFuture.length, unscheduled: b.unscheduledFuture.length },
-    total: b.scheduledToday.length + b.scheduledFuture.length + b.unscheduledToday.length + b.unscheduledFuture.length,
+    review,
+    total: b.scheduledToday.length + b.scheduledFuture.length
+      + b.unscheduledToday.length + b.unscheduledFuture.length + review,
     overdue,
   };
 }

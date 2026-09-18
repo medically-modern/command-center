@@ -168,6 +168,20 @@ const INTAKE_COLS: string[] = [
   // Needed to hand the schedule grid a full `ScheduledCall` (BookingLinkDialog
   // reads the event URI) without a second read of the same groups.
   SCHED_COL.calendlyEventUri,
+  // The insurance card the patient uploaded. The Insurance pill reads "Photo
+  // upload" for these rows and OPENS this file (Brandon, 2026-09-17: "should
+  // also be a link where you can open up the card from that view").
+  PROFILE_COL.formCardPhoto,
+  // ⚠️ THE BLOCKER, and the only reason these three are worth widening a
+  // ~1,750-row read by (Josh, 2026-09-18: "display the actual blocker").
+  // A Review Profile card exists to answer "why has this patient not been
+  // advanced?", and for Savannah French the answer was a benefits check that
+  // failed twice on the subscriber name — a fact that lived nowhere on this
+  // dashboard, so she simply vanished from it. `workflow.intakeBlocker` reads
+  // exactly these; see its own note on why the read is NARROWER than
+  // `profile/intakeUnlock.evaluateUnlock` and must stay so.
+  PROFILE_COL.stediErrorDescription, PROFILE_COL.stediEligibilityActive,
+  PROFILE_COL.stediPlanName,
 ];
 
 function toIntakeLead(item: RawItem): IntakeLead {
@@ -204,6 +218,14 @@ function toIntakeLead(item: RawItem): IntakeLead {
     providedClinicPhone: text(item, PROFILE_COL.formProvidedClinicPhone),
     ipCoveragePath: text(item, PROFILE_COL.insulinPumpCoveragePath),
     cgmCoveragePath: text(item, PROFILE_COL.cgmCoveragePath),
+    // ⚠️ A file column's `text` is the asset URL (several, comma-separated,
+    // when more than one file is attached). `insuranceCardUrl` takes the FIRST
+    // — the card opens one photo, and picking the newest would need the raw
+    // `value` and an assumption about ordering Monday does not promise.
+    insuranceCardUrl: text(item, PROFILE_COL.formCardPhoto).split(",")[0].trim(),
+    stediError: text(item, PROFILE_COL.stediErrorDescription),
+    stediActive: text(item, PROFILE_COL.stediEligibilityActive),
+    stediPlanName: text(item, PROFILE_COL.stediPlanName),
   };
 }
 

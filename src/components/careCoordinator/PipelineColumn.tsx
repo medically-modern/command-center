@@ -48,12 +48,17 @@ const PAGE = 12;
 const SECTION_TONE = {
   scheduled: "bg-[color:var(--mm-green)] text-white border-[color:var(--mm-green)]",
   unscheduled: "bg-[color:var(--mm-mint)] text-[color:var(--mm-teal)] border-[color:var(--mm-mint-ring)]",
+  // Review Profile — Patient Intake only. ⚠️ Same rule again: a FIXED pair, not
+  // `foreground`/`background`, which invert between themes (§5.30d found the
+  // Unscheduled bar unreadable in dark mode for exactly that reason).
+  review: "bg-sky-100 text-sky-900 border-sky-300 dark:bg-sky-500/15 dark:text-sky-100 dark:border-sky-500/40",
 } as const;
 
 const COUNT_TONE = {
   scheduled: "bg-white/25 text-white",
   // Same rule: fixed colours, never `foreground`/`background`, which invert.
   unscheduled: "bg-[color:var(--mm-teal)] text-white",
+  review: "bg-sky-600 text-white",
 } as const;
 
 export function Section({

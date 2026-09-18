@@ -39,12 +39,12 @@
  */
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { CalendarPlus, ChevronDown, ChevronUp, MessageSquare, Phone } from "lucide-react";
+import { AlertTriangle, CalendarPlus, ChevronDown, ChevronUp, MessageSquare, Phone } from "lucide-react";
 
 import { PatientContact } from "@/components/masheke/mmKit";
 import {
   PILL_GRID_TEMPLATE, PILL_SLOTS, pillTone, shortLabel,
-  type PillSlots, type PillTone, type PillVariant,
+  type PillSlotKey, type PillSlots, type PillTone, type PillVariant,
 } from "@/lib/careCoordinator/pills";
 import { cn } from "@/lib/utils";
 
@@ -84,7 +84,12 @@ export function Pill({ children, title, tone = "neutral" }: { children: ReactNod
  * and the colour rule together. Both live in `pills.ts`; nothing here decides
  * either.
  */
-export function PillRow({ slots, variant }: { slots: PillSlots; variant: PillVariant }) {
+/** A pressable pill, per slot. See `PatientCard`'s `pillActions`. */
+export type PillActions = Partial<Record<PillSlotKey, { onClick: () => void; title: string }>>;
+
+export function PillRow({ slots, variant, actions }: {
+  slots: PillSlots; variant: PillVariant; actions?: PillActions;
+}) {
   return (
     <div className="grid items-start gap-x-1" style={{ gridTemplateColumns: PILL_GRID_TEMPLATE }}>
       {PILL_SLOTS[variant].map((slot) => {
@@ -96,7 +101,30 @@ export function PillRow({ slots, variant }: { slots: PillSlots; variant: PillVar
         return (
           <div key={slot.key} className="flex min-w-0 flex-col items-start gap-0.5" style={{ gridColumnStart: slot.column }}>
             {value
-              ? <Pill title={`${slot.field}: ${value}`} tone={pillTone(slot.key, value, variant)}>{shortLabel(value)}</Pill>
+              ? (() => {
+                  const action = actions?.[slot.key];
+                  const pill = (
+                    <Pill title={action ? action.title : `${slot.field}: ${value}`} tone={pillTone(slot.key, value, variant)}>
+                      {shortLabel(value)}
+                    </Pill>
+                  );
+                  // ⚠️ The button wraps the pill rather than the pill becoming
+                  // one: `Pill` is shared with the Welcome Call column, which
+                  // has no actions, and a <button> there would announce itself
+                  // to a screen reader as pressable when nothing happens.
+                  return action
+                    ? (
+                      <button
+                        type="button"
+                        onClick={action.onClick}
+                        title={action.title}
+                        className="max-w-full rounded-full underline decoration-dotted underline-offset-2 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {pill}
+                      </button>
+                    )
+                    : pill;
+                })()
               : <span className="px-2 py-[3px] text-[11px] leading-snug text-muted-foreground/50">—</span>}
             {/* `data-pill-caption` marks the caption row as a structure, not
                 a style: the card carries other small-caps labels (the notes
@@ -173,8 +201,8 @@ function NotesLine({ label, notes }: { label: string; notes: string | undefined 
 }
 
 export function PatientCard({
-  name, attempted, nextUp = false, doctor, clinic, when, pills, variant, attempts, texts,
-  phone, notes, notesLabel, openHref, openLabel, onBookingLink, reached, callCount,
+  name, attempted, nextUp = false, doctor, clinic, when, pills, pillActions, variant, attempts, texts,
+  phone, notes, notesLabel, openHref, openLabel, onBookingLink, reached, callCount, blocker,
 }: {
   name: string;
   /** Has anybody rung them yet? Green edge when true, gray when false. */
@@ -187,6 +215,11 @@ export function PatientCard({
   when: ReactNode;
   /** One entry per labelled column; a blank string renders the em dash. */
   pills: PillSlots;
+  /** Slots whose pill is a BUTTON rather than a label. Today that is the
+   *  Insurance pill on a patient who uploaded a card photo — it opens the
+   *  photo. A slot with an action but no VALUE stays the em dash: there is
+   *  nothing to press on a pill that says nothing. */
+  pillActions?: PillActions;
   /** Which column this card is in — picks the slot list and the pill colours. */
   variant: PillVariant;
   attempts: number;
@@ -212,6 +245,16 @@ export function PatientCard({
   /** Calls with this number in the same window, or undefined when we can't
    *  stand behind a number (see `CallHistoryButton`'s own `count` note). */
   callCount?: number;
+  /**
+   * The advance-unlock condition this patient fails, from
+   * `workflow.intakeBlocker` — Review Profile cards only.
+   *
+   * ⚠️ Blank prints NOTHING, and must never print "ready to advance": this
+   * dashboard's read is narrower than the profile page's checklist and can
+   * miss a coverage-path condition (see `intakeBlocker`). An absent line means
+   * "nothing we can see", which is a different claim.
+   */
+  blocker?: string;
 }) {
   const doctorLine = [doctor?.trim() && `Doctor: ${doctor.trim()}`, clinic?.trim() && `Clinic: ${clinic.trim()}`]
     .filter(Boolean).join(" · ");
@@ -238,12 +281,23 @@ export function PatientCard({
         {when}
       </div>
 
+      {/* ⚠️ Amber, not rose: every one of these is an ORDINARY next step a rep
+          takes on the profile page (re-run the check, ring about the plan,
+          pick a path), not evidence anything is wrong — §5.17's severity rule.
+          Rose here would out-rank the escalations that are somebody's problem. */}
+      {blocker?.trim() && (
+        <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11.5px] leading-snug text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+          <AlertTriangle className="mt-[1px] h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0">{blocker.trim()}</span>
+        </div>
+      )}
+
       {/* ⚠️ The counters take a FIXED width so the pill grid is the same width
           on every card. Left to size themselves, a two-digit attempt count
           would shift every column on that one row. */}
       <div className="mt-2 flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <PillRow slots={pills} variant={variant} />
+          <PillRow slots={pills} variant={variant} actions={pillActions} />
         </div>
         <span className="flex w-[4.75rem] shrink-0 items-center justify-end gap-3 pt-0.5 text-xs tabular-nums">
           <span

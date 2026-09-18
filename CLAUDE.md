@@ -3089,7 +3089,8 @@ intake bookings ever, and the gateway's welcome index reported `indexed: 0` acro
 - ⚠️ **An insurance CARD PHOTO is an answer** (`pills.intakeInsurance`). Of the 20 live rows
   answering **"Photo of card"** (`color_mm5zv5pa`), **18 have a BLANK General Insurance** — the
   carrier is on the photo — so reading that one column rendered nothing for exactly the patients who
-  had supplied the most. That was Brandon's Debra Collins. The slot now reads **"Card on file"**.
+  had supplied the most. That was Brandon's Debra Collins. The slot reads **"Photo upload"** from
+  2026-09-18 and OPENS the photo — §5.30f.
   ⚠️ **"Not provided" stays blank**: it is a real answer and the one answer that is not insurance
   information. ⚠️ A General Insurance of **"Other"** is a routing bucket, so `text_mm5z8w99` wins
   where it has anything (3 live rows). This is the cheap half of his ask; **having Claude read the
@@ -3286,10 +3287,11 @@ badge that could only ever say one thing.
   the **Welcome Call stage page** (§5.31f) the day before; it shipped inside `masheke/mmKit`'s
   shared `PatientContact`; Brandon's note here is about the **Care Coordinator card**, where it is
   a fourth control on a row already carrying Call, Text and Call Log. Deleting it from
-  `PatientContact` took it off all ten headers, the stage page included, so **Katie's complaint is
-  unaddressed again** — the number is still a `tel:` link label and still cannot be dragged to
-  select. Restoring it on the stage page and not on this card satisfies both and is a prop on
-  `PatientContact`, not a rebuild. See §5.30's two-screens table.
+  `PatientContact` took it off all ten headers, the stage page included, undoing her fix.
+  ✅ **RESOLVED 2026-09-18** (Josh: *"welcome call only should have it not care cordinator"*): it is
+  back behind an opt-in `showCopy` prop that only `welcomeCall/PatientActivityCard` passes, so
+  **this card still does not carry it** and the stage page does. §5.30f · §5.30's two-screens table
+  · `copyPhoneScope.test.ts`.
 - **The text composer's title bar leads with the patient's name**, then the number. The
   number stays: on a patient with two numbers on file it is the only thing saying which
   one the composer is pointed at.
@@ -3300,7 +3302,7 @@ Insurance · Pump path · CGM path · Form. **Intake only** (Josh, 2026-09-17).
 ⚠️ **The options are DERIVED from the population, never hardcoded**, and that is what
 makes Brandon's "Photo upload" work: it is not a payer and is not on the General
 Insurance column at all — it is `Insurance Provided Via = "Photo of card"`, which the card
-renders as **"Card on file"** (§5.30c). Deriving from `facetValue`, the same function the
+renders as **"Photo upload"** (§5.30c, §5.30f). Deriving from `facetValue`, the same function the
 pill calls, means the option and the pill are the same string by construction; a
 hardcoded payer list would also rot the day a payer is added on monday (§5.33).
 ⚠️ An empty selection means ALL, never none. ⚠️ Blank is a value you can filter FOR, or
@@ -3365,6 +3367,162 @@ Files: `lib/careCoordinator/{intakeFilter,pills,scheduleEntries}.ts` (+ tests),
 `components/shared/{CallHistoryButton,StageActionBar}.tsx`,
 `components/profile/IntakeMessages.tsx`, `pages/UnverifiedReferralsPage.tsx`,
 `pages/profile/intake.css`, `components/welcomeCall/WelcomeCallForm.tsx`.
+
+### 5.30f Brandon's BACKEND notes on the Care Coordinator page (Sep 2026)
+The second half of his 2026-09-17 list — six items, and unlike §5.30e's nineteen they are not
+all app work. Three shipped here, one was already fixed by Josh, one lives in another repo and
+one is parked on Katie. **No board change; app only.**
+
+**1. "Card on file" → "Photo upload", and the pill OPENS the photo.**
+`pills.PHOTO_UPLOAD` is the one copy of the string; `cards.insurancePillAction` makes the pill a
+button that hands `openFileViewer` the card's asset URL (`file_mm5zhy1`, new in `INTAKE_COLS`).
+⚠️ **Keyed on the URL, never on the words** — one live row answers "Photo of card" with no file
+attached, and an action there is a button that opens nothing. The pill still says Photo upload,
+which is true: they told us they uploaded one.
+⚠️ **The carrier DROPDOWN he asked for beside the photo is deliberately NOT built** (Josh,
+2026-09-18: *"photo only, carrier gets picked on profile page"*). General Insurance is a **Stedi
+input** (§5.11), so setting it from a photo — with no member ID and no re-run — sets the next
+eligibility check up to fail on a payer nobody verified, which is Savannah French's failure two
+items down. And this dashboard writes **nothing** (§5.30): every action deep-links to the stage
+page whose verified write path has the stamps and the side effects.
+⚠️ **The last part of his note was ALREADY TRUE** and is worth telling him rather than building
+for: `intakeInsurance` checks the carrier BEFORE it checks how the answer arrived, so all 18 live
+"Entered manually" rows already render their real payer. No manual row has ever read "Card on
+file". He was most likely looking at a photo row.
+⚠️ The rename reaches the intake filter for free, because `intakeFilter.facetValue` CALLS this
+function rather than carrying a list (§5.30e) — the facet renamed itself.
+
+**2. "Dropoff texts might not be fully working (e.g. J R)" — they were broken, for one week, and
+Josh had already fixed it.** Measured on the live board 2026-09-18 over the 30 partial leads:
+15 carry both nudges, 15 carry none — and **nine of those fifteen are legitimately exempt**, six
+holding an *Insurance Link Sent* stamp and three a *Resume Link Sent* one, which are exactly
+§5.23's two exemptions. That leaves **six real misses, and they are one contiguous week**:
+Esteban Abot ×2 (8/25), savannah french (8/26), Taelyre Winegar (8/29), **J R (8/31)**, Jason
+Ortiz-Troxell (9/1). Every partial created before 8/25 or after 9/1 either got both nudges or
+carries an exemption stamp, so it is a week-long outage rather than a standing bug — which
+matches Josh: *"exts are sending i already fixed a short glitch when they werent"*. **No code
+change**; the six are three weeks stale and are already in Masani's calling queue.
+⚠️ The exemptions were INFERRED from the two stamp columns per §5.23, not read out of
+`dropOffRules.js` — that lives in `dtc-mm-form-H7eG34s`, which is reachable from a session but was
+not opened. Re-read it before treating the nine as certain.
+
+**3. Roger Funk — ONE root cause, THREE symptoms** (`13050905746` + `13071148612`). Not fixed here:
+every half of it is in another repo. From item A's activity log, 2026-09-15, in 21 minutes —
+- 15:30 the form starts him in *Partial Leads* at Step 2;
+- 15:36 he reaches **Step 5**, answers **"Not provided"** (Insurance Link Sent stamped, the §5.23
+  park), then uploads a card anyway;
+- 15:46 a **new session id**: via flips to "Photo of card", Step 5 → **Step 7** (§5.23's card-answer
+  skip, working exactly as designed) → **Completed**, "Send request now", and the item **moves to
+  New Form — Completed**;
+- **15:51 a FOURTH session id**, five minutes later. The form rewrites **Drop-off Step: Completed →
+  "Step 5 - Insurance"** and flips Insurance Provided Via twice;
+- **9/17 a fifth fill** matches nothing and creates a **second item**.
+
+So: **(c) "completed group but says dropoff after stage 5"** — he did complete it, which is what
+moved the group; re-opening the form wrote the step column BACKWARDS over "Completed", and nothing
+moves the item back. The form has no monotonic guard on Drop-off Step. **(b) "0 texts"** — item A
+left Partial Leads 15 minutes after he started, and the nudge sweep only ever touches that group
+(§5.24), so it never earned one; item B carries 1. If two really went out, one was **rep-sent**,
+which deliberately never moves this counter — and the card says "Auto. Texts", so 1 automated + 1
+rep text reads as 0 on the row Brandon opened. **(d) "there's 2 of them"** — §5.21's recorded gap:
+`duplicate-patient-check` searches ME, Insurance, Welcome Call, Subscription and Secondary Claims
+and **never Profile Send Off itself**, so item B's check ran, answered "New", and was structurally
+incapable of seeing item A.
+⚠️ **The bigger finding underneath: 25 of the 65 form leads have a BLANK Dup Check Result**, which
+per §5.21 means the check never ran on them at all — item A included. That is not "checked and
+clear".
+⚠️ His (a), *"we should not send another intake text if they've responded"*, needs no new
+mechanism: the evidence is already in the gateway's `sms_archive`, and `POST /messaging/can-text`
+answers out of exactly that table (§5.31f). What it needs is a `since` bound — `can-text` answers
+"ever", not "since we texted them". Repos: `dtc-mm-form-H7eG34s` (the step guard, the row reuse,
+the reply suppression) and `josh-monday-automations` (the same-board dedupe). Both reachable.
+
+**4 + 5. Review Profile — the third grouping, and the blocker.**
+`workflow.needsProfileReview` + `intakeBlocker` (+ `intakeBlocker.test.ts`), a `reviewProfile`
+bucket on `IntakeBuckets`, `cards.IntakeReviewCard`, a `review` tone on `Section`.
+⚠️⚠️ **`callDone` and `sendNow` STOP being exclusions.** Between them those two hid every patient
+who does not need a call — which is exactly the population a coordinator has work to do on — and
+`callDone` was the worse half. On 2026-09-18 the **one** live row carrying Intake Call Complete was
+**Savannah French**, and her activity log says a rep DID work her: at 14:28 ET on 2026-09-10 one
+save wrote her secondary insurance, member ids, address, **General Insurance = Aetna** and
+**Intake Call Complete = Yes**, then Run Stedi → **Failed** with `AAA 73 — Invalid/Missing
+Subscriber/Insured Name`, retried, **Failed again**. §5.20's unlock needs active coverage, so she
+could not be advanced — and the exclusion then hid her from the one screen whose job is to notice.
+She was never lost on the BOARD (still in Partial Leads, still in the rep's Info Collection
+sidebar); she was lost here.
+- **The rule is `(Send request now AND form completed) OR Intake Call Complete = Yes`** (Josh,
+  2026-09-18). One bucket because §5.20 already calls `intakeCallComplete` "the rep-side equivalent
+  of the patient choosing Send request now" and treats them as one unlock condition.
+  ⚠️ The form half needs **both** halves: "Send request now" on an ABANDONED form is not an
+  authorisation to send anything, and those rows stay in the calling queue. Intake Call Complete
+  stands alone by contrast — a rep ticking it is a statement about a call that happened, whatever
+  the web form got (§5.24).
+- ⚠️ **Checked BEFORE the `isFormLead` import gate**, so a CareCentrix referral typed in by a rep
+  (§5.20 — blank Drop-off Step) is not dropped into a count nothing renders. The 8/25 SNJ import
+  carries none of the three columns, so it cannot leak in that way.
+- ⚠️ **A LOGGED ATTEMPT MOVES THEM OUT**, which is Brandon's own rule. `attempts > 0` falls through
+  to Unscheduled, and because `logContactAttempt` pushes Follow Up Date to tomorrow (§5.30) they
+  land in **Future** — "ring them tomorrow", which is what pressing it meant. Of the 27 live rows
+  in this bucket exactly **one** had an attempt.
+- **Escalation and a booking both still win**, in that order — unchanged.
+- **Rendered under TODAY only**, age-ordered. Nothing dates these patients, so they belong to
+  neither horizon and "Future" would promise a date that will bring them back.
+  ⚠️ **Appended LAST, and that position is load-bearing**: the Scheduled and Unscheduled bars then
+  sit at the same y in both columns whatever the horizon (measured 128 / 379 px in both, Today and
+  Future). Put between them and it is §5.30c's and §5.30d's column-alignment bug for the third time.
+- `ColumnSummary.review` is in **`total`** and deliberately **not** in the two Today/Future chips:
+  those chips ARE the horizon toggle, Welcome Call has no Review section, and a third line on one
+  column's chip and not the other is the same alignment failure again. The count is on the section
+  bar, beside the list it describes.
+- ⚠️ Review cards ride the **same batched notes read** (§5.30e) — left out of `useCardNotes`' key
+  list they would show an empty notes line for ever.
+
+⚠️⚠️ **`intakeBlocker` RETURNS "" FOR "NOTHING WE CAN SEE", NEVER "READY TO ADVANCE".** It is a
+deliberately NARROWER read than `profile/intakeUnlock.evaluateUnlock`, which is the authority and
+runs on the profile page against the full record: `cgmInPlay` there also consults Provided CGM
+Preference and CGM Data Awareness, neither of which this dashboard carries, so a CGM patient whose
+only CGM signal is one of those is not flagged here. Under-reporting is the safe direction — the
+rep opens the profile and gets the real checklist — and it is why the card prints a blocker when
+there is one and prints **nothing** when there isn't, rather than a green "ready" it cannot stand
+behind. Same relationship §5.18 records between `systemProfileStatus` and the per-board adapters:
+narrower, never contradictory.
+⚠️ **An error outranks everything**, matching `stediRanCleanly`: a failed run means the identifiers
+did not match, so it is never a verdict about coverage — Savannah's row carries the error AND a
+plan name, and reading the plan first would have printed the wrong sentence. A run with neither an
+active answer nor a plan name is *"hasn't run"*; a run with a plan and no active answer is
+*"Coverage came back inactive"*.
+⚠️ **AMBER, not rose** (§5.17's severity rule): every one of these is an ordinary next step a rep
+takes on the profile page, not evidence anything is wrong. Rose would out-rank the escalations that
+are somebody else's problem.
+⚠️ Three columns joined the intake read for this — `stediErrorDescription`, `stediEligibilityActive`,
+`stediPlanName` — on a ~1,754-row fetch (§5.30's load note). Worth it because the blocker is the
+only thing that makes the bucket actionable; it is also the whole widening, so don't add more
+without the same argument.
+
+**6. The doctor-info section — PARKED, on Brandon's own say-so** (*"let's flag this and talk to
+Katie (sent slack)"*). What is worth handing her rather than an open question: the card already
+shows **Provided Doctor Name + Provided Clinic Phone**, i.e. what the patient typed — Roger's row
+says *"hannah kiefer"* and a bare 10-digit number. What actually gates advancing is the **verified**
+doctor: NPI, an `@rcfax.com` fax (§5.19b) and the clinic address. So the question is whether she
+needs that verified block **on the card** to triage who is ready, or somewhere else. His "optional
+input for a link" would be a new Monday column.
+
+**The copy-number button is back — on the Welcome Call stage page and nowhere else** (Josh,
+2026-09-18: *"welcome call only should have it not care cordinator"*). `CopyPhoneButton` returns to
+`masheke/mmKit` behind an opt-in **`showCopy`** prop that only `welcomeCall/PatientActivityCard`
+passes; absent, `PatientContact` is byte-identical to the row every other header has had. That
+prop IS the fix — see §5.30's two-screens table for how it was lost. `copyPhoneScope.test.ts` scans
+`src/` and fails when a second caller opts in (verified to fail).
+
+**Keep-in-agreement:** `pills.PHOTO_UPLOAD` ⇄ `cards.insurancePillAction`'s equality test ⇄
+`intakeFilter.facetValue`'s derived option · `workflow.intakeBlocker` ⇄
+`profile/intakeUnlock.evaluateUnlock`'s conditions and their ORDER (narrower, never different) ·
+`needsProfileReview` ⇄ `intakeUnlock.patientAuthorised`, which is the same two-route rule ·
+`ColumnSummary.review` ⇄ `ColumnLists`' Today-only render ⇄ `intakeBuckets`' `reviewProfile`.
+Files: `lib/careCoordinator/{workflow,pills,mondayApi}.ts` (+ `intakeBlocker.test.ts`),
+`components/careCoordinator/{cards,PatientCard,PipelineColumn}.tsx`,
+`components/masheke/mmKit.tsx`, `components/welcomeCall/PatientActivityCard.tsx`,
+`components/copyPhoneScope.test.ts`, `pages/CareCoordinatorPage.tsx`.
 
 ### 5.31 Welcome Call order rules — caps, 75 days, and "can we send a monitor?" (Sep 2026)
 Four decisions from Brandon's 2026-09-09 notes, landed together because they all key off
@@ -4043,9 +4201,10 @@ placeholder and read as an empty quantity (the §5.11 blank-with-no-error, and t
   little copy button next to text, remove"*) — one day after it shipped. Brandon was looking at the
   **Care Coordinator card** (§5.30e), where it is a fourth control on a crowded row; Katie's ask
   was for **this** screen. Because it lived in the shared `PatientContact`, taking it off one took
-  it off all ten headers, so **Katie's complaint is unaddressed again**: the number is still a
-  `tel:` link label and still cannot be dragged to select. Restoring it HERE and not on the
-  dashboard card satisfies both, and is a prop on `PatientContact`. §5.30's two-screens table
+  it off all ten headers, so Katie's fix went with it. ✅ **RESTORED 2026-09-18, on THIS screen
+  only** (Josh: *"welcome call only should have it not care cordinator"*) — an opt-in `showCopy`
+  prop, passed by `PatientActivityCard` and by nothing else, which satisfies both notes.
+  `copyPhoneScope.test.ts` fails the build when a second caller opts in. §5.30's two-screens table
   exists because of this exact mix-up.
   ⚠️ It copied the DIGITS **as displayed**, not `tel:`'s stripped form — a rep is pasting into
   RingCentral, a payer portal or a note, and `+15555550100` is not what any of them want back. A
@@ -6839,7 +6998,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient is on the day strip but the Patient Intake column calls them Unscheduled (or the reverse) | §5.30d — fixed 2026-09-16; both now read Calendly. If it recurs: `workflow.intakeBooking` is the five-branch rule and each branch names why the mirror survives. An amber "showing the bookings mirrored onto monday" line means the Calendly read failed and the column is on the fallback — check `GET /calendly/patient/health` on the gateway, whose `unresolved` map says which KIND it cannot answer for |
 | Every intake patient suddenly reads Unscheduled, or the column is permanently on the mirror | §5.30d — the batch lookup is capped at 500 addresses per request and that column carries ~1,750, so `fetchPatientBookings` chunks. A 400 saying "at most 500 emails per request" in the console means the chunking was removed or `MAX_LOOKUP_EMAILS` shrank below `BATCH`; `calendlyBookingBatch.test.ts` pins it |
 | The Welcome Call column says "Scheduled 0" for a moment on load | §5.30d — correct since 2026-09-16 only if the amber "Checking Calendly" line is showing with it. No line and Scheduled 0 means `useWelcomeCallBookings.ready` has gone back to latching on the first (empty) address list — `useWelcomeCallBookings.test.tsx` pins it |
-| A patient who clearly gave us insurance shows no Insurance pill | §5.30c — `lib/careCoordinator/pills.ts` `intakeInsurance`. A card photo reads "Card on file"; **"Not provided"** is deliberately blank. If it is blank for somebody who sent a photo, check `color_mm5zv5pa` is still in `INTAKE_COLS` |
+| A patient who clearly gave us insurance shows no Insurance pill | §5.30c · §5.30f — `lib/careCoordinator/pills.ts` `intakeInsurance`. A card photo reads **"Photo upload"** and the pill OPENS the card; **"Not provided"** is deliberately blank. If it is blank for somebody who sent a photo, check `color_mm5zv5pa` is still in `INTAKE_COLS`; if the pill is there but inert, the row has no file on `file_mm5zhy1` (one live row is exactly that) |
+| A patient a rep has worked is missing from the Care Coordinator dashboard | §5.30f — they are in **Review Profile** now, not an exclusion. `callDone` and `sendNow` were exclusions until 2026-09-18 and between them hid everybody who does not need a call. A Review card prints the **blocker** (`workflow.intakeBlocker`); a BLANK blocker means "nothing this dashboard can see", never "ready to advance" — the authority is `profile/intakeUnlock.evaluateUnlock` on the profile page |
+| A Review Profile card shows no blocker but the profile page won't advance | §5.30f — expected, and the narrower read is deliberate: `cgmInPlay` on the page also consults Provided CGM Preference and CGM Data Awareness, which this dashboard does not carry. Widening it means adding those columns to `INTAKE_COLS`, not special-casing the card |
+| Somebody wants the copy-number button on another screen | §5.30f — it is opt-in (`PatientContact` `showCopy`) and Welcome Call is the only caller, because Katie asked for it there and Brandon asked for it off the Care Coordinator card. Adding a caller is a decision; `copyPhoneScope.test.ts` will fail until this section and the test are updated |
 | The Welcome Call "Call scheduled" chip is missing or says it couldn't check | §5.31e — the chip needs the patient's **Email** on the board; that is the only join Calendly gives us. "Couldn't check" means the window read failed (a partial window is deliberately never reported as "not booked") — check `GET /calendly/patient/health` on the gateway, then `/api/calendly/health` on dtc-mm-form. No chip at all means no booking in the window, which is the normal case |
 | A welcome call isn't on the schedule grid / a booking has no "Open" | §5.30b — the grid reads Calendly through the gateway, not monday. Check `GET /calendly/day` on the gateway, then `/api/calendly/health` on dtc-mm-form (it reports the welcome event type and whether the day route is enabled). No "Open" means the invitee's email is on no **Welcome Call group** row — the same single join the intake mirror uses; the block is meant to render without a link |
 | A welcome-call booking overwrote a patient's intake booking | §5.30b — fixed 2026-09-10. The webhook is USER-scope and now filters on `scheduled_event.event_type`; if it recurs, check `calendly.kindOfEventType` can still resolve BOTH event types (`/api/calendly/health`) — an unresolvable one falls back to mirroring, deliberately |

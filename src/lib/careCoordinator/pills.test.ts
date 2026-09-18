@@ -116,7 +116,7 @@ describe("pillTone", () => {
 
   it("greens ANY insurance that is listed, and nothing when it is blank", () => {
     expect(pillTone("insurance", "Cigna")).toBe("green");
-    expect(pillTone("insurance", "Card on file")).toBe("green");
+    expect(pillTone("insurance", "Photo upload")).toBe("green");
     expect(pillTone("insurance", "")).toBe("neutral");
     expect(pillTone("insurance", "   ")).toBe("neutral");
   });
@@ -131,7 +131,7 @@ describe("intakeInsurance", () => {
     // ⚠️ Debra Collins, 2026-09-16 — and 17 other live rows. General Insurance
     // is blank because the carrier is on the photo, so reading that column
     // alone rendered nothing for exactly the patients who supplied the most.
-    expect(intakeInsurance(lead({ insuranceProvidedVia: "Photo of card" }))).toBe("Card on file");
+    expect(intakeInsurance(lead({ insuranceProvidedVia: "Photo of card" }))).toBe("Photo upload");
   });
 
   it("prefers a real carrier over the photo note when both exist", () => {

@@ -25,11 +25,14 @@
  * Referral Source left the Welcome Call pills with that rebuild.
  */
 import { displayTime } from "@/lib/scheduledCalls/workflow";
-import { coveragePathPill, intakeInsurance, type PillSlots } from "@/lib/careCoordinator/pills";
+import { coveragePathPill, intakeInsurance, PHOTO_UPLOAD, type PillSlots } from "@/lib/careCoordinator/pills";
+import { openFileViewer } from "@/components/shared/FileViewerModal";
+import type { PillActions } from "./PatientCard";
 import { INTAKE_FORM_GROUPS } from "@/lib/careCoordinator/mondayApi";
 import {
   autoTexts, formCompletion, formatDaysSince, shortMonthDay, welcomeCallTexts,
-  type IntakeLead, type ScheduledEntry, type UnscheduledEntry, type WelcomeCallItem,
+  type IntakeLead, type ReviewEntry, type ScheduledEntry, type UnscheduledEntry,
+  type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
 import { PatientCard } from "./PatientCard";
 
@@ -107,6 +110,7 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       clinic={lead.providedClinicPhone}
       when={<ScheduledWhen entry={entry} muted={entry.when === "today-passed"} />}
       pills={intakePills(lead, false)}
+      pillActions={insurancePillAction(lead)}
       attempts={attempts}
       texts={autoTexts(lead)}
       phone={lead.phone}
@@ -134,6 +138,7 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       clinic={lead.providedClinicPhone}
       when={<DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
+      pillActions={insurancePillAction(lead)}
       attempts={entry.attempts}
       texts={autoTexts(lead)}
       phone={lead.phone}
@@ -143,6 +148,80 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       callCount={extras.callCount}
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake — log the attempt there"
+      onBookingLink={() => onBookingLink(lead)}
+    />
+  );
+}
+
+/**
+ * The Insurance pill opens the uploaded card, when there is one.
+ *
+ * Brandon, 2026-09-17: *"'Card on file' should also be a link where you can
+ * open up the card from that view … Change to 'Photo upload'."* The photo is
+ * the answer for these patients — 19 of the 23 live "Photo of card" rows carry
+ * no General Insurance at all — so the pill that names it opens it.
+ *
+ * ⚠️ **The dropdown he asked for beside the photo is deliberately NOT here**
+ * (Josh, 2026-09-18: "photo only, carrier gets picked on profile page"). The
+ * carrier is a **Stedi input** (§5.11), so setting it from a photo with no
+ * member ID and no re-run sets the next eligibility check up to fail on a
+ * payer nobody verified — and this dashboard writes NOTHING (§5.30). The rep
+ * reads the card here and types the carrier where Run Stedi lives.
+ *
+ * ⚠️ Keyed on the URL, not on the pill's words: one live row answers "Photo of
+ * card" with no file attached, and an action on it would be a button that
+ * opens nothing. The pill still says "Photo upload" there, which is true —
+ * they told us they uploaded one.
+ */
+function insurancePillAction(lead: IntakeLead): PillActions | undefined {
+  const url = (lead.insuranceCardUrl || "").trim();
+  if (!url || intakeInsurance(lead) !== PHOTO_UPLOAD) return undefined;
+  return {
+    insurance: {
+      title: `Open ${lead.name}'s insurance card`,
+      onClick: () => openFileViewer({ url, name: `Insurance card — ${lead.name}` }),
+    },
+  };
+}
+
+/**
+ * Review Profile — nobody to ring, a profile to check and advance.
+ *
+ * What it carries that the other two do not is the BLOCKER
+ * (`workflow.intakeBlocker`) — "why has this not been advanced?" is the only
+ * question a coordinator has about these patients, and until now the dashboard
+ * could not answer it at all.
+ *
+ * ⚠️ Everything else is the ordinary card on purpose, Booking Link included:
+ * a profile review can turn up a question only the patient can answer, and
+ * they are one press from being a call again. It is also what keeps the three
+ * sections the same shape to scan.
+ */
+export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
+  entry: ReviewEntry<IntakeLead>; today: string; onBookingLink: (lead: IntakeLead) => void; extras: CardExtras;
+}) {
+  const lead = entry.item;
+  const attempts = Number(lead.attemptCounter) > 0 ? Math.trunc(Number(lead.attemptCounter)) : 0;
+  return (
+    <PatientCard
+      name={lead.name}
+      variant="intake"
+      attempted={attempts > 0}
+      doctor={lead.providedDoctorName}
+      clinic={lead.providedClinicPhone}
+      when={<DaysSince createdAt={lead.createdAt} today={today} />}
+      pills={intakePills(lead, true)}
+      pillActions={insurancePillAction(lead)}
+      blocker={entry.blocker}
+      attempts={attempts}
+      texts={autoTexts(lead)}
+      phone={lead.phone}
+      notes={extras.notes}
+      notesLabel="Profile Send Off notes"
+      reached={extras.reached}
+      callCount={extras.callCount}
+      openHref={intakeHref(lead)}
+      openLabel="Open on Patient Intake — review and advance"
       onBookingLink={() => onBookingLink(lead)}
     />
   );
