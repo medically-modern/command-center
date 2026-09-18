@@ -3375,10 +3375,43 @@ one is parked on Katie. **No board change; app only.**
 
 **1. "Card on file" → "Photo upload", and the pill OPENS the photo.**
 `pills.PHOTO_UPLOAD` is the one copy of the string; `cards.insurancePillAction` makes the pill a
-button that hands `openFileViewer` the card's asset URL (`file_mm5zhy1`, new in `INTAKE_COLS`).
-⚠️ **Keyed on the URL, never on the words** — one live row answers "Photo of card" with no file
+button, and the click resolves the photo through **`mondayApi.fetchInsuranceCardAsset`** before
+handing it to `openFileViewer` (`file_mm5zhy1`, new in `INTAKE_COLS`).
+⚠️ **Keyed on PRESENCE, never on the words** — one live row answers "Photo of card" with no file
 attached, and an action there is a button that opens nothing. The pill still says Photo upload,
 which is true: they told us they uploaded one.
+
+⚠️⚠️ **THE FIRST VERSION SHIPPED BROKEN AND ALL 3,900 TESTS WERE GREEN — a file column's `text`
+is a URL that does not work.** It read `insuranceCardUrl: text(item, PROFILE_COL.formCardPhoto)`
+and passed that straight to the viewer. Monday returns a **`protected_static`** link there, which
+needs a monday SESSION; measured against the live board on 2026-09-18,
+`…/protected_static/28267378/resources/3212487057/insurance-card-1.jpg` answers **HTTP 302** (a
+login redirect, 0 bytes) while the ASSET's signed `public_url` answers **200 · image/jpeg ·
+134,500 bytes**. So the pill opened an error toast on every patient. Nothing caught it because no
+test asserts a URL is reachable, and the failure looks exactly like a file-viewer problem.
+> ⚠️ **The worker proxy does not save you** — it allowlists `*.monday.com`, so it forwards the
+> protected_static link happily and gets the redirect back; `fetchAssetBytes` then reports "the
+> file link may have expired". The one working form is `public_url`, and
+> `profile/UnverifiedReferralsPage`'s own `FileColumnRow` already said so in a comment written
+> from the same failure ("every row rendered the full URL and 'no preview'"). **Read that comment
+> before touching any file column.**
+- **`IntakeLead.hasInsuranceCard` is a BOOLEAN**, deliberately, so the unusable URL cannot be
+  handed to a viewer again. The list read only ever tests the column.
+- ⚠️ **The signed URL EXPIRES** (`X-Amz-Expires=3600`), so it could not be held in the list read
+  even if it were free: a coordinator with the page open for an hour would click a dead link.
+  Resolving on the CLICK is the only correct timing — and it is the `fetchItemNotes` shape this
+  slice already uses, one item, on demand.
+- ⚠️ **Matched by ASSET ID, never `assets[0]`** — the row also carries the CGM data file and a
+  clinicals PDF, in an order monday does not promise. Opening one of those under a label reading
+  "insurance card" is worse than opening nothing.
+- ⚠️ A failure **says so** (`toast.error`), like the Comms Hub's `viewFax`: the photo IS the
+  insurance answer for these patients, so a pill that silently does nothing is what teaches a
+  coordinator to stop pressing it.
+- `insuranceCard.test.ts` pins all of it — both halves verified to fail on the broken version.
+- **Blast radius when it shipped: every patient with a card.** Scanned live 2026-09-18: **21 rows
+  in *New Form — Completed* answer "Photo of card"**, and all 21 carry a `protected_static` URL,
+  so all 21 opened an error. None in *Partial Leads* — the photo answer is what completes the
+  form (§5.23), so the pill's whole population sits in the Completed group.
 ⚠️ **The carrier DROPDOWN he asked for beside the photo is deliberately NOT built** (Josh,
 2026-09-18: *"photo only, carrier gets picked on profile page"*). General Insurance is a **Stedi
 input** (§5.11), so setting it from a photo — with no member ID and no re-run — sets the next
@@ -3467,9 +3500,17 @@ sidebar); she was lost here.
 - **Escalation and a booking both still win**, in that order — unchanged.
 - **Rendered under TODAY only**, age-ordered. Nothing dates these patients, so they belong to
   neither horizon and "Future" would promise a date that will bring them back.
-  ⚠️ **Appended LAST, and that position is load-bearing**: the Scheduled and Unscheduled bars then
-  sit at the same y in both columns whatever the horizon (measured 128 / 379 px in both, Today and
-  Future). Put between them and it is §5.30c's and §5.30d's column-alignment bug for the third time.
+  ⚠️ **Appended LAST, and that position is load-bearing**: a section below the other two cannot
+  move them, so Review can never disturb the Scheduled / Unscheduled alignment the two columns are
+  measured on. Put between them and it is §5.30c's and §5.30d's column-alignment bug for the third
+  time. Re-measured in a browser 2026-09-18 with both columns populated: the two bars sit at
+  identical y in both horizons and in both Calendly states (up and down), and Review renders below
+  them, Today only.
+  > ⚠️ The bars align **because the sections above them hold the same heights**, which live they
+  > do — Scheduled is essentially always empty (§5.30c: three mirrored intake bookings ever). Give
+  > both columns booked patients and the bar below moves by whatever the two columns' cards
+  > differ by (14px on the render fixture). That is two lists of different content, not a layout
+  > bug, and no arrangement of sections fixes it — don't go looking for one.
 - `ColumnSummary.review` is in **`total`** and deliberately **not** in the two Today/Future chips:
   those chips ARE the horizon toggle, Welcome Call has no Review section, and a third line on one
   column's chip and not the other is the same alignment failure again. The count is on the section
@@ -3515,11 +3556,14 @@ prop IS the fix — see §5.30's two-screens table for how it was lost. `copyPho
 `src/` and fails when a second caller opts in (verified to fail).
 
 **Keep-in-agreement:** `pills.PHOTO_UPLOAD` ⇄ `cards.insurancePillAction`'s equality test ⇄
-`intakeFilter.facetValue`'s derived option · `workflow.intakeBlocker` ⇄
+`intakeFilter.facetValue`'s derived option · `IntakeLead.hasInsuranceCard` (presence) ⇄
+`mondayApi.fetchInsuranceCardAsset` (the signed URL, on the click) ⇄ `cards.openInsuranceCard` —
+never let a file column's `text` reach a viewer · `workflow.intakeBlocker` ⇄
 `profile/intakeUnlock.evaluateUnlock`'s conditions and their ORDER (narrower, never different) ·
 `needsProfileReview` ⇄ `intakeUnlock.patientAuthorised`, which is the same two-route rule ·
 `ColumnSummary.review` ⇄ `ColumnLists`' Today-only render ⇄ `intakeBuckets`' `reviewProfile`.
-Files: `lib/careCoordinator/{workflow,pills,mondayApi}.ts` (+ `intakeBlocker.test.ts`),
+Files: `lib/careCoordinator/{workflow,pills,mondayApi}.ts` (+ `intakeBlocker.test.ts`,
+`insuranceCard.test.ts`),
 `components/careCoordinator/{cards,PatientCard,PipelineColumn}.tsx`,
 `components/masheke/mmKit.tsx`, `components/welcomeCall/PatientActivityCard.tsx`,
 `components/copyPhoneScope.test.ts`, `pages/CareCoordinatorPage.tsx`.
@@ -7089,6 +7133,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Every intake patient suddenly reads Unscheduled, or the column is permanently on the mirror | §5.30d — the batch lookup is capped at 500 addresses per request and that column carries ~1,750, so `fetchPatientBookings` chunks. A 400 saying "at most 500 emails per request" in the console means the chunking was removed or `MAX_LOOKUP_EMAILS` shrank below `BATCH`; `calendlyBookingBatch.test.ts` pins it |
 | The Welcome Call column says "Scheduled 0" for a moment on load | §5.30d — correct since 2026-09-16 only if the amber "Checking Calendly" line is showing with it. No line and Scheduled 0 means `useWelcomeCallBookings.ready` has gone back to latching on the first (empty) address list — `useWelcomeCallBookings.test.tsx` pins it |
 | A patient who clearly gave us insurance shows no Insurance pill | §5.30c · §5.30f — `lib/careCoordinator/pills.ts` `intakeInsurance`. A card photo reads **"Photo upload"** and the pill OPENS the card; **"Not provided"** is deliberately blank. If it is blank for somebody who sent a photo, check `color_mm5zv5pa` is still in `INTAKE_COLS`; if the pill is there but inert, the row has no file on `file_mm5zhy1` (one live row is exactly that) |
+| The Photo upload pill opens an error, or the wrong document | §5.30f — the click resolves the ASSET (`mondayApi.fetchInsuranceCardAsset`), because the file column's own `text` is a `protected_static` link that **302s to a login page** without a monday session. An error means the asset is gone from the item or monday returned no `public_url`; the WRONG file means something went back to `assets[0]` instead of matching the column's asset id. ⚠️ This is the general rule for every file column — read `UnverifiedReferralsPage`'s `FileColumnRow` comment before wiring one up |
 | A patient a rep has worked is missing from the Care Coordinator dashboard | §5.30f — they are in **Review Profile** now, not an exclusion. `callDone` and `sendNow` were exclusions until 2026-09-18 and between them hid everybody who does not need a call. A Review card prints the **blocker** (`workflow.intakeBlocker`); a BLANK blocker means "nothing this dashboard can see", never "ready to advance" — the authority is `profile/intakeUnlock.evaluateUnlock` on the profile page |
 | A Review Profile card shows no blocker but the profile page won't advance | §5.30f — expected, and the narrower read is deliberate: `cgmInPlay` on the page also consults Provided CGM Preference and CGM Data Awareness, which this dashboard does not carry. Widening it means adding those columns to `INTAKE_COLS`, not special-casing the card |
 | Somebody wants the copy-number button on another screen | §5.30f — it is opt-in (`PatientContact` `showCopy`) and Welcome Call is the only caller, because Katie asked for it there and Brandon asked for it off the Care Coordinator card. Adding a caller is a decision; `copyPhoneScope.test.ts` will fail until this section and the test are updated |

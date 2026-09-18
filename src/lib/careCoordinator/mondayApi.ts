@@ -218,11 +218,12 @@ function toIntakeLead(item: RawItem): IntakeLead {
     providedClinicPhone: text(item, PROFILE_COL.formProvidedClinicPhone),
     ipCoveragePath: text(item, PROFILE_COL.insulinPumpCoveragePath),
     cgmCoveragePath: text(item, PROFILE_COL.cgmCoveragePath),
-    // ⚠️ A file column's `text` is the asset URL (several, comma-separated,
-    // when more than one file is attached). `insuranceCardUrl` takes the FIRST
-    // — the card opens one photo, and picking the newest would need the raw
-    // `value` and an assumption about ordering Monday does not promise.
-    insuranceCardUrl: text(item, PROFILE_COL.formCardPhoto).split(",")[0].trim(),
+    // ⚠️ PRESENCE ONLY — never the URL. A file column's `text` is a
+    // `protected_static` link that 302s to a login page without a monday
+    // session, so it can say WHETHER a card is attached and nothing else. The
+    // openable, signed URL is resolved on the click by
+    // `fetchInsuranceCardAsset` (see `IntakeLead.hasInsuranceCard`).
+    hasInsuranceCard: text(item, PROFILE_COL.formCardPhoto).trim() !== "",
     stediError: text(item, PROFILE_COL.stediErrorDescription),
     stediActive: text(item, PROFILE_COL.stediEligibilityActive),
     stediPlanName: text(item, PROFILE_COL.stediPlanName),
@@ -411,6 +412,80 @@ export async function fetchItemNotesBatch(
     }
   }
   return out;
+}
+
+/**
+ * The insurance card photo for ONE item, as something a viewer can actually
+ * open. Called when the Insurance pill is clicked, never for the list.
+ *
+ * ⚠️⚠️ **THE COLUMN'S OWN URL IS NOT OPENABLE.** `file_mm5zhy1`'s `text` is a
+ * `protected_static` link that needs a monday session; fetched without one it
+ * answers **302** to a login page (verified live, 2026-09-18). Only the ASSET
+ * carries the signed `public_url` that returns the image — which is why this
+ * exists and why `IntakeLead` holds a boolean rather than a URL.
+ *
+ * ⚠️ **Signed, and it EXPIRES** (`X-Amz-Expires=3600`), so it cannot be read
+ * with the list and held: a coordinator with the page open for an hour would
+ * click a dead link. Resolving it on the click is the only correct timing, and
+ * it happens to be the cheap one — this is the `fetchItemNotes` shape, one
+ * item, on demand.
+ *
+ * ⚠️⚠️ **MATCHED BY ASSET ID, never `assets[0]`.** A Profile Send Off row
+ * carries other files — the CGM data file (`file_mm5zhsxh`) and a clinicals
+ * PDF — and `assets` is the item's whole list in an order monday does not
+ * promise. Taking the first would open another document under a label that
+ * says "insurance card", which is worse than opening nothing. The ids come
+ * from the column's own `value`, exactly as `profile/mondayMapping`'s
+ * `fileAssetIds` reads them.
+ *
+ * Returns `null` when the row has no card, or when the column names an asset
+ * the item no longer holds — the caller says so rather than opening a guess.
+ */
+export interface CardPhoto { url: string; name: string }
+
+export async function fetchInsuranceCardAsset(itemId: string): Promise<CardPhoto | null> {
+  const data = await gql<{
+    items: {
+      column_values: { id: string; value: string | null }[];
+      assets: { id: string; name: string; url: string; public_url: string | null }[];
+    }[];
+  }>(
+    `query ($ids: [ID!], $cols: [String!]) {
+       items(ids: $ids) {
+         column_values(ids: $cols) { id value }
+         assets(assets_source: all) { id name url public_url }
+       }
+     }`,
+    { ids: [itemId], cols: [PROFILE_COL.formCardPhoto] },
+  );
+  const item = data.items?.[0];
+  if (!item) return null;
+
+  const raw = item.column_values?.find((c) => c.id === PROFILE_COL.formCardPhoto)?.value ?? "";
+  let assetIds: string[] = [];
+  try {
+    const parsed = JSON.parse(raw || "{}") as { files?: { assetId?: number | string }[] };
+    assetIds = (parsed.files ?? []).map((f) => String(f.assetId ?? "").trim()).filter(Boolean);
+  } catch {
+    // A value we cannot parse is not a card we can open. Fall through to null
+    // — the caller reports it, rather than reaching for an arbitrary asset.
+    assetIds = [];
+  }
+  if (!assetIds.length) return null;
+
+  // The FIRST file on the column. Several is rare (a patient photographing
+  // both sides), and picking by recency would need an ordering monday does not
+  // promise — so this matches what the intake page's own file row shows first.
+  const asset = assetIds
+    .map((id) => item.assets?.find((a) => String(a.id) === id))
+    .find((a) => !!a);
+  if (!asset) return null;
+
+  // ⚠️ `public_url` first, ALWAYS: `url` is the same protected_static link the
+  // column carries. The fallback exists only so a monday response missing the
+  // signed field degrades to "the viewer reports it cannot load" instead of a
+  // crash.
+  return { url: asset.public_url || asset.url, name: asset.name };
 }
 
 /**

@@ -26,9 +26,10 @@
  */
 import { displayTime } from "@/lib/scheduledCalls/workflow";
 import { coveragePathPill, intakeInsurance, PHOTO_UPLOAD, type PillSlots } from "@/lib/careCoordinator/pills";
+import { toast } from "sonner";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import type { PillActions } from "./PatientCard";
-import { INTAKE_FORM_GROUPS } from "@/lib/careCoordinator/mondayApi";
+import { fetchInsuranceCardAsset, INTAKE_FORM_GROUPS } from "@/lib/careCoordinator/mondayApi";
 import {
   autoTexts, formCompletion, formatDaysSince, shortMonthDay, welcomeCallTexts,
   type IntakeLead, type ReviewEntry, type ScheduledEntry, type UnscheduledEntry,
@@ -174,14 +175,59 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
  * they told us they uploaded one.
  */
 function insurancePillAction(lead: IntakeLead): PillActions | undefined {
-  const url = (lead.insuranceCardUrl || "").trim();
-  if (!url || intakeInsurance(lead) !== PHOTO_UPLOAD) return undefined;
+  if (!lead.hasInsuranceCard || intakeInsurance(lead) !== PHOTO_UPLOAD) return undefined;
   return {
     insurance: {
       title: `Open ${lead.name}'s insurance card`,
-      onClick: () => openFileViewer({ url, name: `Insurance card — ${lead.name}` }),
+      onClick: () => void openInsuranceCard(lead),
     },
   };
+}
+
+/**
+ * Resolve the card's signed URL, then open it.
+ *
+ * ⚠️⚠️ **THE TWO STEPS ARE NOT AN OPTIMISATION — one step was the bug.** This
+ * shipped on 2026-09-18 passing the file column's own `text` straight to the
+ * viewer, and that link is a `protected_static` path: **302 to a login page**
+ * without a monday session, so the pill opened an error on every patient while
+ * every test stayed green (nothing asserts a URL is reachable). The signed
+ * `public_url` lives on the ASSET and expires in an hour, so it can only be
+ * fetched on the click — `mondayApi.fetchInsuranceCardAsset`.
+ *
+ * ⚠️ A failure SAYS SO. The whole point of the pill is that the photo is the
+ * insurance answer for these patients (§5.30c: 18 of 20 carry no carrier at
+ * all), so "nothing happened" is the one outcome that teaches a coordinator to
+ * stop pressing it. The same reasoning as the Comms Hub's `viewFax`, which is
+ * the other fetch-then-open in the app.
+ *
+ * ⚠️ One request per click, `inFlight` guarded: a double-click on a card in a
+ * long list is ordinary, and this is a read against the same monday budget the
+ * ~1,754-row column already spends (§5.30's load note).
+ */
+const inFlight = new Set<string>();
+
+async function openInsuranceCard(lead: IntakeLead) {
+  if (inFlight.has(lead.id)) return;
+  inFlight.add(lead.id);
+  const toastId = `card-photo-${lead.id}`;
+  toast.loading("Opening the insurance card…", { id: toastId });
+  try {
+    const photo = await fetchInsuranceCardAsset(lead.id);
+    if (!photo) {
+      // The column said a file was attached and the item does not hold it —
+      // a cleared asset, or a value we could not read. Name that, rather than
+      // opening something arbitrary off the item.
+      toast.error("That insurance card is no longer on the patient's row.", { id: toastId });
+      return;
+    }
+    toast.dismiss(toastId);
+    openFileViewer({ url: photo.url, name: `Insurance card — ${lead.name}` });
+  } catch (e) {
+    toast.error(`Couldn't open the insurance card: ${e instanceof Error ? e.message : String(e)}`, { id: toastId });
+  } finally {
+    inFlight.delete(lead.id);
+  }
 }
 
 /**

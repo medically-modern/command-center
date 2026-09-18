@@ -124,10 +124,22 @@ export interface IntakeLead {
   providedClinicPhone: string;
   ipCoveragePath: string;
   cgmCoveragePath: string;
-  /** The insurance card photo's asset URL, or blank. The Insurance pill opens
-   *  it; blank means the pill is inert, which is what a "Photo of card" row
-   *  with no file on it must look like (one live row is exactly that). */
-  insuranceCardUrl: string;
+  /**
+   * Does this row carry an insurance card photo at all?
+   *
+   * ⚠️⚠️ **A BOOLEAN, NOT A URL, AND THAT IS THE FIX FOR A SHIPPED BUG.** The
+   * file column's `text` IS a URL — but a `protected_static` one, which needs a
+   * monday SESSION and answers **302 to a login page** on its own (verified
+   * against the live board, 2026-09-18). Handing it to `openFileViewer` opened
+   * an error on every patient: `fetchAssetBytes` tries a direct CORS fetch,
+   * falls back to the worker's `/asset` proxy — which allowlists monday hosts
+   * and so happily forwards it — and gets the login redirect back. The only
+   * openable form is the ASSET's signed `public_url`, which expires in an hour
+   * and therefore cannot be held in a list read at all: it is resolved on the
+   * click by `mondayApi.fetchInsuranceCardAsset`. Keeping this a boolean is
+   * what stops a future reader passing the unusable URL to a viewer again.
+   */
+  hasInsuranceCard: boolean;
   /** The three eligibility facts `intakeBlocker` reads. Written by
    *  `stedi-monday-integration`, never by this app. */
   stediError: string;
