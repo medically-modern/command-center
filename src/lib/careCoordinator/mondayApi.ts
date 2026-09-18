@@ -347,6 +347,51 @@ export const NOTES_COLUMN = {
 } as const;
 
 /**
+ * The notes body for MANY items, in one request.
+ *
+ * ⚠️ **THIS IS WHAT LETS THE CARDS SHOW NOTES BY DEFAULT** (Brandon,
+ * 2026-09-17: *"Let's default that profile send off notes is open"*, and drop
+ * the "See notes" toggle with it). There were two other ways to do that and
+ * both are wrong here:
+ *
+ *  · Put the notes column back in the LIST read — the thing §5.25 took out.
+ *    Partial Leads is ~1,700 rows and this column runs to 9,000+ characters on
+ *    some of them, which is the shape that drained the account's Monday
+ *    complexity budget and 429'd every other role's counts.
+ *  · Call `fetchItemNotes` per card — one request per patient per render, i.e.
+ *    INCIDENT_2026-08-20's shape against Monday instead of RingCentral.
+ *
+ * So: only the cards actually RENDERED (the sections paginate at 12), asked for
+ * in one batch, cached for the tab. `useCardNotes` owns the caching and the
+ * coalescing; this function just asks.
+ *
+ * ⚠️ Chunked at `NOTES_BATCH` because Monday caps `items(ids:)` at 100. A
+ * silently truncated answer here would render as "no notes yet" on real
+ * patients, which is worse than slow.
+ */
+export const NOTES_BATCH = 50;
+
+export async function fetchItemNotesBatch(
+  itemIds: readonly string[], columnId: string,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const ids = [...new Set(itemIds.filter(Boolean))];
+  for (let i = 0; i < ids.length; i += NOTES_BATCH) {
+    const chunk = ids.slice(i, i + NOTES_BATCH);
+    const data = await gql<{ items: { id: string; column_values: { id: string; text: string | null }[] }[] }>(
+      `query ($ids: [ID!], $cols: [String!]) {
+         items(ids: $ids) { id column_values(ids: $cols) { id text } }
+       }`,
+      { ids: chunk, cols: [columnId] },
+    );
+    for (const item of data.items ?? []) {
+      out.set(item.id, item.column_values?.find((c) => c.id === columnId)?.text ?? "");
+    }
+  }
+  return out;
+}
+
+/**
  * The notes body for ONE item. Called when a card's "Notes" is opened, never
  * for the list — see the INTAKE_COLS note above for why.
  */

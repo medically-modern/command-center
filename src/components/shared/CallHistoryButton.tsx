@@ -80,7 +80,7 @@ function CallIcon({ call }: { call: PatientCall }) {
   );
 }
 
-export function CallHistoryButton({ phone, display, label = "Calls", icon }: {
+export function CallHistoryButton({ phone, display, label = "Calls", icon, count }: {
   phone?: string;
   display?: string;
   /** The trigger's text and icon. The Care Coordinator dashboard passes
@@ -88,6 +88,26 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon }: {
    *  "Calls" and the phone. */
   label?: string;
   icon?: "list";
+  /**
+   * How many calls the label should advertise — `Call Log (3)`.
+   *
+   * ⚠️ **NOT FETCHED HERE, AND IT MUST NOT BE** (Brandon, 2026-09-17: "add
+   * parentheses for number of calls we've had with them"). The call log is one
+   * of RingCentral's more rate-limited endpoints, which is the whole reason
+   * this dialog fetches ON OPEN and not on render (§5.16) — a count that cost a
+   * request per patient per render is the version Josh declined on 2026-09-16,
+   * and it is INCIDENT_2026-08-20's shape.
+   *
+   * So the number is passed IN, by a caller that already holds it from a
+   * shared, batched, account-wide read it was making anyway
+   * (`useContactStates`). Omit it and the trigger reads exactly as before.
+   *
+   * ⚠️ The caller is also responsible for not passing a number it cannot
+   * stand behind: that read is page-capped, so on a busy week it under-counts,
+   * and `useContactStates.truncated` says when. Undefined renders nothing,
+   * which is the honest answer when we do not know.
+   */
+  count?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -213,6 +233,7 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon }: {
           style={{ boxShadow: "inset 0 0 0 1px var(--mm-card-border)" }}
         >
           {icon === "list" ? <List className="h-3.5 w-3.5 shrink-0" /> : <Phone className="h-3.5 w-3.5 shrink-0" />} {label}
+          {typeof count === "number" && <span className="tabular-nums opacity-80">({count})</span>}
         </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg p-0 gap-0 flex flex-col max-h-[80vh]">

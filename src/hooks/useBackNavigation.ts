@@ -10,9 +10,10 @@
  * restored screen is fully reconstructed.
  *
  * Fallback (deep link, bookmark, new tab — no in-app history):
- *   - ?from=system-mgmt → /system-mgmt
- *   - ?manager=1        → /?tab=roles&sub=dashboards  (manager dashboards)
- *   - otherwise         → /?tab=dashboard             (processors)
+ *   - ?from=system-mgmt      → /system-mgmt
+ *   - ?from=care-coordinator → /care-coordinator
+ *   - ?manager=1             → /?tab=roles&sub=dashboards  (manager dashboards)
+ *   - otherwise              → /?tab=dashboard             (processors)
  */
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useCallback } from "react";
@@ -33,6 +34,13 @@ export function useBackNavigation() {
   const backTarget =
     from === "system-mgmt"
       ? "/system-mgmt"
+      // Every Care Coordinator hand-off already carries `from=care-coordinator`
+      // (the cards' patient-name links, the day strip's popup), and in the
+      // ordinary case history-first sends them straight back. This only bites
+      // on a deep link or a reopened tab, where the old fallback dropped a
+      // coordinator on the home dashboard instead of the queue she was working.
+      : from === "care-coordinator"
+        ? "/care-coordinator"
       : isManager
         ? "/?tab=roles&sub=dashboards"
         : "/?tab=dashboard";

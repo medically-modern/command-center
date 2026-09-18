@@ -56,16 +56,21 @@ import { cn } from "@/lib/utils";
 import { useBoardPoll } from "@/hooks/careCoordinator/useBoardPoll";
 import { useCalendlyBookings } from "@/hooks/careCoordinator/useCalendlyBookings";
 import {
-  fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUPS, INTAKE_FORM_GROUP_IDS,
+  fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUPS, INTAKE_FORM_GROUP_IDS, NOTES_COLUMN,
 } from "@/lib/careCoordinator/mondayApi";
 import {
-  intakeBuckets, matchesFormFilter, nextUp, summarize, toScheduledCall, welcomeCallBuckets,
-  FORM_FILTERS, FORM_FILTER_LABEL, READY_AFTER_HOURS,
-  type CalendlyLookup, type FormFilter, type Horizon, type IntakeLead, type WelcomeCallItem,
+  intakeBuckets, nextUp, summarize, toScheduledCall, welcomeCallBuckets,
+  type CalendlyLookup, type Horizon, type IntakeLead, type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
+import { EMPTY_SELECTION, matchesFacets, type FacetSelection } from "@/lib/careCoordinator/intakeFilter";
+import { useCardNotes } from "@/hooks/careCoordinator/useCardNotes";
+import { useContactStates } from "@/hooks/useContactStates";
+import { contactKey } from "@/lib/contactState/contactState";
+import { IntakeFilter } from "@/components/careCoordinator/IntakeFilter";
 import { PipelineColumn, Section } from "@/components/careCoordinator/PipelineColumn";
 import {
   IntakeScheduledCard, IntakeUnscheduledCard, WelcomeScheduledCard, WelcomeUnscheduledCard,
+  type CardExtras,
 } from "@/components/careCoordinator/cards";
 import { ScheduleGrid } from "@/components/careCoordinator/ScheduleGrid";
 
@@ -130,23 +135,36 @@ export default function CareCoordinatorPage() {
   );
 
   /**
-   * Partial / Complete / All over the Patient Intake column (Brandon,
-   * 2026-09-16).
+   * The five-facet filter over the Patient Intake column (Brandon, 2026-09-17),
+   * replacing the Partial / Complete / All toggle.
    *
    * ⚠️ Applied BEFORE bucketing, not after, so the column's own counts — the
    * Today/Future header, each section's total — describe what is on screen.
    * Filtering the rendered lists alone would leave a header promising rows the
    * filter had just removed.
-   *
-   * ⚠️ The footer's "not shown" counts move with it too, and that is correct:
-   * they are the honest account of THIS column, and a filtered column really
-   * is excluding fewer patients.
    */
-  const [formFilter, setFormFilter] = useState<FormFilter>("all");
+  const [facets, setFacets] = useState<FacetSelection>(EMPTY_SELECTION);
+  const allIntakeLeads = useMemo(() => intake.data ?? [], [intake.data]);
   const intakeLeads = useMemo(
-    () => (intake.data ?? []).filter((l) => matchesFormFilter(l, formFilter, INTAKE_FORM_GROUPS)),
-    [intake.data, formFilter],
+    () => allIntakeLeads.filter((l) => matchesFacets(l, facets, INTAKE_FORM_GROUPS)),
+    [allIntakeLeads, facets],
   );
+
+  /**
+   * Who we have actually got through to this week, and how many calls with
+   * each number — ONE account-wide RingCentral read, shared by every card
+   * (Brandon, 2026-09-17: the green text/phone icons, and `Call Log (3)`).
+   *
+   * ⚠️ **NOT a per-patient lookup, and it must never become one.** The call log
+   * is one of RingCentral's more rate-limited endpoints, which is why
+   * `CallHistoryButton` fetches on OPEN and why Josh declined a per-card count
+   * on 2026-09-16 (§5.16, §5.30c). `useContactStates` is the batched,
+   * module-cached, 5-minute-TTL read the manager sidebars already make, so a
+   * page full of cards costs exactly what one card costs. It is enabled
+   * unconditionally here — unlike the sidebars' `?mv=` gate — because this
+   * whole page IS the coordinator's queue, and the marks are the point of it.
+   */
+  const contacts = useContactStates(true);
 
   const ctx = useMemo(() => ({ today, nowMinutes, nowMs }), [today, nowMinutes, nowMs]);
   const intakeB = useMemo(
@@ -158,6 +176,46 @@ export default function CareCoordinatorPage() {
     [welcome.data, ctx, bookings.byEmail],
   );
   const summary = useMemo(() => summarize(intakeB, welcomeB), [intakeB, welcomeB]);
+
+  /**
+   * Notes for every card in each column, in one batched read per column
+   * (Brandon, 2026-09-17: notes open by default, "See notes" gone).
+   *
+   * ⚠️ The ids come from the BUCKETS, i.e. the patients this column will
+   * render — not from the raw board read. Patient Intake's read is ~1,754 rows
+   * and the column shows a few dozen; asking for the notes of 1,700 rows the
+   * coordinator cannot see is the §5.25 cost this page took out of the list
+   * query in the first place.
+   */
+  const intakeNoteIds = useMemo(() => [
+    ...intakeB.scheduledToday, ...intakeB.scheduledFuture,
+    ...intakeB.unscheduledToday, ...intakeB.unscheduledFuture,
+  ].map((e) => e.item.id), [intakeB]);
+  const welcomeNoteIds = useMemo(() => [
+    ...welcomeB.scheduledToday, ...welcomeB.scheduledFuture,
+    ...welcomeB.unscheduledToday, ...welcomeB.unscheduledFuture,
+  ].map((e) => e.item.id), [welcomeB]);
+  const intakeNotes = useCardNotes(intakeNoteIds, NOTES_COLUMN.intake);
+  const welcomeNotes = useCardNotes(welcomeNoteIds, NOTES_COLUMN.welcome);
+
+  /**
+   * Everything a card needs that the column fetched once on its behalf.
+   *
+   * ⚠️ `callCount` is withheld whenever the shared read came back at its page
+   * cap. That read is a 7-day, page-capped window (`ACTIVITY_RECORD_LIMIT`), so
+   * on a busy week its oldest calls fall off the end — and a count rendered on
+   * screen as fact must not be quietly low. Undefined renders no parentheses at
+   * all, which is the honest answer. The green icons are unaffected: a clipped
+   * window can only fail to notice contact, which reads as "keep trying".
+   */
+  const extrasFor = useCallback((itemId: string, phone: string, notes: Map<string, string>): CardExtras => {
+    const state = contacts.states?.get(contactKey(phone));
+    return {
+      notes: notes.get(itemId),
+      reached: contacts.states ? { byText: !!state?.reachedByText, byCall: !!state?.reachedByCall } : undefined,
+      callCount: contacts.states && !contacts.truncated ? (state?.calls ?? 0) : undefined,
+    };
+  }, [contacts.states, contacts.truncated]);
   // ⚠️ The strip reads the UNFILTERED list on purpose. It is the day's
   // schedule, not a view of this column, and the mirror rows are also what
   // give a Calendly intake booking its monday item id — narrowing them would
@@ -294,11 +352,15 @@ export default function CareCoordinatorPage() {
             onHorizon={setIntakeHorizon}
             progress={intake.progress}
             notice={<IntakeBookingsNotice bookings={intakeBookings} />}
-            controls={<FormFilterToggle value={formFilter} onChange={setFormFilter} />}
-            footer={
-              <IntakeFooter
-                imported={ex.imported} nurturing={ex.nurturing} sendNow={ex.sendNow}
-                callDone={ex.callDone} cleanUp={ex.cleanUp} withManager={intakeB.withManager}
+            controls={
+              <IntakeFilter
+                leads={allIntakeLeads}
+                groups={INTAKE_FORM_GROUPS}
+                selection={facets}
+                onChange={setFacets}
+                onClearAll={() => setFacets(EMPTY_SELECTION)}
+                shown={intakeLeads.length}
+                total={allIntakeLeads.length}
               />
             }
           >
@@ -307,13 +369,16 @@ export default function CareCoordinatorPage() {
               <ColumnLists
                 horizon={intakeHorizon}
                 scheduledToday={intakeB.scheduledToday.map((e) => (
-                  <IntakeScheduledCard key={e.item.id} entry={e} nextUp={e === intakeNextUp} onBookingLink={linkForIntake} />
+                  <IntakeScheduledCard key={e.item.id} entry={e} nextUp={e === intakeNextUp} onBookingLink={linkForIntake}
+                    extras={extrasFor(e.item.id, e.item.phone, intakeNotes)} />
                 ))}
                 scheduledFuture={intakeB.scheduledFuture.map((e) => (
-                  <IntakeScheduledCard key={e.item.id} entry={e} nextUp={false} onBookingLink={linkForIntake} />
+                  <IntakeScheduledCard key={e.item.id} entry={e} nextUp={false} onBookingLink={linkForIntake}
+                    extras={extrasFor(e.item.id, e.item.phone, intakeNotes)} />
                 ))}
                 unscheduled={(intakeHorizon === "today" ? intakeB.unscheduledToday : intakeB.unscheduledFuture).map((e) => (
-                  <IntakeUnscheduledCard key={e.item.id} entry={e} today={today} onBookingLink={linkForIntake} />
+                  <IntakeUnscheduledCard key={e.item.id} entry={e} today={today} onBookingLink={linkForIntake}
+                    extras={extrasFor(e.item.id, e.item.phone, intakeNotes)} />
                 ))}
               />
             )}
@@ -328,22 +393,22 @@ export default function CareCoordinatorPage() {
             onHorizon={setWelcomeHorizon}
             progress={welcome.progress}
             notice={<WelcomeBookingsNotice bookings={bookings} />}
-            footer={
-              <WelcomeFooter withManager={welcomeB.withManager} proposedStuck={welcomeB.proposedStuck} />
-            }
           >
             {welcome.loading && <Skeleton />}
             {!welcome.loading && (
               <ColumnLists
                 horizon={welcomeHorizon}
                 scheduledToday={welcomeB.scheduledToday.map((e) => (
-                  <WelcomeScheduledCard key={e.item.id} entry={e} nextUp={e === welcomeNextUp} onBookingLink={linkForWelcome} />
+                  <WelcomeScheduledCard key={e.item.id} entry={e} nextUp={e === welcomeNextUp} onBookingLink={linkForWelcome}
+                    extras={extrasFor(e.item.id, e.item.phone, welcomeNotes)} />
                 ))}
                 scheduledFuture={welcomeB.scheduledFuture.map((e) => (
-                  <WelcomeScheduledCard key={e.item.id} entry={e} nextUp={false} onBookingLink={linkForWelcome} />
+                  <WelcomeScheduledCard key={e.item.id} entry={e} nextUp={false} onBookingLink={linkForWelcome}
+                    extras={extrasFor(e.item.id, e.item.phone, welcomeNotes)} />
                 ))}
                 unscheduled={(welcomeHorizon === "today" ? welcomeB.unscheduledToday : welcomeB.unscheduledFuture).map((e) => (
-                  <WelcomeUnscheduledCard key={e.item.id} entry={e} today={today} onBookingLink={linkForWelcome} />
+                  <WelcomeUnscheduledCard key={e.item.id} entry={e} today={today} onBookingLink={linkForWelcome}
+                    extras={extrasFor(e.item.id, e.item.phone, welcomeNotes)} />
                 ))}
               />
             )}
@@ -448,28 +513,6 @@ function IntakeBookingsNotice({ bookings }: { bookings: ReturnType<typeof useCal
   );
 }
 
-/** Brandon's Partial / Complete / All filter, on the Patient Intake column. */
-function FormFilterToggle({ value, onChange }: { value: FormFilter; onChange: (v: FormFilter) => void }) {
-  return (
-    <div className="flex rounded-md border bg-background p-0.5 text-[11px]" role="group" aria-label="Filter by web form">
-      {FORM_FILTERS.map((f) => (
-        <button
-          key={f}
-          type="button"
-          onClick={() => onChange(f)}
-          aria-pressed={value === f}
-          className={cn(
-            "rounded px-2 py-0.5 font-medium",
-            value === f ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent",
-          )}
-        >
-          {FORM_FILTER_LABEL[f]}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function Stat({ label, value, strong = false, warn = false }: { label: string; value: number; strong?: boolean; warn?: boolean }) {
   return (
     <div className="min-w-0">
@@ -487,30 +530,18 @@ function Skeleton() {
   );
 }
 
-/**
- * The honest small print. Every row in the form groups that is NOT on this
- * screen is counted here with its reason — a state that matches no view is
- * invisible app-wide (§7), and this column filters harder than any queue does.
- * The escalated ones are here too, with where to find them.
+/* ⚠️ **THE "NOT SHOWN" FOOTERS ARE GONE** (Brandon, 2026-09-17: *"Delete 'Not
+ * shown: 8 with a manager — see Oversight · 19 completed forms that chose
+ * "Send request now" — advance from Info Collection.'"*). `IntakeFooter` and
+ * `WelcomeFooter` counted every row the column excluded, with its reason.
+ *
+ * ⚠️ That was §7's rule on the page — a state that matches no view is invisible
+ * app-wide — and this is the one deletion in his list that costs something
+ * real: the ~1,697 imported/8-25-bulk rows Patient Intake excludes are now
+ * accounted for nowhere on this screen. It is a deliberate trade he asked for
+ * twice over (both footers named), on a page he reads every day, and the
+ * numbers are still derivable: `intakeBuckets` computes `excluded` and
+ * `withManager` exactly as before and nothing else changed. Do not re-add the
+ * lines without asking him; if the imported rows ever need surfacing again, a
+ * facet on the filter is the place that does it without re-adding a paragraph.
  */
-function IntakeFooter({ imported, nurturing, sendNow, callDone, cleanUp, withManager }: {
-  imported: number; nurturing: number; sendNow: number; callDone: number; cleanUp: number; withManager: number;
-}) {
-  const parts: string[] = [];
-  if (withManager) parts.push(`${withManager} with a manager — see Oversight`);
-  if (imported) parts.push(`${fmtN(imported)} imported/referral rows that never touched the web form — worked from Info Collection`);
-  if (nurturing) parts.push(`${nurturing} inside the ${READY_AFTER_HOURS}-hour automated text/email window`);
-  if (sendNow) parts.push(`${sendNow} completed form${sendNow === 1 ? "" : "s"} that chose "Send request now" — advance from Info Collection`);
-  if (callDone) parts.push(`${callDone} with the intake call already marked complete`);
-  if (cleanUp) parts.push(`${cleanUp} unbooked in Profile Clean-Up`);
-  if (!parts.length) return null;
-  return <>Not shown: {parts.join(" · ")}.</>;
-}
-
-function WelcomeFooter({ withManager, proposedStuck }: { withManager: number; proposedStuck: number }) {
-  const parts: string[] = [];
-  if (withManager) parts.push(`${withManager} with a manager — see Oversight`);
-  if (proposedStuck) parts.push(`${proposedStuck} proposed stuck — awaiting a Final Decision in Oversight`);
-  if (!parts.length) return null;
-  return <>Not shown: {parts.join(" · ")}.</>;
-}

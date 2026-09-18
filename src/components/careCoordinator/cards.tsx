@@ -25,13 +25,29 @@
  * Referral Source left the Welcome Call pills with that rebuild.
  */
 import { displayTime } from "@/lib/scheduledCalls/workflow";
-import { intakeInsurance, type PillSlots } from "@/lib/careCoordinator/pills";
-import { INTAKE_FORM_GROUPS, NOTES_COLUMN } from "@/lib/careCoordinator/mondayApi";
+import { coveragePathPill, intakeInsurance, type PillSlots } from "@/lib/careCoordinator/pills";
+import { INTAKE_FORM_GROUPS } from "@/lib/careCoordinator/mondayApi";
 import {
   autoTexts, formCompletion, formatDaysSince, shortMonthDay, welcomeCallTexts,
   type IntakeLead, type ScheduledEntry, type UnscheduledEntry, type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
 import { PatientCard } from "./PatientCard";
+
+/**
+ * What the two columns share once the column itself has done the batched work.
+ *
+ * ⚠️ `notes` arrives from the COLUMN's one batched read (`useCardNotes`), not
+ * from the card — a card that fetched its own would be one Monday request per
+ * patient per render. `reached` and `callCount` come from the one account-wide
+ * RingCentral read the page already makes. Both are `undefined` until they
+ * land, and every renderer below treats that as "we don't know yet", never as
+ * a negative.
+ */
+export interface CardExtras {
+  notes: string | undefined;
+  reached?: { byText: boolean; byCall: boolean };
+  callCount?: number;
+}
 
 const FROM = "from=care-coordinator";
 
@@ -65,23 +81,26 @@ function intakePills(lead: IntakeLead, withCompletion: boolean): PillSlots {
   return {
     requestType: lead.requestType,
     insurance: intakeInsurance(lead),
-    ipPath: lead.ipCoveragePath,
-    cgmPath: lead.cgmCoveragePath,
+    // ⚠️ Through `coveragePathPill`, so a "Not Serving" path is the em dash —
+    // the same rule the filter's options are built from, which is what stops
+    // the filter offering a value no card shows (`intakeFilter.facetValue`).
+    ipPath: coveragePathPill(lead.ipCoveragePath),
+    cgmPath: coveragePathPill(lead.cgmCoveragePath),
     ...(withCompletion ? { status: formCompletion(lead, INTAKE_FORM_GROUPS) ?? "" } : {}),
   };
 }
 
-const intakeNotes = (lead: IntakeLead) => ({ itemId: lead.id, columnId: NOTES_COLUMN.intake, label: "Profile Send Off notes" });
 const intakeHref = (lead: IntakeLead) => `/unverified-referrals?patientId=${encodeURIComponent(lead.id)}&${FROM}`;
 
-export function IntakeScheduledCard({ entry, nextUp, onBookingLink }: {
-  entry: ScheduledEntry<IntakeLead>; nextUp: boolean; onBookingLink: (lead: IntakeLead) => void;
+export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
+  entry: ScheduledEntry<IntakeLead>; nextUp: boolean; onBookingLink: (lead: IntakeLead) => void; extras: CardExtras;
 }) {
   const lead = entry.item;
   const attempts = Number(lead.attemptCounter) > 0 ? Math.trunc(Number(lead.attemptCounter)) : 0;
   return (
     <PatientCard
       name={lead.name}
+      variant="intake"
       attempted={attempts > 0}
       nextUp={nextUp}
       doctor={lead.providedDoctorName}
@@ -91,7 +110,10 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink }: {
       attempts={attempts}
       texts={autoTexts(lead)}
       phone={lead.phone}
-      notes={intakeNotes(lead)}
+      notes={extras.notes}
+      notesLabel="Profile Send Off notes"
+      reached={extras.reached}
+      callCount={extras.callCount}
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake"
       onBookingLink={() => onBookingLink(lead)}
@@ -99,13 +121,14 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink }: {
   );
 }
 
-export function IntakeUnscheduledCard({ entry, today, onBookingLink }: {
-  entry: UnscheduledEntry<IntakeLead>; today: string; onBookingLink: (lead: IntakeLead) => void;
+export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
+  entry: UnscheduledEntry<IntakeLead>; today: string; onBookingLink: (lead: IntakeLead) => void; extras: CardExtras;
 }) {
   const lead = entry.item;
   return (
     <PatientCard
       name={lead.name}
+      variant="intake"
       attempted={entry.attempts > 0}
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
@@ -114,7 +137,10 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink }: {
       attempts={entry.attempts}
       texts={autoTexts(lead)}
       phone={lead.phone}
-      notes={intakeNotes(lead)}
+      notes={extras.notes}
+      notesLabel="Profile Send Off notes"
+      reached={extras.reached}
+      callCount={extras.callCount}
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake — log the attempt there"
       onBookingLink={() => onBookingLink(lead)}
@@ -124,15 +150,25 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink }: {
 
 /* ── Welcome Call ───────────────────────────────────────────── */
 
-/** ⚠️ No `status`: a Welcome Call patient never filled in the web form, so an
- *  em dash under a "Form" caption would imply one they skipped. Referral Source
- *  left the pills with the rebuild (Brandon, 2026-09-16). */
+/**
+ * ⚠️ No `status`, and that is structural rather than a choice: the Welcome Call
+ * variant's slot list has no Form column at all. A Welcome Call patient never
+ * filled in the DTC web form, so an em dash under a "Form" caption would imply
+ * one they skipped.
+ *
+ * ⚠️ **Referral Source is back, in that slot** (Brandon, 2026-09-17: "we need
+ * to add referral source as a pill column for the welcome call side only — it
+ * replaces the form column on the intake side"). It left the pills in the
+ * 2026-09-16 rebuild; it is the fact worth the fifth column here, because it is
+ * how this patient reached us and it is already in the column's read.
+ */
 function welcomePills(item: WelcomeCallItem): PillSlots {
   return {
     requestType: item.requestType,
     insurance: item.primaryInsurance,
-    ipPath: item.ipCoveragePath,
-    cgmPath: item.cgmCoveragePath,
+    ipPath: coveragePathPill(item.ipCoveragePath),
+    cgmPath: coveragePathPill(item.cgmCoveragePath),
+    referralSource: item.referralSource,
   };
 }
 
@@ -142,17 +178,17 @@ function welcomeClinic(item: WelcomeCallItem): string {
   return (item.clinicAddress || item.clinicName || item.doctorPhone || "").trim();
 }
 
-const welcomeNotes = (item: WelcomeCallItem) => ({ itemId: item.id, columnId: NOTES_COLUMN.welcome, label: "Welcome Call notes" });
 const welcomeHref = (item: WelcomeCallItem) => `/welcome-call?patientId=${encodeURIComponent(item.id)}&${FROM}`;
 
-export function WelcomeScheduledCard({ entry, nextUp, onBookingLink }: {
-  entry: ScheduledEntry<WelcomeCallItem>; nextUp: boolean; onBookingLink: (item: WelcomeCallItem) => void;
+export function WelcomeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
+  entry: ScheduledEntry<WelcomeCallItem>; nextUp: boolean; onBookingLink: (item: WelcomeCallItem) => void; extras: CardExtras;
 }) {
   const item = entry.item;
   const attempts = Number(item.callAttempts) > 0 ? Math.trunc(Number(item.callAttempts)) : 0;
   return (
     <PatientCard
       name={item.name}
+      variant="welcome"
       attempted={attempts > 0}
       nextUp={nextUp}
       doctor={item.doctorName}
@@ -162,7 +198,10 @@ export function WelcomeScheduledCard({ entry, nextUp, onBookingLink }: {
       attempts={attempts}
       texts={welcomeCallTexts(item)}
       phone={item.phone}
-      notes={welcomeNotes(item)}
+      notes={extras.notes}
+      notesLabel="Welcome Call notes"
+      reached={extras.reached}
+      callCount={extras.callCount}
       openHref={welcomeHref(item)}
       openLabel="Open on Welcome Call"
       onBookingLink={() => onBookingLink(item)}
@@ -170,13 +209,14 @@ export function WelcomeScheduledCard({ entry, nextUp, onBookingLink }: {
   );
 }
 
-export function WelcomeUnscheduledCard({ entry, today, onBookingLink }: {
-  entry: UnscheduledEntry<WelcomeCallItem>; today: string; onBookingLink: (item: WelcomeCallItem) => void;
+export function WelcomeUnscheduledCard({ entry, today, onBookingLink, extras }: {
+  entry: UnscheduledEntry<WelcomeCallItem>; today: string; onBookingLink: (item: WelcomeCallItem) => void; extras: CardExtras;
 }) {
   const item = entry.item;
   return (
     <PatientCard
       name={item.name}
+      variant="welcome"
       attempted={entry.attempts > 0}
       doctor={item.doctorName}
       clinic={welcomeClinic(item)}
@@ -185,7 +225,10 @@ export function WelcomeUnscheduledCard({ entry, today, onBookingLink }: {
       attempts={entry.attempts}
       texts={welcomeCallTexts(item)}
       phone={item.phone}
-      notes={welcomeNotes(item)}
+      notes={extras.notes}
+      notesLabel="Welcome Call notes"
+      reached={extras.reached}
+      callCount={extras.callCount}
       openHref={welcomeHref(item)}
       openLabel="Open on Welcome Call — log the attempt there"
       onBookingLink={() => onBookingLink(item)}

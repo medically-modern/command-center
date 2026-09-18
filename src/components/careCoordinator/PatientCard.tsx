@@ -1,35 +1,50 @@
 /**
- * One patient on the Care Coordinator dashboard — Brandon's 2026-09-14 box.
+ * One patient on the Care Coordinator dashboard — Brandon's 2026-09-14 box,
+ * reworked to his 2026-09-17 notes.
  *
- *   ┃ Name                                          [when]
+ *   ┃ Name (a link)                                 [when]
  *   ┃ Doctor: … · Clinic: …
  *   ┃ [pill] [pill] [pill]                     📞 2   💬 1
  *   ┃ ──────────────────────────────────────────────────
- *   ┃ Call · Text · Call Log      notes · Open   [Booking Link]
+ *   ┃ Call · Text · Call Log (3)          [Booking Link]
+ *   ┃ Notes: the newest line, click to expand
  *
  * The left edge is ONE of two colours: Medically Modern green once a call
  * has been attempted, gray until then. No status badge, no sub line beyond
- * Doctor / Clinic, every pill neutral gray and hidden when blank. The next
- * scheduled call's box is shaded darker.
+ * Doctor / Clinic, and the next scheduled call's box is shaded darker.
  *
- * Kept from the previous card, though not in Brandon's list: "See notes" and
- * "Open". Open is how the coordinator reaches the stage page where the
- * attempt is LOGGED (the dashboard itself still writes nothing), and the
- * notes drawer is the running case history a caller reads before dialling.
- * Both are quiet text links so the row stays uncrowded.
+ * ## What 2026-09-17 changed, and why each one is not just a tidy-up
  *
- * ⚠️ Notes are fetched when OPENED, one item at a time (`fetchItemNotes`). The
- * column reads deliberately carry no notes column — see mondayApi.ts.
+ * **The NAME is the way in.** "See notes" and "Open" are both gone (Brandon:
+ * *"Click patient name in the unscheduled/scheduled boxes should take to
+ * profile too … then back button takes you directly back to the same page you
+ * came from"*, and *"Let's get rid of open button too, that will be done by
+ * clicking patient name now (so now getting rid of see notes and open)"*).
+ * Two quiet text links plus a name that looked inert is three things competing
+ * to be the obvious click; the name is what a coordinator reaches for anyway.
+ *
+ * **Notes are OPEN, clamped to one line.** They were behind a toggle because
+ * they cost a Monday read each; `useCardNotes` batches the rendered cards into
+ * one request, so the cost of showing them is no longer per card. One line is
+ * the compromise that keeps a column of cards scannable — the running history
+ * on these patients runs to thousands of characters.
+ *
+ * **The two counter icons go green once we have actually got through**
+ * (Brandon: *"let's have the text and phone icon turn a shade of green if
+ * they've responded to a text or picked up (and add a legend for that)"*).
+ * ⚠️ The ICONS, not the Call and Text buttons: those are already teal and light
+ * green, so recolouring them would have meant a green that reads as "reached"
+ * sitting next to a green that reads as "this is a button". These two glyphs
+ * had no state of their own and sit directly beside the counts they qualify.
  */
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { CalendarPlus, ChevronDown, ChevronUp, ExternalLink, MessageSquare, NotebookPen, Phone } from "lucide-react";
+import { CalendarPlus, ChevronDown, ChevronUp, MessageSquare, Phone } from "lucide-react";
 
 import { PatientContact } from "@/components/masheke/mmKit";
-import { fetchItemNotes } from "@/lib/careCoordinator/mondayApi";
 import {
   PILL_GRID_TEMPLATE, PILL_SLOTS, pillTone, shortLabel,
-  type PillSlots, type PillTone,
+  type PillSlots, type PillTone, type PillVariant,
 } from "@/lib/careCoordinator/pills";
 import { cn } from "@/lib/utils";
 
@@ -64,27 +79,35 @@ export function Pill({ children, title, tone = "neutral" }: { children: ReactNod
  * caption, which keeps the columns registered card to card AND tells the
  * coordinator the field is empty rather than missing.
  *
- * ⚠️ Welcome Call cards pass no `status`, so column 8 is genuinely empty there
- * — no pill and no "Form" caption. A Welcome Call patient has no web form, so
- * a dash would imply one they never filled in.
+ * ⚠️ The two columns carry DIFFERENT fifth slots — Form on intake, Referral
+ * source on welcome (Brandon, 2026-09-17) — so the variant picks the slot list
+ * and the colour rule together. Both live in `pills.ts`; nothing here decides
+ * either.
  */
-export function PillRow({ slots }: { slots: PillSlots }) {
+export function PillRow({ slots, variant }: { slots: PillSlots; variant: PillVariant }) {
   return (
     <div className="grid items-start gap-x-1" style={{ gridTemplateColumns: PILL_GRID_TEMPLATE }}>
-      {PILL_SLOTS.map((slot) => {
-        const value = (slots[slot.key] ?? "").trim();
-        // A slot the card does not carry at all is left out entirely; a slot it
-        // carries but has no value for shows the dash. `undefined` vs `""`.
-        if (slots[slot.key] === undefined && slot.key === "status") return null;
+      {PILL_SLOTS[variant].map((slot) => {
+        const raw = slots[slot.key];
+        // A slot this card does not carry at all is left out entirely; a slot
+        // it carries but has no value for shows the dash. `undefined` vs `""`.
+        if (raw === undefined) return null;
+        const value = raw.trim();
         return (
           <div key={slot.key} className="flex min-w-0 flex-col items-start gap-0.5" style={{ gridColumnStart: slot.column }}>
             {value
-              ? <Pill title={`${slot.field}: ${value}`} tone={pillTone(slot.key, value)}>{shortLabel(value)}</Pill>
+              ? <Pill title={`${slot.field}: ${value}`} tone={pillTone(slot.key, value, variant)}>{shortLabel(value)}</Pill>
               : <span className="px-2 py-[3px] text-[11px] leading-snug text-muted-foreground/50">—</span>}
-            <span className={cn(
-              "max-w-full truncate pl-2 text-[9.5px] leading-none uppercase tracking-wide text-muted-foreground",
-              !value && "opacity-45",
-            )}>{slot.caption}</span>
+            {/* `data-pill-caption` marks the caption row as a structure, not
+                a style: the card carries other small-caps labels (the notes
+                line's), so "every uppercase span" is not the pill row. */}
+            <span
+              data-pill-caption
+              className={cn(
+                "max-w-full truncate pl-2 text-[9.5px] leading-none uppercase tracking-wide text-muted-foreground",
+                !value && "opacity-45",
+              )}
+            >{slot.caption}</span>
           </div>
         );
       })}
@@ -93,50 +116,65 @@ export function PillRow({ slots }: { slots: PillSlots }) {
 }
 
 /**
- * The notes drawer's state lives in the card so the toggle can sit on the
- * footer row while the panel renders FULL WIDTH beneath it.
+ * The running case history, on the card.
+ *
+ * ⚠️ **ONE LINE UNTIL ASKED** (Brandon, 2026-09-17: *"default that profile send
+ * off notes is open — but if it's more than 1 line, user has to click to expand
+ * it"*). These columns hold a stamped append-only log that runs to thousands of
+ * characters on a worked patient (§10 — they were capped at 2,000 until the
+ * September cutover and some sat at the cap), so "open" cannot mean "all of
+ * it": a dozen cards each showing a full history is a column nobody can scan.
+ *
+ * ⚠️ The NEWEST line is the one shown, not the first. The log appends, so the
+ * top of the column is the oldest thing that ever happened to this patient and
+ * the bottom is what somebody found out on the last call — which is the line
+ * that changes what this call opens with.
  */
-function useNotesDrawer(itemId: string, columnId: string) {
+function NotesLine({ label, notes }: { label: string; notes: string | undefined }) {
   const [open, setOpen] = useState(false);
-  const [notes, setNotes] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // `undefined` = the batch hasn't answered yet. Deliberately silent rather
+  // than a spinner per card: a dozen spinners on first paint is worse than the
+  // line arriving a moment later.
+  if (notes === undefined) return null;
 
-  const toggle = async () => {
-    const next = !open;
-    setOpen(next);
-    if (!next || notes !== null || loading) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setNotes(await fetchItemNotes(itemId, columnId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-  return { open, notes, loading, error, toggle };
-}
+  const body = notes.trim();
+  if (!body) {
+    return <p className="mt-2 border-t pt-2 text-xs italic text-muted-foreground/70">{label}: none yet</p>;
+  }
+  const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
+  const newest = lines[lines.length - 1] ?? body;
+  const expandable = lines.length > 1 || newest.length > 110;
 
-function NotesPanel({ label, notes, loading, error }: { label: string; notes: string | null; loading: boolean; error: string | null }) {
   return (
-    <div className="rounded-md border bg-muted/40 p-2.5 text-xs">
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-      {loading && <p className="text-muted-foreground">Loading…</p>}
-      {error && <p className="text-rose-700 dark:text-rose-300">Couldn't load notes: {error}</p>}
-      {!loading && !error && notes !== null && (
-        notes.trim()
-          ? <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-sans leading-relaxed">{notes}</pre>
-          : <p className="text-muted-foreground">No notes yet.</p>
-      )}
+    <div className="mt-2 border-t pt-2">
+      <div className="flex items-start gap-1.5">
+        <span className="shrink-0 text-[10px] font-semibold uppercase leading-[18px] tracking-wide text-muted-foreground">
+          {label}
+        </span>
+        {open ? (
+          <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed">{body}</pre>
+        ) : (
+          <p className="min-w-0 flex-1 truncate text-xs leading-[18px] text-muted-foreground" title={newest}>{newest}</p>
+        )}
+        {expandable && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="shrink-0 rounded px-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+          >
+            {open ? <ChevronUp className="h-3.5 w-3.5" aria-hidden /> : <ChevronDown className="h-3.5 w-3.5" aria-hidden />}
+            <span className="sr-only">{open ? "Collapse notes" : "Expand notes"}</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
 export function PatientCard({
-  name, attempted, nextUp = false, doctor, clinic, when, pills, attempts, texts,
-  phone, notes, openHref, openLabel, onBookingLink,
+  name, attempted, nextUp = false, doctor, clinic, when, pills, variant, attempts, texts,
+  phone, notes, notesLabel, openHref, openLabel, onBookingLink, reached, callCount,
 }: {
   name: string;
   /** Has anybody rung them yet? Green edge when true, gray when false. */
@@ -149,17 +187,32 @@ export function PatientCard({
   when: ReactNode;
   /** One entry per labelled column; a blank string renders the em dash. */
   pills: PillSlots;
+  /** Which column this card is in — picks the slot list and the pill colours. */
+  variant: PillVariant;
   attempts: number;
   texts: number;
   phone: string;
-  /** Which notes column this patient's running history lives in. */
-  notes: { itemId: string; columnId: string; label: string };
+  /** This patient's running history, already fetched in the column's batch.
+   *  `undefined` while the batch is still out. */
+  notes: string | undefined;
+  notesLabel: string;
   /** Deep link into the stage page that WORKS this patient. */
   openHref: string;
   openLabel: string;
   onBookingLink: () => void;
+  /**
+   * Have we actually got through to this patient in the last week?
+   *
+   * ⚠️ Undefined when the shared RingCentral read hasn't landed (or can't be
+   * made at all in a build with no gateway). Both glyphs then stay neutral,
+   * which is what they looked like before this existed — a missing signal must
+   * never read as "we have not reached them", because that is a claim.
+   */
+  reached?: { byText: boolean; byCall: boolean };
+  /** Calls with this number in the same window, or undefined when we can't
+   *  stand behind a number (see `CallHistoryButton`'s own `count` note). */
+  callCount?: number;
 }) {
-  const drawer = useNotesDrawer(notes.itemId, notes.columnId);
   const doctorLine = [doctor?.trim() && `Doctor: ${doctor.trim()}`, clinic?.trim() && `Clinic: ${clinic.trim()}`]
     .filter(Boolean).join(" · ");
   return (
@@ -172,7 +225,14 @@ export function PatientCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h4 className="truncate text-[15px] font-semibold leading-tight">{name}</h4>
+          {/* The name IS the link (Brandon, 2026-09-17). Underlined on hover so
+              it advertises itself; `title` carries the destination, because the
+              two columns lead to different stage pages. */}
+          <h4 className="truncate text-[15px] font-semibold leading-tight">
+            <Link to={openHref} title={openLabel} className="rounded hover:underline focus-visible:underline focus-visible:outline-none">
+              {name}
+            </Link>
+          </h4>
           {doctorLine && <div className="mt-0.5 text-xs text-muted-foreground">{doctorLine}</div>}
         </div>
         {when}
@@ -183,51 +243,52 @@ export function PatientCard({
           would shift every column on that one row. */}
       <div className="mt-2 flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <PillRow slots={pills} />
+          <PillRow slots={pills} variant={variant} />
         </div>
-        <span className="flex w-[4.75rem] shrink-0 items-center justify-end gap-3 pt-0.5 text-xs text-muted-foreground tabular-nums">
-          <span className="inline-flex items-center gap-1" title="Call attempts">
+        <span className="flex w-[4.75rem] shrink-0 items-center justify-end gap-3 pt-0.5 text-xs tabular-nums">
+          <span
+            className={cn("inline-flex items-center gap-1", reached?.byCall ? "font-semibold text-[color:var(--mm-green)]" : "text-muted-foreground")}
+            title={reached?.byCall
+              ? "Call attempts — a call with this number connected in the last week"
+              : "Call attempts logged by reps"}
+          >
             <Phone className="h-3.5 w-3.5" aria-hidden />
-            <span className="sr-only">Call attempts</span>
+            <span className="sr-only">Call attempts{reached?.byCall ? ", reached" : ""}</span>
             {attempts}
           </span>
-          <span className="inline-flex items-center gap-1" title="Automated texts">
+          <span
+            className={cn("inline-flex items-center gap-1", reached?.byText ? "font-semibold text-[color:var(--mm-green)]" : "text-muted-foreground")}
+            title={reached?.byText
+              ? "Automated texts — this patient has texted us back in the last week"
+              : "Automated texts sent to this patient"}
+          >
             <MessageSquare className="h-3.5 w-3.5" aria-hidden />
-            <span className="sr-only">Texts</span>
+            <span className="sr-only">Texts{reached?.byText ? ", they replied" : ""}</span>
             {texts}
           </span>
         </span>
       </div>
 
-      <div className="mt-3 space-y-2 border-t pt-2.5">
+      <div className="mt-3 border-t pt-2.5">
         <div className="flex flex-wrap items-center gap-2">
-          <PatientContact phone={phone} textTone="green" callHistoryLabel="Call Log" callHistoryIcon="list" />
-          <span className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void drawer.toggle()}
-              aria-expanded={drawer.open}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <NotebookPen className="h-3.5 w-3.5" aria-hidden />
-              {drawer.open ? "Hide notes" : "See notes"}
-              {drawer.open ? <ChevronUp className="h-3 w-3" aria-hidden /> : <ChevronDown className="h-3 w-3" aria-hidden />}
-            </button>
-            <Link to={openHref} title={openLabel} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-              Open
-            </Link>
-            <button
-              type="button"
-              onClick={onBookingLink}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
-            >
-              <CalendarPlus className="h-3.5 w-3.5" aria-hidden />
-              Booking Link
-            </button>
-          </span>
+          <PatientContact
+            phone={phone}
+            patientName={name}
+            textTone="green"
+            callHistoryLabel="Call Log"
+            callHistoryIcon="list"
+            callHistoryCount={callCount}
+          />
+          <button
+            type="button"
+            onClick={onBookingLink}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+          >
+            <CalendarPlus className="h-3.5 w-3.5" aria-hidden />
+            Booking Link
+          </button>
         </div>
-        {drawer.open && <NotesPanel label={notes.label} notes={drawer.notes} loading={drawer.loading} error={drawer.error} />}
+        <NotesLine label={notesLabel} notes={notes} />
       </div>
     </article>
   );

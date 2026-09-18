@@ -58,6 +58,17 @@ const wc = (over: Partial<WelcomeCallItem>): WelcomeCallItem => ({
 
 const fetchItemNotes = vi.fn(async () => "[Sep 3, 2026, 11:07 AM] Patient Intake: Call attempt 1 — left a vm —MT");
 
+/**
+ * The batched notes read that replaced the per-card one on 2026-09-17, when
+ * notes became open by default. The rule it has to satisfy is ONE request per
+ * column, not one per patient — the whole reason notes are not in the list
+ * query (§5.25).
+ */
+const fetchItemNotesBatch = vi.fn(async (ids: readonly string[], _columnId: string) =>
+  new Map(ids.map((id) => [id, id === "ready"
+    ? "[Sep 2] Patient Intake: first call, no answer —MT\n[Sep 3, 2026, 11:07 AM] Patient Intake: Call attempt 1 — left a vm —MT"
+    : ""])));
+
 vi.mock("@/lib/careCoordinator/mondayApi", () => ({
   INTAKE_GROUP_IDS: ["group_mm5z87zt", "group_mm5zgeak", "group_mm6c3rhb"],
   INTAKE_FORM_GROUP_IDS: ["group_mm5z87zt", "group_mm5zgeak"],
@@ -78,6 +89,24 @@ vi.mock("@/lib/careCoordinator/mondayApi", () => ({
     wc({ id: "esc", name: "Manager Case", escalation: "Escalation Required", escalationIndex: 0 }),
   ],
   fetchItemNotes: (...a: unknown[]) => fetchItemNotes(...(a as [])),
+  fetchItemNotesBatch: (...a: unknown[]) => fetchItemNotesBatch(...(a as [readonly string[], string])),
+}));
+
+/**
+ * The one account-wide RingCentral read behind the green icons and the call
+ * count. Mocked rather than stubbed out so the page's wiring is exercised: a
+ * patient we have reached, and `truncated` false so the count renders.
+ */
+vi.mock("@/hooks/useContactStates", () => ({
+  CONTACT_WINDOW_DAYS: 7,
+  useContactStates: () => ({
+    loading: false,
+    error: null,
+    truncated: false,
+    states: new Map([
+      ["3475550101", { text: "weRepliedLast", call: "weCalledThem", textAt: "", callAt: "", voicemail: false, reachedByText: true, reachedByCall: true, calls: 3 }],
+    ]),
+  }),
 }));
 
 vi.mock("@/components/AccessProvider", () => ({
@@ -118,8 +147,13 @@ describe("CareCoordinatorPage", () => {
     expect(within(intakeCol).queryByText("Josen Man")).toBeNull();
     expect(within(intakeCol).queryByText("Hubert Baldwin")).toBeNull();
     expect(within(intakeCol).queryByText("Escalated Person")).toBeNull();
-    expect(within(intakeCol).getByText(/1 with a manager — see Oversight/)).toBeInTheDocument();
-    expect(within(intakeCol).getByText(/1 imported\/referral rows/)).toBeInTheDocument();
+    // ⚠️ The "Not shown: …" small print is GONE (Brandon, 2026-09-17). The rows
+    // are still excluded and still computed; the page just no longer accounts
+    // for them on screen. Asserted so a future session does not re-add the
+    // paragraph without re-reading the note in CareCoordinatorPage.tsx.
+    expect(within(intakeCol).queryByText(/with a manager — see Oversight/)).toBeNull();
+    expect(within(intakeCol).queryByText(/imported\/referral rows/)).toBeNull();
+    expect(within(intakeCol).queryByText(/Not shown:/)).toBeNull();
     // No "With a manager" or "Exhausted" sections anywhere.
     expect(screen.queryByRole("button", { name: /With a manager/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Exhausted/ })).toBeNull();
@@ -138,7 +172,7 @@ describe("CareCoordinatorPage", () => {
     expect(await within(wcCol).findByText("Amara Nwosu")).toBeInTheDocument();
     expect(within(wcCol).queryByText("Gerald Pham")).toBeNull();
     expect(within(wcCol).queryByText("Manager Case")).toBeNull();
-    expect(within(wcCol).getByText(/1 with a manager — see Oversight/)).toBeInTheDocument();
+    expect(within(wcCol).queryByText(/Not shown:/)).toBeNull();
     // No gateway in this build: the column must SAY Scheduled can't be filled.
     expect(within(wcCol).getByRole("status")).toHaveTextContent(/need the gateway/);
 
@@ -179,24 +213,33 @@ describe("CareCoordinatorPage", () => {
     expect(within(intakeCol).queryByText("Eleanor Boyd")).toBeNull();
   });
 
-  it("filters Patient Intake by Partial / Complete / All, counts included", async () => {
+  it("filters Patient Intake on five facets, multi-select, intake only", async () => {
+    // Brandon, 2026-09-17, replacing the Partial / Complete / All toggle. The
+    // rules are in lib/careCoordinator/intakeFilter.test.ts; this is the wiring.
     mount();
     const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
     await within(intakeCol).findByText("Eleanor Boyd");
-    const filter = within(intakeCol).getByRole("group", { name: "Filter by web form" });
+    const filter = within(intakeCol).getByRole("group", { name: "Filter Patient Intake" });
+    expect(within(filter).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Request type", "Insurance", "Pump path", "CGM path", "Form",
+    ]);
 
-    // Only the Patient Intake column carries it.
+    // ⚠️ Only the Patient Intake column carries it (Josh, 2026-09-17: "5 facet
+    // filter on intake only for now").
     const welcomeCol = screen.getByRole("region", { name: "Welcome Call" });
-    expect(within(welcomeCol).queryByRole("group", { name: "Filter by web form" })).toBeNull();
+    expect(within(welcomeCol).queryByRole("group", { name: "Filter Patient Intake" })).toBeNull();
 
-    // Eleanor Boyd is a COMPLETED form, so Partial must drop her.
-    fireEvent.click(within(filter).getByRole("button", { name: "Partial" }));
+    // Eleanor Boyd is a COMPLETED form, so choosing Partial must drop her.
+    fireEvent.click(within(filter).getByRole("button", { name: /^Form/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Partial/ }));
     expect(within(intakeCol).queryByText("Eleanor Boyd")).toBeNull();
 
-    fireEvent.click(within(filter).getByRole("button", { name: "Complete" }));
+    // Multi-select: adding Completed brings her back WITHOUT dropping Partial.
+    fireEvent.click(screen.getByRole("button", { name: /Completed/ }));
     expect(within(intakeCol).getByText("Eleanor Boyd")).toBeInTheDocument();
 
-    fireEvent.click(within(filter).getByRole("button", { name: "All" }));
+    // And clearing is one control, which only exists while something is on.
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(within(intakeCol).getByText("Eleanor Boyd")).toBeInTheDocument();
   });
 
@@ -210,7 +253,7 @@ describe("CareCoordinatorPage", () => {
     // ⚠️ Brandon's fixed grid (2026-09-16): every slot renders, in this order,
     // with its caption, and a blank one is a faint em dash rather than nothing.
     // The captions lining up card to card IS the feature.
-    const captions = Array.from(card.querySelectorAll("span.uppercase")).map((e) => e.textContent);
+    const captions = Array.from(card.querySelectorAll("[data-pill-caption]")).map((e) => e.textContent);
     expect(captions).toEqual(["Request type", "Insurance", "Pump path", "CGM path", "Form"]);
     const pillText = Array.from(card.querySelectorAll("span.rounded-full")).map((e) => e.textContent);
     expect(pillText).toEqual(["CGM", "Anthem", "Insulin", "Completed"]);
@@ -220,14 +263,23 @@ describe("CareCoordinatorPage", () => {
     expect(card).toHaveTextContent(/3 days/);
     expect(card).not.toHaveTextContent(/waiting/);
     // Counts, buttons.
-    expect(within(card).getByTitle("Call attempts")).toHaveTextContent("0");
-    expect(within(card).getByTitle("Automated texts")).toHaveTextContent("2");
-    expect(within(card).getByRole("button", { name: /Call Log/ })).toBeInTheDocument();
+    // ⚠️ The counters go GREEN once we have got through (Brandon, 2026-09-17).
+    // The fixture's number has both, so both titles read the reached wording.
+    expect(within(card).getByTitle(/a call with this number connected/)).toHaveTextContent("0");
+    expect(within(card).getByTitle(/has texted us back/)).toHaveTextContent("2");
+    // `Call Log (3)` — the count comes from the same shared read, never a
+    // per-card fetch (§5.16: the call log is rate-limited and opens on click).
+    expect(within(card).getByRole("button", { name: /Call Log \(3\)/ })).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: /Booking Link/ })).toBeInTheDocument();
     expect(within(card).queryByText("Active")).toBeNull();
     expect(within(card).queryByText(/Web form/)).toBeNull();
-    // Open still links to the stage page that logs the attempt.
-    expect(within(card).getByRole("link", { name: /Open/ })).toHaveAttribute("href", "/unverified-referrals?patientId=ready&from=care-coordinator");
+    // ⚠️ The NAME is the link now, and "Open" and "See notes" are gone.
+    expect(within(card).queryByRole("link", { name: /^Open/ })).toBeNull();
+    expect(within(card).queryByRole("button", { name: /See notes/ })).toBeNull();
+    expect(within(card).getByRole("link", { name: "Eleanor Boyd" }))
+      .toHaveAttribute("href", "/unverified-referrals?patientId=ready&from=care-coordinator");
+    // ⚠️ The copy-number button went with them (Josh, 2026-09-17).
+    expect(within(card).queryByRole("button", { name: /Copy phone/ })).toBeNull();
 
     // A scheduled card shows the time; the booked one is "up next" (darker).
     const booked = within(intakeCol).getByText("Marcus Delaney").closest("article")!;
@@ -235,31 +287,58 @@ describe("CareCoordinatorPage", () => {
     expect(booked.className).toMatch(/bg-slate-200/);
     expect(card.className).not.toMatch(/bg-slate-200/);
 
-    // Welcome Call card: Primary Insurance in the insurance slot, text 0/1, and
-    // ⚠️ NO Referral Source (Brandon dropped it, 2026-09-16) and NO Form slot —
-    // a Welcome Call patient never filled in the web form, so an em dash under
-    // a "Form" caption would imply one they skipped.
+    // Welcome Call card: Primary Insurance in the insurance slot, and ⚠️
+    // REFERRAL SOURCE back in slot five, replacing Form (Brandon, 2026-09-17).
+    // A Welcome Call patient never filled in the web form, so a "Form" caption
+    // there would imply one they skipped.
     const wcCol = screen.getByRole("region", { name: "Welcome Call" });
     const wcCard = (await within(wcCol).findByText("Amara Nwosu")).closest("article")!;
     const wcPills = Array.from(wcCard.querySelectorAll("span.rounded-full")).map((e) => e.textContent);
-    expect(wcPills).toEqual(["Insulin Pump", "Medicare A&B", "OOW Pump"]);
-    expect(wcCard).not.toHaveTextContent("Tandem");
-    const wcCaptions = Array.from(wcCard.querySelectorAll("span.uppercase")).map((e) => e.textContent);
-    expect(wcCaptions).toEqual(["Request type", "Insurance", "Pump path", "CGM path"]);
+    expect(wcPills).toEqual(["Insulin Pump", "Medicare A&B", "OOW Pump", "Tandem"]);
+    const wcCaptions = Array.from(wcCard.querySelectorAll("[data-pill-caption]")).map((e) => e.textContent);
+    expect(wcCaptions).toEqual(["Request type", "Insurance", "Pump path", "CGM path", "Referral"]);
+    // ⚠️ And every pill on this side is NEUTRAL (Brandon, same day) — none of
+    // them carries the intake column's green/amber/rose.
+    for (const pill of Array.from(wcCard.querySelectorAll("span.rounded-full"))) {
+      expect(pill.className).toContain("border-border");
+    }
     expect(wcCard).toHaveTextContent("Doctor: Dr. Kaminski · Clinic: 1 Main St, Albany, NY 12207");
-    expect(within(wcCard).getByTitle("Automated texts")).toHaveTextContent("1");
+    // ⚠️ This patient's number is NOT in the contact-state fixture, so both
+    // counters stay neutral and say the plain thing. A number we know nothing
+    // about must never read as "we have not reached them" — that is a claim.
+    expect(within(wcCard).getByTitle("Automated texts sent to this patient")).toHaveTextContent("1");
+    // ⚠️ `Call Log (0)`, not a bare "Call Log". The shared read covers the whole
+    // ACCOUNT, so a number missing from it really has had no calls this week —
+    // that is an answer, not a gap, and every card carries one once the read
+    // lands. (A read that came back CLIPPED is the case that shows no number at
+    // all; `truncated` is false in this fixture.)
+    expect(within(wcCard).getByRole("button", { name: /Call Log \(0\)/ })).toBeInTheDocument();
   });
 
-  it("fetches a patient's notes only when the drawer is opened", async () => {
+  it("shows the newest note by default, in ONE batched read per column", async () => {
+    // Brandon, 2026-09-17: notes open by default; more than one line, click to
+    // expand. ⚠️ The batching is the load-bearing half — one request per column
+    // rather than one per patient, which is why notes are still not in the list
+    // query (§5.25) and why `fetchItemNotes` must stay unused here.
     mount();
     const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
-    await within(intakeCol).findByText("Eleanor Boyd");
-    expect(fetchItemNotes).not.toHaveBeenCalled();
+    const card = (await within(intakeCol).findByText("Eleanor Boyd")).closest("article")!;
 
-    fireEvent.click(within(intakeCol).getAllByRole("button", { name: /See notes/ })[0]);
-    expect(await within(intakeCol).findByText(/Call attempt 1 — left a vm/)).toBeInTheDocument();
-    expect(fetchItemNotes).toHaveBeenCalledTimes(1);
-    expect(fetchItemNotes.mock.calls[0]).toEqual(["booked", "text_mm389fs"]);
+    // The NEWEST line, not the first — the log appends, so the last line is
+    // what the last call found out.
+    expect(await within(card).findByText(/Call attempt 1 — left a vm/)).toBeInTheDocument();
+    expect(within(card).queryByText(/first call, no answer/)).toBeNull();
+
+    // Two lines, so it offers to expand — and then shows the whole thing.
+    fireEvent.click(within(card).getByRole("button", { name: /Expand notes/ }));
+    expect(within(card).getByText(/first call, no answer/)).toBeInTheDocument();
+
+    // ⚠️ One request per column, and never the per-card read.
+    expect(fetchItemNotes).not.toHaveBeenCalled();
+    const intakeCalls = fetchItemNotesBatch.mock.calls.filter((c) => c[1] === "text_mm389fs");
+    expect(intakeCalls).toHaveLength(1);
+    // Every card the column rendered, in one go.
+    expect(intakeCalls[0][0]).toEqual(expect.arrayContaining(["booked", "ready"]));
   });
 
   it("opens the booking-link dialog on the right call for each column, with NO picker", async () => {

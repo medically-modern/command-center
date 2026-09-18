@@ -1583,22 +1583,31 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             ⚠️ The header button STAYS. Josh, same day: *"add a second stuck
             button option down there … both stuck buttons have same
             behavior"* — two triggers for one dialog, not two controls.
-            ⚠️ EQUAL and EDGE-TO-EDGE (Josh, later the same day: *"make the
+            ⚠️ EQUAL, and a two-column GRID rather than `flex-1`: flex would
+            size each cell to its label, so the longer Propose Stuck copy made
+            that button the wider one, and a grid row also stretches both cells
+            to the taller button so a two-line subtitle on one side cannot
+            leave the other short. Stacked one-up below `sm`, where two
+            half-width buttons would be too narrow for their subtitles.
+            ⚠️ **NORMAL SIZE from 2026-09-17** (Brandon: *"make advance /
+            propose stuck normal size in welcome call UI"*), capped and centred
+            rather than edge-to-edge. This REVERSES Josh, 2026-09-14: *"make the
             advance and propose stuck equal sizes that extend from side of
-            screen to side of screen — big buttons"*). A two-column GRID, not
-            `flex-1`: flex would still size each cell to its label, so the
-            longer Propose Stuck copy made that button the wider one, and a
-            grid row also stretches both cells to the taller button so a
-            two-line subtitle on one side cannot leave the other short. No
-            `sm:w-auto` on either — that is what let them shrink to content.
-            Stacked one-up below `sm`, where two half-width buttons would be
-            too narrow for their subtitles. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            screen to side of screen — big buttons"*, which is why the
+            measurements are spelled out rather than trimmed quietly: `py-7`
+            → `py-3.5`, the label `text-2xl` → `text-base`, the subtitle
+            `text-base` → `text-xs`, and a `max-w-2xl` so they stop growing
+            with the screen. Everything that made them WORK is untouched — the
+            equal grid, the toggle on Advance, the resting-vs-pressed green, the
+            resting-vs-hover rose, and the fact that Propose Stuck opens the
+            page's dialog rather than toggling. Restore the big version by
+            reverting these four numbers; do not rebuild the layout. */}
+        <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
           <Button
             type="button"
             variant="outline"
             className={cn(
-              "h-auto w-full py-7 px-8 justify-center text-center whitespace-normal border rounded-2xl",
+              "h-auto w-full py-3.5 px-5 justify-center text-center whitespace-normal border rounded-xl",
               "focus-visible:ring-emerald-500 focus-visible:ring-offset-0",
               /* ⚠️ Resting state is a TRANSLUCENT green, not `emerald-50`
                  (Josh: *"like a light / more transparent green before it's
@@ -1620,10 +1629,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             }}
           >
             <div>
-              <p className="font-bold text-2xl">
+              <p className="text-base font-bold">
                 {patient.advanceDecisionIndex === ADVANCE_INDEX ? "Advancing ✓" : "Advance"}
               </p>
-              <p className="text-base opacity-90 font-normal">Move forward to Order.</p>
+              <p className="text-xs font-normal opacity-90">Move forward to Order.</p>
             </div>
           </Button>
 
@@ -1639,17 +1648,17 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               type="button"
               variant="outline"
               className={cn(
-                "h-auto w-full py-7 px-8 justify-center text-center whitespace-normal border rounded-2xl",
+                "h-auto w-full py-3.5 px-5 justify-center text-center whitespace-normal border rounded-xl",
                 "focus-visible:ring-rose-500 focus-visible:ring-offset-0",
                 "bg-rose-500/10 hover:bg-rose-600 hover:text-white hover:border-rose-700 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800",
               )}
               onClick={onProposeStuck}
             >
-              <div className="flex items-center justify-center gap-3">
-                <Flag className="h-6 w-6 shrink-0" />
+              <div className="flex items-center justify-center gap-2.5">
+                <Flag className="h-4 w-4 shrink-0" />
                 <div>
-                  <p className="font-bold text-2xl">Propose Stuck</p>
-                  <p className="text-base opacity-90 font-normal">Ask a manager to hold this patient.</p>
+                  <p className="text-base font-bold">Propose Stuck</p>
+                  <p className="text-xs font-normal opacity-90">Ask a manager to hold this patient.</p>
                 </div>
               </div>
             </Button>

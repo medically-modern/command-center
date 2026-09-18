@@ -51,7 +51,7 @@ import {
   approveProposedStuck,
   returnProposedToQueue,
 } from "@/lib/oversight/oversightApi";
-import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, type ManagerOrigin } from "@/lib/shared/managerOrigin";
 import {
   proposeIntakeStuck, returnIntakeToPipeline, approveIntakeStuck,
 } from "@/lib/profile/unverifiedWrite";
@@ -150,11 +150,40 @@ interface Props {
    *  caller leaves them out and the bar keeps its own state. */
   proposeOpen?: boolean;
   onProposeOpenChange?: (open: boolean) => void;
+  /**
+   * Drop this bar's own Propose Stuck BUTTON — the page renders its own.
+   *
+   * ⚠️ The dialog is unaffected: `proposeOpen` still drives it, so a page that
+   * wants one control and this bar's write passes both. The intake page does
+   * NOT — it has its own modal with its own save-first confirm — so there it
+   * simply removes a second button for an action already on screen (Brandon,
+   * 2026-09-17: "Don't need propose stuck twice"). `unverified-intake` on Info
+   * Collection was the one screen where a rep saw both: the exit row's copy and
+   * this bar's, opening two different dialogs onto the same write.
+   *
+   * ⚠️ Never hide it on a screen where this bar is the ONLY route — the whole
+   * reason the bar is mounted for a rep at all is that Propose Stuck is its one
+   * base action (`actionsFor`). A caller passing this must have checked, which
+   * is what `barHasVisibleActions` below is for.
+   */
+  hideProposeStuck?: boolean;
+}
+
+/**
+ * Would this bar draw anything? Lets a caller that hides Propose Stuck avoid
+ * rendering an empty card around it — the bar itself returns null, but the
+ * CARD it sits in has a title and a paragraph that would be left standing on
+ * their own.
+ */
+export function barHasVisibleActions(
+  stage: StageKey, origin: ManagerOrigin | null, opts: { hideProposeStuck?: boolean } = {},
+): boolean {
+  return actionsFor(stage, origin).some((a) => !(opts.hideProposeStuck && a === "proposeStuck"));
 }
 
 export function StageActionBar({
   stage, board, patientId, patientName, escalationLabel, onDone, beforeProposeStuck,
-  skin = "header", proposeOpen: proposeOpenControlled, onProposeOpenChange,
+  skin = "header", proposeOpen: proposeOpenControlled, onProposeOpenChange, hideProposeStuck,
 }: Props) {
   const [searchParams] = useSearchParams();
   const { goBack } = useBackNavigation();
@@ -246,7 +275,7 @@ export function StageActionBar({
           them jammed edge-to-edge with no gap wherever a page dropped the bar
           straight into a card. */}
       <div className="flex flex-wrap items-center gap-2">
-      {has("proposeStuck") &&
+      {has("proposeStuck") && !hideProposeStuck &&
         (board === "insurance" ? (
           // One rung up from wherever the patient already sits — a patient
           // already flagged for a manager, or a proposal made BY a manager,

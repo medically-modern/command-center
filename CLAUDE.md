@@ -1385,6 +1385,11 @@ substring: "Answered Not Accepted" is a MISSED call that contains "answered".
 **Fetched on OPEN, never on render** — the call-log is one of RingCentral's more rate-limited
 endpoints and a header renders for every patient a rep clicks through. That's the deliberate trade
 behind the button showing no missed-count badge until it's opened.
+> ⚠️ **The Care Coordinator card DOES show a count from 2026-09-17** — `Call Log (3)` — and it does
+> not break this rule: the number is PASSED IN by a caller holding the account-wide
+> `useContactStates` read it was making anyway, and this component still fetches nothing until it is
+> opened. It means **calls this week**, and it is withheld when that read was truncated (§5.30e).
+> A count that costs a request per patient is still the version Josh declined on 2026-09-16.
 
 **Recordings can be DOWNLOADED, not just played** (Josh, 2026-09-16 — *"all of the calls today i
 want the option to download them"*). Rule: **`lib/callHistory/recordingDownload.ts`** (+ tests);
@@ -3062,11 +3067,14 @@ intake bookings ever, and the gateway's welcome index reported `indexed: 0` acro
   Today/Future decides both sections. ⚠️ It was also the height bug he reported — the switch drew
   only under Today, so flipping a column to Future shortened its Scheduled bar and the two columns
   stopped lining up. `Section`'s header carries a `min-h` floor so that cannot recur.
-- **Partial / Complete / All** over Patient Intake (`workflow.matchesFormFilter`, on the GROUP — the
-  same fact the card's own pill reads, so filter and pill cannot disagree). ⚠️ Applied BEFORE
-  bucketing so the header counts and the footer's "not shown" describe what is on screen. ⚠️ A row
-  in neither form group (booked, already in Clean-Up) is neither Completed nor Partial and drops out
-  of both narrow filters — which is why **All** is the default.
+- **Partial / Complete / All** over Patient Intake — ⚠️ **REPLACED 2026-09-17 by the five-facet
+  multi-select filter** (`lib/careCoordinator/intakeFilter.ts`, §5.30e); `matchesFormFilter` and its
+  three-way toggle are deleted. Form is one facet of five there and still reads the GROUP, so the
+  filter and the card's own pill are still one fact. Still applied BEFORE bucketing, so the header
+  counts describe what is on screen — though the footer they also used to describe is gone (§5.30e).
+  ⚠️ A row in neither form group (booked, already in Clean-Up) is neither Completed nor Partial, so
+  it drops out of both narrow choices; in the new filter that is reachable as the Form facet's
+  blank option rather than only by selecting nothing.
 - **The pill row is a fixed labelled grid** — `lib/careCoordinator/pills.ts`. Every slot renders,
   in order, with a caption; a blank one is a faint em dash. ⚠️ **His two notes contradict each
   other**: the layout spec ends "All pills neutral gray" while the note above it asks for colours.
@@ -3212,6 +3220,147 @@ in-flight promise now, so the button reports what it is doing.
 ⚠️ And `useCalendlyBookings` contained a literal **NUL byte** (`emails.join("\0")`, from 2026-09-14),
 which made it the only file in the repo git and grep treated as **binary** — no diff, no `grep`, no
 review of any change to it. Same value, written as `"\u0000"`.
+
+### 5.30e Brandon's 2026-09-17 notes on the Care Coordinator page
+Nineteen notes, "all minor", and every one a real defect or a real simplification.
+**No board change; app only.** Three of them are the same shape as §5.30d's: a control
+that looked like a filter but filtered nothing, a button that was there twice, and a
+badge that could only ever say one thing.
+
+**The day strip.**
+- **A block opens a POPUP now, not a navigation** (`components/careCoordinator/
+  BookingDetailsDialog.tsx`): time of call · name · patient phone · email · Open profile.
+  ⚠️ **Calendly gives us no phone** — its day feed carries the invitee's name, email,
+  times and a reschedule URL — so the number comes from the board row the booking
+  resolved to. `bookingLinker` therefore returns a `LinkedPatient` (id + phone) rather
+  than a bare id, and "Grayed out if no profile" falls out of the join that already
+  existed (§5.15: a booking made under an address the board doesn't hold matches
+  neither the event URI nor the email). Phone and Open are blank together, and the
+  popup says why rather than showing an empty field.
+  ⚠️ A block is now ALWAYS clickable, where an unmatched one used to render as an inert
+  `<span>`. Under a popup the unmatched case is the one most worth opening — it is where
+  the coordinator finds the name and address to work out who booked.
+- **`PX_PER_HOUR` 240 → 380.** Measured in a browser at 1500px wide, 2026-09-17: 240
+  gives a 40px block and **6.3 hours** on screen with five of seven live-shaped names
+  ellipsed; 380 gives 63px and **3.9 hours**, and `Delgado`, `Augustina` and `Rodriguez`
+  start fitting. 3.9 is the "4 hours at a time (1 back, 3 forward)" he asked for, so the
+  wider block and the narrower window are one change, not a trade.
+- **The "Times are Eastern…" footnote is deleted.** ⚠️ It was TRUE: the ten-minute
+  reminder reads the monday mirror and is intake-only, so a welcome call — or an intake
+  booking the mirror never caught — shows on the strip and raises nothing. §5.15's rule
+  for that gap is "fix the copy, not the gate"; this deletes the copy, on his say-so, and
+  the gap now lives only here. Do not re-add the line without asking him.
+
+**The cards.**
+- **The patient's NAME is the link**; "See notes" and "Open" are both gone. Back still
+  works by history-first (`useBackNavigation`), and `from=care-coordinator` gained a
+  fallback target for the deep-link case.
+- **Notes are open by default, clamped to ONE line**, expandable when there is more.
+  ⚠️ The newest line is shown, not the first — the log appends, so the bottom is what the
+  last call found out. ⚠️ This needed `fetchItemNotesBatch` + `hooks/careCoordinator/
+  useCardNotes.ts`: one request per COLUMN for the cards actually rendered, module-cached,
+  misses cached and failures not. The two alternatives were both wrong — putting the notes
+  column back in the list read is the ~1,700-row cost §5.25 removed, and a read per card is
+  INCIDENT_2026-08-20's shape against Monday.
+- **Slot 5 is Form on intake and Referral source on welcome** (`PILL_SLOTS` is keyed by
+  variant). **Every pill on the welcome side is neutral**: the colours are a triage aid for
+  a 1,700-row calling queue and decoration on a handful of booked patients, and a colour
+  that means something on one column and nothing on the other means nothing anywhere.
+- **"Not Serving" renders as the em dash on BOTH sides** (`coveragePathPill`). It is the
+  board's way of saying there is no coverage path, which is what the dash already means.
+- **The two counter icons go green once we have got through** — `reachedByText` /
+  `reachedByCall` on `ContactState`. ⚠️ **These are HIGH-WATER marks and the four fields
+  beside them are deliberately not**: the lanes answer "who owes whom a reply right now"
+  (most recent wins), these answer "has this patient engaged this week". ⚠️ `reachedByCall`
+  is **OUTBOUND-ONLY** (Josh, asked directly: *"they answered our call"*), so an inbound
+  call somebody here picked up does not set it — the question the green phone answers is
+  whether ringing this number works.
+- **`Call Log (3)`** — the count Josh declined on 2026-09-16 (§5.16: the call log is
+  rate-limited and fetched on open), now free because `useContactStates` is already
+  reading the account-wide log for the green icons. It means **calls this week**, and
+  ⚠️ it is WITHHELD when that read came back at its page cap (`activityTruncated`), because
+  a clipped window under-counts and a number on screen is read as fact. `Call Log (0)` is a
+  real answer and renders; no number at all means we could not stand behind one.
+- **The copy-number button is deleted** (`CopyPhoneButton`, from every header). ⚠️ It
+  shipped the day before, at Josh's own request (§5.31f) — the number is the label of a
+  `tel:` link, so dragging to select it starts a link drag. **That complaint is real and
+  is unaddressed again.** If it comes back it belongs somewhere other than this row, which
+  already carries Call, Text and Call Log.
+- **The text composer's title bar leads with the patient's name**, then the number. The
+  number stays: on a patient with two numbers on file it is the only thing saying which
+  one the composer is pointed at.
+
+**The Patient Intake filter** — `lib/careCoordinator/intakeFilter.ts` (+ tests) replaces
+the Partial / Complete / All toggle with five multi-select facets: Request type ·
+Insurance · Pump path · CGM path · Form. **Intake only** (Josh, 2026-09-17).
+⚠️ **The options are DERIVED from the population, never hardcoded**, and that is what
+makes Brandon's "Photo upload" work: it is not a payer and is not on the General
+Insurance column at all — it is `Insurance Provided Via = "Photo of card"`, which the card
+renders as **"Card on file"** (§5.30c). Deriving from `facetValue`, the same function the
+pill calls, means the option and the pill are the same string by construction; a
+hardcoded payer list would also rot the day a payer is added on monday (§5.33).
+⚠️ An empty selection means ALL, never none. ⚠️ Blank is a value you can filter FOR, or
+the rows showing an em dash are unreachable through the control that exists to reach rows.
+⚠️ Options come off the UNFILTERED population — recomputing from the filtered list makes a
+chosen facet's other values vanish, so there is no way to widen a selection again.
+
+**The "Not shown: …" footers are deleted, and this is the one deletion that costs
+something.** `IntakeFooter` / `WelcomeFooter` were §7's rule on the page — a state that
+matches no view is invisible app-wide — and Patient Intake excludes ~1,697 imported rows.
+He named both footers explicitly. `intakeBuckets` still computes `excluded` and
+`withManager` exactly as before, so nothing is lost but the display; if those rows ever
+need surfacing again, a facet on the filter is the place, not a paragraph.
+
+**The intake profile page** (`UnverifiedReferralsPage`).
+- **The exit row is TWO rows**: Advance + Log call attempt at full size, then Save and
+  Finish Later + Propose Stuck smaller underneath (`.exit-row.alt`). The four used to be
+  equal thirds of one flex row, which put an escalation at exactly the weight of the
+  button pressed at the end of every successful call. Measured in a browser: 44px/14.4px
+  above, 34px/13.1px below.
+- ⚠️ **Propose Stuck was rendered TWICE on Info Collection** and the comment claiming
+  otherwise was stale. The exit row had one and the `EscalationCard`'s `StageActionBar` had
+  another ~35 lines below — **two different dialogs onto the same write**. The bar's copy is
+  suppressed (`hideProposeStuck`), because the exit row's runs `proposeWithSave` and carries
+  the rep's unsaved edits into the proposal. The bar keeps Approve Stuck / Send back, so a
+  manager from an Oversight column is not stranded (§5.20) — and the card is not rendered at
+  all when suppressing it would leave a title and an empty row (`barHasVisibleActions`).
+  Clean-Up is unchanged: its exit row never had one.
+- ⚠️⚠️ **THE PAGE LANDED MID-SCREEN BECAUSE OF `scrollIntoView`.**
+  `IntakeMessages` ended with `bottomRef.current?.scrollIntoView({ block: "end" })`, and
+  that walks EVERY scrollable ancestor — so bringing the newest text into view dragged
+  `.pf-root .panes` down to the Patient Messages card, which is far below the fold. The
+  page's own scroll-to-top could never win: this fires AGAIN when the RingCentral thread
+  resolves, after the one-shot has run. Fixed at the source — the thread sets its own
+  container's `scrollTop`, which is what `mmKit`'s Text dialog already did.
+- **The teal "OPEN" pill left both pane headers**, with its `.st` / `.st.open` CSS. It was
+  the last survivor of the lock layer removed 2026-08-19, so it could only ever read "Open".
+
+**Load speed** — `useBoardPoll` gained a module-scope cache keyed by `totalKey`, seeded
+synchronously on mount. Opening a patient unmounts this page, so coming back re-ran Patient
+Intake's ~1,754 rows (four sequential Monday pages) behind a skeleton, several times an hour,
+for rows that had not moved. ⚠️ In memory, never localStorage — §5.25 records that a board
+queue there is 4–8 MB against a ~5 MB quota and fails silently. ⚠️ Cached only after a run
+that COMPLETED, and a seeded mount draws no load bar.
+
+**Welcome Call** — Advance / Propose Stuck are normal-sized (`py-3.5`, `text-base` label,
+`text-xs` subtitle, `max-w-2xl` centred). ⚠️ **This reverses Josh, 2026-09-14** (*"equal
+sizes that extend from side of screen to side of screen — big buttons"*), confirmed by him
+on 2026-09-17. The layout is untouched — the equal grid, the toggle on Advance, the
+resting-vs-pressed green and the resting-vs-hover rose all stay; restore the big version by
+reverting four numbers, not by rebuilding it.
+
+**Keep-in-agreement:** `pills.coveragePathPill` ⇄ `intakeFilter.facetValue` (the filter must
+offer exactly what the card shows) · `PILL_SLOTS[variant]` ⇄ `PatientCard`'s `PillRow` ⇄
+`cards.tsx`' two slot builders · `contactState.reachedByCall` (outbound-only) ⇄ the green
+phone icon's tooltip · `activityTruncated` ⇄ `useContactStates.truncated` ⇄ the withheld
+call count.
+Files: `lib/careCoordinator/{intakeFilter,pills,scheduleEntries}.ts` (+ tests),
+`hooks/careCoordinator/{useBoardPoll,useCardNotes}.ts`,
+`components/careCoordinator/{BookingDetailsDialog,IntakeFilter,PatientCard,cards,ScheduleGrid}.tsx`,
+`lib/contactState/contactState.ts`, `components/masheke/mmKit.tsx`,
+`components/shared/{CallHistoryButton,StageActionBar}.tsx`,
+`components/profile/IntakeMessages.tsx`, `pages/UnverifiedReferralsPage.tsx`,
+`pages/profile/intake.css`, `components/welcomeCall/WelcomeCallForm.tsx`.
 
 ### 5.31 Welcome Call order rules — caps, 75 days, and "can we send a monitor?" (Sep 2026)
 Four decisions from Brandon's 2026-09-09 notes, landed together because they all key off
@@ -3886,7 +4035,12 @@ placeholder and read as an empty quantity (the §5.11 blank-with-no-error, and t
   banner also had it in an editable `PhoneField`, where select-and-copy worked; that field went with
   the banner's phone controls (§5.31c) and the tel: link became the only rendering. `CopyPhoneButton`
   sits with Call and Text in `masheke/mmKit`, so all ten headers that already show a number get it.
-  ⚠️ It copies the DIGITS **as displayed**, not `tel:`'s stripped form — a rep is pasting into
+  ⚠️⚠️ **DELETED 2026-09-17** (Brandon, via Josh: *"it's the little copy button next to text,
+  remove"*) — one day after it shipped. Katie's complaint above is real and is **unaddressed
+  again**: the number is still a `tel:` link label and still cannot be dragged to select. It went
+  because it is a fourth control on a row already carrying Call, Text and Call Log. If it comes
+  back, it belongs somewhere other than that row (§5.30e).
+  ⚠️ It copied the DIGITS **as displayed**, not `tel:`'s stripped form — a rep is pasting into
   RingCentral, a payer portal or a note, and `+15555550100` is not what any of them want back. A
   clipboard refusal (insecure origin, permissions policy) says so rather than silently doing nothing.
 - ⚠️⚠️ *"not sure if ring central activity is fully synced"* — **`PatientActivityCard` was reading

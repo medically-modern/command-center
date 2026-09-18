@@ -1,0 +1,132 @@
+/**
+ * What a block on the day strip says when you click it.
+ *
+ * Brandon, 2026-09-17: *"If click the calendar item, popup box with the
+ * following info: Time of call · Name · Patient Phone number · Email · Button
+ * to take to profile (Grayed out if no profile)."*
+ *
+ * It replaces a straight navigation. A 10-minute block is ~60px wide and
+ * carries a time and a stacked name with both lines usually truncated, so the
+ * strip could show WHEN and roughly WHO and nothing else — and clicking it
+ * committed the coordinator to leaving the page to find out the rest. The
+ * popup is the cheap version of that question.
+ *
+ * ⚠️ **"Grayed out if no profile" IS THE EXISTING JOIN, not a new rule.** A
+ * booking is resolved to a board item by its Calendly event URI or the
+ * invitee's email, and a booking made under an address the board does not hold
+ * matches neither (§5.15 — the same single join the monday mirror depends on).
+ * `scheduleEntries` already reports that as `href: null`, and it is deliberately
+ * NOT guessed: linking the wrong chart on a live call is worse than not
+ * linking. The phone comes from the same match, so the two are blank together —
+ * which is why the disabled button says WHY rather than just being dead.
+ */
+import { CalendarClock, ExternalLink, Mail, Phone, User } from "lucide-react";
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { displayTime } from "@/lib/scheduledCalls/workflow";
+import type { ScheduleEntry } from "@/lib/careCoordinator/scheduleEntries";
+import { formatPhoneNice } from "@/components/masheke/mmKit";
+import { cn } from "@/lib/utils";
+
+/** "Thu, Sep 17" — the day, for a popup that can be opened on any day. */
+function dayLabel(ymd: string): string {
+  if (!ymd) return "";
+  return new Date(`${ymd}T12:00:00`).toLocaleDateString(undefined, {
+    weekday: "short", month: "short", day: "numeric",
+  });
+}
+
+function Row({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden>{icon}</span>
+      <div className="min-w-0">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{label}</div>
+        <div className="break-words text-sm font-medium">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** A value we do not have. Said in words, never left as an empty line. */
+const Missing = ({ children }: { children: React.ReactNode }) => (
+  <span className="font-normal text-muted-foreground">{children}</span>
+);
+
+export function BookingDetailsDialog({
+  entry, onOpenChange, onOpenProfile,
+}: {
+  /** The clicked block, or null when the popup is closed. */
+  entry: ScheduleEntry | null;
+  onOpenChange: (open: boolean) => void;
+  onOpenProfile: (href: string) => void;
+}) {
+  const kindLabel = entry?.kind === "welcome" ? "Welcome call" : "Intake call";
+  return (
+    <Dialog open={entry !== null} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        {entry && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <CalendarClock className="h-4 w-4 shrink-0 text-[color:var(--mm-teal)]" aria-hidden />
+                {kindLabel}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3.5 pt-1">
+              <Row icon={<CalendarClock className="h-4 w-4" />} label="Time of call">
+                {entry.callTime
+                  ? <>{displayTime(entry.callTime)} <span className="font-normal text-muted-foreground">ET · {dayLabel(entry.callDate)}</span></>
+                  : <Missing>Booked this day, no time on file</Missing>}
+              </Row>
+
+              <Row icon={<User className="h-4 w-4" />} label="Name">{entry.name}</Row>
+
+              {/* ⚠️ Both of these are blank for exactly the same reason — the
+                  booking matched no board row — so they say so in their own
+                  words rather than rendering an empty line the coordinator has
+                  to interpret. */}
+              <Row icon={<Phone className="h-4 w-4" />} label="Patient phone">
+                {entry.phone
+                  ? <a className="text-[color:var(--mm-teal)] hover:underline" href={`tel:${entry.phone.replace(/[^\d+]/g, "")}`}>
+                      {formatPhoneNice(entry.phone)}
+                    </a>
+                  : <Missing>Not on file</Missing>}
+              </Row>
+
+              <Row icon={<Mail className="h-4 w-4" />} label="Email">
+                {entry.email
+                  ? <a className="break-all text-[color:var(--mm-teal)] hover:underline" href={`mailto:${entry.email}`}>{entry.email}</a>
+                  : <Missing>Not on the booking</Missing>}
+              </Row>
+            </div>
+
+            <button
+              type="button"
+              disabled={!entry.href}
+              onClick={() => { if (entry.href) onOpenProfile(entry.href); }}
+              className={cn(
+                "mt-4 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
+                entry.href
+                  ? "bg-[color:var(--mm-teal)] text-white hover:opacity-90"
+                  : "cursor-not-allowed border bg-muted text-muted-foreground",
+              )}
+            >
+              <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />
+              {entry.href ? "Open profile" : "No profile to open"}
+            </button>
+            {!entry.href && (
+              <p className="text-center text-[11px] leading-snug text-muted-foreground">
+                This booking isn&apos;t matched to a patient on the board — usually because it was
+                made under an email address we don&apos;t hold for them.
+              </p>
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default BookingDetailsDialog;

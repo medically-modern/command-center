@@ -7,20 +7,69 @@
 import { describe, it, expect } from "vitest";
 
 import {
-  PILL_GRID_TEMPLATE, PILL_SLOTS, intakeInsurance, pillTone, shortLabel,
+  PILL_GRID_TEMPLATE, PILL_SLOTS, coveragePathPill, intakeInsurance, pillTone, shortLabel,
 } from "./pills";
 
 describe("PILL_SLOTS", () => {
   it("is in Brandon's order, with his captions", () => {
-    expect(PILL_SLOTS.map((s) => s.key)).toEqual(["requestType", "insurance", "ipPath", "cgmPath", "status"]);
-    expect(PILL_SLOTS.map((s) => s.caption)).toEqual(["Request type", "Insurance", "Pump path", "CGM path", "Form"]);
+    expect(PILL_SLOTS.intake.map((s) => s.key)).toEqual(["requestType", "insurance", "ipPath", "cgmPath", "status"]);
+    expect(PILL_SLOTS.intake.map((s) => s.caption)).toEqual(["Request type", "Insurance", "Pump path", "CGM path", "Form"]);
   });
 
-  it("puts each slot on the track the template reserves for it", () => {
+  it("swaps Form for Referral source on the Welcome Call side, and nothing else", () => {
+    // Brandon, 2026-09-17: "add referral source as a pill column for the
+    // welcome call side only (it replaces the form column on the intake side)".
+    expect(PILL_SLOTS.welcome.map((s) => s.key)).toEqual(["requestType", "insurance", "ipPath", "cgmPath", "referralSource"]);
+    expect(PILL_SLOTS.welcome.at(-1)?.caption).toBe("Referral");
+    // The first four are the same objects in the same order on both columns —
+    // if they ever diverge, the two columns stop lining up card to card.
+    expect(PILL_SLOTS.welcome.slice(0, 4)).toEqual(PILL_SLOTS.intake.slice(0, 4));
+  });
+
+  it("puts each slot on the track the template reserves for it, on BOTH variants", () => {
     // ⚠️ The columns are 1 · 3 · 5 · 6 · 8 because the template interleaves
     // fixed .5rem spacer tracks. Change one and the pills land in the gaps.
-    expect(PILL_SLOTS.map((s) => s.column)).toEqual([1, 3, 5, 6, 8]);
+    expect(PILL_SLOTS.intake.map((s) => s.column)).toEqual([1, 3, 5, 6, 8]);
+    expect(PILL_SLOTS.welcome.map((s) => s.column)).toEqual([1, 3, 5, 6, 8]);
     expect(PILL_GRID_TEMPLATE.split(" ").length).toBe(8);
+  });
+});
+
+describe("coveragePathPill", () => {
+  it('blanks "Not Serving" — there is no coverage path, which is what the dash means', () => {
+    // Brandon, 2026-09-17. Live on the Welcome Call board this is the most
+    // common value in both path columns, so it was the most common pill.
+    expect(coveragePathPill("Not Serving")).toBe("");
+    expect(coveragePathPill("not serving")).toBe("");
+  });
+
+  it("leaves every real path alone", () => {
+    expect(coveragePathPill("Insulin")).toBe("Insulin");
+    expect(coveragePathPill("Hypo")).toBe("Hypo");
+    expect(coveragePathPill("Neither Applies")).toBe("Neither Applies");
+    expect(coveragePathPill("1st Pump >6M Diagnosed")).toBe("1st Pump >6M Diagnosed");
+    expect(coveragePathPill("")).toBe("");
+  });
+});
+
+describe("pillTone — the Welcome Call column is all gray", () => {
+  // Brandon, 2026-09-17: "get rid of the highlights on the welcome call side
+  // for the pills, all should be gray". The colours are a triage aid for the
+  // 1,700-row calling queue; on a handful of booked patients they are
+  // decoration, and a colour that means something on one column and nothing on
+  // the other means nothing anywhere.
+  it("returns neutral for every value that earns a colour on intake", () => {
+    expect(pillTone("insurance", "Cigna", "welcome")).toBe("neutral");
+    expect(pillTone("cgmPath", "Insulin", "welcome")).toBe("neutral");
+    expect(pillTone("cgmPath", "Hypo", "welcome")).toBe("neutral");
+    expect(pillTone("cgmPath", "Neither Applies", "welcome")).toBe("neutral");
+    expect(pillTone("status", "Completed", "welcome")).toBe("neutral");
+  });
+
+  it("still colours the intake column, which defaults when no variant is given", () => {
+    expect(pillTone("insurance", "Cigna", "intake")).toBe("green");
+    expect(pillTone("insurance", "Cigna")).toBe("green");
+    expect(pillTone("cgmPath", "Neither Applies", "intake")).toBe("red");
   });
 });
 

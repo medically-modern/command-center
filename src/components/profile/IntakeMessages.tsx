@@ -85,7 +85,7 @@ export function IntakeMessages({
   const [threadError, setThreadError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [texting, setTexting] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
 
   const configured = messagingConfigured();
   // A delivery failure lands seconds AFTER the send resolves — see the hook.
@@ -125,10 +125,30 @@ export function IntakeMessages({
     void loadThread(true);
   }, [patientId, loadThread, cancelRecheck]);
 
-  // Newest at the bottom, scrolled into view, so the recent exchange is what
-  // the rep sees without touching the scrollbar.
+  /**
+   * Newest at the bottom, so the recent exchange is what the rep sees without
+   * touching the scrollbar.
+   *
+   * ⚠️⚠️ **THIS SCROLLS THE THREAD AND NOTHING ELSE — it used to scroll the
+   * PAGE** (Brandon, 2026-09-17: *"When you click into a profile, it should
+   * take them to the top of the page of that profile, not the middle
+   * section"*). It was `bottomRef.current?.scrollIntoView({ block: "end" })`,
+   * and `scrollIntoView` walks EVERY scrollable ancestor, not just the one the
+   * element sits in. This card is mounted far below the fold in the left pane,
+   * so bringing its last message into view dragged `.pf-root .panes` and the
+   * pane itself down to the Patient Messages card — landing the rep in the
+   * middle of the page on every patient.
+   *
+   * The page HAS a scroll-to-top, keyed on the selected patient, and it could
+   * never win: this effect fires again when the RingCentral thread resolves
+   * asynchronously, which is always after that one-shot has run. Setting
+   * `scrollTop` on the thread container is the same visual result with no
+   * reach outside this card — the fix, not a race patched over. It is also what
+   * `mmKit`'s Text dialog already does for its own list.
+   */
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const box = threadRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
   }, [messages.length, tab]);
 
   const consent = consentState(messages, historyComplete);
@@ -358,7 +378,7 @@ export function IntakeMessages({
           <p className="sugg-note">Texting isn't available in this build.</p>
         ) : (
           <>
-            <div className="thread">
+            <div ref={threadRef} className="thread">
               {loadingThread ? (
                 <p className="sugg-note">Loading conversation…</p>
               ) : threadError ? (
@@ -395,7 +415,6 @@ export function IntakeMessages({
                   </div>
                 ))
               )}
-              <div ref={bottomRef} />
             </div>
 
             <div className="mt-2 flex items-center gap-3">

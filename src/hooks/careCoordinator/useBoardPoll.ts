@@ -16,6 +16,33 @@ import {
   emptyProgress, recallTotal, rememberTotal, type LoadProgress,
 } from "@/lib/careCoordinator/loadProgress";
 
+/**
+ * The last good result of each keyed read, for the life of the TAB.
+ *
+ * ⚠️ **THIS IS WHY GOING TO A PATIENT AND BACK IS NOT A SECOND WAIT** (Brandon,
+ * 2026-09-17: *"Any way to increase load speed of patient intake list? When you
+ * go to a profile, then back, it takes a bit to load each time."*). It was not
+ * slowness in the read so much as the read starting from nothing every time:
+ * this page unmounts when the coordinator opens a chart, so coming back mounted
+ * a fresh hook with `data: null` and re-ran Patient Intake's ~1,754 rows — four
+ * sequential Monday pages — behind a skeleton, several times an hour, for rows
+ * that had not moved.
+ *
+ * Seeded synchronously on mount, so the columns are on screen in the first
+ * paint, and refreshed in the background immediately after. The coordinator
+ * sees the list she left, then it updates in place.
+ *
+ * ⚠️ **IN MEMORY, NEVER localStorage.** §5.25 records what putting a board
+ * queue in localStorage costs: 4–8 MB of patients against a ~5 MB quota, so
+ * `persistPatientCache` swallowed a `QuotaExceededError` and the cache was
+ * silently dead for weeks. A reload is a fresh read, which is the correct
+ * behaviour anyway — this only ever short-circuits a navigation inside one tab.
+ *
+ * ⚠️ Keyed by `totalKey`, so a read with no key opts out entirely rather than
+ * sharing a bucket with an unrelated one.
+ */
+const lastGood = new Map<string, { data: unknown; at: number }>();
+
 export interface BoardPoll<T> {
   data: T | null;
   /** True until the FIRST read settles; later polls are silent. */
@@ -51,10 +78,18 @@ export function useBoardPoll<T>(
   intervalMs: number,
   totalKey?: string,
 ): BoardPoll<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  // ⚠️ Read ONCE, in a lazy initialiser, not on every render: the seed decides
+  // the first paint and nothing after it, and re-reading the map mid-session
+  // would let a background refresh land twice.
+  const seed = useRef(totalKey ? lastGood.get(totalKey) : undefined).current;
+
+  const [data, setData] = useState<T | null>((seed?.data as T | undefined) ?? null);
+  // A seeded hook is NOT loading — there is something real on screen. This is
+  // what stops the skeleton flashing over a list the coordinator can already
+  // read.
+  const [loading, setLoading] = useState(!seed);
   const [error, setError] = useState<string | null>(null);
-  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+  const [lastOkAt, setLastOkAt] = useState<number | null>(seed?.at ?? null);
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   /**
    * ⚠️ A background poll shows NOTHING. The bar exists for the first load and
@@ -63,7 +98,10 @@ export function useBoardPoll<T>(
    * (§5.28's naming-progress rule, same reason). `visible` is a ref because it
    * is read inside `run` without re-arming the interval.
    */
-  const visible = useRef(true);
+  // Seeded ⇒ the first run is a background refresh, so it draws no load bar:
+  // a progress bar over a list that is already on screen is the noise §5.28's
+  // naming-progress rule exists to avoid.
+  const visible = useRef(!seed);
   // Coalesce: a Refresh click while a poll is in flight must not start a
   // second read of a 1,700-row group.
   const inflight = useRef<Promise<void> | null>(null);
@@ -91,7 +129,14 @@ export function useBoardPoll<T>(
         if (!alive.current) return;
         setData(next);
         setError(null);
-        setLastOkAt(Date.now());
+        const at = Date.now();
+        setLastOkAt(at);
+        // ⚠️ Cached only after a run that COMPLETED, for the same reason the
+        // remembered total is: `fetchGroup` throws rather than returning the
+        // pages it got (see mondayApi.ts), so a half-read never reaches here —
+        // and a truncated list seeded into the next mount would read as
+        // "those patients are done".
+        if (totalKey) lastGood.set(totalKey, { data: next, at });
         // ⚠️ Remembered ONLY here — after a run that completed. A total kept
         // from a failed or half-finished read would park every later bar at
         // "100%" with rows still arriving.

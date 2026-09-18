@@ -91,10 +91,12 @@
   border-left:4px solid var(--mm-teal); border-radius:0 0 12px 12px; background:oklch(0.973 0.011 175);
   padding:13px 17px; position:sticky; top:0; z-index:20; box-shadow:0 6px 14px -10px rgba(0,0,0,.35) }
 .pf-root .pane-head h2 { font-size:1.08rem; font-weight:800; letter-spacing:-.015em; color:var(--mm-teal) }
-.pf-root .pane-head .st { margin-left:auto; font-size:.7rem; font-weight:800; text-transform:uppercase;
-  letter-spacing:.05em; border-radius:999px; padding:4px 11px; background:#fff;
-  color:var(--muted-foreground); box-shadow:inset 0 0 0 1px var(--border) }
-.pf-root .pane-head .st.open { color:var(--mm-teal); box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+/* ⚠️ `.st` / `.st.open` — the pane header's status pill — were DELETED with
+   the "Open" badge they styled (Brandon, 2026-09-17). That badge was the last
+   survivor of the lock layer removed on 2026-08-19, so it could only ever say
+   "Open". Deleted rather than left unused for the same reason `.locked` /
+   `.lockover` / `.lockmsg` were: a style nothing sets is an invitation to
+   re-add a state this page has no way to leave. */
 
 /* ---- the right pane's wrapper ---- */
 /* ⚠️ The .locked / .lockover / .lockmsg layer is GONE (Josh, 2026-08-19). The
@@ -357,14 +359,29 @@
 .pf-root .gate-list .gl-hint { font-size:.8rem; color:var(--muted-foreground); margin-top:1px }
 .pf-root .gate-note { font-size:.92rem; font-weight:600; color:var(--mm-teal); margin:0 }
 
-/* The three actions: equal thirds, ALWAYS one line (Josh, 2026-08-17). They
-   used to wrap to 2+1 below a 160px floor, and that state read as a mess
-   next to the footnotes. min-width:0 lets a narrow pane shrink the columns
-   instead, with the verbs wrapping INSIDE their buttons. */
+/* Equal columns, ALWAYS one line (Josh, 2026-08-17). They used to wrap to 2+1
+   below a 160px floor, and that state read as a mess next to the footnotes.
+   min-width:0 lets a narrow pane shrink the columns instead, with the verbs
+   wrapping INSIDE their buttons. */
 .pf-root .exit-row {
   display:flex; gap:10px; margin-top:14px;
 }
 .pf-root .exit-row > .btn { flex:1 1 0; min-width:0; justify-content:center }
+
+/* ⚠️ THE SECOND ROW — Save and Finish Later + Propose Stuck (Brandon,
+   2026-09-17: "'Advance' and 'Log Call Attempt' are the main 2 buttons at the
+   end, then 'save and finish later' and 'propose stuck' are kinda like the
+   alternative buttons, so let's make them below and a bit smaller").
+
+   Smaller is the whole point, so it is stated three ways rather than one — a
+   tighter row gap above it, less padding, and a smaller type size — because
+   `.btn` sets its own padding and font and a single override reads as an
+   accident later. They stay equal columns with each other so the pair still
+   lines up under the pair above. */
+.pf-root .exit-row.alt { margin-top:8px }
+.pf-root .exit-row.alt > .btn {
+  padding:7px 12px; font-size:.82rem; font-weight:700;
+}
 /* Below the row: two footnotes, two blocks. The Save caption and the attempt
    counter used to share one dot-joined line and read as a run-on sentence.
    The counter is the dynamic one, so it's a chip — quiet while zero, amber

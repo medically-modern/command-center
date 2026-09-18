@@ -597,36 +597,14 @@ export function formCompletion(
   return null;
 }
 
-/** Which half of the DTC form queue the Patient Intake column is showing. */
-export type FormFilter = "all" | "completed" | "partial";
-
-export const FORM_FILTERS: readonly FormFilter[] = ["all", "completed", "partial"];
-
-export const FORM_FILTER_LABEL: Record<FormFilter, string> = {
-  all: "All",
-  completed: "Complete",
-  partial: "Partial",
-};
-
-/**
- * Brandon's Partial / Complete / All filter (2026-09-16), over the group the
- * row sits in — the same fact the card's own pill reads, so the filter and the
- * pill can never disagree about which half a patient is in.
- *
- * ⚠️ A row in neither form group (a booked patient already advanced to Profile
- * Clean-Up) is Completed nor Partial, so it drops out of BOTH narrow filters.
- * That is the honest answer — its form state is genuinely no longer either —
- * and it is why "All" is the default rather than one of the two.
- */
-export function matchesFormFilter(
-  lead: Pick<IntakeLead, "groupId">,
-  filter: FormFilter,
-  groups: { partial: string; completed: string },
-): boolean {
-  if (filter === "all") return true;
-  const completion = formCompletion(lead, groups);
-  return filter === "completed" ? completion === "Completed" : completion === "Partial";
-}
+/* ⚠️ The three-way Partial / Complete / All toggle that used to live here —
+ * `FormFilter`, `FORM_FILTERS`, `FORM_FILTER_LABEL`, `matchesFormFilter` — was
+ * REPLACED on 2026-09-17 by the five-facet filter in `intakeFilter.ts`
+ * (Brandon: "change the complete vs partial toggle to a filter where you can
+ * filter for each of the 5 columns"). Form is one facet of five there, and it
+ * still reads `formCompletion` above, so the filter and the card's pill are
+ * still one fact. Deleted rather than left unimported — a second filter nothing
+ * renders is the §5.11 dead-code trap with a queue rule inside it. */
 
 /**
  * Sort the intake population into the column's four lists.

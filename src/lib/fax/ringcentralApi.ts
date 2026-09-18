@@ -542,6 +542,32 @@ export async function fetchFaxBlobUrl(attachmentUri: string): Promise<string> {
  *  RingCentral account. */
 const ACTIVITY_MAX_PAGES = 6;
 
+/** The default page size of the two activity reads below. */
+const ACTIVITY_PER_PAGE = 100;
+
+/**
+ * The most records an activity read can return before the cap stops it.
+ *
+ * ⚠️ **A read that comes back at this size was almost certainly CLIPPED**, and
+ * callers that report a COUNT have to care. The loop below stops early only
+ * when a page comes back short, so a full run of `ACTIVITY_MAX_PAGES` full
+ * pages means there was very likely more to fetch — the window is incomplete,
+ * and anything counted off it is an undercount. Fine for the sidebar's contact
+ * marks (a missing mark just means "no news", which fails toward "keep
+ * trying"); NOT fine for a number rendered on screen as fact, which is why
+ * `useContactStates` reports `truncated` and the Care Coordinator card hides
+ * its call count when it is set.
+ *
+ * Exported rather than inferred at the call site so the cap and the test for
+ * it cannot drift apart.
+ */
+export const ACTIVITY_RECORD_LIMIT = ACTIVITY_MAX_PAGES * ACTIVITY_PER_PAGE;
+
+/** Did an activity read come back at the cap — i.e. is the window incomplete? */
+export function activityTruncated(records: readonly unknown[]): boolean {
+  return records.length >= ACTIVITY_RECORD_LIMIT;
+}
+
 async function messageStorePage(
   messageType: string,
   dateFrom: string,

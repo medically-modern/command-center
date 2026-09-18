@@ -123,7 +123,7 @@ import { refusePendingNote, usePendingNoteReport } from "@/components/shared/pen
 // The shared bar, so this stage's Propose Stuck / Send back to pipeline are
 // literally the same component and copy Medical Evaluation uses — not a
 // lookalike that can drift from it.
-import { StageActionBar } from "@/components/shared/StageActionBar";
+import { StageActionBar, barHasVisibleActions } from "@/components/shared/StageActionBar";
 // The ladder itself, so this page's own Propose Stuck button and the bar's
 // cannot disagree about which rung a proposal lands on.
 import { proposeStuckLevel } from "@/lib/shared/stageActions";
@@ -724,11 +724,14 @@ function intakeEditsFor(p: Patient): IntakeEdits {
  * copies of an escalation ladder is how the two rungs start disagreeing.
  */
 function EscalationCard({
-  patient, onDone, beforeProposeStuck,
+  patient, onDone, beforeProposeStuck, hideProposeStuck = false,
 }: {
   patient: Patient;
   onDone: () => void;
   beforeProposeStuck: () => Promise<void>;
+  /** Info Collection renders its own Propose Stuck in the exit row, so this
+   *  bar drops its copy — see the note beside that button. */
+  hideProposeStuck?: boolean;
 }) {
   return (
     <Card title="Escalation">
@@ -743,10 +746,16 @@ function EscalationCard({
           {patient.intakeEscalation === "Final Escalation Required" && " — awaiting a Final Decision."}
         </div>
       ) : null}
-      <p className="sugg-note" style={{ marginTop: 0, marginBottom: 12 }}>
-        Can&rsquo;t move this patient forward? Propose them as stuck and a manager
-        decides — they leave your queue straight away.
-      </p>
+      {/* ⚠️ The sentence follows the BUTTON. Where this bar still carries
+          Propose Stuck it explains it; where the exit row carries it instead,
+          this card is the manager ladder only and that copy would point at a
+          button that is not here. */}
+      {!hideProposeStuck && (
+        <p className="sugg-note" style={{ marginTop: 0, marginBottom: 12 }}>
+          Can&rsquo;t move this patient forward? Propose them as stuck and a manager
+          decides &mdash; they leave your queue straight away.
+        </p>
+      )}
       <StageActionBar
         stage="unverified-intake"
         board="profile"
@@ -757,6 +766,7 @@ function EscalationCard({
         // The bar's Propose Stuck saves the page first too, so the two entry
         // points behave identically (Josh, 2026-08-18).
         beforeProposeStuck={beforeProposeStuck}
+        hideProposeStuck={hideProposeStuck}
         // MANDATORY here: `.pf-root button` out-specifies every Tailwind
         // utility the shadcn Button carries, so the header skin renders as
         // unstyled text in this card (Brandon, 2026-08-19). See
@@ -2399,9 +2409,19 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
             <div className={isCleanUp ? "panes" : "panes solo"}>
               {/* ── LEFT: Patient Info. Collection ── */}
               <div className="pane">
+                {/* ⚠️ The teal "OPEN" pill that sat on the right of this bar is
+                    GONE (Brandon, 2026-09-17: "in the profile view, get rid of
+                    the 'open' on the right side on the top banner"). It was the
+                    surviving half of the LOCK layer removed on 2026-08-19 — the
+                    right pane used to sit blurred behind an overlay until the
+                    unlock conditions passed, and that state became a stage
+                    boundary instead. With no "Locked" left to contrast with, the
+                    pill could only ever read "Open", which is a badge that
+                    carries no information. Its `.st` / `.st.open` CSS went with
+                    it, for the same reason the `.locked` layer did: a style
+                    nothing sets is an invitation to re-add the state. */}
                 <div className="pane-head">
                   <h2>Patient Info. Collection</h2>
-                  <span className="st open">Open</span>
                 </div>
 
               {/* ── Referral Email rail-card ── mockup's first block. The
@@ -3502,14 +3522,27 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                         start disagreeing about whether the patient may leave.
                         The Advance below is a DIFFERENT exit under a different
                         gate, and this pane is where its work ends. */}
+                    {/* ⚠️ TWO ROWS, NOT FOUR EQUAL BUTTONS (Brandon, 2026-09-17:
+                        *"'Advance' and 'Log Call Attempt' are the main 2 buttons
+                        at the end, then 'save and finish later' and 'propose
+                        stuck' are kinda like the alternative buttons, so let's
+                        make them below and a bit smaller"*).
+
+                        The four used to be equal thirds of one flex row
+                        (`.exit-row > .btn { flex: 1 1 0 }`), which put Propose
+                        Stuck — an escalation that takes the patient out of the
+                        rep's hands — at exactly the weight of the button you
+                        press at the end of every successful call. What the rep
+                        does on a normal call is advance them or log the attempt;
+                        everything else is the exception. */}
                     <div className="exit-row">
                       {/* Info Collection's exit, and the main button on the
-                          page — so it leads the row and keeps the green, while
-                          Save gives it up (Josh, 2026-08-19). It saves the left
-                          pane on the way through: a rep who has just finished a
-                          call should not have to press two buttons, and the
-                          save is verified BEFORE the advancer fires, which a
-                          Save-then-Advance pair could never guarantee. */}
+                          page — so it leads the row and keeps the green (Josh,
+                          2026-08-19). It saves the left pane on the way through:
+                          a rep who has just finished a call should not have to
+                          press two buttons, and the save is verified BEFORE the
+                          advancer fires, which a Save-then-Advance pair could
+                          never guarantee. */}
                       {!isCleanUp && (
                         <button
                           onClick={() => { void runStageAction("advanceCleanUp"); }}
@@ -3522,13 +3555,6 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                           {advancing ? "Advancing…" : "Advance →"}
                         </button>
                       )}
-                      {/* THE Monday write for the left pane. Renamed from "Save
-                          to Monday" and stripped of the green, so the row has
-                          exactly one primary action (Josh, 2026-08-19) — this
-                          one parks the patient, it doesn't move them. */}
-                      <button onClick={save} disabled={saving} className="btn secondary">
-                        {saving && !advancing ? "Saving…" : "Save and Finish Later"}
-                      </button>
                       <button
                         onClick={() => setAttemptOpen(true)}
                         disabled={saving}
@@ -3536,18 +3562,33 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       >
                         Log call attempt
                       </button>
-                      {/* ONE Propose Stuck per screen (Josh, 2026-08-20).
-                          Clean-Up renders BOTH panes, and the right one
-                          carries the shared manager ladder (EscalationCard) —
-                          whose Propose Stuck runs `beforeProposeStuck` and the
-                          same modal, so the two were the same action twice.
-                          The RIGHT one survives, because it is the only route
-                          to Approve Stuck / Send back to pipeline; dropping it
-                          instead would strand a manager arriving from an
-                          Oversight column (§5.20).
-                          Info Collection has no right pane, so it keeps this
-                          button — there the ladder sits under the left pane's
-                          "Ready to Advance?" rather than beside it. */}
+                    </div>
+                    <div className="exit-row alt">
+                      {/* THE Monday write for the left pane. Renamed from "Save
+                          to Monday" and stripped of the green (Josh,
+                          2026-08-19) — this one parks the patient, it doesn't
+                          move them. */}
+                      <button onClick={save} disabled={saving} className="btn secondary">
+                        {saving && !advancing ? "Saving…" : "Save and Finish Later"}
+                      </button>
+                      {/* ⚠️ ONE Propose Stuck per screen, and from 2026-09-17
+                          this is the one on Info Collection (Brandon: "Don't
+                          need propose stuck twice").
+
+                          Both variants used to render the EscalationCard's bar,
+                          whose base action for a rep is its own Propose Stuck —
+                          so Info Collection showed two buttons, ~35 lines apart,
+                          opening two DIFFERENT dialogs onto the same write. The
+                          comment here claimed there was only ever one, and on
+                          Clean-Up that was true (this button is `!isCleanUp`);
+                          on Info Collection it was not.
+                          The bar's copy is suppressed instead
+                          (`hideProposeStuck`), because this one lives in the
+                          row a rep actually works from and runs `proposeWithSave`
+                          — the dialog that carries their unsaved form edits into
+                          the proposal. The bar keeps Approve Stuck / Send back
+                          to pipeline, so a manager arriving from an Oversight
+                          column is not stranded (§5.20). */}
                       {!isCleanUp && (
                         <button
                           onClick={() => setStuckOpen(true)}
@@ -3592,10 +3633,19 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                   Propose Stuck works the same on both). Below Ready to Advance?
                   for the same reason it sits last over there: it is what you
                   reach for when the exits above didn't apply. */}
-              {!isCleanUp && (
+              {/* ⚠️ Rendered only when it has something in it. With its Propose
+                  Stuck suppressed (the exit row above owns that now), a REP's
+                  bar has no actions left — `actionsFor` gives a non-manager
+                  exactly `["proposeStuck"]` — so the card would be a title, a
+                  state line and an empty row. A manager from an Oversight
+                  column still gets Approve Stuck / Send back, and a patient who
+                  IS escalated still gets the "Currently: …" line whoever is
+                  looking, because that is the only place this page says so. */}
+              {!isCleanUp && (barHasVisibleActions("unverified-intake", managerOrigin, { hideProposeStuck: true }) || selected.intakeEscalation?.trim()) && (
                 <div className="mt-4">
                   <EscalationCard
                     patient={selected}
+                    hideProposeStuck
                     onDone={() => { void refetch(true); }}
                     beforeProposeStuck={saveBeforePropose}
                   />
@@ -3716,7 +3766,6 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
               <div className="pane pane-inner">
                 <div className="pane-head">
                   <h2>Patient Profile Clean-Up</h2>
-                  <span className="st open">Open</span>
                 </div>
 
               {/* Advance to MN sits at the BOTTOM of this pane, in step 4,

@@ -15,7 +15,6 @@ import {
   Loader2,
   Mail,
   MessageSquare,
-  Copy,
   Pencil,
   Phone,
   RefreshCw,
@@ -533,7 +532,7 @@ export function openInGoogleViewer(url: string) {
 }
 
 /** Format raw phone digits as (xxx)-xxx-xxxx / +1 (xxx)-xxx-xxxx. */
-function formatPhoneNice(raw?: string): string {
+export function formatPhoneNice(raw?: string): string {
   if (!raw) return "—";
   const d = raw.replace(/\D/g, "");
   if (d.length === 10) return `(${d.slice(0, 3)})-${d.slice(3, 6)}-${d.slice(6)}`;
@@ -541,69 +540,21 @@ function formatPhoneNice(raw?: string): string {
   return raw;
 }
 
-/**
- * Copy the patient's number to the clipboard.
- *
- * ⚠️ **The number IS on screen and still cannot be copied** — that is the whole
- * bug. Katie, 2026-09-17, on the new Welcome Call screen: *"more difficult to
- * copy/paste phone number"*. `PatientContact` renders it as the label of an
- * `<a href="tel:">`, so dragging across it starts a link drag rather than a text
- * selection and a click dials. Until 2026-09-11 the Welcome Call banner also had
- * the number in an editable `PhoneField`, where select-and-copy worked; that
- * field was deleted with the banner's phone controls (§5.31c) and the tel: link
- * became the only rendering of it.
- *
- * One button instead of a second copy of the number: it sits with Call and Text,
- * so every header that already shows the number gets it, and nothing has to be
- * re-laid-out to hold a selectable span.
- *
- * ⚠️ Copies the DIGITS as displayed, not `tel:`'s stripped form — a rep is
- * pasting this into RingCentral, a payer portal or a note, and `+15555550100`
- * is not what any of them want to read back.
- *
- * ⚠️ `navigator.clipboard` is unavailable on an insecure origin and can be
- * refused by permissions policy, so a failure says so rather than silently
- * doing nothing and leaving the rep believing they have the number.
- */
-function CopyPhoneButton({ display }: { display: string }) {
-  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
-  useEffect(() => {
-    if (state === "idle") return;
-    const t = setTimeout(() => setState("idle"), 1600);
-    return () => clearTimeout(t);
-  }, [state]);
+/* ⚠️ `CopyPhoneButton` — the small copy-to-clipboard button that sat between
+   Text and Call Log — was DELETED on 2026-09-17 (Brandon, via Josh: "it's the
+   little copy button next to text, remove").
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(display);
-      setState("done");
-    } catch {
-      setState("failed");
-    }
-  };
+   It shipped the day before (§5.31f), because the number renders as the label
+   of a `tel:` link and dragging to select it starts a link drag instead of a
+   selection, so a rep pasting into RingCentral or a payer portal had nothing to
+   copy from. That complaint is real and is now UNADDRESSED again: selecting the
+   number off a patient header is still awkward. It was removed anyway because
+   it is a fourth control on a row that already carries Call, Text and Call Log,
+   on screens whose complaint is crowding.
 
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      title={`Copy ${display}`}
-      aria-label={`Copy phone number ${display}`}
-      className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-    >
-      {state === "done" ? (
-        <>
-          <Check className="h-3.5 w-3.5 shrink-0" /> Copied
-        </>
-      ) : state === "failed" ? (
-        <>
-          <XCircle className="h-3.5 w-3.5 shrink-0" /> Can&apos;t copy
-        </>
-      ) : (
-        <Copy className="h-3.5 w-3.5 shrink-0" />
-      )}
-    </button>
-  );
-}
+   If it comes back, it should come back somewhere that is not this row — the
+   header's own name/DOB line, or a right-click affordance — not as a fifth
+   button here. Deleted rather than left unimported: §5.11's rule. */
 
 /** Days-in-stage pill — shown right-aligned with the patient name, with a
  *  "Days in Stage:" label in front. */
@@ -628,9 +579,25 @@ export function DaysInStagePill({ value }: { value?: string }) {
  *  Uses tel:/sms: so the rep's device handles it. */
 export function PatientContact({
   phone, textPrefill, textOpen, onTextOpenChange, onTextSent, hideCallHistory,
-  textTone, callHistoryLabel, callHistoryIcon,
+  textTone, callHistoryLabel, callHistoryIcon, callHistoryCount,
+  patientName,
 }: {
   phone?: string;
+  /**
+   * Who the number belongs to, shown in the text composer's title bar before
+   * the number (Brandon, 2026-09-17: "when we open up the text box, let's have
+   * patient's name on the top bar too before their phone number").
+   *
+   * ⚠️ Worth the prop rather than leaving the header as a bare number: this
+   * dialog opens from a dashboard where a coordinator moves between patients
+   * quickly, and the number alone does not say who is about to be texted. A
+   * text sent to the wrong patient is not recoverable.
+   */
+  patientName?: string;
+  /** Passed straight to `CallHistoryButton` — see the note on its own `count`
+   *  prop for why this is handed in rather than fetched. */
+  callHistoryCount?: number;
+
   /** Care Coordinator only (Brandon, 2026-09-14): a light-green Text button,
    *  and the Calls pop-up relabelled "Call Log" behind a list icon. Every other
    *  header keeps the defaults — the change is display-only and scoped. */
@@ -671,14 +638,22 @@ export function PatientContact({
       <TextCompose
         tel={tel}
         display={display}
+        who={patientName}
         prefill={textPrefill}
         openSignal={textOpen}
         onOpenChange={onTextOpenChange}
         onSent={onTextSent}
         tone={textTone}
       />
-      <CopyPhoneButton display={display} />
-      {!hideCallHistory && <CallHistoryButton phone={tel} display={display} label={callHistoryLabel} icon={callHistoryIcon} />}
+      {!hideCallHistory && (
+        <CallHistoryButton
+          phone={tel}
+          display={display}
+          label={callHistoryLabel}
+          icon={callHistoryIcon}
+          count={callHistoryCount}
+        />
+      )}
     </span>
   );
 }
@@ -687,9 +662,12 @@ export function PatientContact({
  *  scrollable pop-up, with a reply box at the bottom. Sending refreshes the
  *  thread so the new message shows immediately. */
 function TextCompose({
-  tel, display, prefill, openSignal, onOpenChange, onSent, tone,
+  tel, display, who, prefill, openSignal, onOpenChange, onSent, tone,
 }: {
   tel: string; display: string;
+  /** The patient's name, for the title bar. Optional: without it the header
+   *  reads exactly as it did before. */
+  who?: string;
   prefill?: string;
   /** "green" — the Care Coordinator's light-green Text button. */
   tone?: "green";
@@ -850,9 +828,16 @@ function TextCompose({
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg p-0 gap-0 flex flex-col max-h-[80vh]">
         <DialogHeader className="px-4 py-3 border-b">
+          {/* ⚠️ Name FIRST, then the number (Brandon, 2026-09-17). The number is
+              kept rather than replaced: it is the thing being texted, and on a
+              patient with two numbers on file it is the only way to tell which
+              one this composer is pointed at. */}
           <DialogTitle className="flex items-center gap-2 text-base">
-            <MessageSquare className="h-4 w-4 text-[color:var(--mm-teal)]" />
-            Text · {display}
+            <MessageSquare className="h-4 w-4 shrink-0 text-[color:var(--mm-teal)]" />
+            <span className="min-w-0 truncate">
+              {who?.trim() ? `Text ${who.trim()}` : "Text"}
+              <span className="font-normal text-muted-foreground"> · {display}</span>
+            </span>
           </DialogTitle>
         </DialogHeader>
 

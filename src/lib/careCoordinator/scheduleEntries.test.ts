@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   ASSUMED_DURATION_MIN, bookingLinker, calendlyEntry, durationOf, emailIndex,
   etPartsOf, eventUriIndex, intakeEntry, mergeSchedule,
-  type ScheduleEntry,
+  type LinkedPatient, type ScheduleEntry,
 } from "./scheduleEntries";
 import type { CalendlyBooking } from "./calendlyDay";
 import type { ScheduledCall } from "@/lib/scheduledCalls/workflow";
@@ -52,7 +52,7 @@ describe("etPartsOf", () => {
 describe("emailIndex", () => {
   it("matches case-insensitively and ignores blanks", () => {
     const ix = emailIndex([{ id: "a", email: "A@Example.com" }, { id: "b", email: "  " }]);
-    expect(ix.get("a@example.com")).toBe("a");
+    expect(ix.get("a@example.com")?.id).toBe("a");
     expect(ix.size).toBe(1);
   });
 
@@ -72,10 +72,10 @@ describe("emailIndex", () => {
  * started asking Calendly for both kinds, so the tests call the real function.
  */
 describe("calendlyEntry — a welcome booking", () => {
-  const lookup = (m: Map<string, string | null>) => (e: string) => m.get(e.trim().toLowerCase()) ?? null;
+  const lookup = (m: Map<string, LinkedPatient | null>) => (e: string) => m.get(e.trim().toLowerCase()) ?? null;
   const welcomeEntry = (
     b: Parameters<typeof calendlyEntry>[0],
-    byEmail: (email: string) => string | null,
+    byEmail: (email: string) => LinkedPatient | null,
   ) => calendlyEntry({ ...b, kind: "welcome" }, (x) => byEmail(x.email));
 
   it("converts to Eastern and links to the matched chart", () => {
@@ -107,7 +107,7 @@ describe("the day-view rules work on merged entries", () => {
   // rather than copied: one set of sequencing rules for both sources.
   const welcomeEntry = (
     b: Parameters<typeof calendlyEntry>[0],
-    byEmail: (email: string) => string | null,
+    byEmail: (email: string) => LinkedPatient | null,
   ) => calendlyEntry({ ...b, kind: "welcome" }, (x) => byEmail(x.email));
   const entries: ScheduleEntry[] = [
     intakeEntry(call({ id: "morning", callTime: "09:00:00" })),
@@ -151,7 +151,7 @@ describe("durationOf", () => {
 
 describe("calendlyEntry", () => {
   it("renders an INTAKE booking and links it to the monday row", () => {
-    const e = calendlyEntry(booking({ kind: "intake", eventName: "Intake Call" }), () => "999");
+    const e = calendlyEntry(booking({ kind: "intake", eventName: "Intake Call" }), () => ({ id: "999", phone: "5555550100" }));
     expect(e.kind).toBe("intake");
     expect(e.href).toBe("/unverified-referrals?patientId=999&from=care-coordinator");
     expect(e.callDate).toBe("2026-09-10");
@@ -188,11 +188,11 @@ describe("bookingLinker", () => {
       kind: "intake",
       eventUri: "https://api.calendly.com/scheduled_events/abc/",
       email: "somebody-else@gmail.com",
-    }))).toBe("m1");
+    }))?.id).toBe("m1");
   });
 
   it("falls back to the email when the row never got a URI", () => {
-    expect(link(booking({ kind: "intake", eventUri: "", email: "pat@example.com" }))).toBe("m1");
+    expect(link(booking({ kind: "intake", eventUri: "", email: "pat@example.com" }))?.id).toBe("m1");
   });
 
   it("returns null for an intake booking on neither join", () => {
@@ -203,7 +203,7 @@ describe("bookingLinker", () => {
     // Same URI, welcome kind: the welcome board carries no URI column at all,
     // so matching one here would open an intake chart on a welcome call.
     expect(link(booking({ kind: "welcome", eventUri: "https://api.calendly.com/scheduled_events/ABC", email: "x@y.com" }))).toBeNull();
-    expect(link(booking({ kind: "welcome", email: "WC1@example.com" }))).toBe("w1");
+    expect(link(booking({ kind: "welcome", email: "WC1@example.com" }))?.id).toBe("w1");
   });
 });
 
@@ -241,7 +241,7 @@ describe("mergeSchedule", () => {
 describe("eventUriIndex", () => {
   it("ignores case and a trailing slash", () => {
     const ix = eventUriIndex([{ id: "a", calendlyEventUri: "https://API.calendly.com/scheduled_events/Z1/" }]);
-    expect(ix.get("https://api.calendly.com/scheduled_events/z1")).toBe("a");
+    expect(ix.get("https://api.calendly.com/scheduled_events/z1")?.id).toBe("a");
   });
 
   it("POISONS a URI two rows share instead of picking one", () => {

@@ -29,6 +29,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import {
   RC_VIA_GATEWAY,
+  activityTruncated,
   fetchRecentCallActivity,
   fetchRecentMessageActivity,
   mmPhoneNumber,
@@ -45,6 +46,17 @@ export interface ContactStatesState {
   loading: boolean;
   /** Set when RingCentral couldn't be read. Callers render nothing. */
   error: string | null;
+  /**
+   * The call read came back at its page cap, so the window is incomplete.
+   *
+   * ⚠️ Only a caller rendering a NUMBER needs this. `ContactState.calls` is an
+   * undercount whenever it is true — the oldest calls of a busy week fall off
+   * the end of the read — and a count shown as fact must not be quietly low.
+   * The presence/absence facts are unaffected in any way that matters: a
+   * clipped window can only ever fail to notice contact, which reads as "no
+   * news" and errs toward ringing somebody we have already reached.
+   */
+  truncated: boolean;
 }
 
 /**
@@ -63,7 +75,7 @@ export const CONTACT_WINDOW_DAYS = 7;
  */
 const TTL_MS = 300_000;
 
-const EMPTY: ContactStatesState = { states: null, loading: false, error: null };
+const EMPTY: ContactStatesState = { states: null, loading: false, error: null, truncated: false };
 
 let snapshot: ContactStatesState = EMPTY;
 let fetchedAt = 0;
@@ -112,6 +124,7 @@ function refresh(): Promise<void> {
         }),
         loading: false,
         error: null,
+        truncated: activityTruncated(calls),
       });
     })
     .catch((e: unknown) => {
@@ -122,6 +135,9 @@ function refresh(): Promise<void> {
         states: snapshot.states,
         loading: false,
         error: e instanceof Error ? e.message : String(e),
+        // Keep whatever the last good read said about completeness; this one
+        // said nothing at all.
+        truncated: snapshot.truncated,
       });
     })
     .finally(() => {

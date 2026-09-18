@@ -60,6 +60,54 @@ export interface ContactState {
    * voicemails in their own right).
    */
   voicemail: boolean;
+
+  /* ── Have we actually got through to this person? ──────────────
+   *
+   * ⚠️ **THESE ARE HIGH-WATER MARKS, and the four fields above are
+   * deliberately NOT** — read the header again before treating them as the
+   * same kind of fact. `text` and `call` answer "who owes whom a reply right
+   * now", so the most recent event wins and an older one is forgotten. These
+   * answer a different question, the one the Care Coordinator's cards ask
+   * (Brandon, 2026-09-17: "have the text and phone icon turn a shade of green
+   * if they've responded to a text or picked up"): has this patient EVER
+   * engaged inside the window. A patient who replied on Monday and was texted
+   * again on Friday is `weRepliedLast` — and has still replied to us, which is
+   * what a coordinator deciding whether this number is worth ringing needs to
+   * know.
+   *
+   * Both are scoped to the same window as everything else here, so they mean
+   * "this week", not "ever". */
+
+  /** They sent us at least one text in the window. */
+  reachedByText: boolean;
+  /**
+   * They answered one of OUR calls in the window.
+   *
+   * ⚠️ **OUTBOUND ONLY, and that is the literal ask** (Josh, 2026-09-17, asked
+   * whether an inbound call we took should count: *"they answered our call"*).
+   * So an inbound call somebody here picked up does NOT set this, even though
+   * we plainly spoke to the patient. The question the Care Coordinator's green
+   * phone icon answers is "does ringing this number work", and a patient who
+   * only ever rings us has not answered that.
+   *
+   * ⚠️ `callConnected` reads the LEGS, for the reason the loop below records:
+   * claiming an inbound call forwards it and can stamp the parent with a
+   * terminal-looking result. It matters here for the mirror case — an outbound
+   * call whose audio rode a leg — not just for the inbound one.
+   */
+  reachedByCall: boolean;
+  /**
+   * How many calls with this number the window held, both directions.
+   *
+   * ⚠️ **AN UNDERCOUNT IS POSSIBLE AND IS NOT DETECTABLE FROM HERE.** The
+   * account-wide read behind this is page-capped (`ACTIVITY_MAX_PAGES`), so on
+   * a busy week the oldest calls fall off the end — and this number would then
+   * be quietly too low. The CALLER must decide whether it has enough of the
+   * window to show a count at all; `useContactStates` exposes `truncated` for
+   * exactly that, and the Care Coordinator card hides the number when it is
+   * set. Never render this without checking.
+   */
+  calls: number;
 }
 
 /**
@@ -140,6 +188,10 @@ export function buildContactStates(
   /** number → the newest text, and the newest call, seen so far. */
   const latestText = new Map<string, { at: number; iso: string; outbound: boolean }>();
   const latestCall = new Map<string, { at: number; iso: string; lane: CallLane | null; voicemail: boolean }>();
+  /** number → the high-water facts, which every record can only ever add to. */
+  const reachedText = new Set<string>();
+  const reachedCall = new Set<string>();
+  const callCount = new Map<string, number>();
 
   for (const r of messages) {
     if (!TEXT_TYPES.has(String(r.type ?? "").toLowerCase())) continue;
@@ -147,6 +199,12 @@ export function buildContactStates(
     if (key.length !== 10 || own.has(key)) continue;
     const at = ms(r.creationTime);
     if (!Number.isFinite(at)) continue;
+    // ⚠️ Set BEFORE the most-recent guard below, not after: a patient's reply
+    // is a fact about the window whether or not it happens to be their newest
+    // message. Ordering these two the other way round would make "they have
+    // replied" mean "their reply was the last thing that happened", which is
+    // the lane rule this is deliberately not.
+    if (!isOutbound(r.direction)) reachedText.add(key);
     const prev = latestText.get(key);
     if (prev && prev.at >= at) continue;
     latestText.set(key, { at, iso: String(r.creationTime), outbound: isOutbound(r.direction) });
@@ -157,10 +215,17 @@ export function buildContactStates(
     if (key.length !== 10 || own.has(key)) continue;
     const at = ms(r.startTime);
     if (!Number.isFinite(at)) continue;
+
+    const outbound = isOutbound(r.direction);
+    // Counted and marked for EVERY call, before the newest-wins guard — same
+    // reasoning as the texts above. ⚠️ `reachedByCall` is OUTBOUND-only; see
+    // the field's own note.
+    callCount.set(key, (callCount.get(key) ?? 0) + 1);
+    if (outbound && callConnected(r)) reachedCall.add(key);
+
     const prev = latestCall.get(key);
     if (prev && prev.at >= at) continue;
 
-    const outbound = isOutbound(r.direction);
     // ⚠️ `connected` reads the LEGS, not the top-level result: claiming an
     // inbound call forwards it, which tears down the original leg and can
     // stamp the parent with a terminal-looking result. Reading that literally
@@ -183,15 +248,27 @@ export function buildContactStates(
     const c = latestCall.get(key);
     const text: TextLane | null = t ? (t.outbound ? "weRepliedLast" : "awaitingOurReply") : null;
     const call = c?.lane ?? null;
-    // Both empty means the only thing in the window was an inbound call we
-    // answered. Nothing is owed and nothing is claimed — leave them out.
-    if (!text && !call) continue;
+    const reachedByText = reachedText.has(key);
+    const reachedByCall = reachedCall.has(key);
+    const calls = callCount.get(key) ?? 0;
+    // ⚠️ This used to drop an entry whose `text` and `call` lanes were both
+    // null — the case where the only thing in the window was an inbound call
+    // somebody answered. That was right while the lanes were all this map
+    // held: nothing was owed, so there was nothing to draw. It is wrong now,
+    // because that patient is precisely one we HAVE spoken to, which is what
+    // `reachedByCall` exists to say. The entry is kept when anything at all is
+    // known, and the sidebar marks are unaffected: `ContactStateMarks` renders
+    // per lane and already returns null when neither produces a glyph.
+    if (!text && !call && !reachedByText && !reachedByCall && calls === 0) continue;
     out.set(key, {
       text,
       call,
       textAt: text ? (t?.iso ?? "") : "",
       callAt: call ? (c?.iso ?? "") : "",
       voicemail: call === "missedTheirCall" && !!c?.voicemail,
+      reachedByText,
+      reachedByCall,
+      calls,
     });
   }
   return out;

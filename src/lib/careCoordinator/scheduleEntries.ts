@@ -66,6 +66,26 @@ export interface ScheduleEntry extends BookedSlot {
    */
   durationMin: number;
   /**
+   * The invitee's email, straight from the booking (or the mirror row).
+   *
+   * Always what CALENDLY holds, never the board's copy — a booking made under
+   * a second address is exactly the case where the two differ, and the one the
+   * coordinator needs to see when a block has no chart behind it.
+   */
+  email: string;
+  /**
+   * The patient's phone, from the MATCHED BOARD ROW — blank when nothing
+   * matched.
+   *
+   * ⚠️ Calendly does not give us one. Its day feed carries the invitee's name,
+   * email, times and a reschedule URL and nothing else, so a phone number on
+   * this strip can only ever come from the board item the booking was resolved
+   * to. That is the same resolution `href` depends on, which is why the two are
+   * blank and non-blank together: a block with no chart to open also has no
+   * number to ring, and the popup says so rather than showing an empty field.
+   */
+  phone: string;
+  /**
    * Where "Open" goes, or null when we cannot say WHICH patient this is.
    *
    * ⚠️ Null is a real and expected state: a booking is matched back to a board
@@ -97,6 +117,8 @@ export function intakeEntry(c: ScheduledCall): ScheduleEntry {
     bookingStatus: c.bookingStatus,
     detail: [c.requestType, c.reason].filter(Boolean).join(" · ") || "Intake call",
     durationMin: ASSUMED_DURATION_MIN,
+    email: c.email,
+    phone: c.phone,
     href: hrefFor("intake", c.id),
   };
 }
@@ -145,18 +167,28 @@ export function durationOf(startIso: string, endIso: string): number {
 }
 
 /**
+ * What a booking resolved to on the board: the item to open, and the number to
+ * ring. Null whenever we cannot be sure which patient it is.
+ */
+export interface LinkedPatient {
+  id: string;
+  phone: string;
+}
+
+/**
  * A booking straight from Calendly — the source of truth, either kind.
  *
- * `itemIdFor` resolves the booking to a board item; it returns null whenever
- * it cannot be sure, and that null flows straight through to `href`.
+ * `patientFor` resolves the booking to a board item; it returns null whenever
+ * it cannot be sure, and that null flows straight through to `href` and to the
+ * phone number.
  */
 export function calendlyEntry(
   b: CalendlyBooking,
-  itemIdFor: (b: CalendlyBooking) => string | null,
+  patientFor: (b: CalendlyBooking) => LinkedPatient | null,
 ): ScheduleEntry {
   const { date, time } = etPartsOf(b.startTime);
   const kind: ScheduleKind = b.kind === "intake" ? "intake" : "welcome";
-  const itemId = itemIdFor(b);
+  const linked = patientFor(b);
   return {
     key: `${kind}:${b.eventUri}:${b.email}`,
     kind,
@@ -168,7 +200,9 @@ export function calendlyEntry(
     bookingStatus: "Scheduled",
     detail: b.eventName || (kind === "welcome" ? "Welcome call" : "Intake call"),
     durationMin: durationOf(b.startTime, b.endTime),
-    href: itemId ? hrefFor(kind, itemId) : null,
+    email: b.email,
+    phone: linked?.phone ?? "",
+    href: linked ? hrefFor(kind, linked.id) : null,
   };
 }
 
@@ -182,20 +216,22 @@ export function calendlyEntry(
  * for the same reason. Failing to link costs a click; linking wrongly opens
  * the wrong chart on a live call.
  */
-function indexBy<T>(items: T[], keyOf: (t: T) => string, idOf: (t: T) => string): Map<string, string | null> {
-  const seen = new Map<string, string | null>();
+function indexBy<T>(
+  items: T[], keyOf: (t: T) => string, rowOf: (t: T) => LinkedPatient,
+): Map<string, LinkedPatient | null> {
+  const seen = new Map<string, LinkedPatient | null>();
   for (const it of items) {
     const key = (keyOf(it) || "").trim().toLowerCase();
     if (!key) continue;
     // Second sighting of a key poisons it rather than overwriting.
-    seen.set(key, seen.has(key) ? null : idOf(it));
+    seen.set(key, seen.has(key) ? null : rowOf(it));
   }
   return seen;
 }
 
-/** Email → board item id. */
-export function emailIndex(items: { id: string; email: string }[]): Map<string, string | null> {
-  return indexBy(items, (i) => i.email, (i) => i.id);
+/** Email → board row. */
+export function emailIndex(items: { id: string; email: string; phone?: string }[]): Map<string, LinkedPatient | null> {
+  return indexBy(items, (i) => i.email, (i) => ({ id: i.id, phone: i.phone ?? "" }));
 }
 
 /**
@@ -206,8 +242,10 @@ export function emailIndex(items: { id: string; email: string }[]): Map<string, 
  * the column is already in the Care Coordinator's intake read. Email is the
  * fallback for a row whose URI never landed.
  */
-export function eventUriIndex(items: { id: string; calendlyEventUri: string }[]): Map<string, string | null> {
-  return indexBy(items, (i) => normalizeEventUri(i.calendlyEventUri), (i) => i.id);
+export function eventUriIndex(
+  items: { id: string; calendlyEventUri: string; phone?: string }[],
+): Map<string, LinkedPatient | null> {
+  return indexBy(items, (i) => normalizeEventUri(i.calendlyEventUri), (i) => ({ id: i.id, phone: i.phone ?? "" }));
 }
 
 /** Trailing slashes and case are not part of the identity. */
@@ -222,10 +260,10 @@ export function normalizeEventUri(uri: string): string {
  * column, because it carries no booking columns at all).
  */
 export function bookingLinker(indexes: {
-  intakeByUri: Map<string, string | null>;
-  intakeByEmail: Map<string, string | null>;
-  welcomeByEmail: Map<string, string | null>;
-}): (b: CalendlyBooking) => string | null {
+  intakeByUri: Map<string, LinkedPatient | null>;
+  intakeByEmail: Map<string, LinkedPatient | null>;
+  welcomeByEmail: Map<string, LinkedPatient | null>;
+}): (b: CalendlyBooking) => LinkedPatient | null {
   return (b) => {
     const email = (b.email || "").trim().toLowerCase();
     if (b.kind === "intake") {

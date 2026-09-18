@@ -35,7 +35,7 @@
  * footnote says so rather than implying one (§5.15: "fix the copy, not the
  * gate").
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 
 import {
@@ -51,6 +51,7 @@ import { etToday, addCalendarDaysIso } from "@/lib/masheke/etDate";
 import { cn } from "@/lib/utils";
 import { COLUMN_ACCENT } from "./PipelineColumn";
 import { initialScrollLeft, laneFor, splitName } from "@/lib/careCoordinator/lanes";
+import { BookingDetailsDialog } from "./BookingDetailsDialog";
 
 /** The strip's horizontal extent. Bookings outside it still render, clamped. */
 const DAY_START_HOUR = 7;
@@ -59,13 +60,34 @@ const DAY_END_HOUR = 20;
 /**
  * How wide an hour is.
  *
- * ⚠️ This number is what makes rule 1 above workable. At 240px an hour a
- * 10-minute call — both live Calendly event types are 10 minutes — is 40px,
- * enough for a stacked name; at the old full-width-percentage scale it was
- * ~16px, which is why the chip had to be inflated to be readable at all.
- * A typical screen shows roughly six hours of this at once.
+ * ⚠️ This number is what makes rule 1 above workable, and it is also the only
+ * lever on how much of a name fits. **Raised 240 → 380 on 2026-09-17**
+ * (Brandon: *"The '...' in the calendar item takes up like half the space —
+ * let's find a way to squeeze in more letters of the name. We can also shrink
+ * the window a bit more — it's showing like 6.5 hours, I think we can shrink it
+ * to like 4 hours at a time (1 back, 3 forward) and that way will allow us to
+ * widen the boxes a bit more."*)
+ *
+ * The two halves of that are the same number: a wider hour is both a wider
+ * block and fewer hours on screen. **Measured in a browser at 1500px wide,
+ * 2026-09-17**, with the block's real type ramp and seven live-shaped names:
+ *
+ *   240px/hour → 40px block, **6.3 hours** on screen — `Delgado`, `Charmaine`,
+ *                `Mariacamila`, `Augustina` and `Rodriguez` all ellipsed.
+ *   380px/hour → 63px block, **3.9 hours** on screen — `Delgado`, `Augustina`
+ *                and `Rodriguez` now fit; only the two longest FIRST names
+ *                (`Charmaine`, `Mariacamila`) still clip.
+ *
+ * 3.9 hours is the "4 hours at a time" he asked for, so the two halves of the
+ * note land together rather than trading off.
+ *
+ * ⚠️ It does NOT fit every name and cannot: the 2026-09-16 audit put a median
+ * first name at ~306px/hour and the longest live SURNAME at ~850. Going further
+ * trades away the part of the day on screen, which is the other thing he
+ * values, so the full name stays in the block's `title` — and, from the same
+ * day, on the popup, which is what a click is for now.
  */
-const PX_PER_HOUR = 240;
+const PX_PER_HOUR = 380;
 
 /**
  * A floor purely so a degenerate booking stays clickable.
@@ -171,6 +193,17 @@ export function ScheduleGrid({
   const lanes = Math.max(1, ...timed.map((b) => b.lane + 1));
   const untimed = todays.filter((c) => minutesOfDay(c.callTime) === null);
   const nowVisible = isToday && nowMinutes >= startMin && nowMinutes <= startMin + spanMin;
+
+  /**
+   * The block whose popup is open (Brandon, 2026-09-17).
+   *
+   * ⚠️ Held as the ENTRY, not as a key into `todays`. The strip re-derives that
+   * list on every poll and every clock tick, so a key would have to be
+   * re-resolved on each one, and a booking that vanished mid-read (a cancel
+   * landing between polls) would silently blank an open popup instead of
+   * leaving the coordinator reading what they clicked.
+   */
+  const [openBooking, setOpenBooking] = useState<ScheduleEntry | null>(null);
 
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -331,8 +364,7 @@ export function ScheduleGrid({
               return (
                 <Block
                   key={c.key}
-                  href={c.href}
-                  onOpen={onOpen}
+                  onClick={() => setOpenBooking(c)}
                   title={`${displayTime(c.callTime)}–${displayTime(minutesToHhmm(end))} · ${c.name} · ${welcome ? "welcome call" : "intake call"}`}
                   className={cn(
                     "absolute z-10 flex flex-col items-start justify-start overflow-hidden rounded-md border px-1 py-0.5 text-left",
@@ -364,20 +396,31 @@ export function ScheduleGrid({
         <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>Booked this day, no time on file:</span>
           {untimed.map((c) => (
-            <Block key={c.key} href={c.href} onOpen={onOpen} className={cn("rounded px-1.5 py-0.5 text-xs font-medium", c.kind === "welcome" ? COLUMN_ACCENT.welcome.block : COLUMN_ACCENT.intake.block)}>
+            <Block key={c.key} onClick={() => setOpenBooking(c)} className={cn("rounded px-1.5 py-0.5 text-xs font-medium", c.kind === "welcome" ? COLUMN_ACCENT.welcome.block : COLUMN_ACCENT.intake.block)}>
               {c.name}
             </Block>
           ))}
         </p>
       )}
 
-      <p className="mt-2 text-[11px] text-muted-foreground">
-        Times are Eastern, read live from Calendly.{" "}
-        {remindersOn
-          ? `You'll get a reminder ${REMINDER_LEAD_MIN} minutes before an intake call that reached the patient's monday row, wherever you are in the app.`
-          : `The ${REMINDER_LEAD_MIN}-minute reminder goes to the person who holds this role.`}
-        {" "}Welcome calls, and any booking made under an address the board doesn't hold, don't raise one.
-      </p>
+      {/* ⚠️ THE FOOTNOTE IS GONE (Brandon, 2026-09-17: "Delete 'Times are
+          Eastern, read live from Calendly. The 10-minute reminder goes to the
+          person who holds this role. Welcome calls, and any booking made under
+          an address the board doesn't hold, don't raise one.'").
+          What it said was true and is still true — the reminder
+          (`ScheduledCallHost`) reads the monday MIRROR and is intake-only, so a
+          welcome call, or an intake booking made under an address the board
+          doesn't hold, appears on this strip and raises nothing. §5.15's rule
+          for that gap is "fix the copy, not the gate", and this deletes the
+          copy. It is his screen and he reads it every day; the gap is recorded
+          in CLAUDE.md §5.30c instead of on the page. Do not re-add it without
+          asking him. */}
+
+      <BookingDetailsDialog
+        entry={openBooking}
+        onOpenChange={(v) => { if (!v) setOpenBooking(null); }}
+        onOpenProfile={(href) => { setOpenBooking(null); onOpen(href); }}
+      />
     </section>
   );
 }
@@ -389,28 +432,27 @@ function minutesToHhmm(mins: number): string {
 }
 
 /**
- * A block, clickable only when we know which patient it is.
+ * A block. ALWAYS clickable from 2026-09-17, because clicking now opens the
+ * popup rather than navigating.
  *
- * ⚠️ A booking whose invitee email matches no board row has no chart to open —
- * rendering a button that navigates nowhere (or worse, to a guessed patient)
- * is the failure this avoids. It still renders: the coordinator needs to see
- * the call is happening.
+ * ⚠️ That is the change: it used to render as an inert `<span>` whenever the
+ * booking matched no board row, since there was no chart to send anybody to and
+ * guessing one is worse than not linking (§5.15). Under a popup the unmatched
+ * case is the one most worth opening — it is where the coordinator finds the
+ * name and email to work out who booked and under what address — so the block
+ * opens and the popup's own button is what greys out.
  */
 function Block({
-  href, onOpen, className, style, title, children,
+  onClick, className, style, title, children,
 }: {
-  href: string | null;
-  onOpen: (href: string) => void;
+  onClick: () => void;
   className?: string;
   style?: React.CSSProperties;
   title?: string;
   children: React.ReactNode;
 }) {
-  if (!href) {
-    return <span className={cn(className, "cursor-default")} style={style} title={title}>{children}</span>;
-  }
   return (
-    <button type="button" onClick={() => onOpen(href)} className={cn(className, "hover:brightness-95")} style={style} title={title}>
+    <button type="button" onClick={onClick} className={cn(className, "hover:brightness-95")} style={style} title={title}>
       {children}
     </button>
   );

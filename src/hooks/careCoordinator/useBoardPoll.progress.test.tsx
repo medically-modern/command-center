@@ -96,10 +96,64 @@ describe("useBoardPoll progress", () => {
     await waitFor(() => expect(a.result.current.loading).toBe(false));
     a.unmount();
 
+    // ⚠️ A DIFFERENT key, so this mount is a genuine first load rather than one
+    // seeded from the in-memory cache (see the remount test below). The
+    // remembered TOTAL is what carries across, via localStorage, and it is what
+    // gives the bar a denominator on a cold load.
+    localStorage.setItem("mm-cc-total:k3b", "300");
     const second = pagedFetcher([150]);
-    const b = renderHook(() => useBoardPoll(second.fn, 60_000, "k3"));
+    const b = renderHook(() => useBoardPoll(second.fn, 60_000, "k3b"));
     await waitFor(() => expect(b.result.current.progress?.loaded).toBe(150));
     expect(b.result.current.progress?.expected).toBe(300);
     second.release();
+  });
+
+  /* ── The remount cache (Brandon, 2026-09-17: "when you go to a profile, then
+   *    back, it takes a bit to load each time"). ─────────────────────────── */
+
+  it("seeds a remount from the last good read, with no skeleton and no bar", async () => {
+    const first = pagedFetcher([300]);
+    const a = renderHook(() => useBoardPoll(first.fn, 60_000, "remount"));
+    first.release();
+    await waitFor(() => expect(a.result.current.data).toBe(300));
+    a.unmount();
+
+    // Opening a patient unmounts this page; coming back mounts it again. The
+    // list has to be there in the FIRST render — that is the whole fix.
+    const second = pagedFetcher([300]);
+    const b = renderHook(() => useBoardPoll(second.fn, 60_000, "remount"));
+    expect(b.result.current.data).toBe(300);
+    expect(b.result.current.loading).toBe(false);
+    // ⚠️ And no load bar over a list already on screen — the background
+    // refresh is silent, like every other poll.
+    expect(b.result.current.progress).toBeNull();
+    second.release();
+  });
+
+  it("does NOT seed a run that failed — a half-read must never become the cache", async () => {
+    const failed = pagedFetcher([120], true);
+    const a = renderHook(() => useBoardPoll(failed.fn, 60_000, "badrun"));
+    failed.release();
+    await waitFor(() => expect(a.result.current.error).not.toBeNull());
+    a.unmount();
+
+    const next = pagedFetcher([120]);
+    const b = renderHook(() => useBoardPoll(next.fn, 60_000, "badrun"));
+    expect(b.result.current.data).toBeNull();
+    expect(b.result.current.loading).toBe(true);
+    next.release();
+  });
+
+  it("keys the cache, so two columns never seed from each other", async () => {
+    const one = pagedFetcher([11]);
+    const a = renderHook(() => useBoardPoll(one.fn, 60_000, "colA"));
+    one.release();
+    await waitFor(() => expect(a.result.current.data).toBe(11));
+    a.unmount();
+
+    const two = pagedFetcher([22]);
+    const b = renderHook(() => useBoardPoll(two.fn, 60_000, "colB"));
+    expect(b.result.current.data).toBeNull();
+    two.release();
   });
 });
