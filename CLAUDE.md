@@ -5694,6 +5694,75 @@ than being absent and forgotten. If the reorder form and the actual claim ever d
 3. **The two halves** — `src/lib/shared/payerPolicy.test.ts` (offline, in the unit suite) and
    `.github/workflows/payer-policy-drift.yml` (full, scheduled).
 
+### 5.38 The COMPLETED ITEM is the stage snapshot — there is no history store, and none is needed
+Asked repeatedly, in both directions: *"Monday keeps no column history, so to show what a stage
+looked like when the patient left it we need to store a snapshot on advance"* (the Sept 2026
+redesign handoff proposes exactly that — a JSON blob on the item, or a snapshots table keyed by
+Patient UID + stage + timestamp). **Do not build it.** The history already exists, as items, and
+two features are already built on it.
+
+**Why it exists for free.** A patient is **one item per board** (§6), and a board hop is a
+**create-item automation**, not a move: finishing Medical Evaluation leaves that board's item
+sitting in its **Completed group** while a NEW item is created on Insurance. Nothing writes to the
+finished item again, so its column values are the stage's values at the moment it was left. Five
+boards' worth of frozen records, kept by Monday for as long as the item exists.
+
+```
+Profile Send Off item ──"Advance to MN"──> stays in Completed  ┐
+Medical Evaluation item ──"Completed"────> stays in Completed  ├─ the patient's stage history
+Insurance item ──"Complete"──────────────> stays in Completed  │   (one item each, frozen)
+Welcome Call item ──"Completed"──────────> stays in Completed  ┘
+                                                   │
+                                          the LIVE item is on the next board
+```
+
+**Two consumers already read it, and they are the working examples:**
+- **System Management → Search** — the green completion badges (§7). `buildCompletionMap` finds
+  each board's completed item for a patient, and the badge opens THAT item on the page that
+  gathered its data (`COMPLETED_STAGE_ROUTES`), with `?patientId=<completed item>&completedStage=
+  <boardId>`. That second param is what puts the page into **review mode**
+  (`useCompletedStageReview` → `CompletedStageBanner`), which disables the stage-advancing send.
+- **The Communications Hub dossier** (§5.28) — `fetchDossierItems`' **second, name-keyed pass
+  exists precisely to pick up completed records**, because a completed item often carries a blank
+  or differently-typed phone. The stage path it draws is this same history.
+
+⚠️ **The granularity is PER BOARD, not per sub-stage — and that is the one thing a snapshot store
+would buy.** Medical Evaluation spans evaluate → send request → confirm receipt → chase → doctor
+appointments on ONE item; Insurance spans benefits → submit auth → auth outstanding → DVS on one.
+So there is one frozen record per board, not one per sub-step. In practice that is nearly enough,
+because the sub-stages write **different columns** (the three confirm-receipt attempts vs the
+three chase attempts, per-product auth ids, per-product scripts), so a per-sub-step card reads its
+own fields off the one completed item correctly. What is genuinely unrecoverable is a column that
+was **overwritten later in the same board** — a Coverage Path corrected during Chase reads as
+though it always said that at Send Request. Say so rather than implying otherwise; do not build a
+store to close that gap without a specific reported need.
+
+⚠️ **"When" and "who" are not columns.** No board has a completion date and every SPA write
+carries the same Monday token, so `completedAtFromLogs` reads Monday's **activity log** (the move
+into the Completed group OR the board's own completion status write, whichever is later — they are
+needed together, because a batch move logs no `move_pulse_*` event) and the actor comes from the
+**gateway's** `gql_log` via `stageActor.mjs`. §7 has both, including the 100-ns-tick trap. Monday
+prunes activity by plan retention, so the date can come back empty — render "date unavailable",
+never a guess.
+
+⚠️ **Frozen by convention, not by enforcement.** Review mode disables the ADVANCE; notes and
+inline saves stay live on purpose (§7), and nothing stops a write to an item in a Completed group.
+`advanceToProfileCleanUp`'s unconditional `moveItemToGroup` has already dragged two patients back
+OUT of Completed (§9/§10). Treat a completed item as read-only in new code; do not assume the
+board will refuse a write.
+
+⚠️ **Four boards, not seven.** `COMPLETED_STAGE_ROUTES` covers Profile Send Off · Medical
+Evaluation · Insurance · Welcome Call. `COMPLETED_GROUP_IDS` (§5.18) additionally lists DTC
+Intake's "Ordered" and Secondary Claims' "Paid And Closed", which have no page to open — a badge
+for those would dead-end. Subscription has no Completed group at all; it is where patients live,
+not a stage they finish.
+
+**Keep-in-agreement:** `stageCompletion.ts` `COMPLETED_STAGE_ROUTES` / `STAGE_COMPLETION_COLUMNS`
+⇄ `shared/profileStatus.ts` `COMPLETED_GROUP_IDS` (whose bidirectional test against the live
+`BOARDS` registry is what catches a board growing a Completed group) ⇄ the four pages that wire
+`useCompletedStageReview`. ⚠️ `UnverifiedReferralsPage` is the one intake-family page that does
+NOT wire it — the known gap §10 records.
+
 ## 6. Patient flow across boards (the big picture)
 
 ```
@@ -6074,7 +6143,8 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   stage-DVS patient parked in the Benefits group opens `/dvs` — matching the rule `useRoleCounts`
   already uses (§5.8), rather than the one queue that deliberately excludes them.
   **Search's green completion badges are LINKS into the finished stage** (Aug 2026,
-  `lib/systemMgmt/stageCompletion.ts`). A patient is a different item on every board (§6), so
+  `lib/systemMgmt/stageCompletion.ts`). **This is also the app's stage-history mechanism — see §5.38
+  before anyone proposes storing snapshots on advance.** A patient is a different item on every board (§6), so
   `buildCompletionMap` — name-keyed, because that's all the boards share — now carries each
   completed item's own **id + board**, and the badge opens THAT item on the page that gathered the
   data (`COMPLETED_STAGE_ROUTES`: Profile → `/profile`, MN → `/evaluate`, Insurance → `/benefits`,
@@ -6706,6 +6776,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 |---|---|
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A payer added on Monday isn't in the Command Center dropdown | §5.33 — Primary/General Insurance read `settings_str` live (`lib/profile/boardLabels.ts` + `hooks/profile/useBoardLabels.ts`); check it isn't in `NON_PAYER_LABELS`. If it is IN the picker but doesn't save, the write lost its live index. And a payer must exist on **all eight** payer columns — ME, Insurance, Welcome Call and Claims are the ones people forget. ⚠️ Monday assigns a DIFFERENT label id per board (this payer is 159/159/159/159 but **108** on ME, **7** on Insurance and Welcome Call, **3** on Claims); hops copy by label text so they are fine, but anything writing an index directly needs that board's own id |
+| "Show what this stage looked like when the patient left it" / a handoff asks for stage snapshots | §5.38 — **the completed item on each board already IS the snapshot**; do not build a history store. `lib/systemMgmt/stageCompletion.ts` (which page, and when it completed) → `useCompletedStageReview` (review mode) → §7's completion badges. Granularity is per BOARD, not per sub-stage |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
 | A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
