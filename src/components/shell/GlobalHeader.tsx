@@ -299,31 +299,25 @@ export function GlobalHeader() {
                   a widening, so the gate comes with them. Nothing is lost: the
                   pages that guard themselves still do, and Stage Manager is
                   ability-gated at its route either way. */}
+              {/* ⚠️ **Pipeline Oversight and Stage Manager came off on 2026-09-21**
+                  (Josh: "remove the pipeline oversight stage manager and
+                  stystmen =managment from the settings"). Stage Manager is a
+                  header TAB, so it lost nothing.
+                  ⚠️⚠️ **Oversight is the one that narrowed**, and it is worth
+                  knowing rather than discovering: its only remaining doors are
+                  the assignable `oversight` HOME VIEW (§5.39c) and the
+                  `/oversight` URL. A manager who has not been given that home
+                  view now has no route to it from the chrome. If that bites,
+                  the fix is a header tab, not a menu entry — this menu is
+                  settings now, not navigation.
+                  ⚠️ Access & permissions STAYS, and must: the Users button
+                  beside this menu is ADMIN-only, and `isAdmin` reads as
+                  manager-wide merely because `admins` is empty (§5.39c). The
+                  day somebody names the first admin, this is the one route a
+                  non-admin manager has. */}
               {managerish && (
                 <>
                   <div className="eyebrow">Manager</div>
-                  <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/oversight"); }}>
-                    <BarChart3 style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                    Pipeline Oversight
-                  </button>
-                  <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/stage-manager"); }}>
-                    <ArrowRightLeft style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                    Stage Manager
-                  </button>
-                  {/* ⚠️ **System Management left this menu on 2026-09-21** (Josh:
-                      "as far as system managment goes the full top bar now
-                      handles that") — and it does: Search IS the header's
-                      search box, Communications and Stage Manager are header
-                      tabs, Operations is what Reports & Metrics opens, and
-                      Oversight is above. The `/system-mgmt` ROUTE survives for
-                      a bookmark. ⚠️ What genuinely has no other door is the
-                      days-in-stage PipelineChart on its Search tab, filtered by
-                      the current results — the same component is on Stage
-                      Manager, over a different population. */}
-                  {/* ⚠️ Here AND on the admin-only Users button beside this menu
-                      — `isAdmin` is true for every manager only while `admins`
-                      is empty (§5.39c), so the day somebody names the first
-                      admin this is the one route a non-admin manager has. */}
                   <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/access"); }}>
                     <KeyRound style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
                     Access &amp; permissions

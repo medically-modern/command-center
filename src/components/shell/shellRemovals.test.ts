@@ -146,10 +146,11 @@ describe("⚠️ the header advertises every live destination, and no dead one",
   const header = read("components/shell/GlobalHeader.tsx");
   const live = liveLines(header);
 
-  it("Pipeline Oversight goes to /oversight, which is a real route", () => {
-    expect(live).toContain('navigate("/oversight")');
-    expect(live).not.toContain("tab=oversight");
-    expect(liveLines(read("App.tsx"))).toContain('path="/oversight"');
+  it("⚠️ Pipeline Oversight is off the settings menu — the home view is its door", () => {
+    // Trimmed 2026-09-21. The route is real and stays; what reaches it now is
+    // the assignable `oversight` home view, not a link in the chrome.
+    expect(read("components/shell/GlobalHeader.tsx")).not.toContain('navigate("/oversight")');
+    expect(read("App.tsx")).toContain('path="/oversight"');
   });
 
   it("⚠️ System Management is OFF the menu again — the top bar covers its tabs", () => {

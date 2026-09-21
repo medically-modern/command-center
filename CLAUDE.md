@@ -4595,8 +4595,9 @@ pins it and is verified to fail when the param is dropped.
 ⚠️ **The Subscription toggle keys on the ROW'S EXISTENCE, never on a status** (Brandon's wording).
 The Subscription row is created at Final Profile Confirmation, so a patient stuck in Insurance whose
 row was created early can still open it — reading a status would hide exactly the patient the
-toggle exists to make reachable. Its Profile | Orders tabs are the EXISTING pages, linked rather
-than duplicated, so those columns keep one writer.
+toggle exists to make reachable. ✅ **Its Profile | Orders tabs landed 2026-09-21 — §5.45**: both
+are READ-ONLY renders, and every control that writes is still a link to the existing page, so those
+columns keep one writer.
 
 ⚠️ **A blank is an em dash and is MARKED missing, never a zero** (`infoFacts`). Missing and empty
 are different facts everywhere else in this app (§5.31f · §5.31g) and they are different here: a rep
@@ -4757,10 +4758,10 @@ menu** (Josh, 2026-09-18, three asks in one message). **No board change; app onl
   survived only because they ride INSIDE `processors`. Anything new at the top level goes in that
   read too; `abilities.test.ts` scans it.
 
-**Still not built, deliberately:** the Subscription Profile | Orders tabs on the patient screen;
-the widened global search (DOB, member id, doctor name/phone, insurance name). The per-person home
-views, the abilities model, the Users page and the combined fax bar all landed the same day —
-§5.39c.
+**Still not built, deliberately:** the widened global search (member id, doctor name/phone,
+insurance name — DOB landed 2026-09-21, §5.44). ✅ The Subscription Profile | Orders tabs landed
+2026-09-21 — §5.45. The per-person home views, the abilities model, the Users page and the combined
+fax bar all landed the same day — §5.39c.
 
 **Keep-in-agreement:** `shell.css`'s `--cc-head` ⇄ the `.gh` `min-height` — the fit overrides
 subtract exactly the header's height, and a header that grows without it puts every page 56px out.
@@ -5102,9 +5103,9 @@ quietly:** the patient screen's per-stage panels are LINKS, not the read-only re
 his handoff asks for (§5.39 has the price — extending `reviewMode` across 13 pages plus a
 shell/body split of each); the global search matches name + phone + order identifiers while its
 placeholder promises *"name, DOB, phone, member ID, order #, doctor"* (the OLD System Management
-search had the same limits, so that is unbuilt spec rather than a regression); Subscription's
-Profile | Orders tabs. ✅ **Reports & Metrics and all six abilities landed 2026-09-19 — §5.39h**;
-the ability list is no longer decoration.
+search had the same limits, so that is unbuilt spec rather than a regression). ✅ **Reports &
+Metrics and all six abilities landed 2026-09-19 — §5.39h**; the ability list is no longer
+decoration, and **Subscription's Profile | Orders tabs landed 2026-09-21 — §5.45**.
 
 **Keep-in-agreement:** `components/shell/lossless.test.ts` is the door list — a tool added to the
 redesign's navigation, or removed from it, belongs there · `GlobalHeader`'s Manage menu ⇄
@@ -5502,7 +5503,87 @@ link still works. The ORDER sidebar is hidden while Inventory is open (it is the
 search, and on this screen it lists things this page cannot open); the Orders tab is one click back
 and brings it with it.
 
-### 5.40 Diagnosis is a DROPDOWN — monday status columns cap at 39 labels (Sep 2026)
+### 5.45 The patient screen's Subscription view — Brandon's Profile | Orders (Sep 2026)
+Josh, 2026-09-21, looking at what shipped: *"is this what brandons mockup did here? if not follow
+it"*. It was not. §5.39 listed the Subscription tabs as *"still not built, deliberately"*, and what
+stood in their place was two link buttons on an otherwise empty page — which is what his screenshot
+showed. **No board change; app only.** Files: `components/patient/SubscriptionView.tsx`,
+`hooks/patient/usePatientOrders.ts`, `lib/orders/mondayApi.fetchOrdersForPatient`,
+`pages/patient/redesign.css`, `lib/patient/patientScreen.SUB_PARAM`.
+
+**What his mockup renders** (`patientMain`, line 2256): a **Profile | Orders** segmented toggle
+carrying the order COUNT, then either `profilePage` — a teal *Subscription overview* strip, then
+the board's facts in cards, then the notes — or `ordersPage`, whose bottom half is an **order
+history table** (Order # · Created · Type · Items · Status · Shipped · Delivered, newest first).
+That is what is built, `?sub=orders` on the URL so a tab survives a reload and a shared link.
+
+⚠️⚠️ **READ-ONLY, and that is a DEPARTURE from the mockup taken deliberately.** His version carries
+**Save / Reset** and edits the Subscription columns in place. This screen's founding promise is that
+it is purely additive and writes nothing (§5.39, pinned by `patientScreen.test.ts`), and two writers
+for one column is the failure this codebase records over and over — the Secondary Insurance select
+leaving `PatientInfoCard` (§5.31c), the phone editor leaving the Welcome Call banner (§5.31d). The
+mockup itself renders *"Read-only for <name>"* whenever `editProfile` is off, so this ships as its
+own read-only state shown to everyone; **Open the profile** is the one door that writes, and it
+opens the tool that already owns those columns and already gates on `editProfile` (§5.39h).
+
+⚠️ **The no-writer scan now reads the DIRECTORY, not a hand-kept list.** `patientScreen.test.ts`
+named five files, so a file added to this screen later would simply not have been scanned — the
+"a list that must be updated will not be" trap (§5.9 · §5.10 · §5.29), and this was the first
+addition to test it. The three folders (`components/patient`, `hooks/patient`, `lib/patient`) plus
+`PatientPage.tsx` ARE the screen, so a new file is covered the moment it is written; a second
+assertion checks the scan really found them, because a glob that matched nothing passes everything
+below it. Verified to fail when a `mondayWrite` import is added.
+
+**The Orders tab reads the order board by PHONE, once, when the tab is opened.**
+- ⚠️⚠️ **`fetchOrdersForPatient` FAILS CLOSED below ten digits** — a needle shorter than that
+  returns `[]` and never touches the network. The alternative is an unfiltered read rendering
+  ~1,500 orders under one patient's name, which reads as that patient's history. A patient with no
+  number gets a sentence saying orders are matched by number, never a silent empty list.
+- ⚠️ The needle is the **last ten digits**, because these boards store both `9739511857` and
+  `16078737352` and `contains_text` is a contiguous substring (§5.28) — the last ten are what every
+  rendering shares.
+- ⚠️ Every INCIDENT_2026-08-20 guard, because this is a per-patient read on a page a rep clicks
+  through: fetched on the TAB opening and **never on a timer**, a module-scope cache, one in-flight
+  request per number with the `finally` on the CHAINED promise (§5.28), a `want` ref so a slow
+  answer cannot paint the previous patient's orders into the open one, and a **failure that is not
+  cached** so re-opening retries.
+- ⚠️ **Which is why the count on the tab appears only once a rep has looked.** Brandon's mockup
+  shows it always; his data is in the page. Fetching on render to fill a number is the trade §5.16
+  refused for the call log, and Josh declined again for the Care Coordinator card (§5.30c).
+- ⚠️ Rows are mapped with **`partial: true`** — they come from `LIST_COLUMN_IDS`, so every column
+  the list did not ask for is `""`, which is indistinguishable from a blank board cell (§5.25). A
+  row here is only ever a summary; clicking opens the real order on `/orders`.
+
+⚠️ **The stage on a row comes from `orderStage` + `StagePill`, the same pair the orders page wears
+— never a second reading of the status columns.** The group is not the stage on that board and the
+API status is (§5.35), so a local rule would have this table disagreeing with the page its own rows
+open. `orderLines` builds the Items cell for the same reason: a label with a blank quantity is not
+a line (§5.22b).
+
+⚠️ **`min-width: 720px` on the table is CORRECTNESS, not polish.** A `width: 100%` table inside the
+672px main column (1100px viewport minus the 380px comms rail) does not scroll — it **squeezes**,
+and at seven columns the Items cell collapsed to one word per line, ran a row 300px tall and
+clipped Delivered off the edge. Measured in a browser at 1100 (§5.30d's rule), not reasoned about.
+With a floor the `.scroll-x` wrapper does its job and every row stays one or two lines. Verified at
+1440 (no overflow), 1100 (scrolls inside the card) and 1440 dark.
+
+**Not built, and each for its own reason:** his **Save / Reset** (above); **Financials** — the
+Subscription board really does carry them (`numeric_mm2xsjm5` and its siblings are in the
+subscription slice's own `COL`), but they are not in `stageDetail`'s SUBSCRIPTION map, which is the
+**Comms Hub dossier's** map too, and money is not what a rep on a call needs in that pane (§5.28);
+**Demographics / Contacts** — same shared-map argument, and the six phone-slot columns (§5.31d) are
+not in this slice's `COL` at all. Both are a section in `stageDetail.ts` away, and both widen the
+dossier read, so they are a decision rather than a tidy-up.
+
+**Keep-in-agreement:** `SubscriptionView`'s stage reading ⇄ `lib/orders/workflow.orderStage` +
+`components/orders/pills.StagePill` + `lib/orders/skuJoin.orderLines` — never re-derive any of the
+three here · `fetchOrdersForPatient`'s ten-digit floor ⇄ `usePatientOrders`' own `key.length < 10`
+short-circuit (both, so neither file can be read as the only guard) · `SUB_PARAM` ⇄ `parseSubTab`
+⇄ `PatientPage`'s `setParam`. Tests: `components/patient/subscriptionView.test.ts` (the tab default,
+the fail-closed read, the shared-rule scans — the fail-closed one verified to fail when the guard is
+removed) and `lib/patient/patientScreen.test.ts`'s directory-wide no-writer scan.
+
+### 5.46 Diagnosis is a DROPDOWN — monday status columns cap at 39 labels (Sep 2026)
 A rep sent an Evaluate patient on 2026-09-21 and the send failed four times with
 `verify timeout after ~12s`, paging Josh. Carol Robinson, ME `13095515539`: 16 of the
 17 columns landed and **Diagnosis did not**, so the verified write refused to advance —
@@ -7225,6 +7306,27 @@ that work. **Member ID and doctor remain unbuilt.**
   is exactly the one-way door §5.39d records costing Josh an afternoon. `migrateOffOldLayout` moves
   them once at boot, and stands down when `?layout=` asked deliberately in the same boot, or the
   param would look broken.
+- *"no need for the faxes section in settings i think either , remove"* — checked before removing,
+  because §5.39c had added **`/fax` BESIDE `/fax-inbox`** and this menu was the only place BOTH
+  appeared. `/fax-inbox` keeps a real door (the FAX role bar, special-cased in both burndowns, §4).
+  ⚠️ **`/fax` has NO door left, and that is accepted rather than overlooked**: its function — an
+  inbound fax joined to the sending office and that office's patients — is the Communications hub's
+  Fax tab (§5.28), which is a header tab. The route survives for a bookmark.
+- *"as far as system managment goes the full top bar now handles that"* — and it does, checked tab
+  by tab: Search IS the header's search box, Communications · Stage Manager · Operations are tabs,
+  Oversight is below. ⚠️ What genuinely has no other door is the **days-in-stage PipelineChart on
+  its Search tab**, filtered by the current results; the same component is on Stage Manager over a
+  different population. The `/system-mgmt` route survives.
+- *"remove the pipeline oversight stage manager and stystmen =managment from the settings"* — Stage
+  Manager lost nothing (it is a header tab in its own right).
+  ⚠️⚠️ **OVERSIGHT IS THE ONE THAT NARROWED, and it is worth saying rather than leaving to be
+  discovered.** Its only remaining doors are the assignable **`oversight` home view** (§5.39c) and
+  the `/oversight` URL — so a manager who has not been given that home view has no route to it from
+  the chrome at all. If that bites, the fix is a header TAB: this menu is settings now, not
+  navigation. `lossless.test.ts` records the narrowing in place of a door, which is the only
+  honest thing a door-list test can assert about a door that was removed on purpose.
+  ⚠️ **Access & permissions STAYS**, for the reason above: the Users button beside the menu is
+  ADMIN-only. What is left of the Manager section is that one entry, still gated.
 
 **Keep-in-agreement:** `phoneNeedlesFor` ⇄ `rulesLiteral`'s phone branch (phone columns take every
 needle, identifier columns take the typed digits ONLY) · `dobNeedles` ⇄ `BoardDef.dobColId` ⇄
@@ -8393,6 +8495,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A custom home view "does nothing" | §5.39h — `views[0]` is the landing view and a newly granted one is PREPENDED, so it is what they open on; the editor prints "Lands on X". If it still looks wrong, read the **access.json commit history**, not the current file: the final state can be right while the sequence explains what was seen |
 | Borrowing somebody's view shows my tabs, or theirs reach a write | §5.39h — `lib/shell/viewAs.ts`. The HEADER answers for the borrowed person (tabs, Manage, Users); `AbilityGate`, `AbilityLock` and every write guard answer for the signed-in one; the softphone is never borrowed. `viewAsScope.test.ts` pins all three |
 | A page sits 36px short, or the header grows a blank band | §5.39h — `--cc-head` is the HEADER's height and `--cc-chrome` is everything above a page. The borrow banner raises the second, never the first; raising both made `.gh` taller AND stacked the banner under it |
+| A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
+| The order history table mangles its rows on a narrow window | §5.45 — `.cc-pt .otable`'s `min-width: 720px`. Without it the table squeezes instead of scrolling inside `.scroll-x` and the Items cell collapses to one word per line. Reproduce at **1100**, where the 380px comms rail leaves the main column at ~672px — at 1440 it fits and looks correct whatever is broken |
 | The Cardinal stock page / "where is Inventory?" | §5.39i — `/orders?view=stock`, one table with category chips, `components/orders/SkuTrackerView.tsx`. OOP price is the board's column, never `cost × 1.25`; Status sorts by the VERDICT, not the raw label; the order sidebar is hidden there by design |
 | "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |
 | The phone icon in the top bar is red / there is no phone icon | §5.39c — it is `CallConnectionBadge compact`, the same component as the home badge, and it renders for **assigned call answerers only** (§5.13b). Red with "the line is full" is RingCentral's five registrations (§5.13b); amber "another tab" means click it to move the line here. No icon at all ⇒ not in `callAnswerers` on `/access` |
@@ -8447,7 +8551,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
-| A new ICD-10 code won't save / an Evaluate send times out on verify | §5.40 — Diagnosis is a **dropdown** since 2026-09-21 (`lib/shared/diagnosisCell.ts`). monday status columns cap at **39 labels / id 160** and all three Diagnosis columns were full, so `create_labels_if_missing` was dropped at HTTP 200 with no error. If it recurs, check the write shape is `{labels:[code]}` and the COL map points at the `dropdown_` id — `diagnosisColumnIds.test.ts` scans `src/` for retired ids. ⚠️ A blank Diagnosis downstream usually means the **hop automation** still copies the retired status column: re-run `scripts/diagnosis-migration/migrateDiagnosis.mjs --apply` |
+| A new ICD-10 code won't save / an Evaluate send times out on verify | §5.46 — Diagnosis is a **dropdown** since 2026-09-21 (`lib/shared/diagnosisCell.ts`). monday status columns cap at **39 labels / id 160** and all three Diagnosis columns were full, so `create_labels_if_missing` was dropped at HTTP 200 with no error. If it recurs, check the write shape is `{labels:[code]}` and the COL map points at the `dropdown_` id — `diagnosisColumnIds.test.ts` scans `src/` for retired ids. ⚠️ A blank Diagnosis downstream usually means the **hop automation** still copies the retired status column: re-run `scripts/diagnosis-migration/migrateDiagnosis.mjs --apply` |
 | A payer is $0 on one screen and charged on another | §5.37 — `src/lib/shared/payerPolicy.json` is canonical; `node scripts/check-payer-policy.mjs` names every copy that disagrees. A DECLARED deviation is a difference somebody has signed off; profile's CGM-monitor exclusion is the only one. A drift line right after a push to another repo may be the raw CDN being ~5 min stale — re-run with `GITHUB_TOKEN` set. The **Python** copy is in another org and is checked by nobody |
 | A patient's Medical Records still read "MR Expired" after new records went in | §5.36 — `lib/subscription/mrStatus.ts` (the rung rule) → `mondayWrite.saveVisitDateVerified`. The board's five automations only count DOWN and nothing there writes **MR Valid**, so before 2026-09-16 the only fix was by hand. If it recurs: check the Update Visit Date save actually ran (it writes MN Expiry AND MR), then that `MR_STATUS_INDEX` still matches `color_mktyr8xg`'s live `settings_str` — a stale id is dropped at HTTP 200 with nothing in the logs |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |

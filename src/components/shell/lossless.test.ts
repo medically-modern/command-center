@@ -56,24 +56,18 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     });
   }
 
-  it("⚠️⚠️ Oversight left the MANAGE menu — and still has three doors", () => {
-    // Josh took it off that menu on 2026-09-21, naming the Manage menu
-    // specifically. It is a trim rather than a removal only because every
-    // other way in still works, so this asserts the removal AND the survivors:
-    //   · the settings (gear) menu's "Pipeline Oversight", a different menu;
-    //   · `homeView: "oversight"`, assignable per person on /access, which
-    //     renders the live Oversight page as somebody's landing screen;
-    //   · /system-mgmt's own Oversight tab.
-    // If any of those goes, Oversight needs a link back in the header FIRST.
-    // The Manage menu is gone entirely (2026-09-21); Oversight's door is the
-    // settings menu's manager section, plus the home view and the tab.
-    expect(header(), "the Manage button came back").not.toContain('title="Manager tools"');
-    expect(header(), "no door left in the header at all").toContain('navigate("/oversight")');
+  it("⚠️⚠️ Oversight is down to TWO doors, and this is where that is recorded", () => {
+    // Josh trimmed it off the settings menu on 2026-09-21. What is left is the
+    // assignable `oversight` HOME VIEW and the /oversight URL — so a manager
+    // who has not been given that home view has no route to it from the
+    // chrome. That is a narrowing, accepted deliberately; if it bites, the fix
+    // is a header TAB, because this menu is settings now, not navigation.
+    expect(header(), "Oversight is back on the settings menu").not.toContain('navigate("/oversight")');
     const host = live(read("components/shell/HomeViewHost.tsx"));
-    expect(host).toContain("oversight");
-    expect(sysMgmt()).toContain('label="Oversight"');
+    expect(host, "the home view is the last door and it is gone too").toContain("oversight");
     const store = live(read("lib/accessStore.ts"));
     expect(store).toMatch(/HOME_VIEWS[^;]*"oversight"/);
+    expect(live(read("App.tsx"))).toContain('path="/oversight"');
   });
 
   it("⚠️ a header tab is not a gate — both new routes are gated at the route too", () => {
@@ -94,31 +88,31 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     expect(h).toContain('navigate("/access")');
   });
 
-  it("⚠️⚠️ …and moving it did not WIDEN it — the section is manager-gated", () => {
-    // That section was ungated before the move; the Manage menu was gated.
-    // Folding an admin-shaped entry into an ungated list is how a move becomes
-    // a widening.
+  it("⚠️⚠️ the settings menu is down to ONE manager entry, and it is still gated", () => {
+    // Everything else moved to the top bar or was trimmed. Access & permissions
+    // stays because the Users button beside it is ADMIN-only and only reads as
+    // manager-wide while `admins` is empty (§5.39c).
     const h = header();
     const section = h.slice(h.indexOf("{managerish && ("), h.indexOf("</>\n              )}"));
-    for (const route of ['navigate("/access")', 'navigate("/oversight")', 'navigate("/stage-manager")']) {
-      expect(section, `${route} escaped the manager gate`).toContain(route);
-    }
+    expect(section, "/access escaped the manager gate").toContain('navigate("/access")');
+    expect(h, "the Manage button is back").not.toContain('title="Manager tools"');
   });
 
-  it("⚠️⚠️ System Management left the menu — every TAB of it is on the top bar", () => {
-    // Josh, 2026-09-21: "as far as system managment goes the full top bar now
-    // handles that". Checked rather than taken on trust, tab by tab: Search IS
-    // the header's search box, Communications and Stage Manager are header
-    // tabs, Operations is what Reports & Metrics opens, Oversight is on this
-    // menu. The route survives for a bookmark; it is just not advertised.
+  it("⚠️⚠️ System Management and Stage Manager left the menu — the top bar has them", () => {
+    // "as far as system managment goes the full top bar now handles that", and
+    // Stage Manager is a header tab in its own right. Checked tab by tab rather
+    // than taken on trust: Search IS the header's search box, Communications,
+    // Stage Manager and Operations are tabs. The routes survive for bookmarks.
     const h = header();
-    expect(h, "System Management is back on the menu").not.toContain('navigate("/system-mgmt")');
+    expect(h).not.toContain('navigate("/system-mgmt")');
+    expect(h).not.toContain('navigate("/stage-manager")');
     expect(h, "the search box went with it").toContain("<GlobalSearch");
     for (const to of ['to: "/assigned-patients"', 'to: "/stage-manager"', 'to: "/operations"']) {
       expect(h, `${to} is not a tab`).toContain(to);
     }
-    expect(h).toContain('navigate("/oversight")');
-    expect(live(read("App.tsx")), "the route itself is gone").toContain('path="/system-mgmt"');
+    const app = live(read("App.tsx"));
+    expect(app).toContain('path="/system-mgmt"');
+    expect(app).toContain('path="/stage-manager"');
   });
 
   it("⚠️⚠️ the FAXES section left too — and only ONE of the two had another door", () => {
