@@ -31,7 +31,7 @@ exists. Architecture reference for a future session: **`CLAUDE.md` §5.47**.
 | Health | `GET /calls/archive-health` (unauthenticated, counts only) |
 | Monitor | `services/calls-monitor` — set **`CALL_ARCHIVE_HEALTH_URL`** on it to arm the push |
 | Serving | `GET /calls/recording?callId=` → 302 presigned · `?mode=proxy` · `POST /calls/recordings/have` · `POST /calls/archive/query` |
-| Command Center | `lib/callHistory/archivedRecordings.ts` + `hooks/callHistory/useArchivedAudio.ts`; Play and ⤓ in `CallHistoryButton` now appear on purged calls and serve from the bucket |
+| Command Center | `lib/callHistory/archivedRecordings.ts` + `hooks/callHistory/useArchivedAudio.ts`; Play and ⤓ appear on purged calls and serve from the bucket, in **`CallHistoryButton`** (the per-patient Calls pop-up) and the **Comms Hub Phone tab** |
 
 ⚠️ **Phase 3 needed no separate backfill script and there deliberately is none.** The audio queue
 does not care how old a recording is, so ordinary hourly runs drain the backlog; a redeploy costs
@@ -72,8 +72,6 @@ attempt**, which would otherwise have let one busy afternoon park good recording
   when the archive stops, which is the failure mode it exists for.
 - **Settle the retention number (§1)** and set `CALL_ARCHIVE_WINDOW_DAYS` / `CALL_ARCHIVE_STALE_HOURS`.
 - **Phase 5, voicemail audio** (§7) — a ~30-day clock, tighter than recordings, still unarchived.
-- **The Comms Hub Phone tab** has its own recording list and was deliberately left alone this pass;
-  it takes the same three lines as `CallHistoryButton` when wanted.
 - Two answers wanted from a human: Railway's BAA coverage of **Tigris**, and a retention policy
   (§8). The default is keep-forever.
 
