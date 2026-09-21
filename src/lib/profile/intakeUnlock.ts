@@ -8,6 +8,7 @@
  * explanation is derived separately is how the two drift apart.
  */
 
+import { isCashPayPatient } from "../shared/cashPay";
 import type { Patient } from "./workflow";
 
 export interface UnlockCondition {
@@ -147,21 +148,41 @@ export function evaluateUnlock(p: Patient | null | undefined): UnlockState {
       passed: patientAuthorised(p),
       hint: 'Patient asked for a call first — complete it, then tick "Intake Call Complete".',
     },
-    {
-      id: "stediRan",
-      label: "Benefits check ran without error",
-      passed: stediRanCleanly(p),
-      hint: truthy(p.stediErrorDescription)
-        ? `Check failed: ${p.stediErrorDescription}. Usually a name / DOB / Member ID mismatch — correct it on the left and re-run.`
-        : "Run the benefits check from the insurance block.",
-    },
-    {
-      id: "active",
-      label: "Coverage is active",
-      passed: coverageActive(p),
-      hint: "Coverage came back inactive — call the patient and confirm their plan.",
-    },
   ];
+
+  /* ⚠️ A CASH PAY PATIENT HAS NO BENEFIT CHECK TO PASS, AND THESE TWO
+     CONDITIONS ARE THE EXACT PAIR THAT STRANDED DEBBIE HINZE (Janelle via
+     Brandon, 2026-08-18: *"Im also unable to advance the order from Intake
+     since no ins is on file"*).
+
+     Both read eligibility columns that only a Stedi run fills in, and Stedi
+     takes the payer and Member ID from monday — so for somebody with no
+     insurance they can never come back true however long a rep works the
+     patient. That is a gate with no passing move, the dead end §5.10 · §5.20 ·
+     §5.31c · §5.31f · §5.39d each record reversing.
+
+     Everything else still applies, and deliberately so: the patient must still
+     have AUTHORISED the request, and the coverage paths still gate, because
+     those decide what actually ships. Only the two insurance conditions drop.
+     Cash pay does not mean unchecked. */
+  if (!isCashPayPatient(p)) {
+    conditions.push(
+      {
+        id: "stediRan",
+        label: "Benefits check ran without error",
+        passed: stediRanCleanly(p),
+        hint: truthy(p.stediErrorDescription)
+          ? `Check failed: ${p.stediErrorDescription}. Usually a name / DOB / Member ID mismatch — correct it on the left and re-run.`
+          : "Run the benefits check from the insurance block.",
+      },
+      {
+        id: "active",
+        label: "Coverage is active",
+        passed: coverageActive(p),
+        hint: "Coverage came back inactive — call the patient and confirm their plan.",
+      },
+    );
+  }
 
   /* ⚠️ THE NETWORK ANSWER NO LONGER GATES THE ADVANCE (Josh, 2026-08-25).
      There used to be a fourth condition here — "Plan is in-network", hinting

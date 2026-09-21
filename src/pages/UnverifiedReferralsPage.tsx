@@ -64,6 +64,7 @@ import {
 import {
   evaluateUnlock, coverageActive, inNetwork, networkLabel,
 } from "@/lib/profile/intakeUnlock";
+import { applyCashPayReadiness } from "@/lib/profile/cashPayIntake";
 import { formatBenefitsFailure } from "@/lib/profile/benefitsFailure";
 // The serving suggestion engine — the same derivation the pre-rewrite panel
 // auto-filled with (canCrossSellCgm × requestType → deriveServing).
@@ -981,7 +982,13 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     if (faxMethodChosen(selected)) {
       items.push({ label: DOCTOR_FAX_ROW_LABEL, ok: hasDoctorFax(selected) });
     }
-    return items;
+    /* A cash pay patient has no payer and no Member ID, so those rows can
+       never be satisfied — they are exactly what stranded Debbie Hinze.
+       `applyCashPayReadiness` only ever REMOVES insurance rows; Serving, the
+       coverage paths and the DOCTOR all still gate, the last because Cardinal's
+       order payload requires a doctor (Josh, 2026-09-21). Shared with
+       ProfilePage so this board's two routes to Advance to MN agree (§5.19b). */
+    return applyCashPayReadiness(items, selected);
   }, [selected, verified.primaryInsurance, verified.memberId1,
       verified.secondaryInsurance, verified.memberId2]);
 

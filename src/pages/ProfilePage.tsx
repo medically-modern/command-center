@@ -16,6 +16,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { useDtcFormLeads } from "@/hooks/profile/useDtcFormLeads";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
+import { applyCashPayReadiness } from "@/lib/profile/cashPayIntake";
 import { profileReferralRole, type ProfileReferralRole } from "@/lib/profile/referralSplit";
 import {
   dtcFormMatchesFor, queueLeadsFrom, dtcLeadKindLabel, dtcLeadRoute,
@@ -449,7 +450,11 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     if (faxMethodChosen(selected)) {
       items.push({ label: DOCTOR_FAX_ROW_LABEL, ok: hasDoctorFax(selected) });
     }
-    return items;
+    /* Same cash pay rule as the intake page's `readiness` — one module, so
+       this board's two routes to Advance to MN cannot disagree about what a
+       cash pay patient is asked for (§5.19b records the cost of exactly that
+       drift). Insurance rows only; the doctor still gates. */
+    return applyCashPayReadiness(items, selected);
   }, [selected, addressIssue]);
 
   const missing = checklist.filter((i) => !i.ok);
