@@ -90,13 +90,19 @@ export const RECORDING_GAP_MS = Math.max(Number(process.env.CALL_ARCHIVE_GAP_MS)
 /**
  * How many recordings one run may download.
  *
- * At 6.5s apiece, 120 is ~13 minutes of work — comfortably inside an hourly
- * cadence, and ~2,900/day of capacity against ~69/day of arrival. That ~40x
- * headroom is what makes the BACKFILL just the job running: ~6,200 recordings
- * drain in about two days of ordinary hourly runs, with no separate script and
- * no long-running process to be interrupted by a redeploy.
+ * At 6.5s apiece, 300 is ~32 minutes of work inside an hourly cadence — about
+ * 7,000/day of capacity against ~69/day of arrival. That ~100x headroom is what
+ * makes the BACKFILL just the job running: a few thousand queued recordings
+ * drain inside a day of ordinary hourly runs, with no separate script and
+ * nothing long-running to be interrupted by a redeploy.
+ *
+ * ⚠️ Being generous here is safe BECAUSE the tier is `background`: rcLimiter
+ * sheds it above 70% of the global budget, so a bigger number spends the quiet
+ * hours and stands aside during a busy afternoon on its own. It was 120, which
+ * left 47 minutes of every hour idle while the oldest queued recordings sat at
+ * the 90-day cliff — the one part of the backlog that cannot be fetched later.
  */
-export const PER_RUN_BUDGET = Math.max(Number(process.env.CALL_ARCHIVE_PER_RUN) || 120, 0);
+export const PER_RUN_BUDGET = Math.max(Number(process.env.CALL_ARCHIVE_PER_RUN) || 300, 0);
 
 /** Tries before a recording is parked as `failed`. Four, spread over four
  *  separate runs (a run takes one attempt per recording), so a transient
