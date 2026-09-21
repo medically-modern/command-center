@@ -68,22 +68,52 @@ attempt**, which would otherwise have let one busy afternoon park good recording
 
 ### Still to do
 
-- ⚠️ **Set `CALL_ARCHIVE_HEALTH_URL`** on the `calls-monitor` service. Until then nothing pages
-  when the archive stops, which is the failure mode it exists for.
-- **Settle the retention number (§1)** and set `CALL_ARCHIVE_WINDOW_DAYS` / `CALL_ARCHIVE_STALE_HOURS`.
+- ✅ **`CALL_ARCHIVE_HEALTH_URL` is set** on `calls-monitor` (2026-09-21, once the archive first
+  read green — arming it earlier would have pushed "no successful run recorded yet" over an
+  archive that was visibly working).
+- ✅ **Retention is 90 days** — settled empirically, see §1.
 - **Phase 5, voicemail audio** (§7) — a ~30-day clock, tighter than recordings, still unarchived.
 - Two answers wanted from a human: Railway's BAA coverage of **Tigris**, and a retention policy
   (§8). The default is keep-forever.
 
 ---
 
-## 1. ⚠️ First: 10 days or 90? It changes the urgency, not the design
+## 1. ✅ SETTLED: 90 days, not 10
 
-**I could not verify the 10 days from this session and I am not going to guess at it.** Two
-things point the other way and one points at you being right:
+Reported as 10. This repo had measured 90 on 2026-09-16 (§5.16) and RingCentral publishes 90.
+**The archive settled it on 2026-09-21 by doing what no doc page can.**
 
-| Source | Says |
+The drain runs **oldest-first**, so the first ~200 recordings it fetched were the 200 oldest in the
+queue. `oldestPendingHours` walked **2159 → 2043 (90.0 → 85.1 days)** with **`failed: 0` and
+`gone: 0`** — about two hundred recordings aged 85 to 90 days, pulled down with real audio in them
+(853 KB average). Under 10-day retention every one of them would have returned 404 and been
+recorded as `gone`.
+
+⚠️ This does not say anything about past 90 days. That cliff is real — 9/9 connected calls had
+audio at 88–90 days and 0/126 at 90–92 — and it is the entire reason this module exists.
+
+⚠️ **`gone` is now the standing detector.** If retention is ever shortened, the oldest queued
+recordings start coming back 404, `gone` climbs on `/calls/archive-health`, and `calls-monitor`
+says so. The question answers itself next time without anybody measuring.
+
+The original reasoning about why it mattered, and the two admin-console checks, are kept below in
+case the number ever moves.
+
+### The original question (kept for the reasoning)
+
+| Source | Said |
 |---|---|
+| This repo's live measurement, 2026-09-16 (`recordingDownload.ts`, §5.16) | **90 days** — 9/9 connected calls had audio at 88–90 days, 0/126 at 90–92 |
+| RingCentral's published policy + their archival guide | **90 days** or 100,000 recordings, not raisable on any plan |
+| The report that started this | **10 days** |
+
+Three ways all three could have been true: an admin shortening the account's **data-retention
+policy** (a two-click check in the RingEX console — still the cheapest confirmation); a different
+clock being observed, since the **message store** holding voicemail and fax is a ~30-day window
+(§5.27, §7); or the measurement having gone stale. What it would have changed is exactly two
+config numbers and the alert threshold — never the design.
+
+---|---|
 | This repo's own live measurement, 2026-09-16 (`recordingDownload.ts`, §5.16) | **90 days.** A cliff, not a slope: 88–90 days ago **9/9** connected calls still had audio, 90–92 days ago **0/126** did |
 | RingCentral's published policy + their archival guide | **90 days** or 100,000 recordings, whichever comes first; not raisable on any plan |
 | You, today | **10 days** |

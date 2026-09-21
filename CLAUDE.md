@@ -7498,14 +7498,19 @@ these"*. Plan: [`CALL_RECORDING_ARCHIVE_PLAN.md`](CALL_RECORDING_ARCHIVE_PLAN.md
 `callArchiveStore.mjs` (S3), into the Railway bucket **`call-recordings`** (`sjc`) with the index
 on the messaging Postgres. **No board change; gateway only.**
 
-⚠️⚠️ **THE RETENTION NUMBER IS STILL UNSETTLED, AND IT IS THE ONE THING THAT WANTS A HUMAN.**
-This repo measured **90 days** live on 2026-09-16 (§5.16, a clean cliff: 9/9 at 88–90 days,
-0/126 at 90–92) and RingCentral publishes 90 (or 100,000 recordings) on every plan. Josh reports
-**10**. Both can be true if an admin shortened the account's **data-retention policy**, which is a
-two-click check in the RingEX console — and if it IS 10, ~80 days of recordings this repo believed
-safe were already destroyed before this shipped. It changes nothing about the design: the window
-is `CALL_ARCHIVE_WINDOW_DAYS` (default 95) and the alert threshold is `CALL_ARCHIVE_STALE_HOURS`.
-**Settle it, then set those two.**
+✅ **RETENTION IS 90 DAYS, SETTLED EMPIRICALLY 2026-09-21.** It was reported as 10, against this
+repo's own 2026-09-16 measurement of 90 (§5.16, a clean cliff: 9/9 at 88–90 days, 0/126 at 90–92)
+and RingCentral's published policy. The archive answered it by doing the thing no doc page can:
+the drain runs **oldest-first**, so the first ~200 recordings it fetched were the 200 OLDEST — and
+`oldestPendingHours` walked 2159 → 2043 (90.0 → 85.1 days) with **`failed: 0` and `gone: 0`**.
+That is ~200 recordings aged 85–90 days pulled down with real audio in them. At 10-day retention
+every one would have come back 404 and landed as `gone`.
+⚠️ What it does NOT show is anything past 90 — that cliff is real and is the whole reason for this
+module. `CALL_ARCHIVE_WINDOW_DAYS` (95) and `CALL_ARCHIVE_STALE_HOURS` (6) are therefore right as
+they stand.
+⚠️ **`gone` is the standing detector.** If retention is ever shortened, the oldest queued
+recordings start coming back 404, `gone` climbs, and `calls-monitor` says so — which is how this
+question answers itself next time without anybody measuring.
 
 **Why RingCentral's own purge is invisible:** the call-log ROW survives and the `recording` object
 disappears from it, so an aged-out call renders with its date, its duration and no Play button —
@@ -7661,15 +7666,21 @@ tracked for revoking.
 has, so it falls to zero on a patient whose whole history we saved and the footer would offer
 *"Download all (0)"* over a full archive.
 
-**Measured on the live account as it filled, 2026-09-21:**
-- ⚠️⚠️ **`oldestPendingHours` came back at exactly 2159 — 90.0 days** — i.e. RingCentral's call log
-  was still advertising a `recording` for a call 90 days old, with `gone: 0`. **That is evidence
-  the retention here is the published 90 days, not 10.** It is not yet proof: the check that
-  settles it is whether those oldest downloads succeed or come back 404 (they land as `gone`, which
-  the health route counts). **Read `gone` after a day.**
-- **~880 KB per recording** (66 stored, 59.5 MB) ≈ 24 kbps, i.e. the LOW end of the plan's
-  bracket: **~15 GB/year, about $0.25/month in year one and ~$1.60/month at seven years.** Storage
-  was never the problem; requests are.
+**Measured on the live account as it filled, 2026-09-21:** **~880 KB per recording** ≈ 24 kbps,
+i.e. the LOW end of the plan's bracket — **~15 GB/year, about $0.25/month in year one and
+~$1.60/month at seven years.** Storage was never the problem; REQUESTS are.
+
+⚠️⚠️ **AND THE BURST IS WHAT GETS THROTTLED, NOT THE RATE** (Josh, 2026-09-21: *"i dont want to
+throttle rc while everyone is using it"*). The download loop was paced from the start at 6.5s and
+drew nothing; the call-log SCAN had no gap and fired ten pages in about two seconds — and that is
+what drew real RingCentral 429s during a working afternoon. `SCAN_GAP_MS` (1.5s) fixed it, and
+nothing waits on that scan, so the seconds are free.
+⚠️ On top of it, an **office-hours brake**: `drainBudget()` takes `PER_RUN_BUSY_BUDGET` (60)
+during Eastern working hours and `PER_RUN_BUDGET` (300) otherwise, so the backlog is caught up
+overnight. `rcLimiter`'s shed floor is a LATE brake — it engages at 70% of the global budget, i.e.
+once the account is already busy, which is exactly when a rep is waiting on a thread. This is the
+early one. ⚠️ **Eastern via `Intl`**, never UTC (which would throttle all morning and run free
+overnight) and never a fixed offset (a twice-yearly bug); weekends run free.
 
 **Not built** (phase 5): **voicemail audio**, which is on the ~30-day message-store clock — three
 times TIGHTER than recordings — and has no archive at all. Same module, same bucket when wanted.
