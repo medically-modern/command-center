@@ -88,6 +88,21 @@ export const MAX_PAGES = Math.max(Number(process.env.CALL_ARCHIVE_MAX_PAGES) || 
 export const RECORDING_GAP_MS = Math.max(Number(process.env.CALL_ARCHIVE_GAP_MS) || 6_500, 0);
 
 /**
+ * Gap between CALL-LOG pages.
+ *
+ * ⚠️ The drain was paced from the start and the scan was not, so it fired its
+ * pages back to back — and that burst, not the download loop, is what actually
+ * drew real RingCentral 429s on 2026-09-21 while the team was working. A
+ * sustained 9/min is gentle; ten requests in two seconds is a spike, and a
+ * spike is what a rate limiter is built to notice.
+ *
+ * 1.5s turns a ten-page deep scan into ~15 seconds of polite reads. That is
+ * free: the scan happens once an hour (and the wide one once a day), and
+ * nothing is waiting on it.
+ */
+export const SCAN_GAP_MS = Math.max(Number(process.env.CALL_ARCHIVE_SCAN_GAP_MS) || 1_500, 0);
+
+/**
  * How many recordings one run may download.
  *
  * At 6.5s apiece, 300 is ~32 minutes of work inside an hourly cadence — about
@@ -103,6 +118,52 @@ export const RECORDING_GAP_MS = Math.max(Number(process.env.CALL_ARCHIVE_GAP_MS)
  * the 90-day cliff — the one part of the backlog that cannot be fetched later.
  */
 export const PER_RUN_BUDGET = Math.max(Number(process.env.CALL_ARCHIVE_PER_RUN) || 300, 0);
+
+/**
+ * The same budget while the office is working.
+ *
+ * ⚠️ Josh, 2026-09-21: *"i dont want to throttle rc while everyone is using
+ * it"*. The shed floor already stands the archive aside at 70% of the global
+ * budget, but that is a LATE brake — it engages once the account is already
+ * busy, and "already busy" is when a rep is waiting on a thread to load. This
+ * is the early one: during office hours the drain takes a tenth of the bite,
+ * and the backlog is caught up overnight when the line is quiet.
+ *
+ * 60 at a 6.5s gap is ~6.5 minutes of an hour, so ~1.6 requests/minute averaged
+ * — noise against a 90/minute account. Overnight it goes back to 300.
+ */
+export const PER_RUN_BUSY_BUDGET = Math.max(Number(process.env.CALL_ARCHIVE_PER_RUN_BUSY) || 60, 0);
+
+/** Office hours, Eastern, on the clock the rest of this app uses (§5.15). */
+export const BUSY_START_HOUR = Math.min(Math.max(Number(process.env.CALL_ARCHIVE_BUSY_FROM) || 8, 0), 23);
+export const BUSY_END_HOUR = Math.min(Math.max(Number(process.env.CALL_ARCHIVE_BUSY_TO) || 19, 0), 24);
+
+/**
+ * Is the office working right now?
+ *
+ * ⚠️ Eastern, not UTC and not the container's zone — everything else on these
+ * boards is Eastern wall clock, and a UTC reading would put the brake on
+ * between 4am and 3pm local, i.e. free overnight and throttled all morning.
+ * `Intl` rather than an offset constant, so DST is not a twice-yearly bug.
+ */
+export function isOfficeHours(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(new Date(now));
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  const weekend = map.weekday === "Sat" || map.weekday === "Sun";
+  const hour = Number(map.hour);
+  return !weekend && hour >= BUSY_START_HOUR && hour < BUSY_END_HOUR;
+}
+
+/** How many recordings this run may take, given who else is on the line. */
+export function drainBudget(now = new Date()) {
+  return isOfficeHours(now) ? PER_RUN_BUSY_BUDGET : PER_RUN_BUDGET;
+}
 
 /** Tries before a recording is parked as `failed`. Four, spread over four
  *  separate runs (a run takes one attempt per recording), so a transient

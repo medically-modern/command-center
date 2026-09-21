@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   DEEP_STALE_AFTER_MS,
+  PER_RUN_BUDGET,
+  PER_RUN_BUSY_BUDGET,
+  SCAN_GAP_MS,
+  drainBudget,
+  isOfficeHours,
   MAX_ATTEMPTS,
   RECORDING_GAP_MS,
   URL_TTL_SECONDS,
@@ -216,6 +221,47 @@ describe("pacing", () => {
   });
 });
 
+describe("staying out of the office's way", () => {
+  // Josh, 2026-09-21: "i dont want to throttle rc while everyone is using it".
+  // The shed floor is a LATE brake — it engages once the account is already
+  // busy, which is when a rep is waiting on a thread. This is the early one.
+  const at = (iso) => new Date(iso);
+
+  it("knows office hours in EASTERN, not UTC and not the container's zone", () => {
+    // 19:30Z is 15:30 ET — the middle of a working Monday.
+    expect(isOfficeHours(at("2026-09-21T19:30:00Z"))).toBe(true);
+    // 03:00Z Tuesday is 23:00 ET Monday — nobody is on the line.
+    expect(isOfficeHours(at("2026-09-22T03:00:00Z"))).toBe(false);
+    // ⚠️ Read as UTC, 11:30Z would look like mid-morning; it is 07:30 ET.
+    expect(isOfficeHours(at("2026-09-22T11:30:00Z"))).toBe(false);
+    expect(isOfficeHours(at("2026-09-22T12:30:00Z"))).toBe(true);
+  });
+
+  it("gives the whole weekend back", () => {
+    expect(isOfficeHours(at("2026-09-20T18:00:00Z"))).toBe(false); // Sunday 2pm ET
+    expect(isOfficeHours(at("2026-09-19T18:00:00Z"))).toBe(false); // Saturday 2pm ET
+  });
+
+  // ⚠️ Intl rather than a fixed offset, so this is not a twice-yearly bug.
+  it("follows the clock through DST", () => {
+    // 13:30Z in January is 08:30 EST; in September it is 09:30 EDT. Both work.
+    expect(isOfficeHours(at("2026-01-15T13:30:00Z"))).toBe(true);
+    // 12:30Z in January is 07:30 EST — before the office opens.
+    expect(isOfficeHours(at("2026-01-15T12:30:00Z"))).toBe(false);
+  });
+
+  it("takes a tenth of the bite while the office is working", () => {
+    expect(drainBudget(at("2026-09-21T19:30:00Z"))).toBe(PER_RUN_BUSY_BUDGET);
+    expect(drainBudget(at("2026-09-22T03:00:00Z"))).toBe(PER_RUN_BUDGET);
+    expect(PER_RUN_BUSY_BUDGET).toBeLessThan(PER_RUN_BUDGET);
+  });
+
+  // ⚠️ The burst, not the sustained rate, is what drew real RingCentral 429s.
+  it("paces the call-log pages as well as the downloads", () => {
+    expect(SCAN_GAP_MS).toBeGreaterThan(0);
+  });
+});
+
 describe("windowStart / shouldDeepScan", () => {
   it("counts back whole days from now", () => {
     const now = Date.parse("2026-09-21T12:00:00.000Z");
@@ -397,6 +443,16 @@ describe("callArchive.mjs invariants", () => {
 
   // ⚠️ Oldest is closest to deletion. Newest-first archives what has ninety
   // days left and loses what had one.
+  it("sleeps between call-log pages, not just between downloads", () => {
+    const scan = src.slice(src.indexOf("async function scanCallLog"), src.indexOf("async function drainAudioQueue"));
+    expect(scan).toMatch(/await sleep\(SCAN_GAP_MS\)/);
+  });
+
+  it("sizes the drain by who else is on the line", () => {
+    expect(src).toMatch(/budget = drainBudget\(\)/);
+    expect(src).not.toMatch(/budget = PER_RUN_BUDGET/);
+  });
+
   it("drains the queue oldest-first", () => {
     expect(src).toMatch(/audio_state = 'pending'[\s\S]{0,200}ORDER BY started_at ASC/);
   });

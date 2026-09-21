@@ -74,14 +74,16 @@ import {
   MAX_PAGES,
   MIN_GAP_MS,
   PAGE_SIZE,
-  PER_RUN_BUDGET,
   RECORDING_GAP_MS,
+  SCAN_GAP_MS,
   SCAN_DAYS,
   URL_TTL_SECONDS,
   WINDOW_DAYS,
   EVERY_MS,
   archiveHealth,
+  drainBudget,
   extensionFor,
+  isOfficeHours,
   fallbackFilename,
   nextAudioState,
   objectKey,
@@ -353,6 +355,12 @@ async function scanCallLog({ pool, days, now, stats }) {
     // repair pass is TRUNCATED. Reported rather than swallowed: it is the one
     // outcome that looks like success and isn't.
     if (page === MAX_PAGES) stats.truncated = true;
+    // ⚠️ Pages are PACED, like the downloads. The drain was polite from the
+    // start and this loop was not, so it fired its pages back to back — and
+    // that burst is what actually drew real RingCentral 429s while the team
+    // was working. A sustained rate is gentle; a spike is the thing a rate
+    // limiter notices. Nothing waits on this scan, so the seconds are free.
+    await sleep(SCAN_GAP_MS);
   }
 }
 
@@ -364,8 +372,10 @@ async function scanCallLog({ pool, days, now, stats }) {
  * the clock. Newest-first would archive what has ninety days left and lose what
  * had one.
  */
-async function drainAudioQueue({ pool, stats, budget = PER_RUN_BUDGET, gapMs = RECORDING_GAP_MS }) {
+async function drainAudioQueue({ pool, stats, budget = drainBudget(), gapMs = RECORDING_GAP_MS }) {
   if (budget <= 0) return;
+  stats.busy = isOfficeHours();
+  stats.budget = budget;
   const q = await pool.query(
     `SELECT rc_call_id, rc_recording_id, content_uri, started_at, direction, last4, attempts
        FROM call_archive
@@ -491,6 +501,8 @@ export async function reconcileCallArchive({ pool, now = Date.now(), force = fal
     truncated: false,
     shed: false,
     shedHits: 0,
+    busy: false,
+    budget: 0,
   };
   let runId = null;
   let deep = false;
@@ -534,7 +546,8 @@ export async function reconcileCallArchive({ pool, now = Date.now(), force = fal
     console.log(
       `call_archive: ${deep ? "DEEP" : "recent"} pass over ${days}d — ${stats.seen} call(s) on ` +
         `${stats.pages} page(s), ${stats.rowsWritten} row(s) written; audio ${stats.audioStored} stored, ` +
-        `${stats.audioGone} gone, ${stats.audioFailed} failed` +
+        `${stats.audioGone} gone, ${stats.audioFailed} failed (budget ${stats.budget}` +
+        `${stats.busy ? ", office hours" : ""})` +
         `${stats.truncated ? " (TRUNCATED)" : ""}${stats.shed ? ` (SHED after ${stats.shedHits} refusal(s))` : ""}`,
     );
     return { ok: true, deep, ...stats };
