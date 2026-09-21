@@ -7234,6 +7234,138 @@ needle, identifier columns take the typed digits ONLY) · `dobNeedles` ⇄ `Boar
 `main.tsx`, which must call them in that order · `lib/shell/theme.ts` ⇄ the header's swatch row ⇄
 `shell.css`'s `.swatches`.
 
+
+### 5.44 Call recordings are archived off RingCentral's retention clock (Sep 2026)
+Josh, 2026-09-21: *"RC saves recorded calls for 10 days then deletes them. we cant have that …
+we need a simple system that saves and downloads the calls everyday … so CC can always access
+these"*. Plan: [`CALL_RECORDING_ARCHIVE_PLAN.md`](CALL_RECORDING_ARCHIVE_PLAN.md). Built:
+`services/monday-gateway/callArchive.mjs` + `callArchiveRules.mjs` (pure, tested) +
+`callArchiveStore.mjs` (S3), into the Railway bucket **`call-recordings`** (`sjc`) with the index
+on the messaging Postgres. **No board change; gateway only.**
+
+⚠️⚠️ **THE RETENTION NUMBER IS STILL UNSETTLED, AND IT IS THE ONE THING THAT WANTS A HUMAN.**
+This repo measured **90 days** live on 2026-09-16 (§5.16, a clean cliff: 9/9 at 88–90 days,
+0/126 at 90–92) and RingCentral publishes 90 (or 100,000 recordings) on every plan. Josh reports
+**10**. Both can be true if an admin shortened the account's **data-retention policy**, which is a
+two-click check in the RingEX console — and if it IS 10, ~80 days of recordings this repo believed
+safe were already destroyed before this shipped. It changes nothing about the design: the window
+is `CALL_ARCHIVE_WINDOW_DAYS` (default 95) and the alert threshold is `CALL_ARCHIVE_STALE_HOURS`.
+**Settle it, then set those two.**
+
+**Why RingCentral's own purge is invisible:** the call-log ROW survives and the `recording` object
+disappears from it, so an aged-out call renders with its date, its duration and no Play button —
+indistinguishable on screen from a call that was never recorded (§5.16). At ~69 recorded calls and
+~5.6 hours of audio a business day that was ~1,400 calls a month gone for good.
+
+**Shape: metadata first, audio second.** Each run upserts a row for **every** call in the window
+(cheap, complete), then drains a bounded, paced slice of the audio queue. That ordering is the
+durability: the index is always complete even when the audio is behind, and a crash mid-run loses
+nothing.
+⚠️ **OLDEST FIRST.** The oldest unarchived recording is the one closest to deletion, so the queue
+makes the job race the cliff rather than the clock. Newest-first archives what has ninety days
+left and loses what had one.
+⚠️ **There is deliberately NO backfill script.** The queue does not care how old a recording is,
+so ordinary hourly runs drain a backlog of thousands in a couple of days — and a redeploy (every
+push to `main`) costs one run's progress instead of a night's.
+**Two windows**: a cheap `CALL_ARCHIVE_SCAN_DAYS` (2) pass every hour, and a `WINDOW_DAYS` **deep
+repair pass** about daily (`shouldDeepScan`) — reconcile, never increment, so any single
+successful run repairs every prior gap (§5.27's rule).
+
+**The five things that are load-bearing** (all pinned by `callArchiveRules.test.mjs`, and the four
+source-scan ones verified to fail when their protection is removed):
+1. ⚠️⚠️ **KEYED ON `rc_call_id`, NOT THE RECORDING ID.** The recording object vanishes from the
+   surviving row, so a recording-keyed archive is unjoinable exactly when it becomes useful.
+   `rc_session_id` rides along so a row joins to `call_events` (§5.13).
+2. ⚠️⚠️ **The scan may only ever move `none` → `pending`.** Every other transition belongs to the
+   downloader. Without that rule a re-scan resets stored rows and re-downloads forever — and a
+   **purged** recording comes back from the call log as `none`, so letting the scan write it would
+   erase the fact a recording ever existed, silently, for exactly the calls this exists to protect.
+   (`none` → `pending` must stay allowed: RC takes a while to produce a recording, so a call
+   scanned seconds after it ends has none yet.)
+3. ⚠️⚠️ **Paced at 6.5s, because recording content is in RingCentral's HEAVY API group — 10
+   req/60s**, four times tighter than the gateway's own per-caller budget of 40, so `rcLimiter`
+   alone would happily allow a rate RC refuses. `rcMediaFetch` logs `X-Rate-Limit-Group` once per
+   shape so the constant can be settled by measurement. ⚠️ The SPA's own bulk download
+   (`recordingDownload.ts` `DEFAULT_GAP_MS` = 2.5s ≈ 24/min) is **above** that ceiling and is
+   probably already being throttled — same header settles it.
+4. ⚠️ **The object is written BEFORE the row is marked `stored`.** The other order marks a
+   recording safe that is not in the bucket; this order re-uploads to the same derived key, which
+   overwrites rather than duplicating.
+5. ⚠️ **A 200 is not audio.** An XML/HTML error body served with a 200 is the trap `fetchAssetBytes`
+   documents (§5.5); storing one loses the recording *and* reports success. Content type and a
+   non-zero length are both checked.
+⚠️ `gone` is reached **only** on a 404/410 — positive evidence, never calendar arithmetic, because
+nothing ever retries a `gone` row. A **403 is the `ReadCallRecording` permission**, a fault to fix,
+not a purge, and marking it gone would abandon every recording on the account.
+
+**Serving it back** — `GET /calls/recording?callId=…`, **302 to a presigned URL** by default (Josh's
+call; bucket egress is free and the gateway never touches the bytes).
+⚠️⚠️ **A PRESIGNED URL IS A BEARER CREDENTIAL FOR PHI** — copyable out of a network tab, working for
+anyone holding it until it expires. Three things bound that and none is optional: issued only behind
+the caller check, `URL_TTL_SECONDS` (300, hard-capped at an hour in the rules), and **every issuance
+written to `call_archive_access`** — an untracked bearer credential for a patient's recorded call is
+indistinguishable from a leak. `?mode=proxy` streams through the gateway instead, because a browser
+`fetch()` following a cross-origin redirect needs CORS on the bucket and Railway exposes no way to
+set it; an `<audio src>` or `<a href>` takes the 302 happily.
+⚠️ A miss **reports the `audioState`** rather than flattening to a bare 404: "never recorded",
+"purged before we got there" and "queued, come back shortly" are three answers with three different
+next moves.
+
+**Other services read it too** (Josh: *"having other services view the information like the phone
+number that called and the time date etc is important"*). `POST /calls/archive/query` takes
+`phones` / `callIds` / `sinceDays`; `POST /calls/recordings/have` is the batched "do we hold audio
+for these" the SPA needs to draw a Play button **at all** on a call whose log row carries no
+recording. Both take a Google employee identity **or** `CALL_ARCHIVE_SERVICE_TOKEN` (the
+`CALENDLY_DAY_TOKEN` device — other Railway services have no Google identity).
+⚠️ **Every call is stored, not just the recorded ones** — RingCentral's call LOG ages out too, so
+this is a durable call log as well as a recording store, at a few hundred bytes a row.
+⚠️ **It answers with `last4`, never the number.** The archive holds an HMAC; a caller who knows a
+number finds its calls by **sending** it (we hash what they bring) — `/directory/lookup`'s posture,
+where nothing is disclosed that the caller did not already hold. Storing numbers in the clear to
+make this route prettier would undo the one property bounding every PHI table on this pool.
+
+⚠️⚠️ **THIS IS THE MOST SENSITIVE THING THE GATEWAY STORES** — a patient's actual voice, which
+unlike a text cannot be redacted or truncated. The same two bounds as §5.27 and §5.29 apply and are
+not optional: the **messaging pool** (`ASSIGNMENTS_DATABASE_URL`), never the audit pool — **do not
+move this table** — and HMAC + last4, with object keys carrying call ids and never a number or a
+name. **Two things still want an answer from a human:** whether Railway's BAA covers **Tigris**
+(what buckets run on) before ~20 GB of patient voice sits there, and a retention policy — the
+default is keep-forever because the bill does not argue otherwise (~$1–5/month at any plausible
+bitrate; ⚠️ the bitrate is bracketed, not measured, and the first stored object settles it).
+
+**Watched by `services/calls-monitor`** via `CALL_ARCHIVE_HEALTH_URL` → `GET /calls/archive-health`
+(unauthenticated, counts and timestamps only, like `/calls/health` beside it). ⚠️ Not ok when **no
+run has ever succeeded** (a job deployed but never running must not read healthy on an empty table),
+when the last success is stale, when the last **deep** pass hit the page ceiling (a clipped archive
+reporting healthy is the one outcome that looks exactly like success), or when anything is parked
+`failed`. ⚠️ **A pending backlog never pages** — a backfill looks exactly like a backlog, and an
+alert that fires for a working system is the one everybody swipes away. `POST /calls/archive-run`
+forces a pass and is **authenticated AND rate-floored**, both, for §5.27's reason.
+
+**Env** (on `cmd ctr server`): `CALL_ARCHIVE_BUCKET` / `_S3_ENDPOINT` / `_S3_REGION` / `_S3_KEY_ID`
+/ `_S3_SECRET` as Variable References to the bucket; optional `CALL_ARCHIVE_ENABLED=0` (kill
+switch), `_SERVICE_TOKEN`, `_WINDOW_DAYS`, `_SCAN_DAYS`, `_PER_RUN`, `_GAP_MS`, `_STALE_HOURS`,
+`_URL_TTL_SECONDS`, `_S3_FORCE_PATH_STYLE`.
+
+**Keep-in-agreement:**
+1. `callArchiveRules.WINDOW_DAYS` ⇄ RingCentral's real retention ⇄ `STALE_AFTER_MS` ⇄
+   `calls-monitor`'s `archiveFaults`. **A window shorter than retention loses recordings silently.**
+2. `RECORDING_GAP_MS` ⇄ the group `X-Rate-Limit-Group` actually reports ⇄
+   `src/lib/callHistory/recordingDownload.ts` `DEFAULT_GAP_MS`. Two opinions about RingCentral's
+   budget in one codebase is how one of them starts getting throttled.
+3. `callArchiveRules.extensionFor` ⇄ `recordingDownload.extensionFor` — one names the object, the
+   other names the download, and per-account MP3-vs-WAV is exactly what a second copy gets wrong.
+4. `rcMediaFetch` is the ONE door to RingCentral media — the `/rc/fetch` proxy and the archive job
+   both go through it. This file's own words: *"Duplicating the token handling here is what let it
+   be an unguarded second door."*
+5. `registerCallArchive` is called from **`messaging.mjs`**, never `index.mjs`, so it lands on the
+   messaging pool (pinned by a test).
+
+**Not built yet** (phase 4 of the plan): the SPA wiring — `fetchRecordingBlob` falling back to the
+archive, and `CallHistoryButton` / the Comms Hub Phone tab calling `/calls/recordings/have` so an
+aged-out call gets a Play button at all. Until that lands the archive is filling but the Command
+Center still only shows what RingCentral still has. Voicemail audio (~30-day message store, a
+**tighter** clock) is phase 5 and also unbuilt.
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -8278,6 +8410,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
 | A recording won't play, or a call has no Play/⤓ at all | §5.16 — first check the call's AGE: RingCentral deletes recordings at **90 days** and keeps the log row, so an old call looks identical to one never recorded and the audio is unrecoverable. Inside 90 days, no audio means the call never connected (auto-recording is on for both directions, measured 760/774). A 403 on download is the `ReadCallRecording` permission |
+| "Are we actually saving the recordings?" | §5.44 — `GET /calls/archive-health` on the gateway (unauthenticated). `ok:false` with *no successful run* means the job has never completed one; `storeConfigured:false` means no bucket is wired up. A **pending** backlog is normal and is not a fault — that is a backfill draining |
+| A recording is in the archive but the Command Center won't play it | §5.44 — the SPA wiring is **phase 4 and not built**: `fetchRecordingBlob` does not yet fall back to `/calls/recording`, and `CallHistoryButton` does not yet ask `/calls/recordings/have`, so an aged-out call still draws no Play button. The bytes are there; nothing on screen reaches for them |
+| Another service needs call metadata (who called, when) | §5.44 — `POST /calls/archive/query` with a Google identity or `CALL_ARCHIVE_SERVICE_TOKEN`. ⚠️ It answers `last4`, never the number: send the number you already hold and it hashes it, the `/directory/lookup` posture |
 | A bulk download stopped part-way | §5.16 — `lib/callHistory/recordingDownload.ts`. The run is paced at ~24/min against `rcLimiter`'s 40-per-caller budget and retries a throttled file once; the toast reports how many failed. Closing the tab ends it — whatever already saved is kept |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
 | A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Since the 2026-09-03 cutover the six live notes columns are uncapped `text`, so this now means a column still `long_text` (Request Message `long_text_mm4cnw52`, the Escalation Notes, the two Insurance call logs) — `columnType.isCappedColumn` asks the board. Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |

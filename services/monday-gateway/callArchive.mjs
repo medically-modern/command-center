@@ -57,6 +57,7 @@
  */
 import { Buffer } from "node:buffer";
 import { rcConfigured, rcMediaFetch, rcApiFetch } from "./ringcentral.mjs";
+import { retryAfterMs } from "./rcLimiter.mjs";
 import { authEnforced } from "./auth.mjs";
 import { phoneHmac } from "./phoneHash.mjs";
 import {
@@ -152,9 +153,15 @@ CREATE TABLE IF NOT EXISTS call_archive_runs (
   audio_gone   INT,
   bytes        BIGINT,
   truncated    BOOLEAN DEFAULT false,
+  -- Cut short by the RingCentral budget rather than finished. Separate from
+  -- the truncated flag (the page ceiling) because the remedies differ: one
+  -- wants a bigger MAX_PAGES, the other wants patience.
+  -- NOTE: this whole SCHEMA is a JS template literal, so no backticks in it.
+  shed         BOOLEAN DEFAULT false,
   window_days  INT,
   error        TEXT
 );
+ALTER TABLE call_archive_runs ADD COLUMN IF NOT EXISTS shed BOOLEAN DEFAULT false;
 CREATE INDEX IF NOT EXISTS call_archive_runs_ok_idx   ON call_archive_runs (ok, finished_at DESC);
 CREATE INDEX IF NOT EXISTS call_archive_runs_deep_idx ON call_archive_runs (deep, ok, finished_at DESC);
 
@@ -173,6 +180,13 @@ CREATE INDEX IF NOT EXISTS call_archive_access_call_idx ON call_archive_access (
 `;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Tries per call-log page when the budget refuses it, and how long to wait
+ *  between them. The guard's window is 60s, so ~30s twice is enough to ride out
+ *  an ordinary shed without becoming the hot retry loop that keeps a throttle
+ *  alive. */
+const SHED_RETRIES = Math.max(Number(process.env.CALL_ARCHIVE_SHED_RETRIES) || 3, 1);
+const SHED_PAUSE_MS = Math.max(Number(process.env.CALL_ARCHIVE_SHED_PAUSE_MS) || 30_000, 1_000);
 
 /** Rows per INSERT. 14 columns, so 100 rows is 1,400 bind parameters — well
  *  under Postgres' 65535 cap, and one round trip instead of a hundred. */
@@ -263,18 +277,54 @@ async function upsertRows(pool, rows) {
 async function scanCallLog({ pool, days, now, stats }) {
   const dateFrom = windowStart(now, days);
   for (let page = 1; page <= MAX_PAGES; page++) {
+    let up = null;
+    // ⚠️⚠️ A 429 HERE IS ROUTINE, NOT A FAULT, AND IT MUST NOT END THE RUN.
+    // `background` is the tier rcLimiter sheds FIRST — that is the whole point
+    // of putting this work on it — so a busy afternoon refuses a page as a
+    // matter of design. The first live run learned this the hard way: it read
+    // 11 pages, took a 429, threw, and therefore never reached the audio
+    // queue at all. The scan is the cheap half; abandoning the EXPENSIVE half
+    // because the cheap half was throttled is exactly backwards.
+    //
+    // So: wait out the window (RingCentral's own Retry-After where it gives
+    // one) and try the same page again, a bounded number of times, then stop
+    // paging and let the caller carry on to the drain. Bounded, because a hot
+    // retry loop against a throttled account is how you keep a throttle alive.
+    // ⚠️ `view=Detailed` is what carries `legs` and `telephonySessionId`. The
+    // default (Simple) view has neither, so a claimed inbound call's audio —
+    // which hangs off a leg — would be invisible, silently.
+    //
+    // ⚠️ `dateFrom` is explicit for the reason the fax count documents: this
+    // API defaults to roughly the last 24 hours, so an omitted bound quietly
+    // turns a 95-day repair pass into a one-day one.
     const path =
       `/restapi/v1.0/account/~/extension/~/call-log` +
       `?dateFrom=${encodeURIComponent(dateFrom)}&perPage=${PAGE_SIZE}&page=${page}` +
-      // ⚠️ `view=Detailed` is what carries `legs` and `telephonySessionId`. The
-      // default (Simple) view has neither, so a claimed inbound call's audio —
-      // which hangs off a leg — would be invisible, silently.
-      //
-      // ⚠️ `dateFrom` is explicit for the reason the fax count documents: this
-      // API defaults to roughly the last 24 hours, so an omitted bound quietly
-      // turns a 95-day repair pass into a one-day one.
       `&view=Detailed`;
-    const up = await rcApiFetch(path, {}, { tier: "background", caller: "call-archive", ttlMs: 0 });
+    for (let attempt = 1; attempt <= SHED_RETRIES; attempt++) {
+      const res = await rcApiFetch(path, {}, { tier: "background", caller: "call-archive", ttlMs: 0 });
+      if (res.status !== 429) {
+        up = res;
+        break;
+      }
+      stats.shedHits++;
+      if (attempt === SHED_RETRIES) break;
+      // Honour whoever refused us. rcLimiter's own refusal carries a
+      // Retry-After, and so does a real RingCentral 429 — reading it is the
+      // difference between waiting the right amount and guessing.
+      await sleep(retryAfterMs(res.headers.get("retry-after")) || SHED_PAUSE_MS);
+    }
+    if (!up) {
+      // Out of retries. NOT an error: the window is simply not fully read this
+      // time, which `shed` records so a deep pass cannot be mistaken for a
+      // complete one.
+      stats.shed = true;
+      return;
+    }
+    // ⚠️ Any OTHER non-ok status still throws. A 403 is the ReadCallLog
+    // permission and a 5xx is RingCentral being down — both are faults worth
+    // surfacing, and swallowing them would make a broken integration look like
+    // a quiet day.
     if (!up.ok) throw new Error(`RingCentral call-log read failed (${up.status})`);
     const j = await up.json();
     const records = j.records ?? [];
@@ -324,6 +374,19 @@ async function drainAudioQueue({ pool, stats, budget = PER_RUN_BUDGET, gapMs = R
     const attempts = Number(row.attempts) + 1;
     try {
       const up = await rcMediaFetch(row.content_uri, { tier: "background", caller: "call-archive" });
+      // ⚠️⚠️ A 429 MUST NOT BURN AN ATTEMPT. Attempts exist to retire a
+      // recording that is genuinely unfetchable; a throttle says nothing about
+      // this recording at all. Counting it would let one busy afternoon park
+      // MAX_ATTEMPTS-worth of perfectly good recordings as `failed`, which is
+      // terminal for the automatic retry — losing audio to our own rate limit.
+      // The row is left exactly as it was, and the drain stops: there is no
+      // point walking the rest of the queue into the same wall.
+      if (up.status === 429) {
+        stats.shed = true;
+        stats.shedHits++;
+        stats.audioTried--;
+        return;
+      }
       if (!up.ok) {
         const state = nextAudioState({ status: up.status, attempts });
         if (state === "gone") stats.audioGone++;
@@ -419,12 +482,19 @@ export async function reconcileCallArchive({ pool, now = Date.now(), force = fal
     audioGone: 0,
     bytes: 0,
     truncated: false,
+    shed: false,
+    shedHits: 0,
   };
   let runId = null;
   let deep = false;
   try {
     const last = await pool.query(
-      `SELECT max(finished_at) AS at FROM call_archive_runs WHERE ok AND deep`,
+      // ⚠️ `AND NOT truncated AND NOT shed` — a deep pass that was clipped by the
+      // page ceiling or cut short by a throttle did NOT read the repair window,
+      // so treating it as one would park the archive for a whole deep interval
+      // believing a gap had been repaired that never was.
+      `SELECT max(finished_at) AS at FROM call_archive_runs
+         WHERE ok AND deep AND NOT truncated AND NOT shed`,
     );
     deep = force || shouldDeepScan({ lastDeepAt: last.rows[0]?.at, now });
     const days = deep ? WINDOW_DAYS : SCAN_DAYS;
@@ -436,6 +506,9 @@ export async function reconcileCallArchive({ pool, now = Date.now(), force = fal
       )
     ).rows[0]?.id;
 
+    // ⚠️ SEQUENCED, NOT CONDITIONAL. The drain runs whatever the scan managed —
+    // the queue is durable in Postgres and does not care whether this run added
+    // to it, so a throttled scan must never cost a run's worth of downloads.
     await scanCallLog({ pool, days, now, stats });
     await drainAudioQueue({ pool, stats });
 
@@ -443,18 +516,19 @@ export async function reconcileCallArchive({ pool, now = Date.now(), force = fal
       `UPDATE call_archive_runs
           SET finished_at = now(), ok = true, pages = $2, seen = $3, rows_written = $4,
               audio_tried = $5, audio_stored = $6, audio_failed = $7, audio_gone = $8,
-              bytes = $9, truncated = $10
+              bytes = $9, truncated = $10, shed = $11
         WHERE id = $1`,
       [
         runId, stats.pages, stats.seen, stats.rowsWritten,
         stats.audioTried, stats.audioStored, stats.audioFailed, stats.audioGone,
-        stats.bytes, stats.truncated,
+        stats.bytes, stats.truncated, stats.shed,
       ],
     );
     console.log(
       `call_archive: ${deep ? "DEEP" : "recent"} pass over ${days}d — ${stats.seen} call(s) on ` +
         `${stats.pages} page(s), ${stats.rowsWritten} row(s) written; audio ${stats.audioStored} stored, ` +
-        `${stats.audioGone} gone, ${stats.audioFailed} failed${stats.truncated ? " (TRUNCATED)" : ""}`,
+        `${stats.audioGone} gone, ${stats.audioFailed} failed` +
+        `${stats.truncated ? " (TRUNCATED)" : ""}${stats.shed ? ` (SHED after ${stats.shedHits} refusal(s))` : ""}`,
     );
     return { ok: true, deep, ...stats };
   } catch (e) {
@@ -466,12 +540,12 @@ export async function reconcileCallArchive({ pool, now = Date.now(), force = fal
           `UPDATE call_archive_runs
               SET finished_at = now(), ok = false, pages = $2, seen = $3, rows_written = $4,
                   audio_tried = $5, audio_stored = $6, audio_failed = $7, audio_gone = $8,
-                  bytes = $9, truncated = $10, error = $11
+                  bytes = $9, truncated = $10, shed = $11, error = $12
             WHERE id = $1`,
           [
             runId, stats.pages, stats.seen, stats.rowsWritten,
             stats.audioTried, stats.audioStored, stats.audioFailed, stats.audioGone,
-            stats.bytes, stats.truncated, msg.slice(0, 500),
+            stats.bytes, stats.truncated, stats.shed, msg.slice(0, 500),
           ],
         )
         .catch(() => {});
@@ -572,7 +646,8 @@ export function registerCallArchive({ app, pool, requireCaller }) {
         `SELECT
            (SELECT max(finished_at) FROM call_archive_runs WHERE ok)                              AS last_ok,
            (SELECT max(started_at)  FROM call_archive_runs)                                       AS last_run,
-           (SELECT max(finished_at) FROM call_archive_runs WHERE ok AND deep)                     AS last_deep_ok,
+           (SELECT max(finished_at) FROM call_archive_runs
+             WHERE ok AND deep AND NOT truncated AND NOT shed)                                   AS last_deep_ok,
            (SELECT error FROM call_archive_runs WHERE error IS NOT NULL ORDER BY id DESC LIMIT 1) AS last_error,
            (SELECT truncated FROM call_archive_runs WHERE ok AND deep ORDER BY finished_at DESC LIMIT 1) AS last_deep_trunc,
            (SELECT count(*) FROM call_archive)                                                    AS rows,
@@ -583,7 +658,8 @@ export function registerCallArchive({ app, pool, requireCaller }) {
            (SELECT coalesce(sum(bytes),0) FROM call_archive WHERE audio_state = 'stored')         AS bytes,
            (SELECT min(started_at) FROM call_archive)                                             AS oldest,
            (SELECT max(started_at) FROM call_archive)                                             AS newest,
-           (SELECT min(started_at) FROM call_archive WHERE audio_state = 'pending')               AS oldest_pending`,
+           (SELECT min(started_at) FROM call_archive WHERE audio_state = 'pending')               AS oldest_pending,
+           (SELECT min(started_at) FROM call_archive_runs)                                        AS first_run`,
       );
       const r = q.rows[0] || {};
       res.json({
@@ -602,6 +678,7 @@ export function registerCallArchive({ app, pool, requireCaller }) {
           oldest: r.oldest,
           newest: r.newest,
           oldestPendingAt: r.oldest_pending,
+          firstRunAt: r.first_run,
         }),
         storeConfigured: storeConfigured(),
         bucket: storeConfigured() ? storeName() : null,

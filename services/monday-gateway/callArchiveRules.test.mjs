@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  DEEP_STALE_AFTER_MS,
   MAX_ATTEMPTS,
   RECORDING_GAP_MS,
   URL_TTL_SECONDS,
@@ -290,6 +291,34 @@ describe("archiveHealth", () => {
     expect(h.oldestPendingHours).toBe(24);
   });
 
+  // ⚠️ Day one genuinely has not repaired anything yet. Paging for that is the
+  // "alert that fires for a working system" this module keeps refusing to be.
+  it("is ok on a young archive that has not finished a deep pass yet", () => {
+    const h = archiveHealth({ ...healthy, lastDeepOkAt: null, firstRunAt: "2026-09-21T06:00:00.000Z" });
+    expect(h.ok).toBe(true);
+    expect(h.lastDeepOkAt).toBeNull();
+  });
+
+  // ...but it cannot hide behind that null forever: deep passes that never
+  // complete mean the repair window is never read, which is how a gap survives.
+  it("is NOT ok when no deep pass has completed for far too long", () => {
+    const firstRunAt = new Date(now - DEEP_STALE_AFTER_MS - 3600_000).toISOString();
+    const h = archiveHealth({ ...healthy, lastDeepOkAt: null, firstRunAt });
+    expect(h.ok).toBe(false);
+    expect(h.deepStale).toBe(true);
+    expect(h.reason).toMatch(/repair window has not been read all the way through/);
+  });
+
+  it("is NOT ok when the last COMPLETE deep pass has aged out", () => {
+    const lastDeepOkAt = new Date(now - DEEP_STALE_AFTER_MS - 3600_000).toISOString();
+    expect(archiveHealth({ ...healthy, lastDeepOkAt }).ok).toBe(false);
+  });
+
+  it("leads with the more urgent reason when several are true at once", () => {
+    const h = archiveHealth({ ...healthy, lastOkAt: null, failed: 9, lastDeepTruncated: true });
+    expect(h.reason).toMatch(/no successful run/i);
+  });
+
   it("reports counts and never anything identifying", () => {
     const h = archiveHealth(healthy);
     const json = JSON.stringify(h);
@@ -431,6 +460,58 @@ describe("callArchive.mjs invariants", () => {
 
   it("reports the audio state rather than flattening every miss to a 404", () => {
     expect(src).toMatch(/audioState: row\.audio_state/);
+  });
+
+  /* ⚠️⚠️ The first live run (2026-09-21) read 11 pages, took a 429, threw, and
+     therefore never reached the audio queue at all. `background` is the tier
+     rcLimiter sheds FIRST — that is the point of putting bulk work on it — so a
+     throttle here is routine, and treating it as fatal costs a whole run's
+     downloads to protect nothing. */
+  it("retries a shed call-log page instead of failing the run", () => {
+    const scan = src.slice(src.indexOf("async function scanCallLog"), src.indexOf("async function drainAudioQueue"));
+    expect(scan).toMatch(/status !== 429/);
+    expect(scan).toMatch(/SHED_RETRIES/);
+    expect(scan).toMatch(/retryAfterMs\(res\.headers\.get\("retry-after"\)\)/);
+    expect(scan).toMatch(/stats\.shed = true;\s*\n\s*return;/);
+    // Any OTHER bad status must still be loud — a 403 is a missing permission.
+    expect(scan).toMatch(/if \(!up\.ok\) throw new Error/);
+  });
+
+  it("drains the audio queue even when the scan was cut short", () => {
+    const body = src.slice(src.indexOf("await scanCallLog("), src.indexOf("await pool.query(\n      `UPDATE call_archive_runs"));
+    // Sequenced, never conditional on the scan having completed.
+    expect(body).toMatch(/await scanCallLog\([\s\S]*await drainAudioQueue\(/);
+    expect(body).not.toMatch(/if \(!stats\.shed\)[\s\S]*drainAudioQueue/);
+  });
+
+  // ⚠️ Attempts retire a recording that is genuinely unfetchable. A throttle
+  // says nothing about the recording, so counting it would let one busy
+  // afternoon park good recordings as `failed`, which is terminal.
+  it("does not burn a download attempt on a 429", () => {
+    const drain = src.slice(src.indexOf("async function drainAudioQueue"), src.indexOf("let running = false"));
+    const guard = drain.indexOf("up.status === 429");
+    const generic = drain.indexOf("if (!up.ok) {");
+    expect(guard).toBeGreaterThan(0);
+    expect(guard).toBeLessThan(generic);
+    expect(drain).toMatch(/stats\.audioTried--/);
+  });
+
+  // ⚠️ A deep pass cut short did NOT read the repair window. Counting it would
+  // park the archive for a whole interval believing a gap was repaired.
+  it("does not count a shed or truncated deep pass as a completed one", () => {
+    expect(src).toMatch(/WHERE ok AND deep AND NOT truncated AND NOT shed/);
+  });
+
+  it("keeps the runs table migratable, since it already exists in production", () => {
+    expect(src).toMatch(/ALTER TABLE call_archive_runs ADD COLUMN IF NOT EXISTS shed/);
+  });
+
+  // index.mjs records this one in blood: the SCHEMA is a JS template literal,
+  // and a stray backtick takes every CREATE TABLE with it.
+  it("has no backtick anywhere inside the SCHEMA literal", () => {
+    const schema = src.slice(src.indexOf("export const SCHEMA = "), src.indexOf("const sleep ="));
+    const inner = schema.slice(schema.indexOf("`") + 1, schema.lastIndexOf("`"));
+    expect(inner).not.toContain("`");
   });
 });
 

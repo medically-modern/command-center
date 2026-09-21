@@ -103,6 +103,18 @@ export const URL_TTL_SECONDS = Math.min(
 export const STALE_AFTER_MS =
   Math.max(Number(process.env.CALL_ARCHIVE_STALE_HOURS) || 6, 1) * 3600_000;
 
+/**
+ * How long the repair window may go unread before that is a fault.
+ *
+ * ⚠️ Measured from the last COMPLETE deep pass — or, when none has ever
+ * finished, from the archive's first run. That second clause is what lets this
+ * be honest on day one: a fresh archive genuinely has not repaired anything
+ * yet, and paging for that would be the "alert that fires for a working
+ * system" this module keeps refusing to be. But it also means "deep passes
+ * never complete" cannot hide forever behind a null.
+ */
+export const DEEP_STALE_AFTER_MS = DEEP_EVERY_MS * 3;
+
 /* ──────────────────────────────────────────────────────────────────────────── */
 
 /** ISO timestamp `days` before `now`, for a RingCentral `dateFrom`. */
@@ -341,6 +353,7 @@ export function archiveHealth({
   oldest,
   newest,
   oldestPendingAt,
+  firstRunAt,
   now = Date.now(),
 } = {}) {
   const okAt = lastOkAt ? new Date(lastOkAt).getTime() : null;
@@ -350,6 +363,14 @@ export function archiveHealth({
   const failedCount = Number(failed ?? 0);
   const pendingAt = oldestPendingAt ? new Date(oldestPendingAt).getTime() : null;
 
+  // The repair window: how long since it was last read all the way through.
+  // Falls back to the archive's age when no deep pass has ever completed — see
+  // DEEP_STALE_AFTER_MS.
+  const deepAt = lastDeepOkAt ? new Date(lastDeepOkAt).getTime() : null;
+  const firstAt = firstRunAt ? new Date(firstRunAt).getTime() : null;
+  const deepAgeMs = deepAt !== null ? Number(now) - deepAt : firstAt !== null ? Number(now) - firstAt : null;
+  const deepStale = deepAgeMs !== null && deepAgeMs > DEEP_STALE_AFTER_MS;
+
   let reason = null;
   if (okAt === null) reason = "no successful run recorded yet";
   else if (stale) reason = `last successful run was ${Math.floor(ageMs / 3600_000)}h ago`;
@@ -357,17 +378,23 @@ export function archiveHealth({
     reason =
       `the last deep pass hit the ${MAX_PAGES}-page ceiling, so the repair window is ` +
       `only partly read — raise CALL_ARCHIVE_MAX_PAGES`;
+  else if (deepStale)
+    reason =
+      `the ${WINDOW_DAYS}-day repair window has not been read all the way through for ` +
+      `${Math.floor(deepAgeMs / 3600_000)}h — deep passes are being cut short`;
   else if (failedCount > 0)
     reason = `${failedCount} recording(s) RingCentral has but we could not fetch`;
 
   return {
-    ok: !stale && !truncated && failedCount === 0,
+    ok: !stale && !truncated && !deepStale && failedCount === 0,
     stale,
     truncated,
+    deepStale,
     reason,
     lastOkAt: okAt ? new Date(okAt).toISOString() : null,
     lastRunAt: lastRunAt ? new Date(lastRunAt).toISOString() : null,
-    lastDeepOkAt: lastDeepOkAt ? new Date(lastDeepOkAt).toISOString() : null,
+    lastDeepOkAt: deepAt ? new Date(deepAt).toISOString() : null,
+    deepAgeHours: deepAgeMs === null ? null : Math.round(deepAgeMs / 3600_000),
     lastError: lastError || null,
     ageHours: ageMs === null ? null : Math.round(ageMs / 3600_000),
     calls: Number(rows ?? 0),
