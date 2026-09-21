@@ -23,23 +23,37 @@
  * deploy that introduces the model is a change nobody asked for. Narrowing a
  * manager is a decision, and it needs its own conversation.
  *
- * ⚠️⚠️ **ONE CARVE-OUT, AND IT RUNS THE OTHER WAY: `viewOthers` IS OPT-IN**
- * (Josh, 2026-09-18 — "that's something that should ONLY be applied to me and
- * brandon as users"). `OPT_IN_ABILITIES` lists it; an opt-in ability needs an
- * explicit `perms.viewOthers === true` and is NOT covered by the manager
- * blanket above, so Corey, Janelle and Katie do not get it for being managers.
+ * ⚠️⚠️ **TWO CARVE-OUTS RUN THE OTHER WAY — `OPT_IN_ABILITIES` is OFF until
+ * granted.** An opt-in ability needs an explicit `perms.<a> === true` and is
+ * NOT covered by the manager blanket above, so a manager does not get it for
+ * being a manager; somebody ticks the box.
+ *
+ *   · **`viewOthers`** (Josh, 2026-09-18 — "that's something that should ONLY
+ *     be applied to me and brandon as users").
+ *   · **`stageManager`** (Josh, 2026-09-21 — "make stage manager opt-in like
+ *     viewothers"), because that screen WRITES the Stage Advancer, which is
+ *     what every board automation fires on (§6). It is the one ability whose
+ *     screen MOVES a patient.
  *
  * The carve-out does not contradict the default-ON rule, it is the same
  * argument applied honestly. Default-ON exists because a config written before
- * `perms` existed must not TAKE AWAY something people already have. Nobody has
- * `viewOthers` today — it is brand new — so absent configuration is not a
- * person being silently narrowed, it is a person who was never given it. And
- * what it grants is a look at SOMEBODY ELSE's screen, where the safe direction
- * is closed. There is no dead end either: a person without it still lands on
- * their own home view, so nothing is unreachable.
+ * `perms` existed must not TAKE AWAY something people already have. Neither of
+ * these existed before the config did — `viewOthers` shipped 2026-09-18 and
+ * `stageManager` 2026-09-21 — so absent configuration is not a person being
+ * silently narrowed, it is a person who was never given it.
  *
- * ⚠️ Adding a second entry to `OPT_IN_ABILITIES` needs the same two facts to be
- * true of it — new, and not a way out of anywhere. Everything else stays ON.
+ * ⚠️ **A THIRD entry needs the same two facts to be true of it**, and both are
+ * load-bearing:
+ *   1. **NEW** — nobody can be silently narrowed out of something they had.
+ *      An opt-in flag on an existing ability takes it from the whole company on
+ *      one deploy, which is the failure default-ON exists to prevent.
+ *   2. **NOT A WAY OUT OF ANYWHERE** — a person without it must still have a
+ *      screen to work from, or the flag is the dead end §5.10 · §5.20 · §5.31c
+ *      · §5.39d each record reversing. Without `viewOthers` you land on your
+ *      own home view; without `stageManager` you keep every other tab. A
+ *      hypothetical opt-in `comms` would fail this test, because the
+ *      Communications page is where a rep works.
+ * Everything else stays ON.
  */
 import type { Ability, AccessConfig, HomeView, ProcessorProfile } from "@/lib/accessStore";
 
@@ -48,8 +62,14 @@ const norm = (e: string) => (e || "").trim().toLowerCase();
 /**
  * Abilities that are OFF until explicitly granted — see the header. A manager
  * does not get these for being a manager; somebody has to tick the box.
+ *
+ * ⚠️ This list is the ONE declaration. `hasAbility` reads it, `AbilitiesEditor`
+ * keeps its chips clickable for a manager because of it, and the footer
+ * sentence on that page is BUILT from it — so a third entry needs no copy
+ * change anywhere, which is what stops the page describing a rule it no longer
+ * implements.
  */
-export const OPT_IN_ABILITIES: readonly Ability[] = ["viewOthers"] as const;
+export const OPT_IN_ABILITIES: readonly Ability[] = ["viewOthers", "stageManager"] as const;
 
 export function isOptInAbility(a: Ability): boolean {
   return OPT_IN_ABILITIES.includes(a);
@@ -295,7 +315,7 @@ export const ABILITY_HINT: Record<Ability, string> = {
     "Off unless granted. Adds the “Viewing” dropdown on the home screen, which shows anyone else’s home screen exactly as they see it.",
   reports: "Shows the Reports & Metrics tab in the header — the daily operations screen.",
   stageManager:
-    "Shows the Stage Manager tab in the header. That screen MOVES a patient between stages by writing the Stage Advancer, which is what board automations fire on — so it is a write, not a view.",
+    "Off unless granted. Shows the Stage Manager tab in the header. That screen MOVES a patient between stages by writing the Stage Advancer, which is what board automations fire on — so it is a write, not a view.",
   inventory: "Shows the Inventory tab in the header.",
   editProfile:
     "Can change the Subscription profile — order details, visit date, address and phone. Without it that page is read-only.",

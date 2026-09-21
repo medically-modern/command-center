@@ -5262,6 +5262,15 @@ The split is cheaper than the tab, not just tidier.
 
 **3. Stage Manager is an assignable top tab** on a new **`stageManager`** ability
 (*"like communications"*), at `/stage-manager`.
+⚠️⚠️ **It is OPT-IN, the second entry in `OPT_IN_ABILITIES`** (Josh, same day: *"make stage
+manager opt-in like viewothers"*) — so it is OFF for everybody, **managers included**, until
+somebody ticks it, and it is granted in the shipped `access.json` to **josh@ and brandon@** only.
+Anyone else who needs it takes one tick on `/access`. It passes both tests the carve-out requires
+(§5.39c): it is NEW, so nobody is silently narrowed out of something they had, and it is not a way
+out of anywhere — a person without it keeps every other tab. It is also the one ability whose
+screen **moves a patient**, by writing the Stage Advancer that every board automation fires on.
+⚠️ The grant does NOT cross a prod sync (`sync-from-test.yml` preserves prod's own `access.json`,
+§8) — on prod somebody ticks it once.
 ⚠️ It renders the **same `StageManagerView`** the System Management tab renders — exported from
 `SystemMgmtPage.tsx` and imported, never copied. That screen WRITES the Stage Advancer, which is
 what every board automation fires on (§6), so two divergent copies of it is the one duplication
@@ -7082,6 +7091,57 @@ not a stage they finish.
 `BOARDS` registry is what catches a board growing a Completed group) ⇄ the four pages that wire
 `useCompletedStageReview`. ⚠️ `UnverifiedReferralsPage` is the one intake-family page that does
 NOT wire it — the known gap §10 records.
+
+### 5.43 The dossier carries the escalation column (Sep 2026)
+Josh, 2026-09-21, on the gap §5.42 recorded rather than closed: *"carry escalation colum on the
+dossier"*. **No board change; app only.**
+
+⚠️⚠️ **TWO SCREENS DESCRIBED ONE PATIENT TWO DIFFERENT WAYS.** `searchBuckets.searchBucket` files
+a record under **Stuck** on three signals — a Stuck GROUP, an exact Stage Advancer stuck label, or
+**Escalation index 2** ("Final Escalation Required", a stuck PROPOSAL). The dossier knew only the
+first: `dossier.markStuck` reads the GROUP TITLE. So the patient in §5.42 — whose Medical
+Evaluation record is escalation index 2 sitting in *2. Medical Necessity* — was filed under Stuck
+in the search and drawn as an everyday live item on the patient screen.
+
+`DossierItem` now carries **`escalationText`**, **`escalationLevel`** and **`isProposedStuck`**,
+read through the SAME `escalationDetail.escalationLevelFrom` the search uses, so the rung rule
+exists once.
+
+⚠️ **`isProposedStuck` is its OWN field, deliberately not folded into `isStuck`.** That flag means
+"in a Stuck group" and is what **`pickActive` skips**; a proposed-stuck patient is still the live
+end of their trail — somebody is waiting on a decision about them — so folding it would leave a
+patient whose only record is a proposal with no active record at all. What changes is how the
+stage is **labelled**, not whose it is.
+⚠️ **And the two are NAMED differently** (`stepCaption`): a Stuck group is *"Stuck"*, a proposal is
+*"Stuck proposed — with a manager"*. One word for both tells a rep a patient has left the pipeline
+when they are sitting in somebody's queue. The snapshot chip splits four ways
+(`snapStateLabel`), and **Completed still wins over any flag still on the record** — §5.18's own
+ordering, where Completed is checked above Stuck.
+
+**Three things had to change in the read, and every one of them fails silently:**
+1. ⚠️ `dossierCols` is a hand-maintained read set, so the column had to be added to it — a column
+   missing from one comes back `""` on every record with no error (§5.11's trap).
+2. ⚠️⚠️ **The label INDEX lives only in a status column's `value`**, and the dossier queries asked
+   for `{ id text }`. Text alone resolves every label on the boards TODAY, so this would have
+   looked correct indefinitely and gone silently wrong the day one is renamed — which is the exact
+   guard `escalationLevelFrom` takes the index FOR. Both record-building queries now ask for
+   `value`; `readNotesNow` deliberately does not, since it reads one notes column and builds no
+   record.
+3. ⚠️ **An unreadable index is `null`, never `0`.** Monday assigns a label's index at creation from
+   the lowest free slot, so **0 is a real rung** here — Manager Intervention — and defaulting to it
+   would report every unparseable record as escalated.
+
+⚠️ All of it is invisible on screen if it breaks, so `dossierEscalation.test.ts` scans the source:
+the read set, `value` on both record-building queries, that the rung rule is called rather than
+re-implemented, and that the index parse cannot fall through to 0. Every assertion was verified to
+fail with its protection removed.
+
+**Keep-in-agreement:** `dossierApi`'s `escalationLevelFrom` call ⇄ `systemMgmt/mondayApi`'s (the
+same rule, never a second copy) ⇄ `searchBuckets.searchBucket`'s `escalationLevel === "final"`
+test · `dossierCols` ⇄ `BoardDef.escalationColId` (null on the four boards without one) ·
+`patientScreen.buildStages`' `stuck` ⇄ `stepCaption` ⇄ `snapStateLabel` ⇄ `OnboardingView`'s chip.
+
+---
 
 ## 6. Patient flow across boards (the big picture)
 

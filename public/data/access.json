@@ -71,7 +71,8 @@
       "roleOrder": {},
       "roleFilters": {},
       "perms": {
-        "viewOthers": true
+        "viewOthers": true,
+        "stageManager": true
       },
       "homeView": [
         "coordinator",
@@ -100,7 +101,8 @@
         "dvs": "all"
       },
       "perms": {
-        "viewOthers": true
+        "viewOthers": true,
+        "stageManager": true
       }
     },
     "katie@medicallymodern.com": {

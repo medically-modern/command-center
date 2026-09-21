@@ -93,7 +93,14 @@ export function buildStages(dossier: PatientDossier | null): StageStep[] {
       .sort((a, b) => rank(a.boardId) - rank(b.boardId));
 
     const isActive = mine.some((it) => it.boardId === activeBoard);
-    const stuck = mine.some((it) => it.isStuck);
+    /**
+     * ⚠️ **A stuck GROUP and a stuck PROPOSAL both count (§5.43).** The second
+     * is escalation index 2 sitting in an ordinary working group, which is what
+     * `searchBuckets.searchBucket` files under Stuck — so reading only
+     * `isStuck` here is what let the search and this screen describe one
+     * patient two different ways.
+     */
+    const stuck = mine.some((it) => it.isStuck || it.isProposedStuck);
     const lastRank = Math.max(...stage.boards.map(rank));
 
     /**
@@ -173,9 +180,33 @@ export function defaultStepIndex(steps: StageStep[]): number {
 
 export function stepCaption(step: StageStep): string {
   if (step.state === "todo") return "Not started";
-  if (step.state === "stuck") return "Stuck";
+  // ⚠️ A stuck GROUP and a stuck PROPOSAL are different facts and are named
+  // differently (§5.43): the first is out of the pipeline, the second is a
+  // manager decision that has not been made. "Stuck" for both would tell a rep
+  // a patient has left when they are sitting in somebody's queue.
+  if (step.state === "stuck") {
+    const proposed = step.items.some((it) => it.isProposedStuck && !it.isStuck);
+    return proposed ? "Stuck proposed — with a manager" : "Stuck";
+  }
   if (step.state === "done") return "Completed";
   return step.lead?.stageAdvancerText || step.lead?.groupTitle || "In progress";
+}
+
+/**
+ * What the chip over a snapshot says about the record on screen.
+ *
+ * ⚠️ A proposed-stuck record is LIVE — the patient really is here — but saying
+ * only "the patient is here now" hides the one fact somebody needs, which is
+ * that nothing moves until a manager decides. Completed wins over both: a
+ * finished record is a snapshot whatever flag it still carries (§5.18's rule
+ * that Completed is checked first, above Stuck).
+ */
+export function snapStateLabel(item: DossierItem | null): string {
+  if (!item) return "";
+  if (item.isCompleted) return "Snapshot · as it looked when this stage was left";
+  if (item.isStuck) return "Stuck — out of the pipeline until a manager moves them back";
+  if (item.isProposedStuck) return "Live — stuck proposed, waiting on a manager's decision";
+  return "Live — the patient is here now";
 }
 
 /**

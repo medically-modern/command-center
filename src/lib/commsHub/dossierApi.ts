@@ -24,6 +24,7 @@ import { userInitials } from "../shared/auth";
 import { faxDigits, type DoctorDbRow, type FaxMatchRow } from "./faxDirectory";
 import { DOCTOR_DB_BOARD, DOCTOR_DB_COLS } from "../shared/doctorDb";
 import { stageDetailColumns } from "./stageDetail";
+import { escalationLevelFrom, type EscalationLevel } from "../systemMgmt/escalationDetail";
 
 const MONDAY_API_VERSION = "2024-10";
 
@@ -68,11 +69,35 @@ interface RawItem {
   id: string;
   name: string;
   group?: { id: string; title: string } | null;
-  column_values?: Array<{ id: string; text: string | null }>;
+  /** ⚠️ `value` is read for ONE reason: a status column's label INDEX lives
+   *  there and nowhere else, and `escalationLevelFrom` needs it as the guard
+   *  that survives a label rename (§5.43). Everything else reads `text`. */
+  column_values?: Array<{ id: string; text: string | null; value?: string | null }>;
 }
 
 const textOf = (it: RawItem, colId: string | null): string =>
   (colId ? (it.column_values ?? []).find((c) => c.id === colId)?.text : "") ?? "";
+
+/**
+ * A status column's label index, or null.
+ *
+ * ⚠️ **Null means "could not read it", never "index 0".** Monday assigns a
+ * label's index at creation from the lowest free slot, so 0 is a real rung on
+ * these boards — Manager Intervention — and defaulting to it would report every
+ * unparseable record as escalated. Same failing-closed rule as §5.31c's write
+ * side, where a write to a non-existent index is dropped at HTTP 200.
+ */
+const indexOf = (it: RawItem, colId: string | null): number | null => {
+  if (!colId) return null;
+  const raw = (it.column_values ?? []).find((c) => c.id === colId)?.value;
+  if (!raw) return null;
+  try {
+    const idx = (JSON.parse(raw) as { index?: unknown })?.index;
+    return typeof idx === "number" ? idx : null;
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Date of birth, per board — the corroborating identity signal behind
@@ -132,7 +157,23 @@ function toDossierItem(board: BoardDef, it: RawItem): DossierItem {
       (it.column_values ?? []).map((c) => [c.id, (c.text ?? "").trim()]),
     ),
   };
-  return { ...base, isStuck: markStuck(base) };
+  const escalationText = textOf(it, board.escalationColId).trim();
+  const escalationLevel = escalationLevelFrom(
+    board.boardId,
+    escalationText,
+    indexOf(it, board.escalationColId),
+  );
+  return {
+    ...base,
+    isStuck: markStuck(base),
+    escalationText,
+    escalationLevel,
+    // ⚠️ A stuck PROPOSAL, awaiting a manager's Final Decision — deliberately
+    // NOT folded into `isStuck`, which means "in a Stuck group" and is what
+    // `pickActive` skips. A proposed-stuck patient is still the live end of
+    // their trail; what changes is how the stage is LABELLED.
+    isProposedStuck: escalationLevel === "final",
+  };
 }
 
 const DOSSIER_QUERY = `
@@ -142,7 +183,7 @@ const DOSSIER_QUERY = `
         limit: $limit,
         query_params: { rules: [{ column_id: $col, compare_value: $q, operator: contains_text }] }
       ) {
-        items { id name group { id title } column_values (ids: $cols) { id text } }
+        items { id name group { id title } column_values (ids: $cols) { id text value } }
       }
     }
   }`;
@@ -158,6 +199,12 @@ function dossierCols(board: BoardDef): string[] {
     // name match fails closed — safe, but it would silently drop the completed
     // records the name pass exists to find.
     DOB_COLS[board.boardId] ?? null,
+    // ⚠️ The escalation column (§5.43). Without it a PROPOSED stuck record —
+    // escalation index 2, sitting in an ordinary working group — reads as an
+    // everyday item here while `searchBuckets.searchBucket` files it under
+    // Stuck, so the search and the patient screen described the same patient
+    // two different ways. Null on the four boards that have no such column.
+    board.escalationColId,
     // The per-stage facts the dossier pane shows. Named in one place
     // (stageDetail.ts) so a new field cannot go silently blank for want of a
     // matching entry in a hand-maintained read set (§5.11).
@@ -211,7 +258,7 @@ async function fetchDossierItemById(boardId: number, itemId: string): Promise<Do
     const data = await gql<{ items?: Array<RawItem & { board?: { id: string } }> }>(
       `query ($ids: [ID!], $cols: [String!]) {
          items (ids: $ids) {
-           id name board { id } group { id title } column_values (ids: $cols) { id text }
+           id name board { id } group { id title } column_values (ids: $cols) { id text value }
          }
        }`,
       { ids: [String(itemId)], cols: dossierCols(board) },

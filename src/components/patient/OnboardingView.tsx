@@ -22,7 +22,7 @@ import { ArrowUpRight, Check, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
-import { infoFacts, itemOpenHref, snapTabLabel, stepCaption, type StageStep } from "@/lib/patient/patientScreen";
+import { infoFacts, itemOpenHref, snapStateLabel, snapTabLabel, stepCaption, type StageStep } from "@/lib/patient/patientScreen";
 
 interface Props {
   dossier: PatientDossier;
@@ -105,10 +105,12 @@ export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap
 
             <div className="row wrap" style={{ gap: 6, marginLeft: "auto" }}>
               {snap && (
-                <span className={`chip ${snap.isCompleted ? "green" : "blue"}`}>
-                  {snap.isCompleted
-                    ? "Snapshot · as it looked when this stage was left"
-                    : "Live — the patient is here now"}
+                <span
+                  className={`chip ${
+                    snap.isCompleted ? "green" : snap.isStuck || snap.isProposedStuck ? "amber" : "blue"
+                  }`}
+                >
+                  {snapStateLabel(snap)}
                 </span>
               )}
               <span

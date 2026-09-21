@@ -17,11 +17,15 @@
  * the page is broken.
  *
  * ⚠️⚠️ **EXCEPT an OPT-IN ability, which stays EDITABLE for a manager and starts
- * OFF.** `viewOthers` is the one today (§5.39c), and both people who have it are
- * managers — so disabling it here would make the only grant the app reads
- * unclickable, on the only page that can set it. Its chip renders from the real
- * stored value rather than from the manager blanket, so what an admin sees is
- * what the app does.
+ * OFF.** `viewOthers` and `stageManager` are the two today (§5.39c, §5.41), and
+ * everybody who holds either is a manager — so disabling them here would make
+ * the only grants the app reads unclickable, on the only page that can set
+ * them. Their chips render from the real stored value rather than from the
+ * manager blanket, so what an admin sees is what the app does.
+ *
+ * ⚠️ The footer sentence is BUILT from `OPT_IN_ABILITIES`, never a hardcoded
+ * name: it said "except View others\' views" while `stageManager` was opt-in
+ * too, which is a page describing a rule it no longer implements.
  */
 import { Check, Eye, Headphones, KeyRound, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,6 +38,7 @@ import {
   hasAbility,
   homeViewsOf,
   isAdmin,
+  OPT_IN_ABILITIES,
   isOptInAbility,
 } from "@/lib/shell/abilities";
 import { ABILITIES, HOME_VIEWS, MAX_CALL_ANSWERERS, type AccessConfig, type Ability, type HomeView } from "@/lib/accessStore";
@@ -236,8 +241,14 @@ export function AbilitiesEditor({
         <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
           <Eye className="mt-[1px] h-3 w-3 shrink-0" />
           Abilities unlock buttons; they never hide a patient. Anything not turned off is on —
-          managers included — except <b>{ABILITY_LABEL.viewOthers}</b>, which is off until it is
-          granted.
+          managers included — except{" "}
+          {OPT_IN_ABILITIES.map((a, i) => (
+            <span key={a}>
+              {i > 0 && (i === OPT_IN_ABILITIES.length - 1 ? " and " : ", ")}
+              <b>{ABILITY_LABEL[a]}</b>
+            </span>
+          ))}
+          , which {OPT_IN_ABILITIES.length === 1 ? "is" : "are"} off until granted.
         </p>
       </div>
     </div>

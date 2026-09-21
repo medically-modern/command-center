@@ -298,16 +298,60 @@ describe("⚠️ viewOthers is opt-in, and only for the people granted it", () =
  * loses it silently turns the dropdown off for the only two people who have it.
  */
 describe("⚠️ the shipped access.json", () => {
-  it("grants viewOthers to Josh and Brandon, and to nobody else", async () => {
+  /**
+   * ⚠️ Looped over `OPT_IN_ABILITIES` rather than written per ability, so a
+   * THIRD opt-in entry is asserted against the file the day it is declared. The
+   * `viewOthers`-only version of this test passed unchanged when `stageManager`
+   * joined the list, which is the drift it exists to catch.
+   */
+  for (const ability of OPT_IN_ABILITIES) {
+    it(`grants ${ability} to Josh and Brandon, and to nobody else`, async () => {
+      const cfg = (await import("../../../public/data/access.json")).default as unknown as AccessConfig;
+      const granted = Object.entries(cfg.processors || {})
+        .filter(([, p]) => p?.perms?.[ability] === true)
+        .map(([e]) => e)
+        .sort();
+      expect(granted).toEqual([
+        "brandon@medicallymodern.com",
+        "josh@medicallymodern.com",
+      ]);
+    });
+  }
+
+  it("⚠️ nobody holds an opt-in ability by ACCIDENT — every grant is deliberate", async () => {
+    // An opt-in flag is the only `perms` value that grants rather than removes,
+    // so a stray `true` on somebody's row is the one edit that widens access
+    // without anybody choosing it. This is the whole opt-in set, in one place.
     const cfg = (await import("../../../public/data/access.json")).default as unknown as AccessConfig;
-    const granted = Object.entries(cfg.processors || {})
-      .filter(([, p]) => p?.perms?.viewOthers === true)
-      .map(([e]) => e)
-      .sort();
-    expect(granted).toEqual([
-      "brandon@medicallymodern.com",
-      "josh@medicallymodern.com",
+    const holders = Object.entries(cfg.processors || {}).flatMap(([email, p]) =>
+      OPT_IN_ABILITIES.filter((a) => p?.perms?.[a] === true).map((a) => `${email}:${a}`),
+    );
+    expect(holders.sort()).toEqual([
+      "brandon@medicallymodern.com:stageManager",
+      "brandon@medicallymodern.com:viewOthers",
+      "josh@medicallymodern.com:stageManager",
+      "josh@medicallymodern.com:viewOthers",
     ]);
+  });
+});
+
+/**
+ * ⚠️ The admin page's footer sentence names the exceptions, so it is BUILT from
+ * `OPT_IN_ABILITIES` rather than typed. It read "except View others' views"
+ * while `stageManager` was opt-in too — a page describing a rule it no longer
+ * implements, which is worse than saying nothing.
+ */
+describe("⚠️ the admin page's exception sentence is derived, not typed", () => {
+  it("AbilitiesEditor builds it from OPT_IN_ABILITIES", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(
+      join(__dirname, "..", "..", "components", "shell", "AbilitiesEditor.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("OPT_IN_ABILITIES.map(");
+    expect(src, "the footer names one ability by hand").not.toContain("ABILITY_LABEL.viewOthers");
+    expect(src, "the footer names one ability by hand").not.toContain("ABILITY_LABEL.stageManager");
   });
 });
 

@@ -11,6 +11,7 @@
  * show the trail and open the live end of it.
  */
 import { NON_PIPELINE_BOARDS, PIPELINE_ORDER, pipelineIndex, type PipelineBoard } from "./pipelineOrder";
+import type { EscalationLevel } from "../systemMgmt/escalationDetail";
 
 /** One board's record of this patient. */
 export interface DossierItem {
@@ -25,6 +26,26 @@ export interface DossierItem {
   isCompleted: boolean;
   /** In a Stuck group — out of the pipeline until a manager moves them back. */
   isStuck: boolean;
+  /**
+   * The Escalation column as this board holds it, and which rung it names
+   * (§5.43). Empty / null on the four boards with no such column.
+   */
+  escalationText: string;
+  escalationLevel: EscalationLevel | null;
+  /**
+   * ⚠️ A stuck PROPOSAL — escalation index 2, "Final Escalation Required" —
+   * awaiting a manager's Final Decision. It sits in an ordinary working group,
+   * so `isStuck` (which reads the GROUP) is false for it, and until 2026-09-21
+   * the dossier had no way to know: `searchBuckets.searchBucket` filed such a
+   * record under **Stuck** while the patient screen drew it as an everyday
+   * item, so two screens described one patient two different ways.
+   *
+   * ⚠️ Deliberately its OWN field rather than folded into `isStuck`: that flag
+   * is what `pickActive` skips, and a proposed-stuck patient is still the live
+   * end of their trail — somebody is waiting on a decision about them. What
+   * changes is how the stage is LABELLED, not whether it is theirs.
+   */
+  isProposedStuck: boolean;
   /** Date of birth as the board holds it — the corroborating identity signal
    *  when a record carries no phone. See `nameMatchAccepted`. */
   dob: string;

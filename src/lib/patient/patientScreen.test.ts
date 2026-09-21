@@ -21,6 +21,7 @@ import {
   onboardingCaption,
   parseSide,
   parseView,
+  snapStateLabel,
   snapTabLabel,
   stepCaption,
   subscriptionCaption,
@@ -46,6 +47,9 @@ function item(over: Partial<DossierItem> = {}): DossierItem {
     groupId: "g",
     groupTitle: "2. Medical Necessity",
     isCompleted: false,
+    escalationText: "",
+    escalationLevel: null,
+    isProposedStuck: false,
     isStuck: false,
     dob: "01/15/1957",
     route: "/evaluate",
@@ -482,5 +486,65 @@ describe("⚠️ a stage whose only record is STUCK says so (§5.42)", () => {
     const stuck = it2({ itemId: "2", boardId: 18406060017, isStuck: true, groupTitle: "Stuck" });
     const steps = buildStages(dossierOf([stuck]));
     expect(steps.find((s) => s.stage.key === "mn")!.lead?.itemId).toBe("2");
+  });
+});
+
+/**
+ * ⚠️ §5.43 — the search and the patient screen must not describe one patient
+ * two different ways. A PROPOSED stuck record (escalation index 2) sits in an
+ * ordinary working group, so `isStuck` is false for it and the screen drew it
+ * as an everyday item while `searchBucket` filed it under Stuck.
+ */
+describe("⚠️ a proposed stuck record is stuck HERE too, and says which kind", () => {
+  const it3 = (p: Partial<DossierItem> & { itemId: string; boardId: number }): DossierItem =>
+    ({
+      name: "JAMIE RIVERS", phone: "5555550142", boardName: "", groupId: "", groupTitle: "",
+      isCompleted: false, isStuck: false, escalationText: "", escalationLevel: null,
+      isProposedStuck: false, dob: "", route: "", stageAdvancerText: "", notes: "",
+      notesColId: "", notesColType: null, nextActionDate: "", daysSinceStage: "", cols: {},
+      ...p,
+    }) as unknown as DossierItem;
+  const dossierOf = (items: DossierItem[], active: DossierItem | null = null): PatientDossier =>
+    ({ name: "JAMIE RIVERS", phone: "5555550142", active, path: [], alsoOn: [], items }) as unknown as PatientDossier;
+
+  const proposed = it3({
+    itemId: "2002", boardId: 18406060017, groupTitle: "2. Medical Necessity",
+    escalationText: "Final Escalation Required", escalationLevel: "final", isProposedStuck: true,
+  });
+
+  it("the stage reads stuck, not 'In progress'", () => {
+    const steps = buildStages(dossierOf([proposed], proposed));
+    expect(steps.find((s) => s.stage.key === "mn")!.state).toBe("stuck");
+  });
+
+  it("⚠️ and it is named as a PROPOSAL — a rep must not read it as 'they have left'", () => {
+    const step = buildStages(dossierOf([proposed], proposed)).find((s) => s.stage.key === "mn")!;
+    expect(stepCaption(step)).toBe("Stuck proposed — with a manager");
+  });
+
+  it("a real Stuck GROUP still says plain Stuck", () => {
+    const parked = it3({ itemId: "9", boardId: 18406060017, isStuck: true, groupTitle: "Stuck" });
+    const step = buildStages(dossierOf([parked])).find((s) => s.stage.key === "mn")!;
+    expect(stepCaption(step)).toBe("Stuck");
+  });
+
+  it("⚠️ the snapshot chip tells the four states apart", () => {
+    expect(snapStateLabel(proposed)).toContain("waiting on a manager");
+    expect(snapStateLabel(it3({ itemId: "a", boardId: 18406060017 }))).toBe("Live — the patient is here now");
+    expect(snapStateLabel(it3({ itemId: "b", boardId: 18406060017, isStuck: true }))).toContain("out of the pipeline");
+    // Completed wins over any flag still on the record — §5.18's ordering.
+    expect(
+      snapStateLabel(it3({ itemId: "c", boardId: 18406060017, isCompleted: true, isProposedStuck: true })),
+    ).toContain("Snapshot");
+    expect(snapStateLabel(null)).toBe("");
+  });
+
+  it("⚠️ proposed-stuck is NOT folded into isStuck — pickActive must still find them", () => {
+    // `pickActive` skips `isStuck`. A patient whose only live record is a stuck
+    // PROPOSAL is still the live end of their trail; somebody is waiting on a
+    // decision about them, and dropping them would leave the screen with no
+    // active record at all.
+    expect(proposed.isStuck).toBe(false);
+    expect(proposed.isProposedStuck).toBe(true);
   });
 });
