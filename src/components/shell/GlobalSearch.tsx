@@ -22,8 +22,10 @@ import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { useLiveSearch } from "@/hooks/systemMgmt/useLiveSearch";
 import { searchBucket } from "@/lib/systemMgmt/searchBuckets";
+import { groupSearchHits, hitCaption } from "@/lib/shell/searchPeople";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 
+/** People, not board items — a patient with six records is ONE row (§5.42). */
 const MAX_ROWS = 8;
 
 /** Where a header hit goes. Orders keep their own page — an order is not a
@@ -45,7 +47,13 @@ export function GlobalSearch() {
 
   const { results, searching, tooShort, error } = useLiveSearch(open ? query : "");
 
-  const rows = useMemo(() => results.slice(0, MAX_ROWS), [results]);
+  /**
+   * ⚠️ **GROUPED FIRST, THEN CAPPED** — the cap has to fall on people, or the
+   * eight slots are spent on one patient's six board records and everybody else
+   * who matched is trimmed off the end (§5.42). The measured case was exactly
+   * that: a name that returned six rows for one person.
+   */
+  const rows = useMemo(() => groupSearchHits(results).slice(0, MAX_ROWS), [results]);
 
   // Reset the cursor whenever the list changes under it, or Enter fires on a
   // row that is no longer the one highlighted on screen.
@@ -93,7 +101,7 @@ export function GlobalSearch() {
       setHi((h) => (h - 1 + rows.length) % rows.length);
     } else if (e.key === "Enter" && rows[hi]) {
       e.preventDefault();
-      go(rows[hi]);
+      go(rows[hi].lead);
     } else if (e.key === "Escape") {
       setOpen(false);
       input.current?.blur();
@@ -123,23 +131,27 @@ export function GlobalSearch() {
 
       {open && typed && (
         <div className="gs-drop" role="listbox">
-          {rows.map((row, i) => (
+          {rows.map((hit, i) => (
             <button
-              key={`${row.boardId}:${row.id}`}
+              key={hit.key}
               className={`gs-row${i === hi ? " hi" : ""}`}
               role="option"
               aria-selected={i === hi}
               onMouseEnter={() => setHi(i)}
-              onClick={() => go(row)}
+              onClick={() => go(hit.lead)}
             >
               <span className="min-w-0">
-                <span className="nm block truncate">{row.name || "(no name)"}</span>
+                <span className="nm block truncate">{hit.name || "(no name)"}</span>
+                {/* ⚠️ The count is part of the line, not a badge: it is the only
+                    thing saying that clicking opens ONE of several records and
+                    that the rest are inside. Without it a folded row looks
+                    exactly like a patient who has a single record. */}
                 <span className="sub block truncate">
-                  {row.subtitle || row.groupTitle}
+                  {hit.lead.subtitle || hitCaption(hit)}
                 </span>
               </span>
               <span className="hit">
-                <span className="st">{row.pipelineStage || row.boardName}</span>
+                <span className="st">{hit.lead.pipelineStage || hit.lead.boardName}</span>
               </span>
             </button>
           ))}

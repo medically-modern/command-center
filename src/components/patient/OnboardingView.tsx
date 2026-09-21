@@ -22,7 +22,7 @@ import { ArrowUpRight, Check, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
-import { infoFacts, itemOpenHref, stepCaption, type StageStep } from "@/lib/patient/patientScreen";
+import { infoFacts, itemOpenHref, snapTabLabel, stepCaption, type StageStep } from "@/lib/patient/patientScreen";
 
 interface Props {
   dossier: PatientDossier;
@@ -95,7 +95,7 @@ export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap
                     onClick={() => onSnap(it.itemId)}
                   >
                     {it.isCompleted && <Check style={{ width: 11, height: 11 }} />}
-                    {it.boardName}
+                    {snapTabLabel(step.items, it)}
                   </button>
                 ))}
               </div>

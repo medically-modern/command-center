@@ -96,12 +96,27 @@ export function buildStages(dossier: PatientDossier | null): StageStep[] {
     const stuck = mine.some((it) => it.isStuck);
     const lastRank = Math.max(...stage.boards.map(rank));
 
+    /**
+     * ⚠️ **ORDER MATTERS, and it was wrong for a patient parked in a Stuck
+     * group** (§5.42). `stuck` only won when the stage was ALSO the active one
+     * — but `pickActive` skips stuck records by design, so a patient whose only
+     * record on this stage is stuck has no active board here, fell past both
+     * stuck branches and landed on the "there are items, so they must be
+     * working" fallback. The stepper said **In progress** for somebody nobody
+     * is working, which is the one thing a stuck patient must not look like.
+     *
+     * Moving PAST a stage still wins over having been stuck in it: a patient
+     * who was stuck at Medical Necessity, was returned to the queue and is now
+     * on Insurance completed that stage, whatever happened on the way.
+     */
     let state: StepState;
-    if (stuck && isActive) state = "stuck";
+    if (isActive && stuck) state = "stuck";
     else if (isActive) state = "now";
-    else if (mine.length && (furthest > lastRank || mine.every((it) => it.isCompleted))) state = "done";
+    else if (furthest > lastRank) state = "done";
+    else if (stuck) state = "stuck";
+    else if (mine.length && mine.every((it) => it.isCompleted)) state = "done";
     else if (mine.length) state = "now";
-    else state = furthest > lastRank ? "done" : "todo";
+    else state = "todo";
 
     const lead =
       mine.find((it) => it.boardId === activeBoard) ??
@@ -112,6 +127,40 @@ export function buildStages(dossier: PatientDossier | null): StageStep[] {
     const progress = state === "done" ? 1 : state === "todo" ? 0 : 0.5;
     return { stage, state, items: mine, lead, progress };
   });
+}
+
+/**
+ * What one snapshot tab is CALLED, when a stage holds more than one record.
+ *
+ * ⚠️⚠️ **TWO IDENTICAL TABS ARE A RECORD YOU CANNOT REACH** (§5.42). The tabs
+ * were labelled by board name, which is the right answer for Intake — DTC
+ * Intake and Profile Send Off are two boards in one stage — and says nothing at
+ * all for a stage that ran TWICE on one board. A real patient had a completed
+ * Medical Evaluation record and an escalated one beside it, both rendering as
+ * "Medical Evaluation", and two completed Profile Send Off records, both
+ * rendering as "Profile Send Off Board". Josh, 2026-09-21: *"make sure every
+ * possible situation currently on the board isnt lost in this new ui view"* —
+ * a tab you cannot tell from its neighbour is exactly that loss.
+ *
+ * So the label is whatever DISTINGUISHES this record from its siblings, tried
+ * in order: the board (different boards), the group (the ordinary duplicate —
+ * "Completed" vs "2. Medical Necessity"), the stage advancer, and finally the
+ * item id, which is guaranteed unique and is what a rep would paste into Monday
+ * anyway. ⚠️ Never fall through to a bare index: "1" and "2" identify nothing
+ * and change order between polls.
+ */
+export function snapTabLabel(items: readonly DossierItem[], item: DossierItem): string {
+  const unique = (pick: (i: DossierItem) => string) => {
+    const mine = pick(item).trim();
+    if (!mine) return "";
+    return items.filter((i) => pick(i).trim() === mine).length === 1 ? mine : "";
+  };
+  return (
+    unique((i) => i.boardName) ||
+    unique((i) => i.groupTitle) ||
+    unique((i) => i.stageAdvancerText) ||
+    `${item.boardName || "Record"} #${item.itemId.slice(-4)}`
+  );
 }
 
 /** Which step the page opens on: the live one, else the last one reached. */

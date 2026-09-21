@@ -5242,6 +5242,129 @@ Files: `lib/shell/{viewAs,homeProfile,abilities}.ts`,
 `lib/accessStore.ts`, `App.tsx` (+ `viewAsScope.test.ts`, `homeViewBorrow.test.tsx`,
 `abilities.test.ts`, `shellRemovals.test.ts`, `lossless.test.ts`, `patientScreen.test.ts`).
 
+### 5.41 Reports & Metrics and Stage Manager get their own pages (Sep 2026)
+Josh, 2026-09-21, four asks in one message. **No board change; app only.**
+
+**1. "Communications" left the Pipeline Oversight stage dropdown.** It was never a stage — no
+board, no group, no days-in-stage, so there was nothing to chart and picking it NAVIGATED AWAY
+instead of swapping the charts below. It is a header tab of its own now (§5.39c), which is a
+better door than an entry in a list of stages that quietly is not one.
+
+**2. Reports & Metrics points at `/operations`**, not `/system-mgmt?tab=operations` (*"make
+reports and metrics ONLY the daily operations screen no need for system management bar"*). The
+tab used to open the whole System Management page — navy header, five-tab bar — with Operations
+inside it, so a tab in the app's primary navigation landed on a screen wearing a SECOND set of
+tabs and a title that did not match the tab pressed.
+⚠️ `OperationsPage` renders `OperationsTab` directly and it takes no props, so unlike the tab it
+replaces it does **not** run `useSystemPatients()` — the seven-board snapshot System Management
+fetches for its search, pipeline chart and Stage Manager, and which Operations has never read.
+The split is cheaper than the tab, not just tidier.
+
+**3. Stage Manager is an assignable top tab** on a new **`stageManager`** ability
+(*"like communications"*), at `/stage-manager`.
+⚠️ It renders the **same `StageManagerView`** the System Management tab renders — exported from
+`SystemMgmtPage.tsx` and imported, never copied. That screen WRITES the Stage Advancer, which is
+what every board automation fires on (§6), so two divergent copies of it is the one duplication
+that could move a patient two different ways.
+⚠️ Both routes are gated **at the route** in `App.tsx`, not just at the tab: §5.39h's rule, and
+this one moves patients.
+
+**4. Oversight and Operations left the Manage ▾ menu.** Operations IS the tab above. ⚠️ Oversight
+keeps **three** doors — the gear menu's "Pipeline Oversight" (a different menu; Josh named the
+Manage menu), the assignable `oversight` home view (§5.39c), and `/system-mgmt`'s own Oversight
+tab — and `lossless.test.ts` now asserts each one, so losing any of them fails the build rather
+than the feature. **If Oversight ever comes off the home views, it needs a header link first.**
+
+⚠️⚠️ **A FIFTH TAB PUSHED THE HEADER PAST THE VIEWPORT, and it was found by measuring.** Five
+labelled tabs are 781px: at 1280 they squeezed the global search — the app's only cross-board
+patient lookup — down to **50px** and still ran the document to 1353px, i.e. a horizontal
+scrollbar on the header of every page. Two fixes, in this order: `.gsearch` gets a `min-width` so
+it can never be squeezed away again whatever else joins that row; and the tab labels **tighten at
+1500** (8px padding, 12px text → 684px) before **collapsing to icons at 1380**, because
+legibility is the point of a label and it is the last thing to go. Re-measured at 1920 · 1600 ·
+1501 · 1500 · 1440 · 1381 · 1380 · 1366 · 1280 · 1100 · 1024: no overflow at any width, header
+56px throughout, search never under 180px. ⚠️ **A SIXTH tab must re-measure** — those numbers are
+an outcome, not a setting (§5.30c).
+
+**Keep-in-agreement:** `GlobalHeader`'s `TABS` ⇄ `App.tsx`'s routes ⇄ `AbilityGate` on each ⇄
+`ABILITIES` / `ABILITY_LABEL` / `ABILITY_HINT` ⇄ `lossless.test.ts`'s door list, which is where a
+moved door is recorded · `--cc-head`'s two media queries ⇄ the tab count.
+
+### 5.42 The global search returns one row per PATIENT (Sep 2026)
+Josh, 2026-09-21, searching a real patient: *"i searched her in the top profile and all of her
+profiles poped up when only her name should pop up … her active profile is welcome call, so that
+should be what pops up / that stuck profile should also be accessable, make sure every possible
+situation currently on the board isnt lost in this new ui view for per patient profiles"*.
+**No board change; app only.** Rule: **`lib/shell/searchPeople.ts`** (+ tests).
+
+⚠️ **A patient is one item PER BOARD (§6), so a name legitimately returns three to six rows.**
+The reported patient had **six**, read off the live boards: two completed Profile Send Off
+records (a duplicate pair), a completed Medical Evaluation record **and an escalated one beside
+it** (Escalation = "Final Escalation Required", which `searchBuckets.searchBucket` calls
+**stuck**), a completed Insurance record, and one live Welcome Call record. The header's
+drop-down holds eight rows in total, so six of them being one person does not merely read badly —
+it crowds out everybody else who matched.
+
+**Nothing is dropped; it is FOLDED.** Every record stays on the hit, and the one click opens the
+**patient screen**, whose stepper carries every record the patient has on each stage with a tab
+per record (§5.39b). So the completed snapshots and the stuck record are one click *further in*
+rather than one click *away*. ⚠️ That is the whole reason folding is safe HERE and would not be
+safe in a list that opened a stage page.
+
+⚠️⚠️ **GROUPED FIRST, THEN CAPPED.** The eight-row cap has to fall on people, or it is spent on
+one patient's six board records.
+⚠️⚠️ **A NAME IS NOT AN IDENTITY, so the folding FAILS CLOSED.** `commsHub/dossier
+.nameMatchAccepted` needs a second signal before two records may be called one person — the phone
+agrees, or the phone is blank and the DOB agrees — and **`SystemPatient` carries no DOB**, so the
+second branch is not available here. A row with no phone therefore stands alone. Two patients
+called Maria Garcia is ordinary at this size; folding them would show ONE row and make the other
+**unreachable from the search**, where over-splitting only costs a duplicate-looking row a rep can
+tell apart from the stage beside it.
+⚠️ **Orders never fold** — a New Order Board row is not a patient record, it opens `/orders`, and
+one patient has an item per reorder (§5.35).
+⚠️ **The lead is the ACTIVE record, furthest along** — Josh's *"her active profile is welcome
+call"*. Being WORKED outranks being further along, so a live Insurance record beats a completed
+Welcome Call one; a patient with nothing live opens on the **stuck** record (a manager decision is
+the actionable thing), and otherwise on the furthest-along completed one.
+⚠️ The caption says the stage **and** the count (`Welcome Call · +5 more records`): the stage
+alone hides that there is more to see, and a bare count is a number with no meaning.
+⚠️ Group order is the order the first row of each person arrived in, which is `rankLiveResults`'
+ranking (§7) — re-sorting would throw away the ranking the search just did.
+
+**Two things were genuinely lost in the per-patient view, and both are fixed:**
+1. ⚠️⚠️ **TWO IDENTICAL SNAPSHOT TABS ARE A RECORD YOU CANNOT REACH.** The tabs were labelled by
+   board name — right for Intake, which really is two boards in one stage, and meaningless for a
+   stage that ran TWICE on one board. This patient's two Medical Evaluation records both rendered
+   as "Medical Evaluation" and her two Profile Send Off records both as "Profile Send Off Board".
+   `patientScreen.snapTabLabel` labels each tab with whatever DISTINGUISHES it, tried in order:
+   the board · the group ("Completed" vs "2. Medical Necessity") · the stage advancer · the item
+   id. ⚠️ Never an index — "1" and "2" identify nothing and reorder between polls, where the id is
+   what a rep pastes into Monday.
+2. ⚠️ **A stage whose only record is STUCK read "In progress".** `buildStages` only let `stuck`
+   win when the stage was also the ACTIVE one — but `pickActive` skips stuck records by design, so
+   such a patient has no active board there, fell past both stuck branches and landed on the
+   "there are items, so somebody must be working them" fallback. The stepper said *In progress*
+   for a patient nobody is working. ⚠️ Moving PAST a stage still wins over having been stuck in
+   it: returned to the queue and now on Insurance means Medical Necessity is done.
+
+**Already true, so it needed nothing** (worth knowing before re-deriving it): Josh's *"completed
+profiles being the source data for snapshots"* is **§5.38** — the completed item on each board IS
+the frozen snapshot, and `itemOpenHref` already opens one in review mode via `?completedStage=`.
+And the patient screen already opened on Welcome Call for this patient, because `defaultStepIndex`
+takes the first `now`/`stuck` step.
+
+**Known and NOT fixed:** the dossier's `isStuck` reads the GROUP TITLE only (`dossier.markStuck`),
+while Search's `searchBucket` also counts **Escalation index 2** (a stuck PROPOSAL) as stuck. So a
+proposed-stuck record is filed under Stuck in the search and rendered as an ordinary tab on the
+patient screen — reachable, correctly labelled by its group, but not *called* stuck there. Closing
+that means carrying the escalation column on `DossierItem`; it is a real inconsistency between two
+screens and is written down here rather than guessed at.
+
+**Keep-in-agreement:** `searchPeople.groupKeyFor` ⇄ `commsHub/dossier.personKey` and
+`nameMatchAccepted`'s discipline — never fold on a name alone · `pickLead`'s bucket ranking ⇄
+`searchBuckets.searchBucket` · `GlobalSearch` must group BEFORE `MAX_ROWS` · `snapTabLabel` ⇄
+`OnboardingView`'s `snap-tabs`.
+
 ### 5.40 Dark mode — it was configured, styled, and unreachable (Sep 2026)
 Josh, 2026-09-21: *"audit dark mode and make sure it works across the app and actually
 displays"*. **No board change; app only.**

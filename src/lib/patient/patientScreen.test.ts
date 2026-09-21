@@ -21,6 +21,7 @@ import {
   onboardingCaption,
   parseSide,
   parseView,
+  snapTabLabel,
   stepCaption,
   subscriptionCaption,
   subscriptionItem,
@@ -390,5 +391,96 @@ describe("phases 3–6 are additive too", () => {
     expect(header).toMatch(/hasAbility\(who, config, t\.ability\)/);
     expect(header).toMatch(/ability: "inventory"/);
     expect(header).toMatch(/ability: "reports"/);
+  });
+});
+
+describe("⚠️⚠️ two identical tabs are a record you cannot reach (§5.42)", () => {
+  const item = (p: Partial<DossierItem> & { itemId: string }): DossierItem =>
+    ({
+      name: "JAMIE RIVERS", phone: "5555550142", boardId: 18406060017,
+      boardName: "Medical Evaluation", groupId: "g", groupTitle: "", isCompleted: false,
+      isStuck: false, dob: "", route: "", stageAdvancerText: "", notes: "",
+      notesColId: "", notesColType: null, cols: {}, ...p,
+    }) as unknown as DossierItem;
+
+  it("different BOARDS keep the board name — Intake really is two boards", () => {
+    const a = item({ itemId: "1", boardId: 18392794310, boardName: "DTC Intake" });
+    const b = item({ itemId: "2", boardId: 18406352652, boardName: "Profile Send Off Board" });
+    expect(snapTabLabel([a, b], a)).toBe("DTC Intake");
+    expect(snapTabLabel([a, b], b)).toBe("Profile Send Off Board");
+  });
+
+  it("⚠️ a stage that ran TWICE on one board falls through to the GROUP", () => {
+    // The reported shape: a completed Medical Evaluation record and an
+    // escalated one beside it, both previously rendering "Medical Evaluation".
+    const done = item({ itemId: "2001", groupTitle: "Completed", isCompleted: true });
+    const live = item({ itemId: "2002", groupTitle: "2. Medical Necessity" });
+    expect(snapTabLabel([done, live], done)).toBe("Completed");
+    expect(snapTabLabel([done, live], live)).toBe("2. Medical Necessity");
+  });
+
+  it("⚠️ when the group collides too, the stage advancer distinguishes them", () => {
+    const a = item({ itemId: "1", groupTitle: "Completed", isCompleted: true, stageAdvancerText: "Completed" });
+    const b = item({ itemId: "2", groupTitle: "Completed", isCompleted: true, stageAdvancerText: "Stuck" });
+    expect(snapTabLabel([a, b], a)).toBe("Completed");
+    expect(snapTabLabel([a, b], b)).toBe("Stuck");
+  });
+
+  it("⚠️⚠️ and when EVERYTHING collides it is the item id, never an index", () => {
+    // Two completed Profile Send Off records with the same group and the same
+    // advancer is a real duplicate pair. An index ("1", "2") identifies nothing
+    // and reorders between polls; the id is what a rep pastes into Monday.
+    const a = item({ itemId: "12995534826", boardName: "Profile Send Off Board", groupTitle: "Completed", isCompleted: true, stageAdvancerText: "Advance to MN" });
+    const b = item({ itemId: "12995609770", boardName: "Profile Send Off Board", groupTitle: "Completed", isCompleted: true, stageAdvancerText: "Advance to MN" });
+    expect(snapTabLabel([a, b], a)).toBe("Profile Send Off Board #4826");
+    expect(snapTabLabel([a, b], b)).toBe("Profile Send Off Board #9770");
+    expect(snapTabLabel([a, b], a)).not.toBe(snapTabLabel([a, b], b));
+  });
+
+  it("a lone record still reads as its board", () => {
+    const only = item({ itemId: "1", groupTitle: "Completed" });
+    expect(snapTabLabel([only], only)).toBe("Medical Evaluation");
+  });
+});
+
+describe("⚠️ a stage whose only record is STUCK says so (§5.42)", () => {
+  const it2 = (p: Partial<DossierItem> & { itemId: string; boardId: number }): DossierItem =>
+    ({
+      name: "JAMIE RIVERS", phone: "5555550142", boardName: "", groupId: "", groupTitle: "",
+      isCompleted: false, isStuck: false, dob: "", route: "", stageAdvancerText: "",
+      notes: "", notesColId: "", notesColType: null, nextActionDate: "", daysSinceStage: "",
+      cols: {}, ...p,
+    }) as unknown as DossierItem;
+
+  const dossierOf = (items: DossierItem[]): PatientDossier =>
+    ({ name: "JAMIE RIVERS", phone: "5555550142", active: null, path: [], alsoOn: [], items }) as unknown as PatientDossier;
+
+  it("reads Stuck, not 'In progress' — pickActive skips stuck records, so it is never the active board", () => {
+    const steps = buildStages(
+      dossierOf([
+        it2({ itemId: "1", boardId: 18406352652, isCompleted: true }),
+        it2({ itemId: "2", boardId: 18406060017, isStuck: true, groupTitle: "Stuck" }),
+      ]),
+    );
+    expect(steps.find((s) => s.stage.key === "mn")!.state).toBe("stuck");
+    expect(steps.find((s) => s.stage.key === "intake")!.state).toBe("done");
+    expect(steps.find((s) => s.stage.key === "insurance")!.state).toBe("todo");
+  });
+
+  it("⚠️ but MOVING PAST a stage still wins — returned from stuck and now on Insurance", () => {
+    const steps = buildStages(
+      dossierOf([
+        it2({ itemId: "2", boardId: 18406060017, isStuck: true, groupTitle: "Stuck" }),
+        it2({ itemId: "3", boardId: 18410601299, groupTitle: "Benefits" }),
+      ]),
+    );
+    expect(steps.find((s) => s.stage.key === "mn")!.state).toBe("done");
+    expect(steps.find((s) => s.stage.key === "insurance")!.state).toBe("now");
+  });
+
+  it("the stuck record is the one the snapshot opens on", () => {
+    const stuck = it2({ itemId: "2", boardId: 18406060017, isStuck: true, groupTitle: "Stuck" });
+    const steps = buildStages(dossierOf([stuck]));
+    expect(steps.find((s) => s.stage.key === "mn")!.lead?.itemId).toBe("2");
   });
 });
