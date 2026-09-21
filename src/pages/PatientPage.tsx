@@ -38,7 +38,7 @@
  * caller has it — a search hit, a Comms Hub match — so requiring it costs
  * nothing and guessing would mean a board scan per open.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowUpRight, ClipboardList, RefreshCw, RotateCw } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -83,7 +83,35 @@ export default function PatientPage() {
     [itemId, boardId],
   );
 
-  const { dossier, loading, error, configured, reload } = usePatientRecord(pick);
+  const { dossier: fetched, loading, error, configured, reload } = usePatientRecord(pick);
+
+  /**
+   * A note added from the Recent notes strip (§5.39c3), applied over the
+   * fetched record until the next read.
+   *
+   * ⚠️ **Held HERE rather than inside the strip, so both readers agree.** The
+   * Onboarding view's "Notes from this stage" card reads the same column, and a
+   * note that appeared in one place and not the other on the same screen reads
+   * as a failed save — which is exactly what a rep would then do something
+   * about. The writer returns the new full body, so this costs no second read.
+   *
+   * ⚠️ Keyed by ITEM and dropped whenever the fetched record changes, so it can
+   * never survive onto another patient — §9's notes-box rule, one level up.
+   */
+  const [noteEdit, setNoteEdit] = useState<{ itemId: string; notes: string } | null>(null);
+  useEffect(() => setNoteEdit(null), [fetched]);
+
+  const dossier = useMemo(() => {
+    if (!fetched || !noteEdit) return fetched;
+    return {
+      ...fetched,
+      items: fetched.items.map((i) => (i.itemId === noteEdit.itemId ? { ...i, notes: noteEdit.notes } : i)),
+      active:
+        fetched.active && fetched.active.itemId === noteEdit.itemId
+          ? { ...fetched.active, notes: noteEdit.notes }
+          : fetched.active,
+    };
+  }, [fetched, noteEdit]);
 
   const setParam = useCallback(
     (patch: Record<string, string>) => {
@@ -245,6 +273,8 @@ export default function PatientPage() {
             patient={threadPatient}
             side={side}
             onSide={(s: PatientSide) => setParam({ [SIDE_PARAM]: s })}
+            active={active}
+            onNoteAppended={(notes) => active && setNoteEdit({ itemId: active.itemId, notes })}
           />
         </div>
       )}

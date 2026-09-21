@@ -222,20 +222,56 @@ describe("the patient screen is READ-ONLY", () => {
   ];
 
   /**
-   * ⚠️⚠️ **THE ONE CARVE-OUT, AND IT IS A NARROWING OF THE PROMISE RATHER THAN
-   * A HOLE IN IT** (Josh, 2026-09-21: *"if the person has edit profile access
-   * they should be able to edit from this page too / read only if you dont
-   * have it, the way it is today"*). §5.45b: the Subscription Profile tab
-   * renders `/subscription`'s OWN form and calls its OWN send, behind
-   * `editProfile`. Everything else on this screen still writes nothing, and
-   * the block below pins what these two files must satisfy in place of the
-   * blanket ban — so the carve-out cannot quietly widen into a second writer.
+   * ⚠️⚠️ **THE CARVE-OUTS, AND EACH IS A NARROWING OF THE PROMISE RATHER THAN A
+   * HOLE IN IT.** Both are pinned below by what they must satisfy in place of
+   * the blanket ban, so neither can quietly widen into a second writer.
+   *
+   * 1. **The Subscription Profile tab** (§5.45b; Josh, 2026-09-21: *"if the
+   *    person has edit profile access they should be able to edit from this
+   *    page too / read only if you dont have it, the way it is today"*) —
+   *    renders `/subscription`'s OWN form and calls its OWN send, behind
+   *    `editProfile`.
+   * 2. **Recent notes** (§5.39c3) — calls the Comms Hub's OWN
+   *    `appendNoteToRecord`. ⚠️ Deliberately NOT gated on `editProfile`, per
+   *    §5.39h: a running case history is not the profile, and it is how a rep
+   *    records what they just learned on the call they are on.
+   *
+   * Everything else on this screen still writes nothing.
    */
   const EDIT_PATH = [
     "src/components/patient/SubscriptionView.tsx",
     "src/hooks/patient/useSubscriptionRecord.ts",
+    "src/components/patient/RecentNotes.tsx",
   ];
   const files = all.filter((f) => !EDIT_PATH.includes(f));
+
+  it("⚠️ Recent notes calls the EXISTING writer — never a second implementation", () => {
+    // ⚠️ `appendNoteToRecord` carries three rules a local copy would lose: it
+    // RE-READS the column immediately before appending (Monday has no
+    // compare-and-set, so appending onto a cached body silently deletes what
+    // another rep added in between), it asks the LIVE board about the 2,000-char
+    // cap rather than trusting a declared type (§10), and it writes a bare
+    // string through change_multiple_column_values, which both column types
+    // accept. Re-implementing any of it here is the §5.31c/§5.31d failure.
+    const notes = src("src/components/patient/RecentNotes.tsx");
+    expect(notes).toMatch(/from "@\/lib\/commsHub\/dossierApi"/);
+    expect(notes).toMatch(/appendNoteToRecord\(/);
+    // No hand-rolled mutation, and no second stamping rule.
+    const code = notes.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+    expect(code).not.toMatch(/change_(multiple_)?column_value/);
+    expect(code).not.toMatch(/appendStampedNote|stampNoteEntry|writeLongText/);
+    // The stage label is the shared rule, not a local `stageAdvancerText ||`.
+    expect(code).toMatch(/noteStageLabel\(/);
+  });
+
+  it("⚠️ Recent notes is NOT gated on editProfile — a note is not the profile", () => {
+    // §5.39h: notes stay writable with the ability off on `/subscription` and
+    // `/update-clinicals` too. Gating them here would make this screen stricter
+    // than the pages it mirrors, and would take away the one thing a rep needs
+    // while they are on the call.
+    const notes = src("src/components/patient/RecentNotes.tsx");
+    expect(notes).not.toMatch(/editProfile|useAbility/);
+  });
 
   it("⚠️ the scan really found the screen's files", () => {
     // A glob that silently matched nothing passes every assertion below it.
@@ -269,8 +305,13 @@ describe("the patient screen is READ-ONLY", () => {
     const view = src("src/components/patient/SubscriptionView.tsx");
     expect(view).toContain('from "@/lib/subscription/mondayWrite"');
     expect(view).toContain("sendPatientToMonday");
+    // ⚠️ Scanned as CODE: every file here documents the very writers it must not
+    // call, so a raw-text scan fails on its own prose and the only way to pass
+    // it is to delete the explanation.
+    const code = (t: string) =>
+      t.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
     for (const f of EDIT_PATH) {
-      const text = src(f);
+      const text = code(src(f));
       expect(text, `${f} must not hand-roll a mutation`).not.toMatch(/change_(multiple_)?column_value/);
       expect(text, `${f} must not run its own verified write`).not.toMatch(/executeWritesWithVerification/);
     }

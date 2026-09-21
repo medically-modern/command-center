@@ -387,8 +387,47 @@
 .cc-pt .empty-pane {
   flex: 1; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--mfg);
 }
-.cc-pt .notes-mini { border-top: 1px solid var(--bd); padding: 10px 14px; max-height: 190px; overflow-y: auto; }
+/* ── Recent notes (§5.39c3) — Brandon's `notes-mini`, under BOTH tabs ────── */
+/* ⚠️ `flex: none` is load-bearing: `.pt-side` is a column and the tab body
+   above takes `flex: 1`, so without it a long note log steals the thread's
+   height instead of scrolling inside its own 190px. */
+/* ⚠️⚠️ **ONLY THE LIST SCROLLS — the header and the composer are pinned.** The
+   first cut scrolled the whole strip, which put the add-a-note box below the
+   fold on any patient with three notes: an input a rep has to scroll a 190px
+   panel to find is one most of them never find (§5.28's own lesson about the
+   "New text" pane). Found by rendering it, not by reading it. */
+.cc-pt .notes-mini {
+  flex: none; border-top: 1px solid var(--bd); padding: 10px 14px;
+  max-height: 230px; background: var(--cd);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.cc-pt .nm-list { flex: 1; min-height: 0; overflow-y: auto; }
 .cc-pt .notes-mini .note { margin-bottom: 6px; }
+.cc-pt .nm-h { flex: none; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+/* The stage the composer will stamp with — said before a rep types, not after. */
+.cc-pt .nm-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-pt .nm-all {
+  font-size: 11px; font-weight: 600; color: var(--p); background: none;
+  border: none; padding: 0; cursor: pointer; flex: none;
+}
+.cc-pt .nm-all:hover { text-decoration: underline; }
+/* ⚠️ `pre-wrap`: a multi-line note is ONE note and its line breaks are the
+   rep's — collapsing them runs a call script into a paragraph. */
+.cc-pt .nm-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cc-pt .nm-more { margin: 2px 0 6px; }
+.cc-pt .nm-add { flex: none; display: flex; gap: 6px; margin-top: 8px; }
+.cc-pt .nm-in {
+  flex: 1; min-width: 0; font-size: 12px; padding: 5px 8px; border-radius: 7px;
+  border: 1px solid var(--bd); background: hsl(var(--background)); color: var(--tfg);
+}
+.cc-pt .nm-in:focus { outline: none; border-color: var(--p); }
+.cc-pt .nm-in:disabled { opacity: 0.6; }
+.cc-pt .nm-btn {
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
+  font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 7px;
+  border: 1px solid transparent; background: var(--p); color: hsl(var(--primary-foreground)); cursor: pointer;
+}
+.cc-pt .nm-btn:disabled { opacity: 0.45; cursor: default; }
 
 @media (max-width: 1000px) {
   .cc-pt .pt-screen { grid-template-columns: minmax(0, 1fr); }

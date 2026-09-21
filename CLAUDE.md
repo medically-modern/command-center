@@ -5136,9 +5136,8 @@ a person would notice first:
    and a red count on the tab. `PatientCommsColumn`'s own header says why: an inline list fetches
    on MOUNT, which is a per-patient RingCentral read on a screen a rep clicks through
    (INCIDENT_2026-08-20's shape). Building it means solving that first, not just moving markup.
-5. ⚠️ **"Recent notes" under both rail tabs was never built** — the board's notes column, newest
-   first, an All-notes expander and an add-a-note box. Its CSS is in the port: `notes-mini` is the
-   **only unused `.cc-pt` class in the file**, which is how this one is findable.
+5. ✅ **Recent notes — BUILT 2026-09-21 (§5.39c3).** The live board's notes under both rail tabs,
+   newest first, an All-notes expander and a composer calling the Comms Hub's own writer.
 6. ⚠️ **The onboarding info strip is six facts, not his eight.** Built: Stage · Board · Days in
    stage · Next action · DOB · Phone. Specified: Intake date `date_mm1wf43j` + days since · stage
    start `date_mm1w6jeq` + days in stage **red over 14** · Request type · Primary insurance · Pump
@@ -5266,6 +5265,75 @@ and fax-poll assertions are each verified to fail when their protection is remov
 ⚠️ Its source scans **strip comments first** — both files document the very writers they must
 not call, so a raw-text scan fails on its own prose and the only way to pass it is to delete
 the explanation.
+
+### 5.39c3 Recent notes — the live board's log, beside the thread (Sep 2026)
+Josh, 2026-09-21: *"add recent notes."* Gap item #5, and the only unused `.cc-pt` class in the
+port, which is how it stayed findable. **No board change; app only.** Files:
+`lib/patient/recentNotes.ts` (+ tests), `components/patient/{RecentNotes,PatientCommsColumn}.tsx`,
+`pages/{PatientPage.tsx,patient/redesign.css}`.
+
+Brandon's handoff: *"Under both tabs: Recent notes — the notes column of the board the patient is
+currently on (Subscription board notes once subscribed), newest first, with an All notes expander
+and an add-a-note box."*
+
+⚠️ **UNDER both tabs, not inside either** — mounted once at the foot of `.pt-side`, outside the tab
+body. It is a fact about the PATIENT, not about texts or calls, so a rep switching tabs does not
+lose a half-typed note and two copies cannot drift. It costs **no read**: the notes come with the
+dossier the screen already holds.
+
+⚠️ **The LIVE board's notes, never the snapshot's.** The Onboarding view's *Notes from this stage*
+card shows whichever historical record the stepper has open, in the main column, read-only. This
+shows `dossier.active`. Two different questions, deliberately two components — do not merge them.
+
+⚠️⚠️ **ONE WRITER — `dossierApi.appendNoteToRecord`, the Comms Hub's.** Two writers for one column
+is the failure §5.31c and §5.31d record; calling the existing one from a second screen is the
+opposite. It carries three rules a local copy would lose: it **RE-READS** the column immediately
+before appending (Monday has no compare-and-set, so appending onto a cached body silently DELETES
+whatever another rep added in between), it asks the **live board** about the 2,000-char cap rather
+than trusting a declared type (§10), and it writes a **bare string** through
+`change_multiple_column_values`, which both column types accept.
+
+⚠️ **NOT gated on `editProfile`**, deliberately, matching §5.39h: a running case history is not the
+profile, and it is how a rep records what they just learned on the call they are on. `/subscription`
+and `/update-clinicals` keep their notes writable with the ability off for the same reason.
+
+⚠️⚠️ **A BLOCK THAT DOES NOT MATCH THE STAMP IS RENDERED VERBATIM, NEVER DROPPED.** Seven boards,
+years of writers and two hand-migrated columns (§10) have put every shape in these columns — Doctor
+Appointments' attempt lines (`8/3/26, 1:38 PM · Phone call — No answer · … —JH`, whose shape is a
+COUNTER elsewhere, §5.12), the 8/25 bulk-import stamps, and plenty that predate `noteStamp`.
+Parsing is an enhancement that lifts the author and the time onto their own line; failing to parse
+must cost the formatting and never the note (§5.20's `networkLabel` rule).
+⚠️ **NEWEST FIRST** — the log appends, so the newest entry is LAST in the blob and the list is
+reversed. A strip showing the first three would show the OLDEST three: indefinitely stale on any
+patient with history, while looking perfectly live.
+⚠️ **A stamp's brackets must contain a YEAR.** Without that a note whose own body opens a line with
+`[see attached]` reads as a second stamped entry, so one note is torn into two, each missing half
+its text. Caught by its own test rather than in production.
+⚠️ A single-newline run of stamped lines IS split (several older writers appended with one
+newline), but only when **every** line in the run opens a real stamp.
+
+⚠️⚠️ **ONLY THE LIST SCROLLS — the header and the composer are pinned, and that was a real defect
+found by RENDERING it** (§5.30d's rule). The first cut scrolled the whole 190px strip, which put
+the add-a-note box below the fold on any patient with three notes: an input a rep has to scroll a
+panel to find is one most of them never find — §5.28's own lesson about the "New text" pane.
+⚠️ `flex: none` on the strip is load-bearing too: `.pt-side` is a column whose tab body takes
+`flex: 1`, so without it a long log steals the thread's height instead of scrolling inside its own
+230px. Measured at 1440 · 1100 · 1440-dark: strip 230px, composer in view, list scrolling, thread
+597px, no page overflow, every colour flipping in dark mode.
+
+⚠️ The note override lives on **`PatientPage`**, not inside the strip, so both readers agree: the
+Onboarding view's card reads the same column, and a note appearing in one place and not the other
+on one screen reads as a failed save. It is keyed by item and dropped whenever the fetched record
+changes, so it cannot survive onto another patient (§9's notes-box rule, one level up).
+⚠️ A failed write **keeps the draft** so the rep can shorten it — the 2,000-char refusal is the one
+error they must actually read. ⚠️ The composer is **hidden** when the board has no notes column:
+that is not a permission problem and no action fixes it.
+
+**Keep-in-agreement:** `recentNotes.noteStageLabel` ⇄ `commsHub/PatientDossierPanel`'s
+`NoteComposer` — one stamping rule, or the same column gets two different labels (§9) ·
+`RecentNotes` ⇄ `dossierApi.appendNoteToRecord` (never a second mutation) ·
+`patientScreen.test.ts`'s `EDIT_PATH`, whose carve-out now names this file and pins what it must
+satisfy in place of the blanket no-write ban.
 
 ### 5.39g/h The home is MY view, the borrow is the WHOLE ui, and every ability bites (Sep 2026)
 Josh, 2026-09-19, nine asks in one message. The governing rule is still §5.39f's — *"the ui is the
@@ -8807,6 +8875,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A custom home view "does nothing" | §5.39h — `views[0]` is the landing view and a newly granted one is PREPENDED, so it is what they open on; the editor prints "Lands on X". If it still looks wrong, read the **access.json commit history**, not the current file: the final state can be right while the sequence explains what was seen |
 | Borrowing somebody's view shows my tabs, or theirs reach a write | §5.39h — `lib/shell/viewAs.ts`. The HEADER answers for the borrowed person (tabs, Manage, Users); `AbilityGate`, `AbilityLock` and every write guard answer for the signed-in one; the softphone is never borrowed. `viewAsScope.test.ts` pins all three |
 | A page sits 36px short, or the header grows a blank band | §5.39h — `--cc-head` is the HEADER's height and `--cc-chrome` is everything above a page. The borrow banner raises the second, never the first; raising both made `.gh` taller AND stacked the banner under it |
+| A note added on the patient screen is missing, mangled, or in the wrong order | §5.39c3 — `lib/patient/recentNotes.ts` parses; `dossierApi.appendNoteToRecord` writes. **Newest first** (the log appends, so the list is reversed) and an unparsed block renders VERBATIM rather than being dropped — a Doctor Appointments attempt line or a bulk-import stamp showing with no author line is correct, not broken. A write failure keeps the draft; the 2,000-char refusal is the one error a rep must read (§10). ⚠️ It reads the LIVE board (`dossier.active`), never the stepper's snapshot — those are two different cards on purpose |
 | A stage panel on the patient screen is blank, greyed out, or opens the wrong tool | §5.39c2 — `lib/patient/stagePanels.ts` decides which sub-stages a record has and which it reached; `StagePanelEmbed`'s `panelFor` decides which have a real panel, and `OnboardingView`'s `PANELLED` set must agree with it (a pair in one and not the other renders an empty panel with no fallback cards). A greyed tab means the item's Stage Advancer puts the patient before it; an UNRECOGNISED advancer greys out nothing, by design. ⚠️ Three tools have no panel on purpose — DVS and the two Intake tools live inline in their pages, Auth Denied has no tool — and fall back to the snapshot cards |
 | Something on an embedded stage panel is clickable, or it is fetching | §5.39c2 — the guard is `inert` on `.stage-embed` (verified in Chrome 141: a real click is not hittable and focus cannot enter), plus no-op callbacks, plus mounting the PANEL and never the page's hook. If it fetches, read the panel's own hooks: `useFaxStatus` is switched off by the `embedded` prop, `useMondayFiles` polls only during a Generate, the rest are module-cached. A new hook on a panel needs the same audit |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |

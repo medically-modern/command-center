@@ -14,23 +14,37 @@
  * the Calls tab renders the button rather than an inline list: a list would have
  * to fetch on mount, which is a per-patient RingCentral read on a screen a rep
  * clicks through. INCIDENT_2026-08-20 is that shape.
+ *
+ * ⚠️ **Recent notes sits UNDER both tabs, outside the tab body** (§5.39c3) —
+ * Brandon's spec, and it falls out of what the block is: a fact about the
+ * patient, not about texts or calls. Mounted once here rather than inside each
+ * pane, so a rep switching tabs does not lose a half-typed note and the two
+ * copies cannot drift. It costs no read: the notes come with the dossier the
+ * screen already holds.
  */
 import { MessageSquare, Phone } from "lucide-react";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
 import type { PatientSide } from "@/lib/patient/patientScreen";
+import type { DossierItem } from "@/lib/commsHub/dossier";
+import { RecentNotes } from "@/components/patient/RecentNotes";
 
 export function PatientCommsColumn({
   phone,
   patient,
   side,
   onSide,
+  active,
+  onNoteAppended,
 }: {
   phone: string;
   patient: PatientRef | null;
   side: PatientSide;
   onSide: (s: PatientSide) => void;
+  /** The board the patient is on NOW, for Recent notes. */
+  active: DossierItem | null;
+  onNoteAppended: (next: string) => void;
 }) {
   return (
     <aside className="pt-side">
@@ -83,6 +97,8 @@ export function PatientCommsColumn({
           </p>
         </div>
       )}
+
+      <RecentNotes active={active} phone={phone} onAppended={onNoteAppended} />
     </aside>
   );
 }
