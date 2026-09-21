@@ -81,6 +81,9 @@ describe("⚠️⚠️ the borrow does NOT reach anything that writes", () => {
     ["pages/OrdersPage.tsx", "the backorder substitution"],
     ["pages/SubscriptionPage.tsx", "the Subscription send"],
     ["pages/UpdateClinicalsPage.tsx", "the visit-date save"],
+    // ⚠️ Where that save now lives, and it renders on TWO screens (§5.39c4).
+    ["components/updateClinicals/ClinicalsWork.tsx", "the clinicals work pane"],
+    ["pages/FaxBarPage.tsx", "the Fax bar's right pane"],
   ] as const) {
     it(`${what} never consults the borrowed identity`, () => {
       expect(live(read(file))).not.toContain("useViewAs");
@@ -127,10 +130,17 @@ describe("⚠️ every ability actually gates something", () => {
     expect(sub).toContain("if (!canEditProfile) return;");
     expect(sub).toContain('<AbilityLockNote ability="editProfile" />');
 
-    const clin = live(read("pages/UpdateClinicalsPage.tsx"));
+    // ⚠️ The visit date lives in `ClinicalsWork`, not the page, since
+    // 2026-09-21 (§5.39c4) — and that makes this assertion MORE load-bearing,
+    // not less: the same card now renders on `/update-clinicals` AND in the Fax
+    // bar's right pane, so a gate inside the card holds on both, where a gate
+    // on the page would have covered one of them.
+    const clin = live(read("components/updateClinicals/ClinicalsWork.tsx"));
     expect(clin).toContain('useAbility("editProfile")');
     expect(clin).toContain("if (!canEditProfile) return;");
     expect(clin).toContain("disabled={!visitDate || saving || !canEditProfile}");
+    // And the page no longer carries a second copy of the gate to drift from it.
+    expect(live(read("pages/UpdateClinicalsPage.tsx"))).not.toContain('useAbility("editProfile")');
   });
 
   it("⚠️ and it never hides the patient — the profile still renders", () => {

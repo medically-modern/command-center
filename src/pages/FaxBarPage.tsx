@@ -15,6 +15,19 @@
  * shared viewer. Nothing re-derives a rule: the `@rcfax.com` strip in particular
  * lives in `faxDigits` and is the reason that join works at all (§5.28).
  *
+ * ⚠️⚠️ **The right pane IS Update Clinicals from 2026-09-21 (§5.39c4)**, not a
+ * link to it — Brandon's handoff: *"Pick a fax on the left, find the patient it
+ * belongs to, then attach it, set the visit date, record what the office said,
+ * or send the patient back to Evaluate."* It renders `ClinicalsWorkPane`, the
+ * body of `/update-clinicals` itself, so the three write paths that flow
+ * carries (the visit date + MR rung §5.36, the records reply, the Stage
+ * Advancer that Submit moves) exist in exactly one place. `/update-clinicals`
+ * keeps its own door — the `updateClinicals` role bar — so nothing was removed.
+ *
+ * ⚠️ **Its two board reads are inside `FaxPane`, which exists only once a rep
+ * has picked a fax.** Glancing at the inbox costs what it always did; the
+ * Subscription + Medical Necessity reads land when somebody starts working one.
+ *
  * ⚠️ **The fax bytes are fetched, THEN handed to the viewer as a blob URL.**
  * Passing a RingCentral attachment URI straight in sends it down
  * `fetchAssetBytes`, which tries a direct CORS fetch with no RC credential and
@@ -31,6 +44,8 @@ import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { fetchInboundFaxesAll, fetchFaxBlobUrl, type InboundFax } from "@/lib/fax/ringcentralApi";
 import { fetchDoctorDbByFax, fetchFaxMatches } from "@/lib/commsHub/dossierApi";
 import { buildFaxDirectory, type FaxDirectoryEntry } from "@/lib/commsHub/faxDirectory";
+import { ClinicalsWorkPane, useClinicalsPatients } from "@/components/updateClinicals/ClinicalsWork";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 import { cn } from "@/lib/utils";
 
 /** Same window RingCentral actually keeps — asking for more spends requests and
@@ -172,6 +187,29 @@ export default function FaxBarPage() {
 function FaxPane({ fax, onView }: { fax: InboundFax; onView: () => void }) {
   const [dir, setDir] = useState<FaxDirectoryEntry | null>(null);
   const [looking, setLooking] = useState(true);
+  // ⚠️ Mounted HERE rather than on the page, so the two board reads land only
+  // once a rep has picked a fax — glancing at the inbox costs what it always
+  // did. Same "on open, never on render" posture as every heavy read on these
+  // screens.
+  const clinicals = useClinicalsPatients();
+  // ⚠️ Keyed to the FAX and cleared with it: a patient picked while reading one
+  // fax must not still be selected under the next, one Save from the wrong
+  // chart (§9's notes-box rule, at the level of a whole pane).
+  const [workId, setWorkId] = useState<string | null>(null);
+  useEffect(() => setWorkId(null), [fax.id]);
+
+  /**
+   * ⚠️ **Only a patient this pane can actually work gets a button.** The fax
+   * directory knows a patient by board item; the clinicals flow needs the
+   * merged row, which exists only for Subscription and live Medical Necessity.
+   * A patient of this office sitting in Insurance is still LISTED — they are
+   * genuinely with the office — they just have nothing to update here, and a
+   * button that selected nobody would read as broken.
+   */
+  const workable = useMemo(
+    () => new Set(clinicals.patients.map((p) => p.id)),
+    [clinicals.patients],
+  );
 
   useEffect(() => {
     let dead = false;
@@ -277,17 +315,60 @@ function FaxPane({ fax, onView }: { fax: InboundFax; onView: () => void }) {
               >
                 Profile <ArrowUpRight className="h-3 w-3" />
               </Link>
-              {/* The action a clinicals fax usually exists to trigger. It opens
-                  the EXISTING page, which owns the verified write (§5.36). */}
-              <Link
-                to={`/update-clinicals?patientId=${encodeURIComponent(p.itemId)}&from=fax`}
-                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-muted"
-              >
-                Update clinicals <ArrowUpRight className="h-3 w-3" />
-              </Link>
+              {/* ⚠️ The action a clinicals fax usually exists to trigger — and
+                  from 2026-09-21 it happens HERE, in the pane below, rather
+                  than on another page (§5.39c4). Only offered when the patient
+                  resolves to a workable row; otherwise the row says why, so a
+                  rep is never left pressing something that selects nobody. */}
+              {workable.has(p.itemId) ? (
+                <button
+                  onClick={() => setWorkId(p.itemId)}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-muted",
+                    workId === p.itemId && "border-primary bg-primary/10 text-primary",
+                  )}
+                >
+                  {workId === p.itemId ? "Open below" : "Update clinicals"}
+                </button>
+              ) : (
+                <span className="text-[11px] text-muted-foreground" title="Only Subscription and live Medical Necessity patients have clinicals to update">
+                  nothing to update
+                </span>
+              )}
             </li>
           ))}
         </ul>
+      </section>
+
+      {/* ── Update Clinicals, in place (§5.39c4) ───────────────────────────── */}
+      <section className="space-y-4">
+        <StaleDataNotice
+          error={clinicals.error}
+          scope="The patient list"
+          onRetry={() => clinicals.refetch()}
+        />
+        {clinicals.initialLoading ? (
+          <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+            Loading patients…
+          </div>
+        ) : (
+          <ClinicalsWorkPane
+            patients={clinicals.patients}
+            selectedId={workId}
+            onSelect={setWorkId}
+            onRefresh={clinicals.refetch}
+            /* ⚠️ No autofocus: this pane is the SECOND thing on the screen and
+               stealing the caret would scroll a rep away from the fax they
+               just opened. The page keeps it, where the search IS the screen. */
+            autoFocusSearch={false}
+            context={
+              <p className="text-xs text-muted-foreground">
+                Attach this fax, set a visit date or record the reply — this fax came from{" "}
+                <b className="text-foreground">{fax.fromName || fax.fromNumber}</b> ({fax.fromNumber}).
+              </p>
+            }
+          />
+        )}
       </section>
     </div>
   );

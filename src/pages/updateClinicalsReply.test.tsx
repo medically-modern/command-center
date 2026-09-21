@@ -20,8 +20,8 @@ vi.mock("@/lib/subscription/mondayWrite", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { RecordsReplyCard } from "./UpdateClinicalsPage";
-import type { ClinicalsRow } from "./UpdateClinicalsPage";
+import { RecordsReplyCard } from "@/components/updateClinicals/ClinicalsWork";
+import type { ClinicalsRow } from "@/components/updateClinicals/ClinicalsWork";
 
 const PATIENT: ClinicalsRow = {
   id: "3000000003",

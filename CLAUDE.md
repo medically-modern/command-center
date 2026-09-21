@@ -5125,12 +5125,10 @@ a person would notice first:
    and **Auth Denied**, which has no tool at all. Those keep the snapshot cards.
 2. ⚠️ **Reports & Metrics is a borrowed page.** The real `#/reports` is fully specified — see
    §5.39b for the board id, the app feature and the list of numbers. Unbuilt.
-3. ⚠️ **The Fax bar's right pane is a LINK to `/update-clinicals`.** The handoff moves that whole
-   flow in: the selected fax's details, *Find a patient* (25 results with a board chip and DOB),
-   *Likely matches* (patients whose doctor's fax IS the sending number), the patient header,
-   *Clinicals on the monday item*, then Update Visit Date / Office replied / Submit — back to
-   Evaluate. `/update-clinicals` keeps its own door (the `updateClinicals` role bar), so nothing
-   is lost — it is not embedded. Same shape as §5.45 was.
+3. ✅ **The Fax bar's right pane — BUILT 2026-09-21 (§5.39c4).** It renders `ClinicalsWorkPane`,
+   the body of `/update-clinicals` itself, so the flow's three write paths exist once.
+   `/update-clinicals` keeps its own door. ⚠️ *Likely matches* is deliberately NOT a second list:
+   *Their patients* above the pane is the same join, and it selects into the pane.
 4. ⚠️ **The right rail's Calls tab is a BUTTON, not Brandon's inline list.** He specifies All /
    Missed / Voicemail chips, an inline player, voicemail transcripts with a new badge, Call back,
    and a red count on the tab. `PatientCommsColumn`'s own header says why: an inline list fetches
@@ -5334,6 +5332,68 @@ that is not a permission problem and no action fixes it.
 `RecentNotes` ⇄ `dossierApi.appendNoteToRecord` (never a second mutation) ·
 `patientScreen.test.ts`'s `EDIT_PATH`, whose carve-out now names this file and pins what it must
 satisfy in place of the blanket no-write ban.
+
+### 5.39c4 The Fax bar's right pane IS Update Clinicals (Sep 2026)
+Josh, 2026-09-21: *"add the fax bar right pane."* Gap item #3. **No board change; app only.**
+Files: `components/updateClinicals/ClinicalsWork.tsx` (new — the row type, the merged-list hook,
+the four cards and the pane), `pages/{UpdateClinicalsPage,FaxBarPage}.tsx`.
+
+Brandon's handoff: *"Pick a fax on the left, find the patient it belongs to, then attach it, set
+the visit date, record what the office said, or send the patient back to Evaluate — the old Update
+Clinicals button is gone."*
+
+⚠️⚠️ **ONE IMPLEMENTATION, TWO SCREENS — and here that matters more than anywhere else on this
+build, because this pane WRITES.** The visit date sets MN Expiry **and** the MR rung behind
+read-back verification (§5.36), the reply card writes the records-reply columns, and Submit sets
+the **Stage Advancer that board automations fire on**. A second copy of any of that in the Fax bar
+is two writers for one column (§5.31c · §5.31d) with a stage move attached. So the page's body was
+extracted into `ClinicalsWorkPane` and both screens render it; `/update-clinicals` keeps its
+sidebar, header and stale notice and shrank from 856 lines to its shell.
+⚠️ **`/update-clinicals` keeps its own door** — the `updateClinicals` role bar — so nothing was
+removed. Brandon's *"the old Update Clinicals button is gone"* is a trim, and the standing rule on
+this build is additive first (§5.39f).
+
+⚠️ **`editProfile` is checked INSIDE the visit-date card, not on the page**, which is what makes
+the gate hold on both screens; a gate on the page would have covered one of them.
+`viewAsScope.test.ts` now reads the card's new home and asserts the page carries no second copy to
+drift from it.
+
+⚠️ **The two board reads live inside `FaxPane`**, which exists only once a rep has picked a fax —
+so glancing at the inbox costs what it always did and the Subscription + Medical Necessity reads
+land when somebody starts working one. "On open, never on render", the same posture as every other
+heavy read on these screens.
+
+⚠️ **NO second "likely matches" list.** The handoff asks for one inside the find-a-patient card;
+the Fax bar's *Their patients* section directly above **is** that list — the same
+`buildFaxDirectory` join — so offering it twice on one screen is the duplication a card stops being
+read for (§5.39c3's "say each fact once"). That section selects into the pane instead.
+⚠️ **A patient with no clinicals row is still LISTED and simply has no button.** The fax directory
+knows a patient by board item; this flow needs the merged row, which exists only for Subscription
+and live Medical Necessity. One of this office's patients sitting in Insurance is genuinely with
+them — they just have nothing to update here, and the row says *"nothing to update"* rather than
+offering a button that would select nobody.
+
+⚠️ **The Fax bar clears its patient when the FAX changes** — §9's notes-box rule at the level of a
+whole pane: a patient picked while reading one fax must not still be selected under the next, one
+Save from the wrong chart. The cards stay keyed by patient inside the pane for the same reason.
+⚠️ **`autoFocusSearch={false}` in the Fax bar**: the pane is the second thing on that screen and
+stealing the caret scrolls a rep away from the document they just opened. The page keeps the focus,
+where the search IS the screen.
+
+**Rendered before shipping** (§5.30d): `/update-clinicals` after the extraction at 1440 · 1100 ·
+1440-dark (Find-a-patient card, sidebar, header, no overflow, no page errors) and `/fax` at the
+same three (pane column 720px / 550px, no overflow, no page errors). The cards were squeezed to
+**502px** — the 550px column minus its padding — and nothing spills.
+⚠️ **Not rendered: the picked-patient state**, which needs live RingCentral and Monday data the
+harness has none of. It is the same component tree the page rendered correctly, at a width proved
+clean, and the extraction was a literal line move with tsc clean — but say so rather than claim the
+whole flow was seen.
+
+**Keep-in-agreement:** `ClinicalsWork.tsx` owns `saveVisitDateVerified` / `recordRecordsReplyVerified`
+/ `returnToEvaluateVerified` and neither page may call them ⇄ both render `<ClinicalsWorkPane>` and
+neither may re-declare a card ⇄ `viewAsScope.test.ts`'s `editProfile` block reads the card, not the
+page. `clinicalsWork.test.ts` scans all of it; three assertions verified to fail when their
+protection is removed.
 
 ### 5.39g/h The home is MY view, the borrow is the WHOLE ui, and every ability bites (Sep 2026)
 Josh, 2026-09-19, nine asks in one message. The governing rule is still §5.39f's — *"the ui is the
@@ -8875,6 +8935,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A custom home view "does nothing" | §5.39h — `views[0]` is the landing view and a newly granted one is PREPENDED, so it is what they open on; the editor prints "Lands on X". If it still looks wrong, read the **access.json commit history**, not the current file: the final state can be right while the sequence explains what was seen |
 | Borrowing somebody's view shows my tabs, or theirs reach a write | §5.39h — `lib/shell/viewAs.ts`. The HEADER answers for the borrowed person (tabs, Manage, Users); `AbilityGate`, `AbilityLock` and every write guard answer for the signed-in one; the softphone is never borrowed. `viewAsScope.test.ts` pins all three |
 | A page sits 36px short, or the header grows a blank band | §5.39h — `--cc-head` is the HEADER's height and `--cc-chrome` is everything above a page. The borrow banner raises the second, never the first; raising both made `.gh` taller AND stacked the banner under it |
+| Update Clinicals behaves differently on `/fax` and `/update-clinicals` | §5.39c4 — it is ONE component (`components/updateClinicals/ClinicalsWork.tsx` `ClinicalsWorkPane`), so it cannot: check the caller's props first (`autoFocusSearch`, `context`). The three writers live in that module and neither page may call them. ⚠️ A patient reading "nothing to update" on the Fax bar is correct — they are with that office but have no Subscription or live Medical Necessity row, so there is nothing for this flow to write |
 | A note added on the patient screen is missing, mangled, or in the wrong order | §5.39c3 — `lib/patient/recentNotes.ts` parses; `dossierApi.appendNoteToRecord` writes. **Newest first** (the log appends, so the list is reversed) and an unparsed block renders VERBATIM rather than being dropped — a Doctor Appointments attempt line or a bulk-import stamp showing with no author line is correct, not broken. A write failure keeps the draft; the 2,000-char refusal is the one error a rep must read (§10). ⚠️ It reads the LIVE board (`dossier.active`), never the stepper's snapshot — those are two different cards on purpose |
 | A stage panel on the patient screen is blank, greyed out, or opens the wrong tool | §5.39c2 — `lib/patient/stagePanels.ts` decides which sub-stages a record has and which it reached; `StagePanelEmbed`'s `panelFor` decides which have a real panel, and `OnboardingView`'s `PANELLED` set must agree with it (a pair in one and not the other renders an empty panel with no fallback cards). A greyed tab means the item's Stage Advancer puts the patient before it; an UNRECOGNISED advancer greys out nothing, by design. ⚠️ Three tools have no panel on purpose — DVS and the two Intake tools live inline in their pages, Auth Denied has no tool — and fall back to the snapshot cards |
 | Something on an embedded stage panel is clickable, or it is fetching | §5.39c2 — the guard is `inert` on `.stage-embed` (verified in Chrome 141: a real click is not hittable and focus cannot enter), plus no-op callbacks, plus mounting the PANEL and never the page's hook. If it fetches, read the panel's own hooks: `useFaxStatus` is switched off by the `embedded` prop, `useMondayFiles` polls only during a Generate, the rest are module-cached. A new hook on a panel needs the same audit |
