@@ -118,20 +118,34 @@ const DEFAULT_MODIFIERS: Record<string, string[]> = {
   E2103: ["KX", "NU"],
 };
 
-type ModifierRoute = "anthem-803" | "carecentrix" | "bcbs-tn";
+type ModifierRoute = "anthem-803" | "carecentrix" | "bcbs-tn" | "bcbs-fl";
+
+type RouteTable = { label: string } & Record<string, string[] | string>;
+
+// Anthem NY / Empire 803 — NY residents + all out-of-state BlueCard.
+// E0784/E2103 not yet codified for 803 → fall through to defaults.
+const ANTHEM_803: RouteTable = {
+  label: "Anthem NY 803",
+  A4230: ["KX"],
+  A4231: ["KX"],
+  A4224: ["KX"],
+  A4232: ["KX"],
+  A4225: ["KX"],
+  A4239: ["KF", "KX", "CG"],
+};
 
 /** Route-specific overrides. HCPCs absent from a route fall through to defaults. */
-const ROUTE_MODIFIERS: Record<ModifierRoute, { label: string } & Record<string, string[] | string>> = {
-  // Anthem NY / Empire 803 — NY residents + all out-of-state BlueCard.
-  // E0784/E2103 not yet codified for 803 → fall through to defaults.
-  "anthem-803": {
-    label: "Anthem NY 803",
-    A4230: ["KX"],
-    A4231: ["KX"],
-    A4224: ["KX"],
-    A4232: ["KX"],
-    A4225: ["KX"],
-    A4239: ["KF", "KX", "CG"],
+const ROUTE_MODIFIERS: Record<ModifierRoute, RouteTable> = {
+  "anthem-803": ANTHEM_803,
+  // BCBS Florida — BlueCard, so every SUPPLY line is still Anthem 803's and
+  // is spread from it verbatim. The PUMP alone differs: E0784 bills NU SQ
+  // (Brandon, 2026-09-21; he is making the matching claims-ui-tool change).
+  // ⚠️ Spread, never re-typed — a second copy of the 803 supply lines would
+  // drift from the route it is supposed to follow, silently.
+  "bcbs-fl": {
+    ...ANTHEM_803,
+    label: "BCBS FL via Anthem 803",
+    E0784: ["NU", "SQ"],
   },
   // Horizon NJ via CareCentrix 11348 — NJ residents.
   carecentrix: {
@@ -163,7 +177,10 @@ export function modifierRoute(primaryInsurance: string): ModifierRoute | null {
   const p = primaryInsurance ?? "";
   if (p === "Horizon BCBS") return "carecentrix";
   if (p === "BCBS TN") return "bcbs-tn";
-  if (/Anthem BCBS|BCBS FL|BCBS WY/.test(p)) return "anthem-803";
+  // ⚠️ Exact match BEFORE the Anthem regex — the regex still matches "BCBS FL",
+  // so reordering these two lines silently puts the pump back on KX NU.
+  if (p === "BCBS FL") return "bcbs-fl";
+  if (/Anthem BCBS|BCBS WY/.test(p)) return "anthem-803";
   return null;
 }
 

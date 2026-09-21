@@ -139,7 +139,7 @@ describe("modifiers (handoff §4 — hand-synced from claims-ui-tool)", () => {
     expect(modifierRoute("BCBS TN")).toBe("bcbs-tn");
     expect(modifierRoute("Anthem BCBS Commercial")).toBe("anthem-803");
     expect(modifierRoute("Anthem BCBS Low-Cost (JLJ)")).toBe("anthem-803");
-    expect(modifierRoute("BCBS FL")).toBe("anthem-803");
+    expect(modifierRoute("BCBS FL")).toBe("bcbs-fl");
     expect(modifierRoute("BCBS WY")).toBe("anthem-803");
     expect(modifierRoute("Medicare A&B")).toBeNull();
     expect(modifierRoute("Fidelis Medicaid")).toBeNull();
@@ -170,6 +170,29 @@ describe("modifiers (handoff §4 — hand-synced from claims-ui-tool)", () => {
     expect(modifiersFor("A4230", "Horizon BCBS")).toEqual({ mods: ["NU", "SC"], source: "CareCentrix 11348" });
     expect(modifiersFor("A4239", "Horizon BCBS")).toEqual({ mods: ["NU"], source: "CareCentrix 11348" });
     expect(modifiersFor("E0784", "Horizon BCBS")).toEqual({ mods: ["NU"], source: "CareCentrix 11348" });
+  });
+
+  it("BCBS FL: pump is NU+SQ; every other line still Anthem 803's", () => {
+    // The pump is the whole reason this route exists (Brandon, 2026-09-21).
+    expect(modifiersFor("E0784", "BCBS FL")).toEqual({
+      mods: ["NU", "SQ"],
+      source: "BCBS FL via Anthem 803",
+    });
+    // ⚠️ The supply lines are SPREAD from anthem-803 and must stay identical to
+    // it — only the source label differs. A hand-retyped table would drift here.
+    for (const hcpc of ["A4230", "A4231", "A4224", "A4232", "A4225", "A4239"]) {
+      expect(modifiersFor(hcpc, "BCBS FL")!.mods).toEqual(
+        modifiersFor(hcpc, "Anthem BCBS Commercial")!.mods,
+      );
+    }
+    // E2103 is in neither table, so it still falls through to the defaults.
+    expect(modifiersFor("E2103", "BCBS FL")).toEqual({ mods: ["KX", "NU"], source: "default" });
+  });
+
+  it("BCBS FL's pump rule does NOT leak onto the other Anthem 803 payers", () => {
+    for (const payer of ["Anthem BCBS Commercial", "Anthem BCBS Low-Cost (JLJ)", "BCBS WY"]) {
+      expect(modifiersFor("E0784", payer)).toEqual({ mods: ["KX", "NU"], source: "default" });
+    }
   });
 
   it("BCBS TN direct: NU on every line; unknown HCPC → null", () => {
