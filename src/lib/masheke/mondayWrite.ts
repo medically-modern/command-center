@@ -1,6 +1,16 @@
 // Batch writer for Medical Necessity "Send to Monday"
 
-import { writeStatusIndex, writeText, writeLongText, writeDate, writeDateTime, writeStatusLabel, readColumnTexts, COL } from "./mondayApi";
+import {
+  writeStatusIndex,
+  writeText,
+  writeLongText,
+  writeDate,
+  writeDateTime,
+  writeStatusLabel,
+  readColumnTexts,
+  COL,
+  writeDropdownLabels,
+} from "./mondayApi";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { etNow, etToday, clampToBusinessDay } from "./etDate";
 import {
@@ -29,6 +39,7 @@ import {
 } from "./fieldOptions";
 import type { Patient } from "./workflow";
 import type { StatusOption } from "@/components/masheke/StatusSelect";
+import { diagnosisWriteValue, diagnosisExpectedText } from "../shared/diagnosisCell";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -162,7 +173,19 @@ export async function sendPatientToMonday(
     pushStatus(tasks, p.id, "LMN", COL.lmn, p.lmn, STANDARD_EVAL);
     pushStatus(tasks, p.id, "OOW Date", COL.oowDate, p.oowDate, STANDARD_EVAL);
     pushStatus(tasks, p.id, "Malfunction", COL.malfunction, p.malfunction, STANDARD_EVAL);
-    pushStatus(tasks, p.id, "Diagnosis", COL.diagnosis, p.diagnosis, DIAGNOSIS_OPTS);
+    // Diagnosis is a DROPDOWN (lib/shared/diagnosisCell), so it cannot go
+    // through pushStatus — that writes {index}, and DIAGNOSIS_OPTS' indices are
+    // the retired status column's anyway.
+    if (p.diagnosis) {
+      const dx = p.diagnosis;
+      tasks.push({
+        label: "Diagnosis",
+        columnId: COL.diagnosis,
+        value: diagnosisWriteValue(dx),
+        expectedText: diagnosisExpectedText(dx),
+        fn: () => writeDropdownLabels(p.id, COL.diagnosis, [dx], true),
+      });
+    }
     // MR + MedNec
     pushStatus(tasks, p.id, "MRs / Clinicals", COL.mrsClinicals, p.mrsClinicals, MR_OPTS);
     pushStatus(tasks, p.id, "Medical Necessity", COL.medicalNecessity, p.medicalNecessity, MED_NEC_OPTS);

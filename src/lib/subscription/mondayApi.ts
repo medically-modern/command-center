@@ -62,7 +62,7 @@ export const COL = {
   // (date/time ET), written by Update Clinicals' Submit. Replaced the old
   // "Done" status column color_mm4890ez (June 2026).
   mnUpdate: "text_mm48gn5w",
-  diagnosis: "color_mkxrxv9w",
+  diagnosis: "dropdown_mm7d2p2h",
   mnDocs: "file_mkp0vm0a",
   // MR Request Log — the running record of the records chase, written from BOTH
   // ends. The `email-serivce` `mr-request` feature appends a line every time it

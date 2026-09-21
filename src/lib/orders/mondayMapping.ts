@@ -5,6 +5,7 @@
  */
 import { COL, GROUP_TITLES, type MondayItem } from "./mondayApi";
 import type { Order, OrderFile } from "./workflow";
+import { readDiagnosis } from "../shared/diagnosisCell";
 
 export function mondayItemToOrder(item: MondayItem, opts: { partial?: boolean } = {}): Order {
   const byId = new Map(item.column_values.map((c) => [c.id, c]));
@@ -109,7 +110,7 @@ export function mondayItemToOrder(item: MondayItem, opts: { partial?: boolean } 
     secondaryInsurance: txt(COL.secondaryInsurance),
     secondaryId: txt(COL.secondaryId),
     otherPayerId: txt(COL.otherPayerId),
-    diagnosisCode: txt(COL.diagnosisCode),
+    diagnosisCode: readDiagnosis(txt(COL.diagnosisCode)),
     cgmCoverage: txt(COL.cgmCoverage),
     medicarePriorPumpDate: txt(COL.medicarePriorPumpDate),
 

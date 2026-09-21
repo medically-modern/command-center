@@ -8,6 +8,7 @@ import { readEmailCell } from "../shared/emailCell";
 // Reverse: Monday dropdown text → AuthSubmissionMethod
 import type { AuthSubmissionMethod } from "./workflow";
 import { AUTH_SUBMISSION_METHODS } from "./workflow";
+import { readDiagnosis } from "../shared/diagnosisCell";
 
 function parseAuthMethod(text: string | null | undefined): AuthSubmissionMethod {
   if (!text) return "";
@@ -234,7 +235,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const memberId1 = cv(COL.memberId1)?.text ?? "";
   const memberId2 = cv(COL.memberId2)?.text ?? "";
   const referralSource = cv(COL.referralSource)?.text ?? "";
-  const diagnosis = cv(COL.diagnosis)?.text ?? "";
+  const diagnosis = readDiagnosis(cv(COL.diagnosis)?.text);
   const patientPhone = cv(COL.patientPhone)?.text ?? "";
   const patientAddress = cv(COL.patientAddress)?.text ?? "";
   const pumpBrand = cv(COL.pumpBrand)?.text ?? "";

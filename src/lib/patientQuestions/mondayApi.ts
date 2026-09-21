@@ -16,6 +16,7 @@ import type { PatientQuestion } from "./types";
 import { isQuestionOpen, mondayDateValueToIso, newestTimestamp, nowAsMondayDateValue } from "./handled";
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { readDiagnosis } from "../shared/diagnosisCell";
 const MONDAY_API_VERSION = "2024-10";
 
 // ── Board IDs ───────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ const SUB_COL = {
   cgmCoverage: "color_mm2cmgqe",
   mr: "color_mktyr8xg",
   mnExpiry: "date_mkp09gra",
-  diagnosis: "color_mkxrxv9w",
+  diagnosis: "dropdown_mm7d2p2h",
   sensorsAuthStatus: "color_mm25t997",
   suppliesAuthStatus: "color_mm27snkq",
   sensorsAuthId: "text_mkwbkq9d",
@@ -306,7 +307,7 @@ export async function fetchPatientQuestions(): Promise<PatientQuestion[]> {
       cgmCoverage: txt(item, SUB_COL.cgmCoverage),
       mr: txt(item, SUB_COL.mr),
       mnExpiry: txt(item, SUB_COL.mnExpiry),
-      diagnosis: txt(item, SUB_COL.diagnosis),
+      diagnosis: readDiagnosis(txt(item, SUB_COL.diagnosis)),
       // auth
       sensorsAuthStatus: txt(item, SUB_COL.sensorsAuthStatus),
       suppliesAuthStatus: txt(item, SUB_COL.suppliesAuthStatus),

@@ -112,7 +112,7 @@ export const COL = {
   cgmCoveragePath: "color_mm2wsam4",
   referralSource: "color_mm1w5wxr",
   referralReceivedDate: "date_mm1x4e1r",
-  diagnosis: "color_mm1wf7rv",
+  diagnosis: "dropdown_mm7dvqts",
   notes: "text_mm6vqq2k",
   // Carried-forward read-only notes from earlier stages (populated by a Monday
   // automation; the SPA only reads them). Columns created 2026-07.

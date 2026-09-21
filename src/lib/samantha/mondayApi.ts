@@ -19,7 +19,7 @@ export const GROUPS = {
 export const COL = {
   serving: "color_mm1w1cm9",
   primaryInsurance: "color_mm1x157j",
-  diagnosis: "color_mm1wf7rv",
+  diagnosis: "dropdown_mm7dkdq8",
   secondaryInsurance: "color_mm241kqp",
   doctorName: "text_mm1x46et",
   doctorPhone: "phone_mm1xz8c0",

@@ -1,6 +1,7 @@
 import { COL } from "./mondayApi";
 import type { Patient } from "./workflow";
 import type { MondayItem } from "./mondayApi";
+import { readDiagnosis } from "../shared/diagnosisCell";
 
 /**
  * Convert a Monday board item into a Subscription Patient row.
@@ -99,7 +100,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     mr: txt(COL.mr),
     mnExpiry: txt(COL.mnExpiry),
     visitDate: "",                       // local-only; not a Monday column
-    diagnosis: txt(COL.diagnosis),
+    diagnosis: readDiagnosis(txt(COL.diagnosis)),
 
     // Prior Auth — Sensors
     sensorsAuthStatus: txt(COL.sensorsAuthStatus),

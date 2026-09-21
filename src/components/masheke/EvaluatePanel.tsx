@@ -72,7 +72,7 @@ import { BOARD_ID,
   deleteFileFromColumn,
   deleteSingleFileFromColumn,
   fetchAssetBytes,
-  fetchStatusOptions,
+  fetchDropdownOptions,
   hasToken,
   writeDate,
   writeDropdownLabels,
@@ -120,6 +120,7 @@ import {
 } from "lucide-react";
 import { StepSection } from "@/components/shared/StepSection";
 import { getServingAccent } from "@/lib/masheke/servingTheme";
+import { diagnosisWriteValue, diagnosisExpectedText } from "@/lib/shared/diagnosisCell";
 
 interface Props {
   patient: Patient;
@@ -418,10 +419,32 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
     // Diagnosis / Last Visit / MR Expiry — only synced while the Clinicals
     // section is visible (Clinicals received). When hidden, leave Monday untouched.
     if (clinReceived) {
-      // Diagnosis is the ONLY status column allowed to create new labels (reps
-      // can add new ICD-10 codes) — createLabelsIfMissing on the /send below.
-      if (state.diagnosis) pushLabel("Diagnosis", COL.diagnosis, state.diagnosis, true);
-      else pushClearStatus("Diagnosis", COL.diagnosis);
+      // Diagnosis is a DROPDOWN since 2026-09-21 (lib/shared/diagnosisCell) and
+      // is the ONLY column here allowed to create new labels — reps add new
+      // ICD-10 codes, and the status column it replaced hit monday's 39-label
+      // ceiling, where create_labels_if_missing silently drops the write.
+      // `expectedText` is safe on THIS dropdown and not on the others below
+      // because it carries exactly one label: monday returns a multi-label
+      // dropdown in the column's own label-id order, not the order written, so
+      // an exact-match check on those could never be satisfied.
+      if (state.diagnosis) {
+        const dx = state.diagnosis;
+        tasks.push({
+          label: "Diagnosis",
+          columnId: COL.diagnosis,
+          value: diagnosisWriteValue(dx),
+          expectedText: diagnosisExpectedText(dx),
+          fn: () => writeDropdownLabels(patient.id, COL.diagnosis, [dx], true),
+        });
+      } else {
+        tasks.push({
+          label: "Diagnosis",
+          columnId: COL.diagnosis,
+          value: diagnosisWriteValue(""),
+          expectedText: "",
+          fn: () => writeDropdownLabels(patient.id, COL.diagnosis, []),
+        });
+      }
     }
     // Script Received columns — the switch is always an answer: off = "No".
     if (showCgm) pushLabel("CGM Script Received", COL.cgmScriptReceived, cgmReceived ? "Yes" : "No");
@@ -1363,7 +1386,7 @@ function DiagnosisField({ value, onChange, required = true }: DiagnosisFieldProp
   useEffect(() => {
     if (!open || mondayOptions !== null) return;
     if (!hasToken()) return;
-    fetchStatusOptions(COL.diagnosis)
+    fetchDropdownOptions(COL.diagnosis)
       .then((opts) => setMondayOptions(opts))
       .catch(() => setMondayOptions([]));
   }, [open, mondayOptions]);

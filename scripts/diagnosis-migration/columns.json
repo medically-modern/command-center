@@ -1,0 +1,37 @@
+[
+  {
+    "board": "18406060017",
+    "name": "Medical Evaluation",
+    "from": "color_mm1wf7rv",
+    "title": "Diagnosis",
+    "to": "dropdown_mm7daf4m"
+  },
+  {
+    "board": "18410601299",
+    "name": "Insurance",
+    "from": "color_mm1wf7rv",
+    "title": "Diagnosis",
+    "to": "dropdown_mm7dkdq8"
+  },
+  {
+    "board": "18410804557",
+    "name": "Welcome Call",
+    "from": "color_mm1wf7rv",
+    "title": "Diagnosis",
+    "to": "dropdown_mm7dvqts"
+  },
+  {
+    "board": "18407459988",
+    "name": "Subscription",
+    "from": "color_mkxrxv9w",
+    "title": "Diagnosis",
+    "to": "dropdown_mm7d2p2h"
+  },
+  {
+    "board": "18405457690",
+    "name": "New Order",
+    "from": "color_mm189t0b",
+    "title": "Diagnosis Code",
+    "to": "dropdown_mm7dds6y"
+  }
+]

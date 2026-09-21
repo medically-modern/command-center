@@ -34,7 +34,7 @@ import {
   stateFromAddress,
   MAC_CONTRACTORS,
 } from "@/lib/samantha/medicareJurisdiction";
-import { hasToken, fetchStatusOptions, BOARD_ID, COL } from "@/lib/finalConfirm/mondayApi";
+import { hasToken, fetchDropdownOptions, BOARD_ID, COL } from "@/lib/finalConfirm/mondayApi";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { toast } from "sonner";
 import { indexForLabel } from "@/lib/shared/statusOptions";
@@ -546,7 +546,7 @@ function DiagnosisCombobox({
   useEffect(() => {
     if (!open || mondayOptions !== null) return;
     if (!hasToken()) return;
-    fetchStatusOptions(COL.diagnosis)
+    fetchDropdownOptions(COL.diagnosis)
       .then((opts) => setMondayOptions(opts))
       .catch(() => setMondayOptions([]));
   }, [open, mondayOptions]);

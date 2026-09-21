@@ -5493,6 +5493,107 @@ link still works. The ORDER sidebar is hidden while Inventory is open (it is the
 search, and on this screen it lists things this page cannot open); the Orders tab is one click back
 and brings it with it.
 
+### 5.40 Diagnosis is a DROPDOWN — monday status columns cap at 39 labels (Sep 2026)
+A rep sent an Evaluate patient on 2026-09-21 and the send failed four times with
+`verify timeout after ~12s`, paging Josh. Carol Robinson, ME `13095515539`: 16 of the
+17 columns landed and **Diagnosis did not**, so the verified write refused to advance —
+working exactly as designed (§5.2), and the reason the failure cost nothing.
+
+⚠️⚠️ **THE CAUSE IS A CEILING, NOT A BAD VALUE — monday status columns hold at most
+39 LABELS and the label-id pool ends at 160.** Measured across **all 273 status
+columns in the account**: the maximum anywhere is exactly 39 labels / max id 160. All
+three Diagnosis columns the app WRITES — Medical Evaluation, Insurance, Welcome Call —
+sat at 39/160 with 39 distinct colours, i.e. **full**. `create_labels_if_missing` then
+has nowhere to put a new code, so monday **drops that one column at HTTP 200 with no
+`errors[]`** and applies the rest of the mutation. This is the silent-drop class
+§5.12 · §5.20 · §5.31c · §5.31d · §5.33 · §5.36 already record, arriving for the first
+time from a FULL column rather than a wrong index — and it is a WALL, not a blip:
+every future ICD-10 code the board had not already seen would have failed identically,
+~64s of retries and a stranded patient each time. The code was `Z83.3` (family history
+of DM); the column held only E-codes plus `O24.111`.
+
+**So Diagnosis moved to a DROPDOWN**, which is what the app already uses for every
+other open vocabulary — Clinic Name is at **324** labels, Stedi Plan Name 192, ids
+sequential, no ceiling. ICD-10 has ~70k codes; it never belonged in a 39-slot column.
+
+| Board | Old status (retired, never deleted) | New dropdown |
+|---|---|---|
+| Medical Evaluation `18406060017` | `color_mm1wf7rv` | **`dropdown_mm7daf4m`** |
+| Insurance `18410601299` | `color_mm1wf7rv` | **`dropdown_mm7dkdq8`** |
+| Welcome Call `18410804557` | `color_mm1wf7rv` | **`dropdown_mm7dvqts`** |
+| Subscription `18407459988` | `color_mkxrxv9w` | **`dropdown_mm7d2p2h`** |
+| New Order `18405457690` (Diagnosis Code) | `color_mm189t0b` | **`dropdown_mm7dds6y`** |
+
+⚠️ **FIVE boards, not the three the app writes.** Subscription and New Order are
+DESTINATIONS of the hop automations, a hop cannot copy dropdown → status, and both
+were already at 37 labels — two codes from the same wall. Converting three would have
+ended the chain at Welcome Call. ⚠️ **DTC Intake `color_mkxqzqdj` and Secondary Claims
+`color_mky2gpz5` are deliberately OUT of scope** — neither is in the app's write path
+nor a destination of these hops.
+
+**`lib/shared/diagnosisCell.ts` owns both shape changes** so no slice re-derives them:
+- **WRITE is `{labels:[code]}`, never the status column's `{label: code}`.**
+- **READ can come back `"A, B"`** — a dropdown accepts several labels where a status
+  held one. Every consumer (the MN request letter, the check pack, the OOP rules)
+  treats diagnosis as ONE string, so `readDiagnosis` takes the first and **leaves the
+  column alone**: narrowing a read is safe, rewriting a rep's board value from a
+  display path is not. `hasMultipleDiagnoses` is there for anyone who wants to surface it.
+
+⚠️ **`expectedText` is safe on THIS dropdown and on no other.** It carries exactly one
+label. monday returns a multi-label dropdown in the column's own **label-id order, not
+the order written**, so an exact-match verify on the MN-reasons dropdowns beside it
+could never be satisfied — it would time out every send. Do not "tidy" `pushDropdown`
+in `EvaluatePanel` by giving it a blanket `expectedText`.
+
+⚠️ **Both Insurance and Final Confirm HOIST the diagnosis write out of the verified
+batch**, because `change_multiple_column_values` carries ONE `create_labels_if_missing`
+flag for the WHOLE transaction and everything else in those sends must stay STRICT
+(§5.6 — a loose flag mints duplicate board labels). The awaited hoist makes the LABEL
+EXIST; a second task inside the strict batch writes the same value with `expectedText`
+so the column is still read-back verified before the advancer fires. That is the exact
+pattern Clinic Name already used in `samantha/mondayWrite` — copy it, do not invent a
+third shape. Diagnosis is free text on the Insurance board
+(`samantha/PatientProfileCard`'s `editingProfile`), so a code that board has never seen
+really is reachable there.
+
+⚠️ **A dropdown's `settings_str.labels` is an ARRAY of `{id, name}`; a status column's
+is an OBJECT keyed by index.** Reading a dropdown with the status parser returns an
+empty list — a picker with no options and no error. Both diagnosis comboboxes
+(`masheke/EvaluatePanel`, `finalConfirm/PatientInfoCard`) call the new
+`fetchDropdownOptions`, and `finalConfirm/mondayMapping`'s `diagnosisIndex` reads
+`{"ids":[n]}` via `parseDropdownId` rather than `{"index":n}`.
+
+⚠️ **`DIAGNOSIS_OPTS` in `masheke/fieldOptions.ts` is now label-only.** Its indices were
+the retired status column's AND were already stale — it maps `Evaluate`→107 and
+`Collect`→108 while the live board had `E10.11` and `E11.628` there. Nothing live read
+them (the only consumer was `sendPatientToMonday`, which its own banner records as not
+wired up); `DIAGNOSIS_LIST` is derived from the labels and still feeds the picker.
+
+⚠️ **The one deletable status label was `E10.39` (id 159) — zero uses across 4,004
+items on all five boards.** It was NOT deleted: the conversion makes freeing a slot
+unnecessary, and rewriting a live 39-label set that 4,004 items reference by id is the
+riskier of the two paths. Recorded here in case the retired columns are ever revived.
+
+**Keep-in-agreement:** `lib/shared/diagnosisCell.ts` (the shapes) ⇄ the five `COL` maps
+⇄ the three write paths (`EvaluatePanel`, `samantha/mondayWrite`,
+`finalConfirm/mondayWrite`) ⇄ the six mappings ⇄ `commsHub/stageDetail` ⇄
+`patientQuestions/mondayApi`'s `SUB_COL`. `diagnosisColumnIds.test.ts` pins all five ids
+AND scans `src/` for any surviving retired id — a re-pointed `COL` map does not help if
+a component hardcodes the old one, which `masheke/mondayMapping` did before this.
+Scripts + the evening runbook: `scripts/diagnosis-migration/README.md`.
+
+⚠️⚠️ **THE HOP AUTOMATIONS ARE NOT RE-POINTED YET.** They still copy the retired status
+columns, so between the app cutover and that edit a hop delivers an EMPTY dropdown
+downstream — the identical window the notes conversion hit (§10), and
+`migrateDiagnosis.mjs --apply` is re-runnable precisely to close it. Board automations
+of this vintage cannot be edited through the workflow API (it answers "General error"),
+so it is a person in monday's UI. **Unmeasured and worth measuring that evening:
+whether a hop CREATES a missing label on the destination dropdown.** If it does not, a
+brand-new code entered at Evaluate will not carry to Insurance on the hop — both sends
+write with `create_labels_if_missing`, so the next send self-heals, but measure it the
+way `hopTest.mjs` measured the notes hop rather than assuming.
+
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
 ⚠️⚠️ **TWO DIFFERENT SCREENS SHOW WELCOME CALL DATA, AND A NOTE ABOUT ONE IS NOT A NOTE ABOUT THE
@@ -8058,6 +8159,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
+| A new ICD-10 code won't save / an Evaluate send times out on verify | §5.40 — Diagnosis is a **dropdown** since 2026-09-21 (`lib/shared/diagnosisCell.ts`). monday status columns cap at **39 labels / id 160** and all three Diagnosis columns were full, so `create_labels_if_missing` was dropped at HTTP 200 with no error. If it recurs, check the write shape is `{labels:[code]}` and the COL map points at the `dropdown_` id — `diagnosisColumnIds.test.ts` scans `src/` for retired ids. ⚠️ A blank Diagnosis downstream usually means the **hop automation** still copies the retired status column: re-run `scripts/diagnosis-migration/migrateDiagnosis.mjs --apply` |
 | A payer is $0 on one screen and charged on another | §5.37 — `src/lib/shared/payerPolicy.json` is canonical; `node scripts/check-payer-policy.mjs` names every copy that disagrees. A DECLARED deviation is a difference somebody has signed off; profile's CGM-monitor exclusion is the only one. A drift line right after a push to another repo may be the raw CDN being ~5 min stale — re-run with `GITHUB_TOKEN` set. The **Python** copy is in another org and is checked by nobody |
 | A patient's Medical Records still read "MR Expired" after new records went in | §5.36 — `lib/subscription/mrStatus.ts` (the rung rule) → `mondayWrite.saveVisitDateVerified`. The board's five automations only count DOWN and nothing there writes **MR Valid**, so before 2026-09-16 the only fix was by hand. If it recurs: check the Update Visit Date save actually ran (it writes MN Expiry AND MR), then that `MR_STATUS_INDEX` still matches `color_mktyr8xg`'s live `settings_str` — a stale id is dropped at HTTP 200 with nothing in the logs |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
