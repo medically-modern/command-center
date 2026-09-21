@@ -91,10 +91,17 @@ for (const b of COLUMNS) {
   let bad = 0;
   for (let i = 0; i < todo.length; i += 100) {
     const chunk = todo.slice(i, i + 100);
-    const d = await gql(`query($ids:[ID!],$to:String!){items(ids:$ids){id column_values(ids:[$to]){text}}}`,
+    // monday's items(ids:) DEFAULTS TO limit:25 and silently drops the rest, so
+    // asking about 100 ids returns 25 and the other 75 read back as `undefined`
+    // -- a verify that reports 75% of a good migration as MISMATCH. Measured
+    // 2026-09-21: no limit -> 25 returned, limit:100 -> 100 returned.
+    const d = await gql(`query($ids:[ID!],$to:String!){items(ids:$ids,limit:100){id column_values(ids:[$to]){text}}}`,
       { ids: chunk.map((c) => c.id), to: b.to });
     const got = new Map(d.items.map((it) => [it.id, (it.column_values[0]?.text || "").trim()]));
-    for (const c of chunk) if (got.get(c.id) !== c.src) { bad++; console.log(`    MISMATCH item ${c.id}: wanted "${c.src}" got "${got.get(c.id)}"`); }
+    for (const c of chunk) {
+      if (!got.has(c.id)) { bad++; console.log(`    NOT READ BACK item ${c.id}: the verify query did not return it -- check the page limit, do NOT read this as a bad value`); continue; }
+      if (got.get(c.id) !== c.src) { bad++; console.log(`    MISMATCH item ${c.id}: wanted "${c.src}" got "${got.get(c.id)}"`); }
+    }
     await sleep(200);
   }
   console.log(`  -> copied ${todo.length}, verified ${todo.length - bad} ok, ${bad} mismatched`);
