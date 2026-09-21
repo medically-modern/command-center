@@ -79,14 +79,44 @@ back exactly. That is the same mutation shape the gateway's `writeMultiple` send
   answers "General error"; see the notes-migration README). Until then the hops
   still copy the retired status columns.
 
-## Still to do (the evening list)
+## The evening list — the 10 automations that still copy a retired column
 
-1. Re-point the Diagnosis pair in each hop automation onto the new dropdown ids.
-2. **Test whether a hop CREATES a missing label on the destination dropdown.**
-   Unknown, and it matters: if it does not, a brand-new code entered at Evaluate
-   will not carry to Insurance. Both boards' sends write with
-   `create_labels_if_missing`, so the next send self-heals either way — but the
-   hop's own behaviour should be measured, the way `hopTest.mjs` measured the
-   notes hop, rather than assumed.
-3. Re-run `node migrateDiagnosis.mjs --apply` to close the cutover window.
-4. Then retitle the five status columns "(retired)" and hide them. Never delete.
+Found by scanning every workflow on the three source boards for the retired ids
+(32 + 45 + 41 workflows, 54 legacy recipes). **No legacy recipe touches Diagnosis**,
+so all ten are editable workflows — but board automations of this vintage cannot be
+changed through the workflow API (it answers "General error", see the notes-migration
+README), so this is a person in monday's automation editor.
+
+| Board | Workflow | Active | Re-point the Diagnosis pair |
+|---|---|---|---|
+| Medical Evaluation → Insurance | `7918295320` | yes | `dropdown_mm7daf4m` → `dropdown_mm7dkdq8` |
+| Insurance → Welcome Call | `7918324247` | yes | `dropdown_mm7dkdq8` → `dropdown_mm7dvqts` |
+| Welcome Call → Subscription | `7918317925` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
+| Welcome Call → Subscription | `7918340632` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
+| Welcome Call → Subscription | `7918343137` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
+| Welcome Call → Subscription | `7918601476` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
+| Welcome Call → Subscription | `7919753399` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
+| Welcome Call → Subscription **and** New Order | `7918340959` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` **and** `dropdown_mm7dds6y` |
+| Welcome Call → Subscription **and** New Order | `7918341001` | yes | same pair |
+| Welcome Call → Subscription **and** New Order | `7918341011` | yes | same pair |
+| Welcome Call → Subscription **and** New Order | `7921725444` | **no** | same pair — inactive (§5.22b says keep it inactive), but re-point it so it is not a trap if it is ever enabled |
+
+⚠️ The last four reference all three retired ids because they create into BOTH
+Subscription and New Order; check every Diagnosis row inside each, not just the first.
+
+## Then, in this order
+
+1. **Test whether a hop CREATES a missing label on the destination dropdown.**
+   Unknown, and it matters: if it does not, a brand-new code entered at Evaluate will
+   not carry to Insurance on the hop. Both sends write with
+   `create_labels_if_missing`, so the next send self-heals either way — but measure
+   it, the way `hopTest.mjs` measured the notes hop, rather than assuming.
+2. **Re-run `node migrateDiagnosis.mjs --apply`** to close the cutover window (a hop
+   that fired between the app deploy and the re-point delivered an empty dropdown).
+   It reports `diverged` rather than overwriting anything a rep has since set.
+3. **Then** retitle the five status columns "(retired)" and hide them from the views.
+   Never delete: 4,004 items still reference them, and they are the rollback.
+
+## Original scope note
+
+The four numbered steps this section replaced are folded into the tables above.
