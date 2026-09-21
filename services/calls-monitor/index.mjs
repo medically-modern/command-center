@@ -196,6 +196,11 @@ export function archiveFaults(health) {
     out.push("Could not reach the call-archive health check — this says nothing about the archive itself, only that we could not ask.");
     return out;
   }
+  // ⚠️ Switched off ON PURPOSE is not a fault. The gateway keeps answering this
+  // route when the kill switch is flipped precisely so an incident shutdown
+  // does not become a second alert stream on top of whatever is already going
+  // wrong.
+  if (health.enabled === false) return out;
   if (health.storeConfigured === false) {
     out.push("The call archive has no object store configured, so nothing is being saved. Set the CALL_ARCHIVE_* variables on the gateway.");
     return out;

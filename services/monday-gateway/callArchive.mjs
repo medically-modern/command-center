@@ -697,12 +697,28 @@ export function registerCallArchive({ app, pool, requireCaller }) {
   // Master kill switch. The archive is additive and shed-first, but if it ever
   // needs stopping it must be stoppable from Railway in seconds — without a
   // revert and a redeploy of the service that also carries patient texting.
-  if (process.env.CALL_ARCHIVE_ENABLED === "0") {
-    console.warn("WARN: call archive disabled by CALL_ARCHIVE_ENABLED=0");
-    return;
-  }
-  if (!pool) {
-    console.warn("WARN: call archive disabled (messaging Postgres not configured)");
+  const killed = process.env.CALL_ARCHIVE_ENABLED === "0";
+  const disabled = killed || !pool;
+  if (killed) console.warn("WARN: call archive disabled by CALL_ARCHIVE_ENABLED=0");
+  else if (!pool) console.warn("WARN: call archive disabled (messaging Postgres not configured)");
+
+  if (disabled) {
+    // ⚠️⚠️ THE HEALTH ROUTE SURVIVES THE KILL SWITCH, and that is the point of
+    // putting it before the early return. Without it, flipping the switch
+    // during an incident makes /calls/archive-health 404 — which the monitor
+    // reports as "could not reach the health check", i.e. turning a deliberate
+    // shutdown into a fresh alert stream at the exact moment somebody is
+    // already dealing with something. It answers "off, on purpose" instead,
+    // which `archiveFaults` can tell apart from a fault.
+    app.get("/calls/archive-health", (_req, res) => {
+      res.json({
+        ok: true,
+        enabled: false,
+        reason: killed
+          ? "the call archive is switched off (CALL_ARCHIVE_ENABLED=0)"
+          : "the call archive is not configured (messaging Postgres missing)",
+      });
+    });
     return;
   }
   if (!storeConfigured()) {
@@ -788,6 +804,7 @@ export function registerCallArchive({ app, pool, requireCaller }) {
           firstRunAt: r.first_run,
           presignOk,
         }),
+        enabled: true,
         storeConfigured: storeConfigured(),
         bucket: storeConfigured() ? storeName() : null,
       });

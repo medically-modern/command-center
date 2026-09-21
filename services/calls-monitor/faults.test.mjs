@@ -173,6 +173,15 @@ describe("archiveFaults", () => {
     expect(archiveFaults({ ...ok, pending: 4200 })).toEqual([]);
   });
 
+  // ⚠️ Flipping the kill switch during an incident must not start a second
+  // alert stream on top of whatever is already going wrong. The gateway keeps
+  // answering the route when switched off precisely so this can tell them apart.
+  it("stays quiet when the archive is switched off on purpose", () => {
+    expect(archiveFaults({ ok: true, enabled: false, reason: "switched off" })).toEqual([]);
+    // ...and does not mistake "off" for "no bucket", which IS a fault.
+    expect(archiveFaults({ ok: false, enabled: false, storeConfigured: false })).toEqual([]);
+  });
+
   it("speaks up when the archive reports itself not ok, and passes on WHY", () => {
     const f = archiveFaults({ ...ok, ok: false, reason: "last successful run was 31h ago" });
     expect(f).toHaveLength(1);

@@ -482,6 +482,19 @@ describe("callArchive.mjs invariants", () => {
     expect(src).toMatch(/CALL_ARCHIVE_ENABLED === "0"/);
   });
 
+  // ⚠️ Without this, flipping the kill switch makes the health route 404 and
+  // the monitor reports "could not reach the health check" — a deliberate
+  // shutdown turning into a fresh alert stream mid-incident.
+  it("keeps answering health when switched off, saying so", () => {
+    const reg = src.slice(src.indexOf("export function registerCallArchive"));
+    const killGuard = reg.indexOf("if (disabled) {");
+    const healthWhenOff = reg.indexOf('app.get("/calls/archive-health"');
+    expect(killGuard).toBeGreaterThan(0);
+    expect(healthWhenOff).toBeGreaterThan(killGuard);
+    expect(reg).toMatch(/enabled: false/);
+    expect(reg).toMatch(/enabled: true/);
+  });
+
   // ⚠️ A gateway with no bucket must still boot and carry patient texting.
   it("degrades to a warning rather than throwing when no bucket is configured", () => {
     const reg = src.slice(src.indexOf("export function registerCallArchive"));
