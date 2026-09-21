@@ -56,6 +56,7 @@
  * redeploys on every push to main, so bad runs are a certainty.
  */
 import { Buffer } from "node:buffer";
+import { Readable } from "node:stream";
 import { rcConfigured, rcMediaFetch, rcApiFetch } from "./ringcentral.mjs";
 import { retryAfterMs } from "./rcLimiter.mjs";
 import { authEnforced } from "./auth.mjs";
@@ -874,7 +875,18 @@ export function registerCallArchive({ app, pool, requireCaller }) {
         // ⚠️ Streamed, not buffered. A recording is only a few megabytes, but a
         // handful of simultaneous listeners buffering whole files is real
         // memory in a process that also carries patient texting.
-        out.body.pipe(res);
+        //
+        // ⚠️ The SDK's `Body` is a Node Readable on this runtime, but it is a
+        // WEB ReadableStream under some configurations — and a web stream has
+        // no `.pipe`, so assuming one is a TypeError inside a route that has
+        // already sent its headers, i.e. a dead connection rather than an
+        // error anybody can read. Both shapes are handled because this path is
+        // the fallback, and a fallback that throws is not one.
+        if (typeof out.body?.pipe === "function") {
+          out.body.pipe(res);
+        } else {
+          Readable.fromWeb(out.body).pipe(res);
+        }
         return;
       }
 

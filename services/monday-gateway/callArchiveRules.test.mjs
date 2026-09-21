@@ -438,6 +438,15 @@ describe("callArchive.mjs invariants", () => {
     expect(audit).toBeLessThan(proxy);
   });
 
+  // ⚠️ The SDK's Body is a Node Readable here and a WEB ReadableStream under
+  // some configurations; a web stream has no .pipe, so assuming one is a
+  // TypeError AFTER the headers have gone out — a dead connection rather than
+  // an error anybody can read. A fallback that throws is not a fallback.
+  it("handles both stream shapes in proxy mode", () => {
+    expect(src).toMatch(/typeof out\.body\?\.pipe === "function"/);
+    expect(src).toMatch(/Readable\.fromWeb\(out\.body\)\.pipe\(res\)/);
+  });
+
   it("does not cache a redirect that carries a credential", () => {
     expect(src).toMatch(/Cache-Control", "no-store/);
   });
