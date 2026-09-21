@@ -20,13 +20,15 @@
  * answers RingCentral's handshake.
  *
  * Required env:  CALLS_HEALTH_URL, NTFY_URL, NTFY_TOPIC
- * Optional env:  CALLS_WEBHOOK_URL   probe the handshake too (recommended)
- *                DRY_RUN=1           print, don't notify
+ * Optional env:  CALLS_WEBHOOK_URL        probe the handshake too (recommended)
+ *                CALL_ARCHIVE_HEALTH_URL  also watch the call-recording archive
+ *                DRY_RUN=1                print, don't notify
  */
 
 const {
   CALLS_HEALTH_URL,
   CALLS_WEBHOOK_URL,
+  CALL_ARCHIVE_HEALTH_URL,
   NTFY_URL,
   NTFY_TOPIC,
   DRY_RUN,
@@ -165,6 +167,48 @@ export function faults(health, { handshake, now = Date.now() }) {
   return out;
 }
 
+/**
+ * Is the call-recording archive still doing its job?
+ *
+ * ⚠️ The archive fails EXACTLY as quietly as inbound calling does — a dead
+ * timer, a revoked ReadCallRecording permission, rotated bucket credentials, a
+ * shed background tier. All of them look like a quiet week until somebody asks
+ * for a call we no longer have, by which point RingCentral has deleted it. The
+ * difference from every other alert here is that this one is unrecoverable:
+ * there is no re-running it later to get the audio back.
+ *
+ * The verdict is `archiveHealth`'s, not this file's — one rule, on the gateway,
+ * where it is unit-tested. This only decides whether to wake somebody.
+ *
+ * ⚠️ A PENDING BACKLOG IS NOT A FAULT and must never page. A backfill looks
+ * exactly like a backlog, and an alert that fires for a working system is the
+ * one that teaches everybody to swipe these away. What pages is the archive
+ * saying it is not ok — stale, truncated, or holding recordings RingCentral has
+ * that we could not fetch.
+ *
+ * ⚠️ Unreachable is "could not check", never "the archive is broken". Declaring
+ * an outage we have not established is the mirror image of the silence this
+ * monitor exists to break.
+ */
+export function archiveFaults(health) {
+  const out = [];
+  if (health === null) {
+    out.push("Could not reach the call-archive health check — this says nothing about the archive itself, only that we could not ask.");
+    return out;
+  }
+  if (health.storeConfigured === false) {
+    out.push("The call archive has no object store configured, so nothing is being saved. Set the CALL_ARCHIVE_* variables on the gateway.");
+    return out;
+  }
+  if (health.ok === false) {
+    out.push(
+      `Call recordings are not being archived: ${health.reason || "reason not reported"}.` +
+        ` (${health.stored ?? 0} stored, ${health.pending ?? 0} pending, ${health.failed ?? 0} failed)`,
+    );
+  }
+  return out;
+}
+
 async function main() {
   required("CALLS_HEALTH_URL", CALLS_HEALTH_URL);
   if (!DRY_RUN) {
@@ -183,6 +227,37 @@ async function main() {
 
   const handshake = await handshakeOk(CALLS_WEBHOOK_URL);
   const problems = faults(health, { handshake });
+
+  // ⚠️ A SEPARATE notification, deliberately not folded into the call-stream
+  // one. They are different systems with different remedies and different
+  // urgencies — "no calls will arrive" is a now problem, "recordings are not
+  // being saved" is a today problem — and a single push carrying both is one
+  // somebody reads as whichever half they recognise. Skipped entirely when
+  // CALL_ARCHIVE_HEALTH_URL is unset, so this file behaves exactly as before
+  // until somebody points it at the archive.
+  if (CALL_ARCHIVE_HEALTH_URL) {
+    let archive = null;
+    try {
+      const res = await get(CALL_ARCHIVE_HEALTH_URL);
+      if (res.ok) archive = await res.json();
+      else console.error(`archive health returned ${res.status}`);
+    } catch (e) {
+      console.error("archive health unreachable:", e.message);
+    }
+    const archiveProblems = archiveFaults(archive);
+    if (archiveProblems.length) {
+      console.error("ARCHIVE PROBLEMS:\n" + archiveProblems.map((p) => ` - ${p}`).join("\n"));
+      await notify(
+        "Command Center: call recordings",
+        archiveProblems.join("\n") + "\n\nCheck: " + CALL_ARCHIVE_HEALTH_URL,
+      );
+    } else if (archive) {
+      console.log(
+        `Archive OK — ${archive.stored} stored, ${archive.pending} pending, ` +
+          `${archive.gone} gone, ${Math.round((archive.bytes || 0) / 1e6)} MB`,
+      );
+    }
+  }
 
   if (!problems.length) {
     console.log(

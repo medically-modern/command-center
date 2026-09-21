@@ -6,10 +6,11 @@ import { beforeAll, describe, expect, it } from "vitest";
  * all-clear. Each case below is a way inbound calling has failed or can fail.
  */
 let faults;
+let archiveFaults;
 beforeAll(async () => {
   // Stops index.mjs from running a live check on import.
   process.env.CALLS_MONITOR_TEST = "1";
-  ({ faults } = await import("./index.mjs"));
+  ({ faults, archiveFaults } = await import("./index.mjs"));
 });
 
 const healthy = {
@@ -140,5 +141,70 @@ describe("faults", () => {
       const f = faults({ ...healthy, subscriptionId: null }, { ...ctx, now }).join(" ");
       expect(f).toMatch(/No RingCentral subscription exists — no calls will arrive/);
     });
+  });
+});
+
+
+/**
+ * The call-recording archive. Same discipline as `faults` above, and one extra
+ * reason to get it right: a missed inbound-call outage costs a call somebody
+ * can ring back, and a missed archive outage costs recordings RingCentral has
+ * already deleted by the time anyone notices.
+ */
+describe("archiveFaults", () => {
+  const ok = {
+    ok: true,
+    storeConfigured: true,
+    stored: 5000,
+    pending: 0,
+    failed: 0,
+    gone: 120,
+    bytes: 4.2e9,
+    reason: null,
+  };
+
+  it("stays quiet when the archive is keeping up", () => {
+    expect(archiveFaults(ok)).toEqual([]);
+  });
+
+  // ⚠️ A backfill looks EXACTLY like a backlog. Paging for one is how a monitor
+  // teaches everybody to swipe it away, and the next alert is a real one.
+  it("stays quiet during a backfill — a pending queue is not a fault", () => {
+    expect(archiveFaults({ ...ok, pending: 4200 })).toEqual([]);
+  });
+
+  it("speaks up when the archive reports itself not ok, and passes on WHY", () => {
+    const f = archiveFaults({ ...ok, ok: false, reason: "last successful run was 31h ago" });
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatch(/not being archived/i);
+    expect(f[0]).toMatch(/31h ago/);
+  });
+
+  it("names the counts, so the push says how bad it is without a second lookup", () => {
+    const f = archiveFaults({ ...ok, ok: false, reason: "x", stored: 10, pending: 9, failed: 3 });
+    expect(f[0]).toMatch(/10 stored, 9 pending, 3 failed/);
+  });
+
+  // The silent misconfiguration: the job is deployed, the gateway is healthy,
+  // and nothing has ever been saved because no bucket was wired up.
+  it("calls out a missing object store specifically, and stops there", () => {
+    const f = archiveFaults({ ...ok, ok: false, storeConfigured: false });
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatch(/no object store configured/i);
+    expect(f[0]).toMatch(/CALL_ARCHIVE_/);
+  });
+
+  // ⚠️ Declaring an outage we have not established is the mirror image of the
+  // silence this monitor exists to break (§5.13).
+  it("says it could not CHECK when health is unreachable — never that the archive is broken", () => {
+    const f = archiveFaults(null);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatch(/could not reach/i);
+    expect(f[0]).toMatch(/says nothing about the archive itself/i);
+    expect(f[0]).not.toMatch(/not being archived/i);
+  });
+
+  it("tolerates a health payload that reports no reason", () => {
+    expect(archiveFaults({ ...ok, ok: false, reason: null })[0]).toMatch(/reason not reported/);
   });
 });
