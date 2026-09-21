@@ -71,17 +71,19 @@ describe("⚠️ the softphone is ONE component, in two forms", () => {
 describe("⚠️ the home roster comes off only where a replacement exists", () => {
   const index = read("pages/Index.tsx");
 
-  it("needs BOTH the redesign layout and viewOthers", () => {
-    // Layout, so "as today" is untouched and the escape hatch is real (§5.39b).
-    // viewOthers, so the three managers without the dropdown that replaces the
-    // roster do not lose it and get nothing back.
-    expect(index).toContain('layout === "redesign" && hasAbility(email, config, "viewOthers")');
+  it("⚠️⚠️ `Index` is the \"as today\" dashboard ONLY — the redesign never renders it", () => {
+    // §5.39h: the redesign's home is the signed-in person's own view
+    // (`homeProfileFor`), so the roster branch that used to live here is GONE
+    // rather than dormant — a screen nothing can reach is the dead code §5.11
+    // exists to warn about. The one caller gates it on the layout.
+    const host = liveLines(read("components/shell/HomeViewHost.tsx"));
+    expect(host).toContain("if (!redesign) return <Index />;");
+    expect(index).not.toContain("rosterReplaced");
   });
 
-  it("⚠️ keeps the theme/sign-out button when the sidebar goes", () => {
-    // ThemePickerButton IS sign-out, and the sidebar was its only home on this
-    // screen. Twice now: once in the sidebar, once in the replacement.
-    expect(index.split("ThemePickerButton").length - 1).toBeGreaterThanOrEqual(3);
+  it("⚠️ keeps the theme/sign-out button in the layout that still has a sidebar", () => {
+    // ThemePickerButton IS sign-out, and the sidebar is its home in "as today".
+    expect(index).toContain("ThemePickerButton");
   });
 
   it("⚠️⚠️ and SIGN OUT is also in the header, where nothing can cover it", () => {
@@ -150,19 +152,31 @@ describe("⚠️ the header advertises every live destination, and no dead one",
     expect(live).toContain('navigate("/system-mgmt")');
   });
 
-  it("⚠️ Reports & Metrics is off the PRIMARY TABS — its destination is undecided", () => {
-    // A tab in primary navigation pointing at a page whose fate is undecided is
-    // worse than a missing tab (§5.39b names the three ways back).
-    //
-    // ⚠️ The scan is the TABS array, NOT the file: Operations itself is not
-    // lost — the Manage menu opens it, which is a different door answering a
-    // different question. A whole-file `not.toContain("tab=operations")` would
-    // fail on the door and read as though the tab had come back.
+  it("⚠️ Reports & Metrics is BACK, and ability-gated", () => {
+    // §5.39b left it commented out because it pointed at Operations while
+    // Operations was switched off. Operations is live again (§5.39f), so the
+    // collision is gone; Josh, 2026-09-19: *"same with inventory reports
+    // metrics etrc"* — i.e. it is one of the abilities that must be
+    // functional, which needs the tab to exist.
     const tabs = live.slice(live.indexOf("const TABS"), live.indexOf("export function GlobalHeader"));
-    expect(tabs).not.toContain("tab=operations");
-    expect(tabs).not.toContain("Reports & Metrics");
-    // …but the definition survives, so restoring it is uncommenting one block.
-    expect(header).toContain("Reports & Metrics");
+    expect(tabs).toContain("tab=operations");
+    expect(tabs).toContain("Reports & Metrics");
+    expect(tabs).toContain('ability: "reports"');
+  });
+
+  it("⚠️⚠️ every ability-gated tab is gated, and My Dashboard is not", () => {
+    // Josh: *"if i dont assign myself communications the tab should be removed
+    // from the top bar for me"*. A tab with no `ability` is unconditional, so
+    // the check is per-tab and not a count.
+    const tabs = live.slice(live.indexOf("const TABS"), live.indexOf("export function GlobalHeader"));
+    for (const [key, ability] of [["comms", "comms"], ["inventory", "inventory"], ["reports", "reports"]]) {
+      const block = tabs.slice(tabs.indexOf(`key: "${key}"`));
+      expect(block.slice(0, block.indexOf("},")), `${key} is not gated`).toContain(`ability: "${ability}"`);
+    }
+    const home = tabs.slice(tabs.indexOf('key: "home"'));
+    expect(home.slice(0, home.indexOf("},"))).not.toContain("ability:");
+    // …and the filter is what makes the field do anything.
+    expect(live).toContain("TABS.filter((t) => !t.ability || hasAbility(who, config, t.ability))");
   });
 
   it("every remaining tab points at a route that exists", () => {

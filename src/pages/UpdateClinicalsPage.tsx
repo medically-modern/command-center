@@ -14,6 +14,7 @@ import { useMondayPatients } from "@/hooks/subscription/useMondayPatients";
 import { formatDateMDY } from "@/lib/subscription/workflow";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
 import { saveVisitDateVerified, recordRecordsReplyVerified } from "@/lib/subscription/mondayWrite";
+import { AbilityLockNote, useAbility } from "@/components/shell/AbilityLock";
 import { mrRungForExpiry } from "@/lib/subscription/mrStatus";
 import {
   RECORDS_REPLY_OPTIONS,
@@ -281,6 +282,13 @@ function ClinicalsSidebar({
 function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: () => void }) {
   const [visitDate, setVisitDate] = useState("");
   const [saving, setSaving] = useState(false);
+  /* ⚠️⚠️ **`editProfile` is what saves this** (§5.39h). Brandon's own
+     definition names *"visit date, MN docs"* in the same breath as the
+     Subscription profile, and this write is both: MN Expiry plus the MR rung,
+     behind read-back verification, and §5.36 is what a wrong one costs.
+     ⚠️ The date input stays live and the preview line still computes — the
+     ability unlocks the SAVE, it never hides what the page knows (§5.39c). */
+  const canEditProfile = useAbility("editProfile");
 
   const previewExpiry = useMemo(() => {
     if (!visitDate) return null;
@@ -295,6 +303,9 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
 
   const handleSave = async () => {
     if (!visitDate || !previewExpiry) return;
+    // Checked on the button AND here: the button is what a rep sees, this is
+    // what stops the write (§5.39g, one level down).
+    if (!canEditProfile) return;
     setSaving(true);
     try {
       await saveVisitDateVerified(patient.id, previewExpiry);
@@ -341,13 +352,14 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
         </div>
         <Button
           onClick={handleSave}
-          disabled={!visitDate || saving}
+          disabled={!visitDate || saving || !canEditProfile}
           className="h-9 gap-2 bg-blue-600 hover:bg-blue-700 text-white mb-5"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
           {saving ? "Saving…" : "Save Visit Date"}
         </Button>
       </div>
+      {!canEditProfile && <AbilityLockNote ability="editProfile" className="mt-1" />}
     </Card>
   );
 }

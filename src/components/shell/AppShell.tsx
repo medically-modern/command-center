@@ -14,17 +14,34 @@
  */
 import type { ReactNode } from "react";
 import { GlobalHeader } from "./GlobalHeader";
+import { ViewAsBanner } from "./ViewAsBanner";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
+import { useAccessContext } from "@/components/AccessProvider";
+import { hasAbility } from "@/lib/shell/abilities";
+import { useViewAs } from "@/lib/shell/viewAs";
 import "@/pages/shell.css";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [layout] = useShellLayout();
+  const { email, config } = useAccessContext();
+  const borrowing = useViewAs();
+  /** ⚠️ Same guard the header uses: a revoked `viewOthers` ends the borrow
+   *  rather than leaving somebody stuck inside another person's screen. */
+  const borrowedName =
+    borrowing && hasAbility(email, config, "viewOthers")
+      ? config.processors?.[borrowing]?.name || borrowing.split("@")[0]
+      : "";
 
   if (layout !== "redesign") return <>{children}</>;
 
+  // ⚠️ `has-viewas` raises `--cc-head` by the banner's own height, so the fit
+  // overrides in `shell.css` keep subtracting the REAL chrome — without it
+  // every page would be 36px too tall for exactly as long as a borrow is on,
+  // which is the second-scrollbar failure §7 records, on a timer.
   return (
-    <div className="cc-shell">
+    <div className={`cc-shell${borrowedName ? " has-viewas" : ""}`}>
       <GlobalHeader />
+      <ViewAsBanner name={borrowedName} />
       {/* ⚠️ The scroll container is HERE, not on the page. Existing pages size
           themselves against the viewport, and `shell.css` shortens them by the
           header's height so they still fit — §7 records what a page that does

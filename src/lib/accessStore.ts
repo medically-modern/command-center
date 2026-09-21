@@ -301,7 +301,24 @@ export function useAccess() {
     });
   }, [mutate]);
 
-  /** Toggle the manager flag on/off without disturbing the processor profile. */
+  /**
+   * Toggle the manager flag on/off without disturbing the processor profile.
+   *
+   * ⚠️⚠️ **DEMOTING SOMEBODY WITH NO PROCESSOR ENTRY USED TO DELETE THEM**
+   * (Josh, 2026-09-19: *"i removed corey as a manager and his profile
+   * disappeared"*). The People list on `/access` is the UNION of `managers[]`
+   * and `processors{}`, so a pure manager — somebody added with "Add as
+   * Manager" and never given bars — existed in that one array and nowhere
+   * else. Unticking Manager dropped the only record of them: their card
+   * vanished, `resolveAccess` returned `{type:"none"}`, and they were signed
+   * out of the whole app by a checkbox that says nothing about access.
+   *
+   * So a demotion now leaves a processor entry behind (no roles, no abilities
+   * touched). That is what "not a manager" means here — an ordinary person with
+   * nothing assigned yet — and it keeps them on the page, editable, one click
+   * from being given bars. **Removing somebody is the Remove button**, which
+   * still wipes every trace (`configWithoutEmail`); a demotion is not a delete.
+   */
   const setManager = useCallback((email: string, isManager: boolean) => {
     const e = norm(email);
     if (!e) return;
@@ -310,7 +327,16 @@ export function useAccess() {
       let managers = prev.managers;
       if (isManager && !has) managers = [...prev.managers, e];
       else if (!isManager && has) managers = prev.managers.filter((m) => norm(m) !== e);
-      return { ...prev, managers };
+      if (isManager) return { ...prev, managers };
+      // ⚠️ Fill the gap the demotion would leave, and ONLY that gap: somebody
+      // who already has a processor entry keeps it exactly as it is.
+      const hasProfile = Object.keys(prev.processors || {}).some((k) => norm(k) === e);
+      if (hasProfile) return { ...prev, managers };
+      return {
+        ...prev,
+        managers,
+        processors: { ...prev.processors, [e]: { name: e.split("@")[0], roles: [] } },
+      };
     });
   }, [mutate]);
 

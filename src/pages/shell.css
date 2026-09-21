@@ -22,7 +22,17 @@
   flex-direction: column;
   height: 100vh;
   min-height: 0;
+  /* The header's OWN height. */
   --cc-head: 56px;
+  /* ⚠⚠ **EVERY PIXEL OF CHROME ABOVE A PAGE — and it is a SEPARATE variable
+     on purpose.** The "You're seeing X's Command Center" banner is a second
+     strip, so the fit overrides have to subtract more while the header itself
+     must not grow. Raising `--cc-head` for both made `.gh`'s own `min-height`
+     36px taller and then stacked the banner under it: measured in a browser at
+     1440 and 1100, the main area started 128px down instead of 92 and the
+     header wore an empty band. §5.30c's rule — fix it by construction, not by
+     tuning an offset. */
+  --cc-chrome: var(--cc-head);
 }
 
 /* ⚠️⚠️ THE FIT OVERRIDES — this is what makes the header additive rather than
@@ -34,8 +44,24 @@
    where it only reproduced with a real, long list.
    Two classes beat Tailwind's one, so these win without `!important`, and they
    vanish with the shell. */
-.cc-shell .min-h-screen { min-height: calc(100vh - var(--cc-head)); }
-.cc-shell .h-screen { height: calc(100vh - var(--cc-head)); }
+.cc-shell .min-h-screen { min-height: calc(100vh - var(--cc-chrome)); }
+.cc-shell .h-screen { height: calc(100vh - var(--cc-chrome)); }
+
+/* ⚠️ The home screen is a STRIP plus a page (§5.39g): the "Viewing" bar sits
+   above a view that already claims the full height the override above gives it,
+   so the column would be ~45px taller than the viewport and every home screen
+   would carry a scrollbar for nothing. The wrapper owns the height and the view
+   inside it takes what is left. Three classes, so it beats the rule above
+   without `!important`; scoped to `.cc-shell`, so "as today" never sees it. */
+.cc-shell .cc-home {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--cc-chrome));
+}
+.cc-shell .cc-home > .min-h-screen {
+  min-height: 0;
+  flex: 1 1 auto;
+}
 
 .cc-shell > .cc-main {
   flex: 1;
@@ -208,3 +234,44 @@
 .cc-shell [data-cc-brand] { display: none; }
 /* A page's own navy header, where the global one already says it (§5.39c). */
 .cc-shell [data-cc-chrome] { display: none; }
+
+/* ── "You're seeing <name>'s Command Center" (§5.39g) ────────────────────────
+   The strip under the header while a borrow is on. It is the ONE thing about a
+   borrowed session that is not impersonated, and it carries its own way out
+   because the dropdown that started the borrow lives on the home screen. */
+/* ⚠️ Scoped under `.cc-shell`, like every rule in this file — nothing here
+   may reach a page in the "as today" layout (§5.39b), and
+   `patientScreen.test.ts` fails the build on an unscoped selector.
+   ⚠️ Colours are the app's own TOKENS, never a `.dark` override: the tokens
+   already flip, and this file's one rule (line 16) is that nothing below
+   redefines one. A hardcoded light blue here is §5.30d's invisible-in-dark-mode
+   bar, which was found by rendering it and not by reading it. */
+.cc-shell .cc-viewas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 12px;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--primary) / 0.25);
+  flex-shrink: 0;
+}
+.cc-shell .cc-viewas button {
+  margin-left: auto;
+  border: 1px solid hsl(var(--primary) / 0.3);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cc-shell .cc-viewas button:hover { background: hsl(var(--muted)); }
+/* The banner is real chrome, so the fit overrides must subtract it too — but
+   `--cc-head` stays the HEADER's height, or the header grows by the banner as
+   well as sitting above it (measured; see the variable's own note). */
+.cc-shell.has-viewas { --cc-chrome: calc(var(--cc-head) + 36px); }

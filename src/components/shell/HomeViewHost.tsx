@@ -1,52 +1,53 @@
 /**
- * The home route (§5.39c) — Brandon's per-person custom view, plus the
- * "Viewing: <person>" dropdown that answers Josh's "I want to test how it looks
- * for a processor … maybe we make a fake login?" (2026-09-18). It is not a fake
- * login and does not need to be: `ProcessorView` is driven entirely by the
- * profile it is handed, so rendering it with somebody else's profile IS their
- * home screen — their bars, their SOP order, their per-role escalation filters.
+ * The home route (§5.39c, rewritten §5.39g) — Brandon's per-person custom view,
+ * plus the "Viewing: <person>" dropdown.
  *
- * ⚠️⚠️ **THE BORROW MUST RENDER `ProcessorView` DIRECTLY — NEVER `<Index />`.**
- * This is the wiring that was wrong when the dropdown first shipped. `Index`
- * reads `useAccessContext()` itself and only takes its processor branch when the
+ * ⚠️⚠️ **THE HOME IS THE SIGNED-IN PERSON'S OWN VIEW, MANAGER OR NOT** (Josh,
+ * 2026-09-19: *"the home screen should be the assigned view / bars for that
+ * person, ie for me josh logging in it should show my view by default"*). It
+ * used to branch on `access.type`, so a manager — including one carrying a full
+ * processor profile — got the team roster and never their own queues.
+ * `homeProfileFor` is that rule; the roster's job is the dropdown below.
+ *
+ * ⚠️⚠️ **A BORROW SWAPS THE WHOLE UI, NOT JUST THIS PANE** (Josh, same message:
+ * *"the whole ui should be EXACTLY what they see"* · *"if mashekes view has
+ * patient communication assigned and i view her view it should appear"*). So the
+ * borrowed email goes into `lib/shell/viewAs`, which the global header reads for
+ * its tabs and menus. Read that file before changing this: the borrow is a
+ * DISPLAY preview, it never reaches a write, and it never borrows who answers
+ * the phone.
+ *
+ * ⚠️ **`ProcessorView` is rendered DIRECTLY — never `<Index />`.** `Index` reads
+ * `useAccessContext()` itself and only takes its processor branch when the
  * SIGNED-IN person is a processor, so a manager picking somebody in the dropdown
- * got their own manager dashboard back: the URL changed, the banner appeared,
- * and the screen did not. And `bars` is the only view anybody in the config has
- * today, so that was the borrow doing nothing, every time, for everyone.
+ * got their own dashboard back: the URL changed, the banner appeared, and the
+ * screen did not.
  *
- * ⚠️⚠️ **WITH ONE VIEW AND NO `viewOthers` THIS IS `<Index />` AND NOTHING ELSE.**
- * `viewOthers` is opt-in (§5.39c), so the dropdown exists for the two people who
- * have been granted it and for nobody else; every other config reads `["bars"]`
- * and the switch renders null. That is what makes a home-page rewrite additive —
- * the same reasoning as the layout toggle (§5.39b), one level down.
+ * ⚠️ **The two non-bars views are the EXISTING pages.** `coordinator` renders
+ * the live Care Coordinator dashboard (§5.30), `oversight` the live Oversight
+ * tab (§7) — real rules, real counting contracts, real data. Brandon's mockup
+ * redraws both from sample data and calls its coordinator screen "a rebuild, not
+ * a port"; rebuilding either here would be a second copy of rules whose drift is
+ * silent (§5.30's keep-in-agreement list is twelve places on its own).
  *
- * ⚠️ **It sits at the ROUTE, not inside `Index`.** `Index.tsx` returns early for
- * processors and carries helper components after its own closing brace, so
- * wrapping its two branches in place means two edits to a file this has no
- * business changing. Here it is one element in `App.tsx` and `Index` is
- * untouched.
- *
- * ⚠️ **The other two views are the EXISTING pages.** `coordinator` renders the
- * live Care Coordinator dashboard (§5.30), `oversight` the live Oversight tab
- * (§7) — both with their real rules, their real counting contracts and their
- * real data. Brandon's mockup redraws them from sample data and calls its
- * coordinator screen "a rebuild, not a port"; rebuilding either here would be a
- * second copy of rules whose drift is silent (§5.30's keep-in-agreement list is
- * twelve places long on its own).
+ * ⚠️ **It sits at the ROUTE, not inside `Index`**, which returns early for
+ * processors and carries helper components after its own closing brace.
  */
-import { Suspense, lazy, useMemo } from "react";
+import { Suspense, lazy, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import Index from "@/pages/Index";
 import ProcessorView from "@/pages/ProcessorView";
 import { useAccessContext } from "@/components/AccessProvider";
 import { HomeViewSwitch } from "./HomeViewSwitch";
 import { hasAbility, homeViewsOf } from "@/lib/shell/abilities";
+import { homeProfileFor, isSyntheticHomeProfile } from "@/lib/shell/homeProfile";
+import { setViewAs } from "@/lib/shell/viewAs";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
 import { processorPeople } from "@/lib/people";
 import type { HomeView, ProcessorProfile } from "@/lib/accessStore";
 
 /** ⚠️ Lazy, so a person on the bars never downloads the Care Coordinator or
- *  Oversight bundles — those are two of the heaviest pages in the build. */
+ *  Oversight bundles — two of the heaviest pages in the build. */
 const CareCoordinatorPage = lazy(() => import("@/pages/CareCoordinatorPage"));
 const OversightTab = lazy(() => import("@/components/oversight/OversightTab"));
 
@@ -64,16 +65,11 @@ export function HomeViewHost() {
 
   /**
    * ⚠️⚠️ **THE WHOLE MODEL IS PART OF THE REDESIGN, SO IT IS OFF IN "AS TODAY".**
-   * This host sits at the ROUTE, i.e. OUTSIDE `AppShell` — so without this gate
-   * the "Viewing" strip rendered above the old manager dashboard with no header
-   * over it: a bare white bar and a dropdown floating on a screen that is meant
-   * to be byte-identical to the app before any of this existed (Josh,
-   * 2026-09-18, with a screenshot of exactly that). "As today" has to mean
-   * today, or the escape hatch is not one (§5.39b).
-   *
-   * ⚠️ Nothing is stranded by it: "as today" keeps the Managers/Processors
-   * roster, which is the screen this dropdown replaces — pick a person there
-   * and you get their workload, which is the job either control does.
+   * This host sits OUTSIDE `AppShell`, so without this gate the "Viewing" strip
+   * rendered above the old manager dashboard with no header over it — a bare
+   * white bar floating on a screen that is meant to be byte-identical to the app
+   * before any of this existed (Josh, 2026-09-18, with a screenshot of exactly
+   * that). "As today" has to mean today, or the escape hatch is not one (§5.39b).
    */
   const redesign = layout === "redesign";
 
@@ -104,6 +100,21 @@ export function HomeViewHost() {
   }, [viewingKey, config]);
 
   /**
+   * ⚠️⚠️ **THE HEADER READS THIS, WHICH IS WHAT MAKES THE BORROW THE WHOLE UI.**
+   * Pushed to a module store rather than passed down, because `GlobalHeader`
+   * lives in `AppShell` — above this route, not below it — so there is no prop
+   * path between them. See `lib/shell/viewAs`.
+   *
+   * ⚠️ Cleared when the borrow ends, when `viewOthers` is revoked, and when this
+   * component unmounts on sign-out; NOT on an ordinary navigation, or clicking
+   * through to Communications would silently drop you back into your own screen
+   * half way through looking at somebody else's.
+   */
+  useEffect(() => {
+    setViewAs(borrowed ? borrowed.email : "");
+  }, [borrowed]);
+
+  /**
    * ⚠️ A `?viewing=` naming somebody who is no longer in the config is SAID, not
    * swallowed. Falling back to my own screen while the URL still names them is
    * the quiet lie this whole component exists to avoid — you would be looking at
@@ -126,6 +137,12 @@ export function HomeViewHost() {
   // An unrecognised or no-longer-granted view falls back to the first one this
   // person actually has, never to a blank screen.
   const active: HomeView = raw && views.includes(raw) ? raw : views[0];
+
+  /** The bars to draw: the borrowed person's, else my own (§5.39g). */
+  const ownProfile = useMemo(() => homeProfileFor(email, config), [email, config]);
+  const barsProfile = borrowed ? borrowed.profile : ownProfile;
+  const barsEmail = borrowed ? borrowed.email : email;
+  const allRoles = !borrowed && isSyntheticHomeProfile(email, config);
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -158,24 +175,43 @@ export function HomeViewHost() {
     />
   );
 
+  // ── "As today": the old dashboard, untouched. ──────────────────────────
+  if (!redesign) return <Index />;
+
+  // ⚠️ `.cc-home` is the strip + the view as ONE column: the switcher above a
+  // page that claims `min-h-screen` would be 45px taller than the viewport and
+  // put a scrollbar on every home screen. `shell.css` owns the two rules, and
+  // they are scoped to `.cc-shell` so "as today" never sees them.
   if (active === "bars") {
     return (
-      <>
+      <div className="cc-home">
         {switcher}
-        {/* ⚠️ The borrow is the whole point of the dropdown — see the header.
-            `ProcessorView` takes the profile it is given and reads no identity
-            of its own, so this is that person's home screen exactly. */}
-        {borrowed ? <ProcessorView profile={borrowed.profile} email={borrowed.email} /> : <Index />}
-      </>
+        {/* ⚠️ `homeProfileFor` never returns null for anybody who can sign in
+            (a manager with no processor entry gets every bar), so the fallback
+            below is for a config that has genuinely never heard of this person
+            — AuthGate stops those long before here. */}
+        {barsProfile ? (
+          <ProcessorView
+            profile={barsProfile}
+            email={barsEmail}
+            allRoles={allRoles}
+            mine={!borrowed}
+          />
+        ) : (
+          <div className="p-8 text-sm text-muted-foreground">
+            You aren't set up with any queues yet — ask a manager to add some on Users.
+          </div>
+        )}
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="cc-home">
       {switcher}
       <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
         {active === "coordinator" ? <CareCoordinatorPage /> : <OversightTab />}
       </Suspense>
-    </>
+    </div>
   );
 }

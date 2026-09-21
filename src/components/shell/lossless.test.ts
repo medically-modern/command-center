@@ -29,7 +29,6 @@ const live = (s: string) =>
 
 const header = () => live(read("components/shell/GlobalHeader.tsx"));
 const sysMgmt = () => live(read("pages/SystemMgmtPage.tsx"));
-const teamGrid = () => live(read("components/shell/TeamGrid.tsx"));
 
 describe("⚠️ every manager tool still has a door in the redesign", () => {
   /** Where each one is reachable from. A tool with no door has left the app. */
@@ -53,11 +52,26 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     expect(h).toContain('title="Manager tools"');
   });
 
-  it("Manage Access is ALSO on the team screen the roster rail became", () => {
-    // The rail's footer carried it; dropping the rail dropped it, and the
-    // header's Users button is admin-only — a manager who is not an admin
-    // would have had no route to /access at all.
-    expect(teamGrid()).toContain('navigate("/access")');
+  it("⚠️ Manage Access is ALSO on the Manage menu, not only the admin-only Users button", () => {
+    // The roster rail's footer carried it; the rail is gone (§5.39h — the home
+    // is now the signed-in person's own view and the roster's job belongs to
+    // the Viewing dropdown), and the header's Users button is ADMIN-only — so
+    // a manager who is not an admin would have had no route to /access at all.
+    // The Manage menu is manager-gated, which is the wider set.
+    const h = header();
+    expect(h).toContain('"/access"');
+    expect(h).toMatch(/managerish && \(/);
+  });
+
+  it("⚠️⚠️ the roster's own job survived its rail — the Viewing dropdown", () => {
+    // A manager looked at somebody's workload by picking them in the rail.
+    // Removing the rail without this would have taken that away (§5.39e records
+    // the first attempt doing exactly that and leaving a blank page).
+    const host = live(read("components/shell/HomeViewHost.tsx"));
+    expect(host).toContain("processorPeople");
+    expect(host).toContain("setViewAs");
+    const sw = live(read("components/shell/HomeViewSwitch.tsx"));
+    expect(sw).toContain('aria-label="Whose view to show"');
   });
 });
 

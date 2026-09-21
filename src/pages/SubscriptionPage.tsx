@@ -21,6 +21,7 @@ import { RotateCcw, RefreshCw, ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { sendPatientToMonday, sendNotesToMonday } from "@/lib/subscription/mondayWrite";
+import { AbilityLockNote, useAbility } from "@/components/shell/AbilityLock";
 import { validatePatientForSend } from "@/lib/subscription/workflow";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
@@ -76,6 +77,10 @@ const SubscriptionPage = () => {
     update(selected.id, { escalated: !selected.escalated });
   };
 
+  /** ⚠️ The SIGNED-IN person, never a borrowed one — this decides what I
+   *  may WRITE (§5.39h). */
+  const canEditProfile = useAbility("editProfile");
+
   const resetForNewPatient = () => {
     if (!selected) return;
     clearOverlay(selected.id);
@@ -85,6 +90,11 @@ const SubscriptionPage = () => {
 
   const handleSend = async () => {
     if (!selected) return;
+    // ⚠️ The ability is checked HERE as well as on the button. The button
+    // is what a rep sees; this is what stops the write, and the two are not
+    // the same guarantee — §5.39g's "a gate on the tab is not a gate on the
+    // page", one level down.
+    if (!canEditProfile) return;
     if (refusePendingNote()) return;
     setSaving(true);
     setSavePhase("posting");
@@ -198,7 +208,25 @@ const SubscriptionPage = () => {
                     notePrefix="Subscription"
                   />
                   <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} />
-                  <SendToMondayButton onSend={handleSend} disabled={!selected || !validation.valid} validationErrors={validation.errors} />
+                  {/* ⚠️⚠️ **`editProfile` is what saves THIS** (§5.39h). Brandon's
+                      own definition of the ability is *"can change the
+                      Subscription profile — Order details, visit date, MN docs,
+                      address and phone; without it the profile is read-only"*,
+                      and this send is exactly that: ~20 columns of order
+                      details, address and phone in one write.
+                      ⚠️ The profile above still RENDERS, and the fields are
+                      still typeable — the ability unlocks the SAVE, it does not
+                      hide the patient (§5.39c). Notes stay writable beside it
+                      on purpose: a running case history is not the profile,
+                      and it is how a rep records what they just learned. */}
+                  {canEditProfile ? (
+                    <SendToMondayButton onSend={handleSend} disabled={!selected || !validation.valid} validationErrors={validation.errors} />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 pt-2">
+                      <SendToMondayButton onSend={handleSend} disabled validationErrors={[]} />
+                      <AbilityLockNote ability="editProfile" />
+                    </div>
+                  )}
                 </>
               )}
             </section>

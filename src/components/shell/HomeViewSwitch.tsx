@@ -16,10 +16,10 @@
  * is untouched for everybody. That is what makes the model additive; the day
  * somebody is given a second view, the toggle appears for them alone.
  *
- * ⚠️ **Borrowing somebody's view runs with YOUR permissions, not theirs.** The
- * banner says so, because the alternative reading — that you are acting as that
- * person — is how somebody does something they are not allowed to do and
- * believes the app let them on purpose.
+ * ⚠️ **The "you're looking at X's view" banner is NOT here — it is
+ * `ViewAsBanner`, in the shell (§5.39h).** The borrow follows you off this
+ * page, so the say-so has to as well; this component kept a second copy, and
+ * rendering a borrow showed two strips saying overlapping things.
  */
 import { Eye, Grid3x3, LineChart, Users } from "lucide-react";
 import type { HomeView } from "@/lib/accessStore";
@@ -129,19 +129,13 @@ export function HomeViewSwitch({
         </div>
       )}
 
-      {borrowedName && (
-        <div className="mx-6 mb-2.5 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs">
-          <b>You're looking at {borrowedName}'s view.</b> Anything you do here runs with{" "}
-          <i>your</i> permissions, not theirs.{" "}
-          <button
-            type="button"
-            className="font-semibold text-primary hover:underline"
-            onClick={() => onViewing("")}
-          >
-            Back to my view
-          </button>
-        </div>
-      )}
+      {/* ⚠️ The "you're looking at X's view" banner used to live HERE, and no
+          longer does (§5.39h): `ViewAsBanner` says it above every page now,
+          because the borrow follows you off this one. Two strips saying
+          overlapping things is what rendering it showed, and the old sentence
+          had also stopped being wholly true. `borrowedName` stays a prop so
+          this component still knows to render at all with one view and no
+          toggle — the dropdown must survive so there is a way back. */}
     </div>
   );
 }

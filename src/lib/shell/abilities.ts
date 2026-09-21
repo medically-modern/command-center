@@ -114,13 +114,37 @@ export function hasAbility(email: string, cfg: AccessConfig, ability: Ability): 
   // Only a stored `true` grants it, so no processor entry (a pure manager like
   // Corey) is a no, and so is bootstrap mode.
   if (isOptInAbility(ability)) return storedProfile(email, cfg)?.perms?.[ability] === true;
-  // A manager, or bootstrap mode where everyone is one.
-  if (kind === "manager") return true;
+  /* ⚠⚠ **A MANAGER KEEPS THE BLANKET, BUT AN EXPLICIT `false` STILL WINS**
+     (§5.39h). Josh, 2026-09-19: *"i want everthing on this list functional. ie
+     if i dont assign myself communications the tab should be removed from the
+     top bar for me"* — and he is a manager, so under a flat `return true` the
+     checkbox he was pointing at could never do anything. Measured in a browser
+     before the fix: Katie, a manager with `comms: false`, kept the
+     Communications tab AND walked straight through its page gate.
+     ⚠️ The distinction is ABSENCE vs a DECISION, which is the same argument
+     the default-ON rule rests on. Absent stays ON, so the deploy that
+     introduced `perms` narrowed nobody; an explicit `false` is somebody
+     looking at the switch and turning it off, and honouring that is the whole
+     point of having the switch. A manager is never stranded by it either —
+     `AbilityGate` names the ability and links an admin straight to Users. */
+  if (kind === "manager") return storedProfile(email, cfg)?.perms?.[ability] !== false;
   // Somebody with no access at all is gated by AuthGate long before this; an
   // ability question about them is not this module's to answer, and TRUE keeps
   // it from becoming a second, quieter access check.
   if (kind === "none" || !profile) return true;
   return profile.perms?.[ability] !== false;
+}
+
+/**
+ * Is this person a manager (bootstrap included)?
+ *
+ * ⚠️ Exported so the header can answer for a BORROWED identity (§5.39g) —
+ * `useAccessContext().access` only ever describes the signed-in person, so a
+ * manager viewing a processor's screen would keep their own Manage menu and the
+ * borrow would not be "exactly what they see".
+ */
+export function isManagerOf(email: string, cfg: AccessConfig): boolean {
+  return kindOf(email, cfg).kind === "manager";
 }
 
 /**
@@ -144,7 +168,15 @@ export function isAdmin(email: string, cfg: AccessConfig): boolean {
  * lands exactly where they land today, which is what makes the model additive.
  */
 export function homeViewsOf(email: string, cfg: AccessConfig): HomeView[] {
-  const p = profileOf(email, cfg);
+  // ⚠️⚠️ **`storedProfile`, NOT `profileOf` — the same trap the opt-in grant
+  // hit.** `kindOf` answers "manager or processor" and hands back
+  // `profile: null` for anybody in `managers[]` without looking them up, so a
+  // dual manager+processor — Josh, Brandon, Katie, every "dual" person in the
+  // config — could be given a custom home view on `/access`, have it stored in
+  // the file, and never see it: `homeViewsOf` read null and returned `["bars"]`
+  // for ever. A home view is about which SCREEN somebody lands on, which is a
+  // property of the person and not of their access level.
+  const p = storedProfile(email, cfg);
   const raw = p?.homeView;
   if (!Array.isArray(raw) || raw.length === 0) return ["bars"];
   // An unrecognised value is dropped rather than rendered as a fourth tab.
@@ -152,17 +184,52 @@ export function homeViewsOf(email: string, cfg: AccessConfig): HomeView[] {
   return clean.length ? clean : ["bars"];
 }
 
+/**
+ * The processor key for an email, creating an empty entry when there is none.
+ *
+ * ⚠️⚠️ **WITHOUT THIS, EVERY TOGGLE ON A PURE MANAGER IS A SILENT NO-OP.** Both
+ * writers below used to bail out when a person had no `processors` entry — and
+ * somebody added with "Add as Manager" has none — so an admin could tick
+ * "View others' views" or pick a home view for Corey, see the chip light up on
+ * the optimistic state, and have the next 10s poll throw it away with nothing
+ * erroring. The entry is what the config calls a PERSON; being a manager is a
+ * separate flag beside it, and `resolveAccess` still reads `managers[]` first,
+ * so adding one changes nobody's access.
+ */
+function withProcessorEntry(cfg: AccessConfig, email: string): { cfg: AccessConfig; key: string } | null {
+  const e = norm(email);
+  if (!e) return null;
+  const key = Object.keys(cfg.processors || {}).find((k) => norm(k) === e);
+  if (key) return { cfg, key };
+  return {
+    cfg: { ...cfg, processors: { ...cfg.processors, [e]: { name: e.split("@")[0], roles: [] } } },
+    key: e,
+  };
+}
+
 /** Set a person's home views, keeping at least one. */
 export function withHomeView(
-  cfg: AccessConfig,
+  base: AccessConfig,
   email: string,
   view: HomeView,
   on: boolean,
 ): AccessConfig | null {
-  const key = Object.keys(cfg.processors || {}).find((k) => norm(k) === norm(email));
-  if (!key) return null;
+  const made = withProcessorEntry(base, email);
+  if (!made) return null;
+  const { cfg, key } = made;
   const current = homeViewsOf(email, cfg);
-  const next = on ? [...new Set([...current, view])] : current.filter((v) => v !== view);
+  /* ⚠⚠ **TURNING A VIEW ON MAKES IT THE LANDING VIEW — it is PREPENDED, not
+     appended** (§5.39h). `views[0]` is what the home opens on, and the default
+     is `["bars"]`, so appending meant ticking "Manager oversight" for somebody
+     left them landing on bars with a toggle they had to notice and press.
+     Josh reported exactly that — *"i assigned madelins just manager oversight
+     and it still shows bars when i look at her view"* — and the access.json
+     history is the proof: 11:18:26 wrote `["bars","oversight"]`, and three
+     toggles later he turned bars off to get the screen he had just asked for.
+     Nothing was broken; the ORDER was, and an admin had no way to see it.
+     ⚠️ Turning one OFF never reorders the rest: a removal is not a statement
+     about where somebody should land. */
+  const next = on ? [...new Set([view, ...current])] : current.filter((v) => v !== view);
   // ⚠️ Everyone needs at least one view, or the home page has nothing to render
   // and the person has no way back — the dead end §5.10 · §5.20 · §5.31c each
   // record reversing.
@@ -178,13 +245,14 @@ export function withHomeView(
 
 /** Grant or revoke one ability. */
 export function withAbility(
-  cfg: AccessConfig,
+  base: AccessConfig,
   email: string,
   ability: Ability,
   on: boolean,
 ): AccessConfig | null {
-  const key = Object.keys(cfg.processors || {}).find((k) => norm(k) === norm(email));
-  if (!key) return null;
+  const made = withProcessorEntry(base, email);
+  if (!made) return null;
+  const { cfg, key } = made;
   const prev = cfg.processors[key];
   return {
     ...cfg,
@@ -218,13 +286,16 @@ export const ABILITY_LABEL: Record<Ability, string> = {
 };
 
 export const ABILITY_HINT: Record<Ability, string> = {
-  comms: "Can text and call patients from the patient screen.",
-  adjustOrders: "Can adjust an open order — the backorder substitution pick.",
+  comms:
+    "Shows the Communications tab, and the Call / Text buttons on a patient. Without it this person can still read a patient — they just cannot start a message.",
+  adjustOrders:
+    "Can adjust an open order — the backorder substitution pick that emails Cardinal (§5.35).",
   viewOthers:
     "Off unless granted. Adds the “Viewing” dropdown on the home screen, which shows anyone else’s home screen exactly as they see it.",
-  reports: "Can open Reports & Metrics.",
+  reports: "Shows the Reports & Metrics tab in the header.",
   inventory: "Shows the Inventory tab in the header.",
-  editProfile: "Can change the Subscription profile. Without it, that page is read-only.",
+  editProfile:
+    "Can change the Subscription profile — order details, visit date, address and phone. Without it that page is read-only.",
 };
 
 export const HOME_VIEW_LABEL: Record<HomeView, string> = {

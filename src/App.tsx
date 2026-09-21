@@ -9,6 +9,7 @@ import IncomingCallHost from "./components/inboundCalls/IncomingCallHost";
 import ScheduledCallHost from "./components/scheduledCalls/ScheduledCallHost";
 import { AppShell } from "./components/shell/AppShell";
 import { HomeViewHost } from "./components/shell/HomeViewHost";
+import { AbilityGate } from "./components/shell/AbilityGate";
 import AuthGate from "./components/AuthGate";
 import AccessProvider from "./components/AccessProvider";
 
@@ -165,7 +166,17 @@ const App = () => (
           <Route path="/access" element={<AccessAdminPage />} />
           <Route path="/oversight" element={<OversightPage />} />
           <Route path="/fax-inbox" element={<FaxInboxPage />} />
-          <Route path="/assigned-patients" element={<AssignedPatientsPage />} />
+          {/* ⚠️ Gated on `comms` (§5.39g). The header tab is not enough on its
+              own: the route still answers a typed URL, a bookmark and a Back,
+              so an ability that stops at the tab is decoration. */}
+          <Route
+            path="/assigned-patients"
+            element={
+              <AbilityGate ability="comms">
+                <AssignedPatientsPage />
+              </AbilityGate>
+            }
+          />
           {/* Orders — observation of the New Order Board (§5.35). ?orderId= deep-links
               an order, ?view=stock opens the Cardinal SKU Tracker table. */}
           <Route path="/orders" element={<OrdersPage />} />

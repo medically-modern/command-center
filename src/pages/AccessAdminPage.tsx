@@ -232,24 +232,15 @@ export default function AccessAdminPage() {
                         <span className="text-xs text-muted-foreground">{pe.split("@")[0]}</span>
                       )}
 
-                      {/* Manager toggle (full access) */}
-                      <label
-                        className={cn(
-                          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs",
-                          isSelf ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
-                          isManager ? "border-amber-400/50 bg-amber-400/10 text-amber-600" : "border-border hover:bg-muted/40",
-                        )}
-                        title={isSelf ? "You can't remove your own manager access" : "Full access to the whole Command Center"}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isManager}
-                          disabled={isSelf}
-                          onChange={() => setManager(pe, !isManager)}
-                          className="accent-amber-500"
-                        />
-                        <Shield className="w-3.5 h-3.5" /> Manager
-                      </label>
+                      {/* ⚠️ The Manager toggle moved INTO the abilities row below
+                          (Brandon's own card has it there, §5.39g). One control,
+                          one writer — a checkbox here and a chip there would be
+                          two doors onto `managers[]` sitting 40px apart. */}
+                      {isManager && (
+                        <span className="inline-flex items-center gap-1 rounded-lg border border-amber-400/50 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-600">
+                          <Shield className="w-3 h-3" /> Manager
+                        </span>
+                      )}
 
                       <span className="text-xs text-muted-foreground">{roles.length} bar{roles.length !== 1 ? "s" : ""}</span>
                       <button
@@ -271,9 +262,18 @@ export default function AccessAdminPage() {
                       email={pe}
                       config={config}
                       isManager={isManager}
+                      isSelf={isSelf}
+                      answersCalls={answerers.includes(pe)}
+                      answerSlotsFull={!answerers.includes(pe) && answerers.length >= MAX_CALL_ANSWERERS}
                       onAbility={(a, on) => setAbility(pe, a, on)}
                       onHomeView={(v, on) => setHomeView(pe, v, on)}
                       onAdmin={(on) => setAdmin(pe, on)}
+                      onManager={(on) => setManager(pe, on)}
+                      onAnswersCalls={(on) => {
+                        if (!setCallAnswerer(pe, on)) {
+                          toast.error(`All ${MAX_CALL_ANSWERERS} browser-answering slots are taken. Turn somebody else off first.`);
+                        }
+                      }}
                     />
 
                     {/* Roles: checkbox + filter + SOP order */}

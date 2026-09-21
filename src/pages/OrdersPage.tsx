@@ -13,8 +13,10 @@
  * orders.
  *
  * Two views on one header toggle: Orders (the list + an open order) and
- * Cardinal stock (the tracker table). `?orderId=` deep-links an order;
- * `?view=stock` opens the tracker.
+ * Inventory (the Cardinal SKU Tracker, §5.39h — the global header's
+ * Inventory tab lands here). `?orderId=` deep-links an order; `?view=stock`
+ * opens the tracker, and that param keeps its name so every existing link
+ * still works.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -37,6 +39,9 @@ import { NotesCard } from "@/components/orders/PatientCoverageCard";
 import { OrderDetails } from "@/components/orders/OrderDetails";
 import { OrdersOverview } from "@/components/orders/OrdersOverview";
 import { SkuTrackerView } from "@/components/orders/SkuTrackerView";
+import { AbilityGate } from "@/components/shell/AbilityGate";
+import { useAccessContext } from "@/components/AccessProvider";
+import { hasAbility } from "@/lib/shell/abilities";
 
 type View = "orders" | "stock";
 
@@ -45,6 +50,10 @@ const OrdersPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkId = searchParams.get("orderId") ?? searchParams.get("patientId");
   const view: View = searchParams.get("view") === "stock" ? "stock" : "orders";
+  // ⚠️ The SIGNED-IN person, never a borrowed one (§5.39g): this decides what I
+  // may DO, and borrowing somebody's view must not hand me their buttons.
+  const { email: myEmail, config: accessConfig } = useAccessContext();
+  const canAdjustOrders = hasAbility(myEmail, accessConfig, "adjustOrders");
 
   const {
     orders, loading, initialLoading, loadedRows, error, refetch,
@@ -87,26 +96,32 @@ const OrdersPage = () => {
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} label="Loading orders…" />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
-        <OrdersSidebar
-          orders={orders}
-          selectedId={selectedId}
-          onSelect={select}
-          loading={loading}
-          initialLoading={initialLoading}
-          loadedRows={loadedRows}
-          error={error}
-          onRefresh={() => void refetch(false)}
-          query={query}
-          onQueryChange={setQuery}
-          showAllDelivered={showAllDelivered}
-          onShowAllDelivered={() => setShowAllDelivered(true)}
-        />
+        {/* ⚠️ The order sidebar is the ORDERS view's search, and on Inventory
+            it is a list of things this screen cannot open — Brandon's
+            Inventory is a page of its own, and the tab beside the title is
+            one click back to the orders list, sidebar and all. */}
+        {view === "orders" && (
+          <OrdersSidebar
+            orders={orders}
+            selectedId={selectedId}
+            onSelect={select}
+            loading={loading}
+            initialLoading={initialLoading}
+            loadedRows={loadedRows}
+            error={error}
+            onRefresh={() => void refetch(false)}
+            query={query}
+            onQueryChange={setQuery}
+            showAllDelivered={showAllDelivered}
+            onShowAllDelivered={() => setShowAllDelivered(true)}
+          />
+        )}
 
         <div className="flex-1 flex flex-col min-w-0">
           <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
             <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3 min-w-0">
-                <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
+                {view === "orders" && <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />}
                 <button onClick={() => goBack()} className="p-1.5 rounded-md hover:bg-white/10 transition-colors" title="Back">
                   <ArrowLeft className="h-5 w-5" />
                 </button>
@@ -115,7 +130,7 @@ const OrdersPage = () => {
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-                  <h1 className="text-2xl font-bold">Orders</h1>
+                  <h1 className="text-2xl font-bold">{view === "stock" ? "Inventory" : "Orders"}</h1>
                   {view === "orders" && (selectedRow || open) && (
                     <p className="text-sm opacity-80 mt-0.5 truncate">{(open ?? selectedRow)?.name}</p>
                   )}
@@ -124,7 +139,7 @@ const OrdersPage = () => {
               <div className="flex items-center gap-2">
                 <div className="inline-flex rounded-lg bg-white/10 p-0.5" role="tablist" aria-label="View">
                   <ViewTab active={view === "orders"} onClick={() => setView("orders")} icon={<PackageSearch className="h-3.5 w-3.5" />} label="Orders" />
-                  <ViewTab active={view === "stock"} onClick={() => setView("stock")} icon={<Boxes className="h-3.5 w-3.5" />} label="Cardinal stock" />
+                  <ViewTab active={view === "stock"} onClick={() => setView("stock")} icon={<Boxes className="h-3.5 w-3.5" />} label="Inventory" />
                 </div>
                 <Button onClick={() => void refetch(false)} disabled={loading} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
@@ -153,8 +168,12 @@ const OrdersPage = () => {
           <main className="flex-1 px-6 py-6 overflow-y-auto">
             {/* One column, read top to bottom, for the order view; the stock
                 table earns its width. */}
-            <section className={cn("mx-auto space-y-4", view === "stock" ? "max-w-7xl" : "max-w-4xl")}>
+            <section className={cn("mx-auto space-y-4", view === "stock" ? "max-w-full" : "max-w-4xl")}>
               {view === "stock" ? (
+                // ⚠️ Inventory is an ASSIGNED page (§5.39g), and the wall has to
+                // be here rather than on the route: `/orders` also serves the
+                // order list, which is a different feature with its own role.
+                <AbilityGate ability="inventory">
                 <SkuTrackerView
                   rows={sku.rows}
                   loading={sku.loading}
@@ -163,6 +182,7 @@ const OrdersPage = () => {
                   orders={orders}
                   onRefresh={() => void refreshSkuTracker(true)}
                 />
+                </AbilityGate>
               ) : !selectedId ? (
                 <OrdersOverview
                   orders={orders}
@@ -190,7 +210,16 @@ const OrdersPage = () => {
                 <>
                   <OrderHeaderCard order={open} allOrders={orders} onSelect={select} onPlaced={() => void refetch(true)} />
                   <OrderLinesCard order={open} skuRows={sku.rows} />
-                  <SubstitutionCard key={open.id} order={open} skuRows={sku.rows} onSent={() => void refetch(true)} />
+                  {/* ⚠️ The substitution pick IS the send — it emails Cardinal
+                      (§5.35) — so `adjustOrders` gates the card rather than
+                      greying the button: a Send that refuses after the press
+                      would be a control with no passing move. Without the
+                      ability the order still reads in full; only the change is
+                      withheld, which is the abilities rule (§5.39c: they unlock
+                      buttons, they never hide information). */}
+                  {canAdjustOrders && (
+                    <SubstitutionCard key={open.id} order={open} skuRows={sku.rows} onSent={() => void refetch(true)} />
+                  )}
                   <NotesCard order={open} />
                   <OrderDetails order={open} />
                 </>

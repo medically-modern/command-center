@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeAll, describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { OrderHeaderCard } from "./OrderHeaderCard";
@@ -199,11 +199,30 @@ describe("the Orders page renders every card", () => {
     expect(screen.queryByText(/Needs a person/)).toBeNull();
   });
 
-  it("stock view lists families and the poll history", () => {
+  /* §5.39h — Brandon's Inventory: ONE table with category chips, where this
+     used to be a card per family. The families are still every family the
+     board has, and the poll history still opens. */
+  it("inventory: one sortable table, chips for the families, the poll history", () => {
     wrap(<SkuTrackerView rows={rows} loading={false} error={null} lastRun="Last run: 2026-09-15 09:05 ET (cron) — 31 changed" orders={all} onRefresh={() => {}} />);
-    expect(screen.getByText(/Infusion sets \(2\)/)).toBeInTheDocument();
-    expect(screen.getByText(/CGM receiver \(1\)/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Inventory" })).toBeInTheDocument();
+    // A chip per family present on the board, plus All.
+    expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Infusion sets" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CGM receiver" })).toBeInTheDocument();
+    // One table, with his five columns plus our Open orders.
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    for (const col of ["Product", "Status", "Available", "Unit cost", "OOP price", "Open orders"]) {
+      expect(screen.getByRole("button", { name: new RegExp(`^${col}`) })).toBeInTheDocument();
+    }
     expect(screen.getByText("Poll history")).toBeInTheDocument();
+  });
+
+  it("⚠️ the search and the chips narrow the SAME table, and say so when nothing matches", () => {
+    wrap(<SkuTrackerView rows={rows} loading={false} error={null} lastRun="" orders={all} onRefresh={() => {}} />);
+    const box = screen.getByLabelText("Search inventory");
+    fireEvent.change(box, { target: { value: "no-such-sku" } });
+    // An empty list says which query and which category, never a blank table.
+    expect(screen.getByText(/Nothing matches/)).toBeInTheDocument();
   });
 
   it("sidebar sections and search", () => {

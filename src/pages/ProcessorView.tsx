@@ -6,8 +6,29 @@ import { ThemePickerButton } from "@/components/ThemePicker";
 import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
 import { Stethoscope } from "lucide-react";
 
-/** Stripped, no-sidebar view for a processor: only their assigned role bars. */
-export default function ProcessorView({ profile, email }: { profile: ProcessorProfile; email: string }) {
+/**
+ * Stripped, no-sidebar view: only this person's assigned role bars.
+ *
+ * ⚠️ From §5.39g this is EVERY signed-in person's home in the redesign — not
+ * just a processor's — and it is what the "Viewing" dropdown renders for a
+ * borrowed person, because it reads no identity of its own. Everything it draws
+ * comes from the `profile` it is handed, which is what makes the borrow honest.
+ */
+export default function ProcessorView({
+  profile,
+  email,
+  /** True when `profile` is the all-roles stand-in for a manager with no
+   *  assigned bars (§5.39g) — said on screen, because "every queue" and
+   *  "somebody chose these queues for me" are different facts. */
+  allRoles = false,
+  /** False while borrowing, so the heading names whose work this is. */
+  mine = true,
+}: {
+  profile: ProcessorProfile;
+  email: string;
+  allRoles?: boolean;
+  mine?: boolean;
+}) {
   const { counts, loading } = useFilteredRoleCounts(profile);
   const order = orderedRoleIds(profile);
   return (
@@ -39,9 +60,13 @@ export default function ProcessorView({ profile, email }: { profile: ProcessorPr
         <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-7xl mx-auto space-y-6">
           <div>
             <h2 className="text-xl font-semibold text-foreground">
-              {profile.name ? `${profile.name}'s work` : "Your work"}
+              {mine ? "Your work" : `${profile.name || email.split("@")[0]}'s work`}
             </h2>
-            <p className="text-sm text-muted-foreground mt-1">Click a bar to open that queue.</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {allRoles
+                ? "Every queue — you have no assigned bars, so this is all of them."
+                : "Click a bar to open that queue."}
+            </p>
           </div>
           {profile.roles.length === 0 ? (
             <p className="text-sm text-muted-foreground">

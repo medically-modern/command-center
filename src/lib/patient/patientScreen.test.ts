@@ -290,8 +290,22 @@ describe("the shell is additive", () => {
     // 56px too tall: a second scrollbar, and on an h-screen page the composer
     // lands below the fold — §7 records exactly that on the Communications tab.
     const css = src("src/pages/shell.css");
-    expect(css).toMatch(/\.cc-shell \.min-h-screen\s*\{[^}]*calc\(100vh - var\(--cc-head\)\)/);
-    expect(css).toMatch(/\.cc-shell \.h-screen\s*\{[^}]*calc\(100vh - var\(--cc-head\)\)/);
+    expect(css).toMatch(/\.cc-shell \.min-h-screen\s*\{[^}]*calc\(100vh - var\(--cc-chrome\)\)/);
+    expect(css).toMatch(/\.cc-shell \.h-screen\s*\{[^}]*calc\(100vh - var\(--cc-chrome\)\)/);
+  });
+
+  it("⚠️⚠️ …and the HEADER's own height is a SEPARATE variable from the total chrome", () => {
+    // §5.39h: the "You're seeing X's Command Center" banner is a second strip,
+    // so the overrides must subtract more — but raising `--cc-head` for both
+    // made `.gh`'s own min-height 36px taller AND stacked the banner under it.
+    // Measured in a browser: the main area started 128px down instead of 92.
+    // Fix by construction, not by tuning an offset (§5.30c).
+    const css = src("src/pages/shell.css");
+    expect(css).toMatch(/--cc-head:\s*56px/);
+    expect(css).toMatch(/--cc-chrome:\s*var\(--cc-head\)/);
+    expect(css).toMatch(/min-height:\s*var\(--cc-head\)/); // the header itself
+    expect(css).toMatch(/\.cc-shell\.has-viewas\s*\{\s*--cc-chrome:\s*calc\(var\(--cc-head\) \+ 36px\)/);
+    expect(css).not.toMatch(/\.cc-shell\.has-viewas\s*\{\s*--cc-head:/);
   });
 });
 
@@ -365,8 +379,15 @@ describe("phases 3–6 are additive too", () => {
   it("⚠️ an ability gate never hides a tab by default", () => {
     // `hasAbility` returns true for anything not explicitly turned off, so a
     // gated tab renders for everybody until an admin says otherwise.
+    //
+    // ⚠️ The identity is `who`, not `email`, from §5.39h: the tabs answer for
+    // whoever's view is on show, because the question a borrow asks is *what
+    // does their screen look like* (Josh: *"if mashekes view has patient
+    // communication assigned and i view her view it should appear"*). Every
+    // WRITE gate still reads the signed-in person — `viewAsScope.test.ts`
+    // pins that half.
     const header = src("src/components/shell/GlobalHeader.tsx");
-    expect(header).toMatch(/hasAbility\(email, config, t\.ability\)/);
+    expect(header).toMatch(/hasAbility\(who, config, t\.ability\)/);
     expect(header).toMatch(/ability: "inventory"/);
     expect(header).toMatch(/ability: "reports"/);
   });

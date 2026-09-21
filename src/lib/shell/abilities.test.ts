@@ -60,9 +60,9 @@ describe("hasAbility", () => {
     expect(hasAbility("masani@medicallymodern.com", cfg, "comms")).toBe(true);
   });
 
-  it("⚠️ a MANAGER keeps every ability, whatever perms says", () => {
+  it("⚠️ a MANAGER keeps every ability the config has no opinion about", () => {
     // Managers see the whole app today; quietly narrowing them on the deploy
-    // that introduces the model is a change nobody asked for.
+    // that introduces the model is a change nobody asked for. ABSENCE stays on.
     const cfg: AccessConfig = {
       ...TODAY,
       processors: {
@@ -70,7 +70,33 @@ describe("hasAbility", () => {
         "josh@medicallymodern.com": { name: "Josh", roles: [], perms: { reports: false } },
       },
     };
-    expect(hasAbility("josh@medicallymodern.com", cfg, "reports")).toBe(true);
+    expect(hasAbility("josh@medicallymodern.com", cfg, "comms")).toBe(true);
+    expect(hasAbility("josh@medicallymodern.com", cfg, "inventory")).toBe(true);
+  });
+
+  it("⚠️⚠️ …but an EXPLICIT false is honoured for a manager too", () => {
+    // §5.39h. Josh, 2026-09-19: *"if i dont assign myself communications the
+    // tab should be removed from the top bar for me"* — and he is a manager,
+    // so a flat blanket made the checkbox he was pointing at a no-op. An
+    // explicit false is somebody looking at the switch; absence is not.
+    const cfg: AccessConfig = {
+      ...TODAY,
+      processors: {
+        ...TODAY.processors,
+        "josh@medicallymodern.com": { name: "Josh", roles: [], perms: { reports: false } },
+      },
+    };
+    expect(hasAbility("josh@medicallymodern.com", cfg, "reports")).toBe(false);
+  });
+
+  it("⚠️ a manager with NO processor entry still holds everything", () => {
+    // The ordinary "Add as Manager" shape: no entry, so no opinion, so on.
+    const cfg: AccessConfig = { managers: ["new@medicallymodern.com"], processors: {}, callAnswerers: [] };
+    for (const a of ["comms", "reports", "inventory", "editProfile", "adjustOrders"] as const) {
+      expect(hasAbility("new@medicallymodern.com", cfg, a), a).toBe(true);
+    }
+    // …except the opt-in one.
+    expect(hasAbility("new@medicallymodern.com", cfg, "viewOthers")).toBe(false);
   });
 
   it("is true in bootstrap mode, where everyone is a manager", () => {
@@ -105,9 +131,16 @@ describe("homeViewsOf / withHomeView", () => {
     expect(withHomeView(TODAY, "masani@medicallymodern.com", "bars", false)).toBeNull();
   });
 
-  it("adds a second view without dropping the first", () => {
+  it("⚠️ adds a second view AT THE FRONT — the new one is what they land on", () => {
+    // §5.39h, Josh's Madeline report: appending left somebody landing on the
+    // view they already had, behind a toggle nobody noticed, so ticking the
+    // new one read as doing nothing. `views[0]` is the landing view.
     const cfg = withHomeView(TODAY, "masani@medicallymodern.com", "coordinator", true)!;
-    expect(homeViewsOf("masani@medicallymodern.com", cfg)).toEqual(["bars", "coordinator"]);
+    expect(homeViewsOf("masani@medicallymodern.com", cfg)).toEqual(["coordinator", "bars"]);
+    // ⚠️ …and removing one never reorders the rest: a removal is not a
+    // statement about where somebody should land.
+    const off = withHomeView(cfg, "masani@medicallymodern.com", "coordinator", false)!;
+    expect(homeViewsOf("masani@medicallymodern.com", off)).toEqual(["bars"]);
   });
 
   it("drops an unrecognised view rather than rendering a fourth tab", () => {
@@ -124,9 +157,26 @@ describe("homeViewsOf / withHomeView", () => {
     expect(homeViewsOf("masani@medicallymodern.com", cfg)).toEqual(["oversight"]);
   });
 
-  it("returns null for somebody who is not a processor", () => {
-    expect(withHomeView(TODAY, "josh@medicallymodern.com", "oversight", true)).toBeNull();
-    expect(withAbility(TODAY, "nobody@medicallymodern.com", "comms", false)).toBeNull();
+  it("⚠️⚠️ CREATES the entry for somebody who has none — a pure manager", () => {
+    // §5.39h: both writers used to bail out here, so ticking an ability or a
+    // home view for anybody added with "Add as Manager" was a SILENT no-op —
+    // the chip lit up on the optimistic state and the next 10s poll threw it
+    // away with nothing erroring. The entry is what the config calls a PERSON;
+    // being a manager is a separate flag beside it, and `resolveAccess` still
+    // reads `managers[]` first, so adding one changes nobody's access.
+    const a = withHomeView(TODAY, "josh@medicallymodern.com", "oversight", true)!;
+    expect(a).not.toBeNull();
+    expect(homeViewsOf("josh@medicallymodern.com", a)).toEqual(["oversight", "bars"]);
+    expect(a.managers).toEqual(TODAY.managers);
+
+    const b = withAbility(TODAY, "nobody@medicallymodern.com", "comms", false)!;
+    expect(b).not.toBeNull();
+    expect(hasAbility("nobody@medicallymodern.com", b, "comms")).toBe(false);
+  });
+
+  it("⚠️ still refuses to remove somebody's LAST view", () => {
+    // A home screen with nothing to render is a dead end with no way back.
+    expect(withHomeView(TODAY, "masani@medicallymodern.com", "bars", false)).toBeNull();
   });
 
   it("never mutates the config it was handed", () => {

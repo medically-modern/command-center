@@ -23,7 +23,7 @@
  * stored value rather than from the manager blanket, so what an admin sees is
  * what the app does.
  */
-import { Check, Eye, KeyRound } from "lucide-react";
+import { Check, Eye, Headphones, KeyRound, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   ABILITY_HINT,
@@ -36,22 +36,34 @@ import {
   isAdmin,
   isOptInAbility,
 } from "@/lib/shell/abilities";
-import { ABILITIES, HOME_VIEWS, type AccessConfig, type Ability, type HomeView } from "@/lib/accessStore";
+import { ABILITIES, HOME_VIEWS, MAX_CALL_ANSWERERS, type AccessConfig, type Ability, type HomeView } from "@/lib/accessStore";
 
 export function AbilitiesEditor({
   email,
   config,
   isManager,
+  isSelf,
+  answersCalls,
+  answerSlotsFull,
   onAbility,
   onHomeView,
   onAdmin,
+  onManager,
+  onAnswersCalls,
 }: {
   email: string;
   config: AccessConfig;
   isManager: boolean;
+  /** You cannot demote or un-admin yourself — the self-lockout guard. */
+  isSelf: boolean;
+  answersCalls: boolean;
+  /** All five RingCentral slots are taken and this person holds none (§5.13b). */
+  answerSlotsFull: boolean;
   onAbility: (ability: Ability, on: boolean) => void;
   onHomeView: (view: HomeView, on: boolean) => void;
   onAdmin: (on: boolean) => void;
+  onManager: (on: boolean) => void;
+  onAnswersCalls: (on: boolean) => void;
 }) {
   const views = homeViewsOf(email, config);
   const admin = isAdmin(email, config);
@@ -72,19 +84,27 @@ export function AbilitiesEditor({
               <button
                 key={v}
                 type="button"
-                disabled={!!isManager || last}
-                onClick={() => onHomeView(v, !on)}
+                // ⚠️ **Editable for a MANAGER too, from §5.39g.** The home is the
+                // signed-in person's own view now, manager or not, so disabling
+                // this for managers made the one control that sets their screen
+                // unclickable — on the only page that sets it.
+                disabled={last}
+                // ⚠️ An ON view that is NOT the landing one promotes on click
+                // (the writer prepends), so "click a view to move it to the
+                // front" is true. Only the landing view itself toggles off —
+                // otherwise there is no way to remove one at all.
+                onClick={() => onHomeView(v, !on || v !== views[0])}
                 title={
-                  isManager
-                    ? "Managers land on the manager dashboard"
-                    : last
-                      ? "Everyone needs at least one view"
+                  last
+                    ? "Everyone needs at least one view"
+                    : on && v !== views[0]
+                      ? `Make ${HOME_VIEW_TAB[v]} the screen they land on`
                       : HOME_VIEW_HINT[v]
                 }
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs",
                   on ? "border-primary/40 bg-primary/10 text-primary" : "border-border hover:bg-muted/40",
-                  (isManager || last) && "cursor-not-allowed opacity-60",
+                  last && "cursor-not-allowed opacity-60",
                 )}
               >
                 {on && <Check className="h-3 w-3" />}
@@ -93,12 +113,20 @@ export function AbilitiesEditor({
             );
           })}
         </div>
+        {/* ⚠⚠ **NAME THE LANDING VIEW.** `views[0]` is the screen this person
+            actually opens on, and with two views on there was nothing anywhere
+            saying which — so ticking a second one read as doing nothing
+            (§5.39h, Josh's Madeline report). Turning one ON now makes it the
+            landing view; this line is what says so. */}
         <p className="mt-1.5 text-[11px] text-muted-foreground">
-          {isManager
-            ? "Managers get the manager dashboard."
-            : views.length > 1
-              ? `Gets a ${views.map((v) => HOME_VIEW_TAB[v]).join(" | ")} toggle on top of the home screen.`
-              : HOME_VIEW_HINT[views[0]]}
+          {views.length > 1 ? (
+            <>
+              Lands on <b className="font-semibold text-foreground">{HOME_VIEW_TAB[views[0]]}</b>, with a{" "}
+              {views.map((v) => HOME_VIEW_TAB[v]).join(" | ")} toggle on top. Click a view to move it to the front.
+            </>
+          ) : (
+            HOME_VIEW_HINT[views[0]]
+          )}
         </p>
       </div>
 
@@ -113,7 +141,15 @@ export function AbilitiesEditor({
             // the real answer for BOTH kinds — never the manager blanket.
             const on = hasAbility(email, config, a);
             const optIn = isOptInAbility(a);
-            const locked = isManager && !optIn;
+            /* ⚠⚠ **NOTHING IS LOCKED ANY MORE** (§5.39h). These chips rendered
+               ON and DISABLED for a manager, because `hasAbility` used to
+               return true for them whatever `perms` said — so an editable
+               checkbox would have written a value nothing read. It IS read
+               now: an explicit `false` is honoured for a manager too, which is
+               what Josh asked for pointing at his own row. The variable stays
+               so the shape of this is obvious if a future rule brings a lock
+               back; today nothing sets it. */
+            const locked = false;
             return (
               <button
                 key={a}
@@ -133,9 +169,55 @@ export function AbilitiesEditor({
             );
           })}
 
+          {/* ⚠️⚠️ **"Answers calls" and "Manager" are on this row because
+              Brandon's own card has them there**, and Josh sent that card with
+              *"i want everything on this list functional"* (2026-09-19). They
+              are NOT `perms` keys — they write `callAnswerers[]` and
+              `managers[]` — so they take their own handlers rather than
+              widening `Ability`, and they go through the SAME writers the
+              sections above use. A second door onto one writer is fine; a
+              second opinion about one value is not (§5.31c), and both of these
+              render straight from the config. */}
+          <button
+            type="button"
+            onClick={() => onAnswersCalls(!answersCalls)}
+            disabled={answerSlotsFull}
+            title={
+              answerSlotsFull
+                ? `All ${MAX_CALL_ANSWERERS} browser-answering slots are taken — turn somebody else off first`
+                : "Incoming patient calls ring this person's browser. RingCentral allows five devices on the main line."
+            }
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs",
+              answersCalls ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600" : "border-border hover:bg-muted/40",
+              answerSlotsFull && "cursor-not-allowed opacity-60",
+            )}
+          >
+            <Headphones className="h-3 w-3" /> Answers calls
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onManager(!isManager)}
+            disabled={isSelf}
+            title={
+              isSelf
+                ? "You can't remove your own manager access"
+                : "Full access to the whole Command Center. Turning it off leaves the person here with no bars — it does not remove them."
+            }
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs",
+              isManager ? "border-amber-400/50 bg-amber-400/10 text-amber-600" : "border-border hover:bg-muted/40",
+              isSelf && "cursor-not-allowed opacity-60",
+            )}
+          >
+            <Shield className="h-3 w-3" /> Manager
+          </button>
+
           {/* Admin is separate: it is about THIS page, not about the app. */}
           <button
             type="button"
+            disabled={isSelf && admin}
             onClick={() => onAdmin(!admin)}
             title={
               adminListEmpty
@@ -154,7 +236,8 @@ export function AbilitiesEditor({
         <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
           <Eye className="mt-[1px] h-3 w-3 shrink-0" />
           Abilities unlock buttons; they never hide a patient. Anything not turned off is on —
-          except <b>{ABILITY_LABEL.viewOthers}</b>, which is off until it is granted.
+          managers included — except <b>{ABILITY_LABEL.viewOthers}</b>, which is off until it is
+          granted.
         </p>
       </div>
     </div>

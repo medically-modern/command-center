@@ -4676,6 +4676,9 @@ menu** (Josh, 2026-09-18, three asks in one message). **No board change; app onl
   else. ⚠️ The phone button is `aria-disabled`, never `disabled`: a disabled button shows no tooltip
   in most browsers, and the tooltip is the entire explanation in this form.
 - **The Managers/Processors roster leaves the LEFT RAIL — and moves into the main area**
+  ⚠️ **SUPERSEDED 2026-09-19 — §5.39h:** the roster is GONE from the redesign altogether, `TeamGrid`
+  with it. Its job — look at somebody's workload — is the Viewing dropdown, which now swaps the
+  whole chrome; its two buttons are on the header's Manage ▾ menu. "As today" keeps the rail.
   (*"remove the managers processors view on the left side bar"*). ⚠️⚠️ **It first shipped as a
   REMOVAL, and that made a manager's home page blank — see §5.39e.** The condition is BOTH
   `layout === "redesign"` AND `viewOthers`: the layout half keeps "as today" untouched, and the
@@ -4707,7 +4710,10 @@ menu** (Josh, 2026-09-18, three asks in one message). **No board change; app onl
   off took them out of the product. They are back, under a **Manage ▾** menu Brandon's own mockup
   carries. Only the dashboard's System Management BUTTON stays hidden in the redesign, because the
   header now carries the same destination.
-- ⚠️⚠️ **Reports & Metrics is commented out of the header, and it needs a DECISION.** It pointed at
+- ⚠️⚠️ **Reports & Metrics is commented out of the header, and it needs a DECISION.** ✅ **DECIDED
+  2026-09-19 — §5.39h:** it is BACK, pointing at Operations (which is live again) and gated on the
+  `reports` ability, because Josh's *"same with inventory reports metrics etrc"* needs the tab to
+  exist before the ability can remove it. The two-doors question below is accepted, not answered. It pointed at
   `/system-mgmt?tab=operations` — Josh's own pick that morning — and Operations was switched off
   that afternoon, so a tab in primary navigation pointed at a switched-off page. **Operations is
   live again (§5.39f) and reachable from Manage ▾**, so the collision is gone and only the naming
@@ -4770,7 +4776,9 @@ config is unset is the permissive one, because the restrictive one has no escape
   (which renders ON and disabled): both grantees are managers, so disabling it would make the only
   grant the app reads unclickable on the only page that can set it. Its chip renders from
   `hasAbility`, i.e. the real stored value, so what an admin sees is what the app does.
-- ⚠️ **A MANAGER holds every ability whatever `perms` says.** Managers see the whole app today
+- ⚠️ **A MANAGER holds every ability whatever `perms` says.** ✅ **NARROWED 2026-09-19 — §5.39h:**
+  the blanket now covers ABSENCE only, so an explicit `false` takes a manager's tab away too (Josh
+  asked for exactly that, pointing at his own row). The rest of this paragraph still holds. Managers see the whole app today
   (§5.3), and quietly narrowing them on the deploy that introduces the model is a change nobody
   asked for. Narrowing a manager is a decision that needs its own conversation.
 - ⚠️ **An empty `admins` list means every MANAGER is an admin**, not that nobody is — the same
@@ -4814,7 +4822,10 @@ dropdown must not have: you would be looking at yourself believing you were look
 ⚠️ The dropdown is given the **RESOLVED** key (email local part), not the raw URL value, or a
 hand-typed `?viewing=someone@medicallymodern.com` selects no option and reads "My view" while that
 person's screen is on show.
-⚠️ **Borrowing somebody's view runs with YOUR permissions, not theirs**, and the banner says so. The
+⚠️ **Borrowing somebody's view runs with YOUR permissions, not theirs.** ✅ **HALF-REVERSED
+2026-09-19 — §5.39h:** the DISPLAY is theirs now (the header's own tabs and menus follow the
+borrow, on Josh's *"the whole ui should be EXACTLY what they see"*); every WRITE is still mine, and
+`ViewAsBanner` in the shell says both halves. The reasoning below is why that banner exists. The
 other reading — that you are acting as that person — is how somebody does something they are not
 allowed to do and believes the app let them on purpose.
 ⚠️ `withHomeView` **refuses to remove somebody's last view**: a home screen with nothing to render
@@ -4954,6 +4965,10 @@ only thing allowed to opt back in. All of it is scanned by
 is removed.
 
 ### 5.39e The roster was REMOVED, not moved — a manager's home page went blank (Sep 2026)
+> ⚠️ **SUPERSEDED 2026-09-19 (§5.39h): `TeamGrid` is deleted and the home is the signed-in person's
+> own view.** Read this for the lesson, not the code — the failure it records (removing a surface
+> without checking what it was the only door to) is the reason `lossless.test.ts` exists, and the
+> `?user=` vs `?viewing=` distinction below is still live in `Index` for the "as today" layout.
 Josh, 2026-09-18, on the same afternoon as §5.39d and in the same message: *"yeha the views are
 super wrong"*. §5.39d answered the half of that report about getting back out of the layout; this
 is the half it missed, and it is the bigger one. **No board change; app only.**
@@ -5061,14 +5076,180 @@ his handoff asks for (§5.39 has the price — extending `reviewMode` across 13 
 shell/body split of each); the global search matches name + phone + order identifiers while its
 placeholder promises *"name, DOB, phone, member ID, order #, doctor"* (the OLD System Management
 search had the same limits, so that is unbuilt spec rather than a regression); Subscription's
-Profile | Orders tabs; Reports & Metrics (§5.39b's naming question); and `comms` · `adjustOrders` ·
-`editProfile` exist as abilities that no action reads.
+Profile | Orders tabs. ✅ **Reports & Metrics and all six abilities landed 2026-09-19 — §5.39h**;
+the ability list is no longer decoration.
 
 **Keep-in-agreement:** `components/shell/lossless.test.ts` is the door list — a tool added to the
 redesign's navigation, or removed from it, belongs there · `GlobalHeader`'s Manage menu ⇄
 `SystemMgmtPage`'s `initialTab` and its five `TabBtn`s (a menu entry whose tab is commented out is
 the §5.39b failure again) · `dossierApi.fetchDossierItemById`'s board guard ⇄ `PatientPage`'s
 required `?board=` (§5.39).
+
+### 5.39g/h The home is MY view, the borrow is the WHOLE ui, and every ability bites (Sep 2026)
+Josh, 2026-09-19, nine asks in one message. The governing rule is still §5.39f's — *"the ui is the
+re-write not the function"* — and one sentence in this message widens it: **"the whole ui should be
+EXACTLY what they see"**. **No board change; app only.**
+
+⚠️⚠️ **THE HOME SCREEN IS THE SIGNED-IN PERSON'S OWN VIEW, MANAGER OR NOT** (*"for me josh logging
+in it should show my view by defualt"*). `HomeViewHost` branched on `access.type`, so a manager —
+including one carrying a full processor profile with 24 roles — landed on the team roster and never
+saw their own queues. The rule is **`lib/shell/homeProfile.ts` `homeProfileFor`**: the stored
+processor profile, else (for a manager with no entry) a SYNTHETIC profile carrying every role.
+⚠️ The synthetic one deliberately has no `roleFilters`/`roleOrder` — inventing a per-role escalation
+filter for somebody nobody has configured is a claim about how they work.
+⚠️ `Index.tsx` is now the **"as today" dashboard ONLY** (`HomeViewHost`: `if (!redesign) return
+<Index />`), and the roster branch that used to live in it is DELETED rather than dormant — a screen
+nothing can reach is the dead code §5.11 exists to warn about. `TeamGrid` (§5.39e) went with it: its
+job was "look at somebody's workload", which the Viewing dropdown does, and its two buttons
+(Oversight, Manage Access) are both on the header's **Manage ▾** menu. `lossless.test.ts` pins that.
+
+⚠️⚠️ **THE BORROW IS THE WHOLE CHROME, NOT ONE PANE** (*"if mashekes view has patient commuencitoan
+assigned and i vew her view it should appear"* · *"same with inventory reports metrics etrc"*).
+**`lib/shell/viewAs.ts`** is a module-scope store (`useSyncExternalStore`, returning a STRING —
+incident rule 2) that `HomeViewHost` pushes the borrowed email into and `GlobalHeader` reads, because
+the header lives in `AppShell`, ABOVE the home route, so there is no prop path between them. The
+header then answers for **`who`** — the tabs it renders, the Manage menu and the Users button.
+⚠️ **This reverses §5.39c's own line** (*"borrowing somebody's view runs with YOUR permissions"*)
+and Brandon's mockup hint, on Josh's explicit instruction. The safety property moved rather than
+vanishing: the borrow is a DISPLAY preview and reaches nothing that writes.
+⚠️⚠️ **`AbilityGate`, `AbilityLock` and every write guard read the SIGNED-IN person — the opposite
+rule, one component away.** The header asks *what does their screen look like*; those ask *may I do
+this*, and borrowing must neither hand me their access nor take away my own.
+⚠️⚠️ **THE SOFTPHONE IS NEVER BORROWED.** `canAnswerCalls` drives a real SIP registration on a
+shared extension capped at five devices (§5.13b) — borrowing an answerer's view would take a slot
+from somebody on the rota and ring a phone nobody is sitting at. `CallConnectionBadge` owns that
+gate; `GlobalHeader` must not contain the string `canAnswerCalls`.
+⚠️ A revoked `viewOthers` ENDS the borrow rather than stranding somebody inside another person's
+screen with no dropdown left to leave it.
+⚠️ **ONE banner, in the shell** (`ViewAsBanner`, rendered by `AppShell`): the borrow follows you off
+the home page, so the say-so has to as well. `HomeViewSwitch` kept a second copy saying *"anything
+you do here runs with your permissions, not theirs"* — found by RENDERING a borrow — which was the
+whole truth before this and is half of it now. Its way out is on the strip, because the dropdown
+that starts a borrow lives only on the home screen (§5.10 · §5.20 · §5.31c · §5.39d).
+
+⚠️⚠️ **AN EXPLICIT `false` IS NOW HONOURED FOR A MANAGER TOO** (*"i want everthing on this list
+functional. ie if i dont assign myself communications the tab should be removed from the top bar for
+me"* — and Josh is a manager, so under §5.39c's flat blanket the checkbox he was pointing at could
+never do anything). `hasAbility`'s manager branch reads `storedProfile(...)?.perms?.[a] !== false`.
+⚠️ **The distinction is ABSENCE vs a DECISION**, which is the same argument default-ON rests on:
+absent stays ON, so the deploy that introduced `perms` narrowed nobody; an explicit `false` is
+somebody looking at the switch. Measured in a browser BEFORE the fix — Katie, a manager with
+`comms: false`, kept the Communications tab **and walked straight through its page gate**.
+⚠️ The chips on `/access` are therefore **no longer locked for managers** (§5.39c disabled them
+because the value was unread; it is read now). `viewOthers` stays opt-in and is still checked first.
+
+**Every ability now gates something** (Josh: *"i want everthing on this list functional"*):
+
+| ability | what it unlocks | where |
+|---|---|---|
+| `comms` | the Communications page | `App.tsx` `<AbilityGate ability="comms">` |
+| `inventory` | the Inventory view inside `/orders` | `OrdersPage` |
+| `reports` | Operations — what the Reports & Metrics tab opens | `SystemMgmtPage` |
+| `adjustOrders` | the backorder **substitution card** | `OrdersPage` |
+| `editProfile` | the Subscription send **and** the visit-date save | `SubscriptionPage` · `UpdateClinicalsPage` |
+| `viewOthers` | the Viewing dropdown (opt-in) | `HomeViewHost` |
+
+⚠️ **A GATE ON THE TAB IS NOT A GATE ON THE PAGE** — the route still answers a typed URL, a bookmark
+and a Back. `AbilityGate` is the page wall ("<Label> is assigned.", naming the switch and, for an
+admin, linking to Users); `AbilityLock` is the other half — a control SHOWN and inert with one line
+saying why, because hiding it is the dead end this doc records reversing four times.
+⚠️ **`adjustOrders` hides the CARD, not a button that refuses after the press**: picking the
+replacement IS the send (§5.35 — the column change emails Cardinal, no draft, no undo).
+⚠️ **`editProfile` is Brandon's own definition** — *"can change the Subscription profile — Order
+details, visit date, MN docs, address and phone; without it the profile is read-only"*. That is
+exactly two write paths here: Subscription's ~20-column Send to Monday, and Update Clinicals' visit
+date (MN Expiry + the MR rung, §5.36). Checked on the button AND inside the handler — the button is
+what a rep sees, the handler is what stops the write. **Notes stay writable** on both: a running case
+history is not the profile, and it is how a rep records what they just learned.
+
+**`setManager(email, false)` LEAVES A PROCESSOR ENTRY BEHIND** (*"i removed corey as a manager and
+hsi profile disappeared"* — confirmed on live `main`: `corey@` is in neither list now). The People
+list is `new Set([...managers, ...Object.keys(processors)])`, so a PURE manager exists in one array
+only; demoting deleted the only record of them, **and `resolveAccess` then returned `{type:"none"}`,
+signing them out of the app** — via a checkbox that says nothing about access. A `{name, roles: []}`
+entry is left instead; full removal stays the Remove button. ⚠️ Corey still needs re-adding by hand.
+⚠️ Same class, two more silent no-ops fixed with it: `homeViewsOf` read through `kindOf` (which
+returns `profile: null` for anybody in `managers[]`, i.e. every "dual" person), and
+`withHomeView`/`withAbility` bailed out for anybody with no processors entry — so ticking a chip for
+a pure manager lit up the optimistic state and the next 10s poll threw it away. `withProcessorEntry`
+creates one.
+
+⚠️⚠️ **A NEWLY GRANTED HOME VIEW IS PREPENDED — it becomes the LANDING view.** Josh: *"i assigned
+madelins just manager oversight and it still shows bars when i look at her view"*. Nothing was
+broken; the ORDER was. `views[0]` is what the home opens on, the default is `["bars"]`, and
+`withHomeView` appended — so ticking Oversight left her landing on bars behind a toggle nobody
+noticed. **The live `access.json` history is the proof**: 11:18:26 wrote `["bars","oversight"]`,
+and three toggles later he turned bars off to get the screen he had just asked for. Turning one OFF
+never reorders the rest, and the editor now prints *"Lands on X"* and promotes an already-on view on
+click. **Diagnose this class from the access.json commit history, not from the current file** — the
+final state was correct and told you nothing.
+
+**Found by RENDERING it (§5.30d's rule), not by reading it:**
+1. ⚠️⚠️ **`--cc-head` was doing two jobs.** It is the header's own `min-height` AND what the fit
+   overrides subtract, so raising it to 92px for the borrow banner made `.gh` 36px taller *and*
+   stacked the banner under it: the main area started **128px** down instead of 92, and the header
+   wore an empty band. `--cc-chrome` is now the total (`.cc-shell.has-viewas { --cc-chrome:
+   calc(var(--cc-head) + 36px) }`) while `--cc-head` stays 56px. Fix by construction, not by tuning
+   an offset (§5.30c). Re-measured: header 56, banner 36, main at 92, no scrollbar, at 1440 and 1100.
+2. The manager-ability blanket above — Katie's tabs and her page gate.
+3. The two borrow banners.
+4. ⚠️ `.cc-viewas` shipped UNSCOPED, which `patientScreen.test.ts` catches: every rule in
+   `shell.css` must start `.cc-shell`, or it reaches a page in the "as today" layout.
+
+> ⚠️ **Noted, NOT fixed: `--gradient-subtle` has no `.dark` override**, so the 31 pages using it
+> render a light background under light `text-foreground` in dark mode. It is **unreachable** —
+> `ThemePicker` offers six colour themes and none of them is dark, and nothing in the app ever adds
+> the `.dark` class — so this is dormant CSS, not a live bug, and changing an app-wide token to fix
+> a mode nobody can enter is churn. Tell whoever turns dark mode on.
+
+**Keep-in-agreement:** `lib/shell/viewAs.ts` ⇄ `GlobalHeader`'s `who` ⇄ `AppShell`'s `borrowedName`
+⇄ `HomeViewHost`'s `setViewAs` effect — and NOTHING else may read it (`viewAsScope.test.ts` scans
+the three pages that write) · `hasAbility`'s manager branch ⇄ `AbilitiesEditor`'s unlocked chips ⇄
+the footer sentence · `withHomeView`'s prepend ⇄ the editor's "Lands on" line ⇄ `HomeViewHost`'s
+`views[0]` · `--cc-head` (the header) ⇄ `--cc-chrome` (everything above a page) ⇄ `.gh`'s
+`min-height` · `MAX_CALL_ANSWERERS`, `ABILITIES` and `HOME_VIEWS` on `accessStore` ⇄
+`AbilitiesEditor` ⇄ `AccessAdminPage`'s five writers.
+Files: `lib/shell/{viewAs,homeProfile,abilities}.ts`,
+`components/shell/{AppShell,GlobalHeader,HomeViewHost,HomeViewSwitch,ViewAsBanner,AbilityGate,AbilityLock,AbilitiesEditor}.tsx`,
+`pages/{Index,ProcessorView,AccessAdminPage,OrdersPage,SubscriptionPage,UpdateClinicalsPage,SystemMgmtPage,shell.css}`,
+`lib/accessStore.ts`, `App.tsx` (+ `viewAsScope.test.ts`, `homeViewBorrow.test.tsx`,
+`abilities.test.ts`, `shellRemovals.test.ts`, `lossless.test.ts`, `patientScreen.test.ts`).
+
+### 5.39i Inventory — the Cardinal stock page in Brandon's layout (Sep 2026)
+Josh, 2026-09-19: *"re-write the cardinal stock page to look much more like his."* His
+`viewInventoryList` is ONE page — title, search, Refresh, a row of category chips and a single
+fixed-width sortable table — where this was five family cards each with their own little table.
+Same board read, same joins, same verdicts; the family became a chip and a sub-line.
+**No board change; app only.** File: `components/orders/SkuTrackerView.tsx`.
+
+⚠️ **Everything the old view could tell a rep, it still tells them.** His table has five columns and
+ours keeps a sixth, **Open orders**, because that is real function this build has and his sample
+data could not carry (his rows do have an `open` field — he just never renders it). The last-run
+line, the staleness warning, the read error and the poll history stay for the same reason: a mockup
+with hardcoded rows needs none of them, and all four are how a rep knows whether to trust a number.
+
+⚠️⚠️ **OOP price is the BOARD's column (`numeric_mm5bs4hd`), never a derivation.** The mockup
+computes it as `unit cost × 1.25` because its rows have no such field; porting that arithmetic would
+put an invented price in front of somebody quoting a patient.
+⚠️ **Sorting by Status sorts by the VERDICT, not the raw column.** `stockVerdict` already folds the
+status, the quantity and the staleness together — "Backordered" and "Out of stock" are both red and
+mean the same thing to a rep, while an `Available` row whose count is three days old is grey.
+Sorting the raw label orders the table by something nobody can see. Rank is red · amber · grey ·
+green, so ascending is worst-first, which is his `rank`'s intent.
+⚠️ **`table-fixed` + an explicit colgroup, straight from his `.invt`**: the filters swap ROWS and
+never move the columns, so a rep scanning a number does not re-find the column on every keystroke.
+Verified in a browser at 1440 and 1100 — every row's cells at identical x, no horizontal overflow.
+⚠️ **The chips are derived from the rows present**, never a hardcoded family list, and a row whose
+group is none of the five falls into "Other" rather than vanishing from both the chips and "All".
+⚠️ **The empty state names the query and the category** — a blank table reads as a broken page.
+⚠️ `shortStamp` returns an unrecognised `Last Changed` **verbatim**: the column is scraped text, and
+a formatter that guesses at an unfamiliar shape prints a wrong date rather than an ugly one.
+
+**The page is called Inventory on every surface now** — the global header tab already was, so the
+in-page view tab and the header title follow it. `?view=stock` keeps its name, so every existing
+link still works. The ORDER sidebar is hidden while Inventory is open (it is the orders view's
+search, and on this screen it lists things this page cannot open); the Orders tab is one click back
+and brings it with it.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -7577,7 +7758,14 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A redesign control appears over the OLD layout (a stray "Viewing" strip) | §5.39d — `HomeViewHost` is mounted at the ROUTE, outside `AppShell`, so it must gate on the layout itself. Anything else mounted outside the shell has the same trap; `layoutEscape.test.tsx` pins this one |
 | A button in the bottom-left corner won't take a click (sign-out, Manage Access, the layout toggle) | §5.39d — `IncomingCallHost`'s call-status stack is there at `z-[60]` and covered them. It is `pointer-events-none` now, so it cannot intercept whatever it covers; if it recurs, something put `pointer-events-auto` back on the stack rather than on the one control that needs it |
 | The patient screen has no way out | §5.39d — it renders no header of its own by design (§5.39b), so it carries its own `<BackRow />` on `useBackNavigation` in every `cc-pt` branch, error branch included |
-| Somebody lost a button, or a tab vanished for them | §5.39c — abilities are on `access.json` under the person's `perms`, edited on `/access`. ⚠️ **Absent means ON**, so a missing button means somebody explicitly turned it off, never that the field is unset. A MANAGER keeps every ability whatever `perms` says |
+| Somebody lost a button, or a tab vanished for them | §5.39c/h — abilities are on `access.json` under the person's `perms`, edited on `/access`. ⚠️ **Absent means ON**, so a missing button means somebody explicitly turned it off, never that the field is unset — and that now holds for MANAGERS too: the blanket covers absence only, so an explicit `false` takes a manager's tab away (§5.39h, Josh's own ask). ⚠️ A tab gate is not a page gate: `AbilityGate` is the wall, `AbilityLock` the inert-control note |
+| A tab is missing / a page says "<X> is assigned." | §5.39h — that ability is explicitly `false` on their row in `/access`, managers included. The wall names the switch and links an admin to Users; it reads the SIGNED-IN person, never a borrowed one |
+| Subscription won't save, or Save Visit Date is greyed out | §5.39h — `editProfile`. The profile still renders in full and notes stay writable; only the two WRITES are gated (`SubscriptionPage`'s send, `UpdateClinicalsPage`'s visit date), on the button AND in the handler |
+| Somebody was removed as a manager and vanished from the app | §5.39h — a PURE manager exists only in `managers[]`, so demoting used to delete the only record of them and `resolveAccess` then returned `{type:"none"}`. `setManager` leaves a `{name, roles: []}` entry now. **Corey needs re-adding by hand** — he is in neither list on live `main` |
+| A custom home view "does nothing" | §5.39h — `views[0]` is the landing view and a newly granted one is PREPENDED, so it is what they open on; the editor prints "Lands on X". If it still looks wrong, read the **access.json commit history**, not the current file: the final state can be right while the sequence explains what was seen |
+| Borrowing somebody's view shows my tabs, or theirs reach a write | §5.39h — `lib/shell/viewAs.ts`. The HEADER answers for the borrowed person (tabs, Manage, Users); `AbilityGate`, `AbilityLock` and every write guard answer for the signed-in one; the softphone is never borrowed. `viewAsScope.test.ts` pins all three |
+| A page sits 36px short, or the header grows a blank band | §5.39h — `--cc-head` is the HEADER's height and `--cc-chrome` is everything above a page. The borrow banner raises the second, never the first; raising both made `.gh` taller AND stacked the banner under it |
+| The Cardinal stock page / "where is Inventory?" | §5.39i — `/orders?view=stock`, one table with category chips, `components/orders/SkuTrackerView.tsx`. OOP price is the board's column, never `cost × 1.25`; Status sorts by the VERDICT, not the raw label; the order sidebar is hidden there by design |
 | "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |
 | The phone icon in the top bar is red / there is no phone icon | §5.39c — it is `CallConnectionBadge compact`, the same component as the home badge, and it renders for **assigned call answerers only** (§5.13b). Red with "the line is full" is RingCentral's five registrations (§5.13b); amber "another tab" means click it to move the line here. No icon at all ⇒ not in `callAnswerers` on `/access` |
 | The Managers/Processors sidebar is gone from my home page | §5.39e — it moved into the MAIN AREA as `TeamGrid` (a card per person), only for people who hold `viewOthers` in the redesign layout; "as today" keeps the rail. Sign-out moved with it: the gear menu, and the floating button bottom-left. ⚠️ If the home page is BLANK rather than showing the team, the `rosterReplaced` branch has gone back to rendering `DashboardMainView person={null}` — `teamGrid.test.ts` should have failed |

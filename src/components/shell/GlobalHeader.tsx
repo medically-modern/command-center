@@ -9,23 +9,30 @@
  *   My Dashboard       → `/`                        (today's home)
  *   Communications     → `/assigned-patients`       (the RingCentral hub)
  *   Inventory          → `/orders?view=stock`       (the Cardinal SKU tracker)
+ *   Reports & Metrics  → `/system-mgmt?tab=operations`
  *
- * ⚠️⚠️ **REPORTS & METRICS IS COMMENTED OUT, AND IT NEEDS A DECISION.** It
- * pointed at `/system-mgmt?tab=operations` (Josh's own pick, 2026-09-18,
- * because Brandon's Patient Pipeline Tracker does not exist in this build and
- * its numbers are specified nowhere) — and later the same day Josh asked for
- * Operations to be commented out. The two instructions collide: a tab whose
- * only real destination has been switched off is a dead link, and a dead link
- * in primary navigation is worse than a missing tab. So it is commented rather
- * than repointed at something invented. Three ways back, in preference order:
- * uncomment the Operations tab in `SystemMgmtPage` and restore this; point it
- * at `/oversight` (real, but that is not "reports"); or build the tracker.
+ * ⚠️ **Reports & Metrics points at Operations deliberately**, and that is Josh's
+ * own pick (2026-09-18): Brandon's Patient Pipeline Tracker does not exist in
+ * this build and its numbers are specified nowhere, while Operations is the real
+ * page his own audit calls "the most sensible map of the roles anywhere in the
+ * app". It was commented out for a day while that tab was switched off; the tab
+ * is live again (§5.39f), so the collision is gone.
  *
- * ⚠️ **Nothing here is gated on an ability yet.** The abilities model
- * (`admins[]`, `perms`) is a later phase, and §5.39 records the rule for when
- * it lands: default every ability ON, or the first deploy reads an access.json
- * with no `perms` and everybody fails closed — the same reasoning as
- * `isBootstrapMode` (§5.3).
+ * ⚠️⚠️ **EVERY TAB IS ABILITY-GATED AND THE GATE READS THE *EFFECTIVE* IDENTITY**
+ * (Josh, 2026-09-19: *"i want everything on this list functional. ie if i dont
+ * assign myself communications the tab should be removed from the top bar for
+ * me"* · *"if mashekes view has patient communication assigned and i view her
+ * view it should appear"*). So the tabs answer for the person whose view is on
+ * show — mine, or the one borrowed through `lib/shell/viewAs` — and so do the
+ * Manage menu and the Users button.
+ *
+ * ⚠️ An ability nobody has turned off is ON (§5.39c), so every tab renders for
+ * everybody until an admin says otherwise; the model stays additive.
+ *
+ * ⚠️⚠️ **THE SOFTPHONE BADGE IS NOT BORROWED.** It reads the signed-in email
+ * straight from `useAccessContext`, because it drives a real SIP registration on
+ * a shared extension (§5.13b) — borrowing it would register this browser as
+ * somebody else, or stop MY phone ringing while I look at their screen.
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -35,7 +42,8 @@ import { GlobalSearch } from "./GlobalSearch";
 import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
 import { useAccessContext } from "@/components/AccessProvider";
-import { hasAbility, isAdmin } from "@/lib/shell/abilities";
+import { hasAbility, isAdmin, isManagerOf } from "@/lib/shell/abilities";
+import { useViewAs } from "@/lib/shell/viewAs";
 import type { Ability } from "@/lib/accessStore";
 
 interface Tab {
@@ -67,6 +75,7 @@ const TABS: Tab[] = [
     to: "/assigned-patients",
     icon: MessageSquare,
     match: (p, s) => p === "/assigned-patients" || (p === "/system-mgmt" && s.includes("tab=communications")),
+    ability: "comms",
   },
   {
     key: "inventory",
@@ -76,27 +85,42 @@ const TABS: Tab[] = [
     match: (p, s) => p === "/orders" && s.includes("view=stock"),
     ability: "inventory",
   },
-  // ── Reports & Metrics — commented out 2026-09-18, see the header ──
-  // {
-  //   key: "reports",
-  //   label: "Reports & Metrics",
-  //   to: "/system-mgmt?tab=operations",
-  //   icon: BarChart3,
-  //   match: (p, s) => p === "/system-mgmt" && s.includes("tab=operations"),
-  //   ability: "reports",
-  // },
+  {
+    key: "reports",
+    label: "Reports & Metrics",
+    to: "/system-mgmt?tab=operations",
+    icon: BarChart3,
+    match: (p, s) => p === "/system-mgmt" && s.includes("tab=operations"),
+    ability: "reports",
+  },
 ];
 
 export function GlobalHeader() {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const [layout, setLayout] = useShellLayout();
-  const { email, config, access } = useAccessContext();
-  const admin = isAdmin(email, config);
+  const { email, config } = useAccessContext();
+  /**
+   * ⚠️⚠️ **WHOSE HEADER THIS IS.** `viewAs` is set by the home screen's
+   * "Viewing" dropdown (§5.39g) and is empty the rest of the time, so `who` is
+   * the signed-in email unless a borrow is on. Every gate below reads `who`;
+   * nothing that WRITES may.
+   *
+   * ⚠️ The borrow is only honoured while the signed-in person actually holds
+   * `viewOthers` — an ability revoked mid-session must not leave somebody stuck
+   * inside another person's screen.
+   */
+  const borrowing = useViewAs();
+  const mayBorrow = hasAbility(email, config, "viewOthers");
+  const who = borrowing && mayBorrow ? borrowing : email;
+  const borrowedName =
+    who !== email ? (config.processors?.[who]?.name || who.split("@")[0]) : "";
+
+  const admin = isAdmin(who, config);
   /** Manager tools are for managers. `isAdmin` is true for every manager while
    *  `admins` is empty (§5.39c), so today this is the same set — but the two
    *  answer different questions and must not be conflated. */
-  const managerish = access.type === "manager";
+  const managerish = isManagerOf(who, config);
   const [menu, setMenu] = useState(false);
   const menuBox = useRef<HTMLSpanElement>(null);
   const [manage, setManage] = useState(false);
@@ -133,7 +157,7 @@ export function GlobalHeader() {
       </Link>
 
       <nav className="topnav" aria-label="Sections">
-        {TABS.filter((t) => !t.ability || hasAbility(email, config, t.ability)).map((t) => {
+        {TABS.filter((t) => !t.ability || hasAbility(who, config, t.ability)).map((t) => {
           const Icon = t.icon;
           const active = t.match(pathname, search);
           return (

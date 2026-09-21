@@ -60,6 +60,7 @@ import {
 import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
 import { OperationsTab } from "@/components/systemMgmt/OperationsTab";
+import { AbilityGate } from "@/components/shell/AbilityGate";
 import OversightTab from "@/components/oversight/OversightTab";
 import { ProfileStatusBadge } from "@/components/shared/ProfileStatusBadge";
 import { systemProfileStatus } from "@/lib/shared/profileStatus";
@@ -469,7 +470,11 @@ const SystemMgmtPage = () => {
           ) : activeTab === "stageManager" ? (
             <StageManagerView patients={patients} onMoved={refetch} />
           ) : activeTab === "operations" ? (
-            <OperationsTab />
+            // ⚠️ Operations IS "Reports & Metrics" in the header (§5.39g), so
+            // the ability that shows that tab has to reach the page too.
+            <AbilityGate ability="reports">
+              <OperationsTab />
+            </AbilityGate>
           ) : activeTab === "oversight" ? (
             <OversightTab />
           ) : (
