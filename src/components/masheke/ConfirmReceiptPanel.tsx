@@ -81,6 +81,15 @@ import { loadEvalStateForPatient, computeMnChecklist } from "@/lib/masheke/evalS
 import { shouldShowCgmBlock, shouldShowIpBlock } from "@/lib/masheke/ipPaths";
 
 interface Props {
+  /**
+   * ⚠️ **Rendered read-only inside the patient screen (§5.39c)** — which is not
+   * a styling flag: it switches OFF the live fax poll. `useFaxStatus` walks a
+   * backoff ladder out to ~33 minutes / 56 RingCentral requests whenever a fax
+   * went out TODAY (§5.9b), and behind a frozen panel that is pure waste: the
+   * chip exists so a rep can decide whether to press "Request Sent", and here
+   * nothing can be pressed. The live page still polls; this embed does not.
+   */
+  embedded?: boolean;
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
   /** The send advanced this patient off the stage — the page takes them off
@@ -99,7 +108,7 @@ interface Props {
 // Main panel
 // =====================================================================
 
-export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false, onAdvanced }: Props) {
+export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false, onAdvanced , embedded = false}: Props) {
   const mondayFiles = useMondayFiles(patient.id);
 
   // "What we're still missing" + courtesy-fax message body are derived from
@@ -512,6 +521,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false, on
             re-send. The written message lives in a collapsible drawer. ── */}
       <MmStep num={1} title={isEmail ? "Send the Courtesy Email" : "Send the Courtesy Fax"}>
         <CourtesyFax
+          embedded={embedded}
           key={patient.id}
           isEmail={isEmail}
           recipient={recipient}
@@ -969,6 +979,7 @@ async function saveNo({
 /** Step 1 courtesy-fax — recipient + delivered timestamp + one-press re-send,
  *  a tight attachment list, and the written message tucked into a drawer. */
 function CourtesyFax({
+  embedded,
   isEmail,
   recipient,
   files,
@@ -985,6 +996,8 @@ function CourtesyFax({
   resentNow,
   onResend,
 }: {
+  /** Read-only inside the patient screen — no live fax poll (§5.39c). */
+  embedded: boolean;
   isEmail: boolean;
   recipient?: string;
   files: TaggedFile[];
@@ -1011,7 +1024,7 @@ function CourtesyFax({
   const sendFiles = files.filter((f) => !excludedAssetIds.has(f.file.assetId));
   // Live RingCentral fax status (fax only, same-day only). Polls RC's message
   // store for the real Queued → Sent (or Failed) status of this send.
-  const faxActive = !isEmail && !!sentAt && isSentToday(sentAt);
+  const faxActive = !embedded && !isEmail && !!sentAt && isSentToday(sentAt);
   const faxStatus = useFaxStatus(recipient, sentAt, faxActive);
   return (
     <div className="flex flex-col gap-3">

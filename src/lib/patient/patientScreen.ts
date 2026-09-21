@@ -14,6 +14,15 @@ export const VIEW_PARAM = "view";
 export const SIDE_PARAM = "side";
 export const STEP_PARAM = "step";
 export const SNAP_PARAM = "snap";
+/**
+ * Which SUB-STAGE tool the embedded panel is showing (§5.39c).
+ *
+ * ⚠️ Separate from `snap`, which names the RECORD (§5.42's per-item tabs) — a
+ * stage can hold several records AND several tools, and the two questions have
+ * different answers. Brandon's mockup reuses `snap` for the sub-stage because
+ * his sample data has one record per stage; ours does not.
+ */
+export const TOOL_PARAM = "tool";
 /** Profile | Orders inside the Subscription view (§5.45) — in the URL like
  *  every other pane choice on this screen, so a link can name one. */
 export const SUB_PARAM = "sub";
@@ -232,6 +241,25 @@ export function itemOpenHref(item: DossierItem | null): string | null {
   const route = COMPLETED_STAGE_ROUTES[item.boardId];
   if (!route) return null;
   return `${route}?patientId=${item.itemId}&completedStage=${item.boardId}&from=patient`;
+}
+
+/**
+ * The same link, aimed at ONE sub-stage's tool (§5.39c).
+ *
+ * ⚠️ **`itemOpenHref`'s route is the board's default tool**, which is right for
+ * a record with no sub-stage toggle and wrong the moment there is one: a
+ * manager reading the Confirm Receipt panel who presses Open expects Confirm
+ * Receipt, not Evaluate. The item id and the `completedStage` gate are
+ * unchanged — only the route moves — so a completed record still opens in
+ * review mode (§5.38) whichever tool it opens.
+ *
+ * ⚠️ Returns null for a sub-stage with no page (Auth Denied, §7), so the caller
+ * renders plain text rather than a dead link.
+ */
+export function subStageOpenHref(item: DossierItem | null, route: string): string | null {
+  if (!item || !route) return null;
+  const tail = item.isCompleted ? `&completedStage=${item.boardId}` : "";
+  return `${route}?patientId=${item.itemId}${tail}&from=patient`;
 }
 
 export interface InfoFact {

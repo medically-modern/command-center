@@ -101,6 +101,15 @@ import {
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 
 interface Props {
+  /**
+   * ⚠️ **Rendered read-only inside the patient screen (§5.39c)** — which is not
+   * a styling flag: it switches OFF the live fax poll. `useFaxStatus` walks a
+   * backoff ladder out to ~33 minutes / 56 RingCentral requests whenever a fax
+   * went out TODAY (§5.9b), and behind a frozen panel that is pure waste: the
+   * chip exists so a rep can decide whether to press "Request Sent", and here
+   * nothing can be pressed. The live page still polls; this embed does not.
+   */
+  embedded?: boolean;
   onUpdate: (patch: Partial<Patient>) => void;
   patient: Patient;
   /** Bumped by parent on Reset — forces local state reload. */
@@ -118,7 +127,7 @@ interface Props {
 // Main panel
 // =====================================================================
 
-export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanced }: Props) {
+export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanced , embedded = false}: Props) {
   const [state, setState] = useState<EvalState>(() => loadEvalStateForPatient(patient));
   const showCgm = shouldShowCgmBlock(patient.serving);
   const showIp = shouldShowIpBlock(patient.serving);
@@ -643,6 +652,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
       {/* ── Step 4 — Send the Request ── */}
       <MmStep num={viaPortal ? 3 : 4} title="Send the Request">
         <SendRequestComposer
+          embedded={embedded}
           key={`${patient.id}:${resetVersion}`}
           patient={patient}
           checklist={mnChecklist}
@@ -1040,6 +1050,7 @@ function AddressChipsInput({
 /** Section 3 — auto-filled request template + notes + send footer. */
 function SendRequestComposer({
   patient,
+  embedded,
   checklist,
   attempt,
   method,
@@ -1052,6 +1063,8 @@ function SendRequestComposer({
   sentAtIso,
   generateSlot,
 }: {
+  /** Read-only inside the patient screen — no live fax poll (§5.39c). */
+  embedded: boolean;
   patient: Patient;
   checklist: MnChecklist;
   attempt: number;
@@ -1102,7 +1115,7 @@ function SendRequestComposer({
   const faxRecipient =
     recipients.find((r) => /@rcfax\.com$/i.test(r) || (r.replace(/\D/g, "").length >= 10)) ||
     patient.doctorFax;
-  const faxActive = method === "Fax" && !!sentAt && isSentToday(sentAt);
+  const faxActive = !embedded && method === "Fax" && !!sentAt && isSentToday(sentAt);
   const faxStatus = useFaxStatus(faxRecipient, sentAt, faxActive);
   // A request has demonstrably gone out — this session, or already on the
   // board. Advancing with NO record of any send at all is what let a patient

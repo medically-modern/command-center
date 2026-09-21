@@ -4579,15 +4579,15 @@ fails on a `setInterval`/`setTimeout` in the hook.
 rather than polish: the name, every Open link and the outbound text's attribution all derive from
 `dossier`, so holding the previous patient puts one person's chart under another's header.
 
-⚠️ **THE PER-STAGE PANEL IS A LINK, NOT AN EMBEDDED RENDER — and that is the whole reason this
-slice is small.** Brandon's handoff asks for each stage tool to render inline, read-only. Three
-separate things hide in that: extending `reviewMode` from 4 pages to 13, making it disable every
-control rather than just the advance (§7 keeps notes and inline saves live **on purpose**), and
-splitting all 13 pages into shell + body so the middle can be embedded. The third is a refactor OF
-the stage tools, which this build is scoped out of. **The app already has the behaviour**:
-`stepOpenHref` opens a completed record at `?patientId=…&completedStage=<boardId>`, which is
-§5.38's mechanism and §7's review mode. Embedding later is a decision with a known price, not a
-blocker now.
+⚠️⚠️ **THE PER-STAGE PANEL WAS A LINK — and the price recorded here for making it an embedded
+render was WRONG. ✅ BUILT 2026-09-21, §5.39c2.** This paragraph said the embed needed three
+things: `reviewMode` across all 13 pages, widened to disable every control rather than just the
+advance, and a shell/body split of each page. **The third already existed** — §4's per-role
+convention makes every page a shell around a prop-driven panel — and the first two are not the
+mechanism at all: `inert` on the wrapper, no-op callbacks, and simply not mounting the page's
+hook are. Read §5.39c2 before re-pricing anything on this screen; the estimate above is the
+reason it went unbuilt for three days. The link is **kept** beside the panel (Josh's own ask),
+because the embed is read-only and the link is the only route to a tool a rep can work in.
 ⚠️ `completedStage` is a **WRITE GATE**, not a banner flag — without it a rep reading history can
 re-advance a finished patient, and the advancer is what the board automations fire on. The test
 pins it and is verified to fail when the param is dropped.
@@ -5115,15 +5115,14 @@ the redesign shipped a LINK or a stub where the handoff specifies real content. 
 bug to fix quietly — each is a decision — but none should be rediscovered either. Ordered by what
 a person would notice first:
 
-1. ⚠️⚠️ **The per-stage panels are LINKS, not the read-only real tools.** The handoff is explicit:
-   *"the same page Josh already renders at /unverified-referrals, /evaluate, … with exactly one
-   difference: the navy page header and the patient header card are not carried over. Everything
-   else is the real thing"*, plus a sub-stage toggle per multi-stage board, greyed-out steps the
-   patient never reached, and a *"Snapshot · as it looked when \<sub-stage\> was left \<date\> by
-   \<rep\>"* stamp. What is built is `?completedStage=` review mode (§5.38 · §5.39b), which opens
-   the real tool in a new page rather than inline. The price is in §5.39: `reviewMode` across 13
-   pages plus a shell/body split of each. **This is the largest one and the one Brandon's own
-   mockup marks *"Stand-in"*.**
+1. ✅ **The per-stage panels — BUILT 2026-09-21 for ten of the thirteen tools (§5.39c2).** The
+   panel is the real stage component, read-only, with the sub-stage toggle, the greyed-out steps
+   and the stamp; the Open link stays. ⚠️ **The price recorded here was WRONG** — it said
+   `reviewMode` across 13 pages plus a shell/body split of each. That split already existed (§4's
+   per-role convention: the pages are shells, the panels are prop-driven), and `reviewMode` is not
+   the mechanism — `inert` plus no-op callbacks plus not mounting the hook is. ⚠️ Still absent:
+   **DVS** and the two **Intake** tools, which render inline in 739-, 2,036- and 4,047-line pages,
+   and **Auth Denied**, which has no tool at all. Those keep the snapshot cards.
 2. ⚠️ **Reports & Metrics is a borrowed page.** The real `#/reports` is fully specified — see
    §5.39b for the board id, the app feature and the list of numbers. Unbuilt.
 3. ⚠️ **The Fax bar's right pane is a LINK to `/update-clinicals`.** The handoff moves that whole
@@ -5170,6 +5169,103 @@ redesign's navigation, or removed from it, belongs there · `GlobalHeader`'s Man
 `SystemMgmtPage`'s `initialTab` and its five `TabBtn`s (a menu entry whose tab is commented out is
 the §5.39b failure again) · `dossierApi.fetchDossierItemById`'s board guard ⇄ `PatientPage`'s
 required `?board=` (§5.39).
+
+### 5.39c2 The per-stage panels are the REAL TOOLS, read-only (Sep 2026)
+Josh, 2026-09-21: *"add the per page pannels he has but leave the link to open them."*
+**No board change; app only.** Files: `lib/patient/stagePanels.ts` (+ `subStageOpenHref`,
+`TOOL_PARAM`), `hooks/patient/useStageRecord.ts`,
+`components/patient/{StagePanelEmbed,OnboardingView}.tsx`, `pages/patient/redesign.css`,
+plus an opt-in `embedded` prop on `masheke/{SendRequestPanel,ConfirmReceiptPanel}`.
+
+⚠️⚠️ **BRANDON DOES NOT HAVE THEM — his mockup carries a "Stand-in" banner and the handoff
+says *"the mockup does not draw these screens … do not port it"*.** So there was nothing of
+his to copy; this is the thing the stand-in stands in for. The generic cards it draws are
+deliberately not reproduced.
+
+⚠️⚠️ **AND IT IS FAR CHEAPER THAN §5.39 PRICED IT — that entry was wrong.** It said this
+needs splitting 13 stage pages into shell + body. **That split already exists**, because it
+is this repo's own per-role convention (§4): the pages are shells that wire a hook to a
+panel, and every panel is already prop-driven (`EvaluatePanel({patient, …})`,
+`WelcomeCallForm({patient, …})`, `AuthOutstandingPanel({patient, …})`). The navy header and
+the patient card Brandon wants dropped live in the PAGE, so they fall away for free.
+
+⚠️⚠️ **THE PANEL, NEVER THE PAGE — that is the safety property, not a convenience.** The
+writes that fire without anybody pressing anything are in the HOOKS: `masheke
+/useMondayPatients` backfills a blank Next Action Date and self-heals a stale escalation ON
+READ (§5.30 records a dashboard being kept off those hooks for exactly this). Mounting the
+panel alone means no poll, no self-heal, and no second queue reading the board behind a
+screen a rep is only looking at.
+
+⚠️⚠️ **NOTHING HERE CAN WRITE, and that was verified panel by panel**: every internal
+`writeLongText` / `runVerifiedSend` / `sendPatientToMonday` call in the ten panels sits in an
+EVENT HANDLER — **not one is in an effect**. So `inert` on the wrapper is a real guard.
+Measured in Chrome 141 rather than assumed: a real user click is **not hittable** and
+`focus()` **cannot enter** the subtree; only a programmatic `dispatchEvent` bypasses it, and
+nothing in the app dispatches synthetic events at a panel. The callbacks are no-ops on top,
+because a panel that cannot be clicked still should not be handed a writer.
+
+⚠️⚠️ **NO BACKGROUND WORK BEHIND A FROZEN PANEL — one hook had to be switched off for that
+to be true.** Every non-React hook the ten panels call was read. `useStatusOptions` /
+`usePayerOptions` / `useInfusionStock` are module-cached and TTL'd, shared with the live
+pages, so they add nothing; `useMondayFiles` is one read per panel opened and polls only
+while a Generate is running, which `inert` prevents starting. **`useFaxStatus` was the
+exception** — it walks a backoff ladder out to ~33 minutes / 56 RingCentral requests whenever
+a fax went out TODAY (§5.9b), against the shared account INCIDENT_2026-08-20 took down, to
+paint a chip that exists so a rep can press "Request Sent" and here cannot. Send Request and
+Confirm Receipt take an **`embedded`** prop that switches it off; the live pages pass nothing
+and are byte-identical.
+
+⚠️ **Read at FULL WIDTH through the slice's own `fetchItemById` + `mondayItemToPatient`**
+(`useStageRecord`), never the dossier's columns: handing a panel that subset would draw a
+patient with no scripts, no coverage paths and no attempts — a plausible, wrong audit with
+nothing erroring (§5.25). ⚠️ **Insurance reads TWO column sets and they are not nested**:
+Submit Auth / Auth Outstanding need `AUTH_READ_COLUMN_IDS`, Benefits the ordinary one, and
+the wrong set blanks every field the other owns rather than erroring. `useMondayPatients`
+picks by GROUP; here the sub-stage names the panel, so the panel names the set.
+
+**Ten of thirteen tools are wired.** Medical Evaluation ×5, Insurance ×3 (Benefits, Submit
+Auth, Auth Outstanding), Welcome Call ×2. ⚠️ **Three are absent, each for its own reason,**
+and they fall back to the `buildStageDetail` cards this view has always drawn rather than a
+tab that opens nothing: **DVS** and the two **Intake** tools render inline in their pages
+(`DvsPage` 739 lines, `ProfilePage` 2,036, `UnverifiedReferralsPage` 4,047) — the one place
+the shell/body convention does not already hold; **Auth Denied** has no tool at all (§7), so
+its `route` is empty and the link is plain text.
+
+⚠️ **"Reached" is inferred from POSITION and is deliberately generous in one direction.** The
+board keeps no per-sub-stage history, so all we know is where the item is now: everything at
+or before that point has been passed through. A patient sent BACK a step shows the later
+tools as reached — because they were — and it is never wrong the other way, which is the
+direction that would hide a tool a manager needs. ⚠️ **A COMPLETED record has reached
+everything**, whatever its advancer says: it is routinely left on the last working value, so
+reading position alone greys out the tools a manager opens a finished record to read.
+⚠️ **An UNRECOGNISED advancer greys out nothing** — a blank column, or a label added since,
+is not evidence the patient skipped a step (§5.20's `networkAnswer` rule).
+
+⚠️ **The stamp says what the values MEAN.** A completed board item is frozen (§5.38), so its
+columns ARE the values the patient left with; a live one is current. Brandon's handoff allows
+exactly this — *"until [a snapshot store] exists, show the current columns and say so"* —
+which is why §5.38's "do not build a snapshot store" still stands. ⚠️ Granularity is per
+BOARD: Medical Evaluation's five tools share ONE item, so a field a later step changed shows
+its latest value, and the stamp says so rather than implying a history the board does not keep.
+
+⚠️ **The Open link stays and now aims at the SELECTED sub-stage** (`subStageOpenHref`): the
+embed is read-only, so the link is the only route to a tool a rep can work in, and a manager
+reading Confirm Receipt who presses Open expects Confirm Receipt. The item id and the
+`completedStage` gate are unchanged, so a completed record still opens in review mode.
+⚠️ **`TOOL_PARAM` is separate from `SNAP_PARAM`**: `snap` names the RECORD (§5.42's per-item
+tabs), `tool` names the sub-stage. A stage can hold several of each and the two questions have
+different answers — Brandon reuses `snap` for both because his sample data has one record per
+stage; ours does not.
+
+**Keep-in-agreement:** `OnboardingView`'s `PANELLED` set ⇄ `StagePanelEmbed`'s `panelFor`
+cases ⇄ `stagePanels.SUB_STAGES` keys (which ARE the board's own Stage Advancer labels — the
+join). A pair listed in the view with no case in `panelFor` renders an empty panel AND no
+fallback cards: a blank screen that reads as broken rather than as a missing feature.
+`stagePanelEmbed.test.ts` scans all three and fails in both directions; its `inert`, Open-link
+and fax-poll assertions are each verified to fail when their protection is removed.
+⚠️ Its source scans **strip comments first** — both files document the very writers they must
+not call, so a raw-text scan fails on its own prose and the only way to pass it is to delete
+the explanation.
 
 ### 5.39g/h The home is MY view, the borrow is the WHOLE ui, and every ability bites (Sep 2026)
 Josh, 2026-09-19, nine asks in one message. The governing rule is still §5.39f's — *"the ui is the
@@ -8711,6 +8807,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A custom home view "does nothing" | §5.39h — `views[0]` is the landing view and a newly granted one is PREPENDED, so it is what they open on; the editor prints "Lands on X". If it still looks wrong, read the **access.json commit history**, not the current file: the final state can be right while the sequence explains what was seen |
 | Borrowing somebody's view shows my tabs, or theirs reach a write | §5.39h — `lib/shell/viewAs.ts`. The HEADER answers for the borrowed person (tabs, Manage, Users); `AbilityGate`, `AbilityLock` and every write guard answer for the signed-in one; the softphone is never borrowed. `viewAsScope.test.ts` pins all three |
 | A page sits 36px short, or the header grows a blank band | §5.39h — `--cc-head` is the HEADER's height and `--cc-chrome` is everything above a page. The borrow banner raises the second, never the first; raising both made `.gh` taller AND stacked the banner under it |
+| A stage panel on the patient screen is blank, greyed out, or opens the wrong tool | §5.39c2 — `lib/patient/stagePanels.ts` decides which sub-stages a record has and which it reached; `StagePanelEmbed`'s `panelFor` decides which have a real panel, and `OnboardingView`'s `PANELLED` set must agree with it (a pair in one and not the other renders an empty panel with no fallback cards). A greyed tab means the item's Stage Advancer puts the patient before it; an UNRECOGNISED advancer greys out nothing, by design. ⚠️ Three tools have no panel on purpose — DVS and the two Intake tools live inline in their pages, Auth Denied has no tool — and fall back to the snapshot cards |
+| Something on an embedded stage panel is clickable, or it is fetching | §5.39c2 — the guard is `inert` on `.stage-embed` (verified in Chrome 141: a real click is not hittable and focus cannot enter), plus no-op callbacks, plus mounting the PANEL and never the page's hook. If it fetches, read the panel's own hooks: `useFaxStatus` is switched off by the `embedded` prop, `useMondayFiles` polls only during a Generate, the rest are module-cached. A new hook on a panel needs the same audit |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
 | The Subscription profile won't save, or says "Read-only" | §5.45b — `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). MN documents and the visit date are still `/subscription` and `/update-clinicals` alone — each carries side effects this card does not (§5.36) |
 | A fact shows TWICE on the Subscription profile — once editable, once as a card | §5.45b — `FORM_SECTIONS` matches `stageDetail.ts`'s SUBSCRIPTION section TITLES, so a rename there makes the filter match nothing with nothing erroring. `subscriptionView.test.ts` pins both strings. ⚠️ The teal overview strip restating Next order / Cycle / Order type is NOT that bug — it is this screen's `PatientInfoCard`, and `/subscription` shows the same six facts above its own form |

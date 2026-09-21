@@ -201,6 +201,43 @@
   font-size: 12px; font-weight: 600; display: flex; align-items: center;
   gap: 6px; color: var(--mfg); padding: 0 2px;
 }
+/* ── The sub-stage toggle and the embedded stage tool (§5.39c) ───────────── */
+/* Same language as `.snap-tabs` one row up, because they answer neighbouring
+   questions — that one picks the RECORD, this one picks the TOOL. */
+.cc-pt .tool-tabs {
+  display: flex; flex-wrap: wrap; gap: 2px; padding: 2px;
+  background: var(--mut); border: 1px solid var(--bd); border-radius: 8px;
+}
+.cc-pt .tool-tabs button {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  color: var(--mfg); background: none; border: none; cursor: pointer;
+}
+.cc-pt .tool-tabs button.on { background: var(--cd); color: var(--tfg); box-shadow: var(--sh-sm); }
+.cc-pt .tool-tabs button.off { opacity: 0.4; cursor: not-allowed; }
+.cc-pt .tool-tabs button .dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--mm-green); flex: none;
+}
+
+/* The one line that says whether the values are historical or current. */
+.cc-pt .snap-stamp {
+  font-size: 11px; line-height: 1.5; padding: 7px 10px; border-radius: 9px;
+  border: 1px solid var(--bd); background: var(--cd); color: var(--mfg);
+}
+.cc-pt .snap-stamp.done { background: var(--ok-bg); border-color: hsl(152 68% 38% / 0.3); color: var(--ok-fg); }
+
+/* ⚠️ `inert` on the wrapper is what actually makes the embedded tool read-only
+   — it takes the subtree out of the focus order and swallows pointer events, so
+   a panel's own Send / Add note handler cannot fire. These rules are belt and
+   braces for anything that predates the attribute, plus the visual cue; they
+   are NOT the guard, and removing `inert` is not made safe by keeping them. */
+.cc-pt .stage-embed { position: relative; }
+.cc-pt .stage-embed[inert] { cursor: default; }
+.cc-pt .stage-embed[inert] * { pointer-events: none !important; }
+/* The tools are built for a full page; inside the 1fr main column they get the
+   card background back so they do not float on `.snap-page`'s muted panel. */
+.cc-pt .stage-embed { background: var(--cd); border-radius: 12px; padding: 10px; }
+
 .cc-pt .snapcard { padding: 12px 14px; }
 .cc-pt .snap-ct {
   font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;

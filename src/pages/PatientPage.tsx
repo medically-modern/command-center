@@ -50,6 +50,7 @@ import {
   BOARD_PARAM,
   SIDE_PARAM,
   SNAP_PARAM,
+  TOOL_PARAM,
   SUB_PARAM,
   STEP_PARAM,
   VIEW_PARAM,
@@ -223,9 +224,11 @@ export default function PatientPage() {
                 dossier={dossier}
                 steps={steps}
                 stepIdx={stepIdx}
-                onStep={(i) => setParam({ [STEP_PARAM]: String(i), [SNAP_PARAM]: "" })}
+                onStep={(i) => setParam({ [STEP_PARAM]: String(i), [SNAP_PARAM]: "", [TOOL_PARAM]: "" })}
                 snapId={params.get(SNAP_PARAM) || ""}
-                onSnap={(id) => setParam({ [SNAP_PARAM]: id })}
+                onSnap={(id) => setParam({ [SNAP_PARAM]: id, [TOOL_PARAM]: "" })}
+                toolKey={params.get(TOOL_PARAM) || ""}
+                onTool={(k) => setParam({ [TOOL_PARAM]: k })}
               />
             ) : (
               <SubscriptionView

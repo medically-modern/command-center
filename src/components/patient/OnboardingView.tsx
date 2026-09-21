@@ -17,12 +17,27 @@
  * ONE item, so a column overwritten later in the same board reads as though it
  * always said that. The panel says which record it is showing rather than
  * implying a per-step history it cannot have.
+ *
+ * ⚠️ **From 2026-09-21 the panel is the REAL TOOL** (§5.39c) — `StagePanelEmbed`
+ * renders the stage's own component read-only, which is Brandon's spec and what
+ * his mockup's "Stand-in" banner stood in for. Three of the thirteen tools have
+ * no embeddable component yet (DVS and the two Intake tools live inline in
+ * their pages; Auth Denied is deliberately unbuilt), and those fall back to the
+ * `buildStageDetail` cards this view has always drawn — so nothing was removed,
+ * only added under it.
+ *
+ * ⚠️ **The Open link stays** (Josh, 2026-09-21: *"add the per page pannels he
+ * has but leave the link to open them"*), and now aims at the SELECTED
+ * sub-stage: a manager reading the Confirm Receipt panel who presses Open
+ * expects Confirm Receipt, not the board's default tool.
  */
 import { ArrowUpRight, Check, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
-import { infoFacts, itemOpenHref, snapStateLabel, snapTabLabel, stepCaption, type StageStep } from "@/lib/patient/patientScreen";
+import { infoFacts, itemOpenHref, snapStateLabel, snapTabLabel, stepCaption, subStageOpenHref, type StageStep } from "@/lib/patient/patientScreen";
+import { defaultSubStage, subStagesFor, type SubStageStep } from "@/lib/patient/stagePanels";
+import { StagePanelEmbed, StagePanelUnavailable } from "@/components/patient/StagePanelEmbed";
 
 interface Props {
   dossier: PatientDossier;
@@ -31,12 +46,24 @@ interface Props {
   onStep: (i: number) => void;
   snapId: string;
   onSnap: (itemId: string) => void;
+  /** Which sub-stage tool the panel shows — "" means the default. */
+  toolKey: string;
+  onTool: (key: string) => void;
 }
 
-export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap }: Props) {
+export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap, toolKey, onTool }: Props) {
   const facts = infoFacts(dossier);
   const step = steps[stepIdx];
   const snap = step?.items.find((i) => i.itemId === snapId) ?? step?.lead ?? null;
+
+  // The record's own sub-stages. `[]` for a board with no embeddable tools, in
+  // which case everything below degrades to what this view drew before.
+  const subs = subStagesFor(snap);
+  // ⚠️ A URL naming a sub-stage the patient never reached falls back rather than
+  // rendering an empty tool — the same rule the stepper uses for a `step=` past
+  // the current stage.
+  const wanted = subs.find((t) => t.key === toolKey && t.reached);
+  const tool = wanted ?? subs.find((t) => t.key === defaultSubStage(subs)) ?? null;
 
   return (
     <>
@@ -119,12 +146,36 @@ export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap
               >
                 <Eye style={{ width: 11, height: 11 }} /> Read-only
               </span>
-              <OpenTool item={snap} />
+              <OpenTool item={snap} tool={tool} />
             </div>
           </div>
 
+          {subs.length > 1 && (
+            <div className="tool-tabs">
+              {subs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`${t.key === tool?.key ? "on" : ""}${t.reached ? "" : " off"}`}
+                  disabled={!t.reached}
+                  onClick={() => t.reached && onTool(t.key)}
+                  title={
+                    t.reached
+                      ? t.current
+                        ? "Where the patient is now"
+                        : `The ${t.tool} tool as this record has it`
+                      : `${t.tool} — the patient never reached this step`
+                  }
+                >
+                  {t.label}
+                  {t.current && <i className="dot" />}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="snap-page">
-            <Snapshot step={step} item={snap} />
+            <Snapshot step={step} item={snap} tool={tool} />
           </div>
         </section>
       )}
@@ -150,25 +201,58 @@ export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap
   );
 }
 
-function OpenTool({ item }: { item: DossierItem | null }) {
-  const href = itemOpenHref(item);
+/**
+ * ⚠️ **Kept, deliberately** — the embedded panel is read-only, so the link is
+ * the only route to the tool a rep can actually work in. It aims at the SELECTED
+ * sub-stage where there is one, falling back to the board's default; a
+ * sub-stage with no page (Auth Denied) is plain text rather than a dead link.
+ */
+/**
+ * ⚠️ **The ten tools with an embeddable panel** — mirrors `StagePanelEmbed`'s
+ * own `panelFor`, and is the one thing that decides whether this view draws the
+ * real tool or falls back to the `buildStageDetail` cards. A pair listed here
+ * with no case in `panelFor` renders an empty panel and no cards, which is the
+ * one outcome that looks like a broken screen rather than a missing feature —
+ * `stagePanelEmbed.test.ts` fails the build when the two disagree.
+ */
+const PANELLED = new Set([
+  "18406060017:Evaluate MN",
+  "18406060017:Send Request",
+  "18406060017:Confirm Receipt",
+  "18406060017:Chase Clinicals",
+  "18406060017:Doctor Appointment",
+  "18410601299:Benefits / SoS",
+  "18410601299:Submit Auth.",
+  "18410601299:Auth. Outstanding",
+  "18410804557:Welcome Call",
+  "18410804557:Review Profile",
+]);
+
+/** ⚠️ Medical Evaluation's five tools share ONE item, so a column a later
+ *  sub-stage overwrote reads as though it always said that. Said here rather
+ *  than implied. */
+const SUB_STAGE_CAVEAT =
+  " All this board's steps share one record, so a field a later step changed shows its latest value.";
+
+function OpenTool({ item, tool }: { item: DossierItem | null; tool: SubStageStep | null }) {
+  const href = (tool ? subStageOpenHref(item, tool.route) : null) ?? itemOpenHref(item);
   if (!item) return null;
   if (!href) {
     return (
-      <span className="xs muted" title={`${item.boardName} has no page in the Command Center`}>
-        No page for this board
+      <span className="xs muted" title={`${tool?.tool ?? item.boardName} has no page in the Command Center`}>
+        No page for {tool ? tool.tool : "this board"}
       </span>
     );
   }
   return (
     <Link className="btn outline xs" to={href}>
       <ArrowUpRight style={{ width: 12, height: 12 }} />
-      {item.isCompleted ? "Open read-only" : "Open the tool"}
+      {item.isCompleted ? "Open read-only" : `Open ${tool ? tool.tool : "the tool"}`}
     </Link>
   );
 }
 
-function Snapshot({ step, item }: { step: StageStep; item: DossierItem | null }) {
+function Snapshot({ step, item, tool }: { step: StageStep; item: DossierItem | null; tool: SubStageStep | null }) {
   if (!item) {
     return (
       <div className="card pad small muted">
@@ -180,12 +264,38 @@ function Snapshot({ step, item }: { step: StageStep; item: DossierItem | null })
   }
 
   const sections = buildStageDetail(item.boardId, item.cols);
+  const embeddable = tool !== null && PANELLED.has(`${item.boardId}:${tool.key}`);
 
   return (
     <>
       <div className="snap-tool">
-        {item.boardName} <span className="muted">· {item.groupTitle}</span>
+        {tool ? (
+          <>
+            {tool.tool} <span className="muted">· {item.boardName}</span>
+          </>
+        ) : (
+          <>
+            {item.boardName} <span className="muted">· {item.groupTitle}</span>
+          </>
+        )}
       </div>
+
+      {/* ⚠️ **What the numbers MEAN, said out loud.** A completed board item is
+          frozen (§5.38), so its columns are the values the patient left with; a
+          live one is current. Brandon's spec stamps exactly this distinction,
+          and his handoff allows the second: *"until [a snapshot store] exists,
+          show the current columns and say so."* */}
+      <div className={`snap-stamp ${item.isCompleted ? "done" : "live"}`}>
+        {item.isCompleted
+          ? `Snapshot — the values on this record when the patient left ${item.boardName}.`
+          : tool?.current
+            ? "Live — the patient is here now, so these are today's values."
+            : `Live record — these are ${item.boardName}'s values today, not the ones this step was left with.`}
+        {tool && !item.isCompleted && SUB_STAGE_CAVEAT}
+      </div>
+
+      {embeddable && tool && <StagePanelEmbed item={item} subStage={tool.key} />}
+      {tool && !embeddable && <StagePanelUnavailable tool={tool.tool} />}
 
       {sections.length === 0 && (
         <div className="card pad small muted">
