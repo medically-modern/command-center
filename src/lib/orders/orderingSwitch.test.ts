@@ -36,11 +36,22 @@ describe("what may be placed — the guard the write will run behind", () => {
     api.writeStatusIndex.mockReset();
   });
 
-  it("only an order sitting at “Order”", () => {
+  it("only an order sitting at “Order” — or “Paid Cash”", () => {
     expect(canMarkOrdered("Order")).toBe(true);
+    /* ⚠️ REVERSED 2026-09-21. "Paid Cash" used to be refused as "already
+       placed", which was right while the label was only ever set by hand on a
+       finished cash order. It is now what the Stripe webhook writes when a cash
+       pay payment lands — the one state that most needs placing (Josh chose to
+       reuse the existing label rather than add "Paid — OK to Order").
+
+       What still refuses a FINISHED cash order is its CAH Order Number, which
+       Cardinal writes on acceptance: positive evidence, where the status label
+       is ambiguous. Debbie Hinze's delivered order carries 1120157406 and is
+       covered in cashPayGate.test.ts. */
+    expect(canMarkOrdered("Paid Cash")).toBe(true);
+    expect(canMarkOrdered("Paid Cash", { cahOrderNumber: "1120157406" })).toBe(false);
     expect(canMarkOrdered("Ordered")).toBe(false);
     expect(canMarkOrdered("Process Claim")).toBe(false);
-    expect(canMarkOrdered("Paid Cash")).toBe(false);
     expect(canMarkOrdered("On Hold")).toBe(false);
     expect(canMarkOrdered("Stuck")).toBe(false);
     expect(canMarkOrdered("Return in Progress")).toBe(false);

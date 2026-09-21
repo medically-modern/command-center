@@ -21,6 +21,7 @@ export function mkOrder(over: Partial<Order> = {}): Order {
     primaryInsurance: "", memberId: "", secondaryInsurance: "", secondaryId: "", otherPayerId: "", diagnosisCode: "",
     cgmCoverage: "", medicarePriorPumpDate: "",
     doctorName: "", doctorNpi: "", doctorAddress: "", doctorPhone: "", doctorFax: "",
+    cashPayLink: "", cashPayAmount: "", cashPayLinkSent: "", cashPayPaidDate: "", stripeChargeId: "",
     cahOrderNumber: "", poNumber: "", lastCardinalSync: "", apiMessage: "", holdReason: "", uspsCheck: "",
     lineItemDetail: "", orderDiscrepancy: "",
     warehouse: "", carrier: "", carrierDescription: "", estimatedShipDate: "", shipDate: "", tracking: [],

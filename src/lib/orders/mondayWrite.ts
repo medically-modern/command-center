@@ -16,21 +16,48 @@
  */
 import { ORDERING_FROM_COMMAND_CENTER } from "./config";
 import { clearStatus, COL, ORDER_STATUS_INDEX, readColumnText, writeStatusIndex } from "./mondayApi";
+import { cashPayOrderingRefusal } from "./cashPayGate";
 import { substitutionSendKind } from "./substitution";
 
 export class OrderNotPlaceableError extends Error {
-  constructor(public readonly currentStatus: string) {
-    super(placeabilityReason(currentStatus));
+  constructor(public readonly currentStatus: string, reason?: string) {
+    super(reason || placeabilityReason(currentStatus));
     this.name = "OrderNotPlaceableError";
   }
 }
 
-/** Why an order in this status must not be flipped — or "" when it may. */
-export function placeabilityReason(currentStatus: string): string {
+/**
+ * Why an order in this status must not be flipped — or "" when it may.
+ *
+ * ⚠️ **"Paid Cash" IS PLACEABLE from 2026-09-21, and that is a reversal.** It
+ * used to be read as "already placed with Cardinal", which was right while the
+ * label was only ever set by hand on a finished cash order. It is now what the
+ * Stripe webhook writes when a cash pay payment lands, i.e. the one state that
+ * most needs placing. Josh chose to reuse the existing label rather than add a
+ * "Paid — OK to Order" one.
+ *
+ * ⚠️ Which leaves a real collision, because the label ALSO sits on the two
+ * historical cash orders: Debbie Hinze's reads `Paid Cash` while the order is
+ * **Delivered**. Status alone therefore cannot tell "paid, place it" from
+ * "paid months ago, long gone". `cahOrderNumber` can — Cardinal writes it when
+ * it accepts the order, so it is positive evidence the order has been
+ * submitted, and it is what refuses hers (1120157406). Callers that have the
+ * order in hand should always pass it.
+ */
+export function placeabilityReason(
+  currentStatus: string,
+  opts: { cahOrderNumber?: string | null } = {},
+): string {
   const s = (currentStatus ?? "").trim();
-  if (s === "Order") return "";
+  /* Positive evidence this order has already been to Cardinal, whatever its
+     status column says. Checked FIRST so a re-placed order is refused even
+     from a status that would otherwise be allowed. */
+  if ((opts.cahOrderNumber ?? "").trim()) {
+    return "This order has already been placed with Cardinal.";
+  }
+  if (s === "Order" || s === "Paid Cash") return "";
   if (s === "Ordered") return "This order is already being placed.";
-  if (s === "Process Claim" || s === "Paid Cash") return "This order has already been placed with Cardinal.";
+  if (s === "Process Claim") return "This order has already been placed with Cardinal.";
   if (s === "On Hold") return "This order is on hold — take it off hold on the board first.";
   if (s === "Stuck") return "This order is marked Stuck on the board.";
   if (s === "Return in Progress" || s === "Return Complete") return "This is a return, not an order to place.";
@@ -38,8 +65,31 @@ export function placeabilityReason(currentStatus: string): string {
   return `Order Status is "${s}", not "Order".`;
 }
 
-export function canMarkOrdered(currentStatus: string): boolean {
-  return placeabilityReason(currentStatus) === "";
+export function canMarkOrdered(
+  currentStatus: string,
+  opts: { cahOrderNumber?: string | null } = {},
+): boolean {
+  return placeabilityReason(currentStatus, opts) === "";
+}
+
+/**
+ * The whole gate: the status rule AND the cash pay payment rule.
+ *
+ * Callers with the order in hand should use this rather than
+ * `placeabilityReason`, which knows nothing about money. Returns "" when the
+ * order may be placed.
+ */
+export function orderingRefusal(o: {
+  orderStatus: string;
+  cahOrderNumber?: string | null;
+  primaryInsurance?: string | null;
+  generalInsurance?: string | null;
+  stripeChargeId?: string | null;
+  cashPayPaidDate?: string | null;
+  notes?: string | null;
+}): string {
+  return placeabilityReason(o.orderStatus, { cahOrderNumber: o.cahOrderNumber })
+    || cashPayOrderingRefusal(o);
 }
 
 /**
@@ -51,8 +101,24 @@ export async function markOrdered(itemId: string): Promise<void> {
   if (!ORDERING_FROM_COMMAND_CENTER) {
     throw new Error("Ordering from the Command Center is not switched on (lib/orders/config.ts).");
   }
-  const current = await readColumnText(itemId, COL.orderStatus);
-  if (!canMarkOrdered(current)) throw new OrderNotPlaceableError(current);
+  /* ⚠️ The money gate is re-checked HERE, against columns read fresh, not
+     just on the button. A disabled button is what a rep sees; this is what
+     actually stops an unpaid cash pay order reaching Cardinal, and the value
+     on screen may be a minute old. Same reasoning as the status re-read. */
+  const [current, chargeId, paidDate, payer, notes, cahOrderNumber] = await Promise.all([
+    readColumnText(itemId, COL.orderStatus),
+    readColumnText(itemId, COL.stripeChargeId),
+    readColumnText(itemId, COL.cashPayPaidDate),
+    readColumnText(itemId, COL.primaryInsurance),
+    readColumnText(itemId, COL.notes),
+    readColumnText(itemId, COL.cahOrderNumber),
+  ]);
+  if (!canMarkOrdered(current, { cahOrderNumber })) throw new OrderNotPlaceableError(current);
+  const moneyRefusal = cashPayOrderingRefusal({
+    primaryInsurance: payer, stripeChargeId: chargeId,
+    cashPayPaidDate: paidDate, notes,
+  });
+  if (moneyRefusal) throw new OrderNotPlaceableError(current, moneyRefusal);
   await writeStatusIndex(itemId, COL.orderStatus, ORDER_STATUS_INDEX.ordered);
 }
 

@@ -156,7 +156,21 @@ export const COL = {
   doctorFax: "phone_mm3zs5dg",           // ⚠️ a PHONE column here, unlike the email-typed Doctor Fax elsewhere
 
   // Cardinal — order identity + narrative (all machine-written)
-  cahOrderNumber: "text_mm3z47x2",       // CAH Order Number
+  cahOrderNumber: "text_mm3z47x2",
+
+  /* ── Cash Pay (created 2026-09-21) ──
+     The link and amount are written by coins-form-payment when a rep presses
+     Generate Cash Pay Link; the paid date and charge id by its
+     `checkout.session.completed` webhook. ⚠️ The ordering gate reads the last
+     two and NOT the "Paid Cash" status label, which also sits on finished
+     historical cash orders (`cashPayGate.ts`). The charge id is what lands the
+     payment in the patient-cash-via-Stripe bucket on the Cardinal
+     Reconciliation Board (18420767820). */
+  cashPayLink: "text_mm7dzgzd",          // Cash Pay Link
+  cashPayAmount: "numeric_mm7devxs",     // Cash Pay Amount
+  cashPayLinkSent: "date_mm7d7wxe",      // Cash Pay Link Sent
+  cashPayPaidDate: "date_mm7dejzt",      // Cash Pay Paid Date
+  stripeChargeId: "text_mm7dkma5",       // Stripe Charge ID       // CAH Order Number
   poNumber: "text_mm3zf5ev",             // PO Number (MM-<item>-<yyyymmdd>)
   lastCardinalSync: "text_mm481jys",     // Last Cardinal Sync (ET stamp)
   apiMessage: "text_mm3zcde7",           // API Message (Cardinal's sentence)

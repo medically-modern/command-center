@@ -115,6 +115,15 @@ export interface Order {
 
   // Cardinal
   cahOrderNumber: string;
+
+  /* Cash Pay (§5.48). The gate reads `stripeChargeId` / `cashPayPaidDate` and
+     NOT the "Paid Cash" status label, which also sits on finished historical
+     cash orders — see `cashPayGate.ts`. */
+  cashPayLink: string;
+  cashPayAmount: string;
+  cashPayLinkSent: string;
+  cashPayPaidDate: string;
+  stripeChargeId: string;
   poNumber: string;
   lastCardinalSync: string;
   apiMessage: string;

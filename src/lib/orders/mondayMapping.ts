@@ -121,6 +121,11 @@ export function mondayItemToOrder(item: MondayItem, opts: { partial?: boolean } 
     doctorFax: phoneVal(COL.doctorFax),
 
     cahOrderNumber: txt(COL.cahOrderNumber),
+    cashPayLink: txt(COL.cashPayLink),
+    cashPayAmount: txt(COL.cashPayAmount),
+    cashPayLinkSent: txt(COL.cashPayLinkSent),
+    cashPayPaidDate: txt(COL.cashPayPaidDate),
+    stripeChargeId: txt(COL.stripeChargeId),
     poNumber: txt(COL.poNumber),
     lastCardinalSync: txt(COL.lastCardinalSync),
     apiMessage: txt(COL.apiMessage),
