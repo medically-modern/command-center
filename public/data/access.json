@@ -35,6 +35,10 @@
       "roles": [
         "chaseFax",
         "confirmReceipt"
+      ],
+      "homeView": [
+        "bars",
+        "oversight"
       ]
     },
     "josh@medicallymodern.com": {
