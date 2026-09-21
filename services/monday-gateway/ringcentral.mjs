@@ -180,6 +180,70 @@ export async function rcApiFetch(path, init = {}, opts = {}) {
   }
 }
 
+/**
+ * Fetch a RingCentral MEDIA url — a fax attachment or a call recording — with
+ * the bearer token injected and the same budget every other call pays.
+ *
+ * Media lives on a DIFFERENT host (media.ringcentral.com) from the platform
+ * API, so it cannot go through `rcApiFetch`, which prefixes RC_SERVER. It is
+ * also binary and often large, so it is deliberately NOT coalesced or cached —
+ * but it IS budgeted, because an unguarded door is an unguarded door and this
+ * one can be looped by a component just as easily as any other.
+ *
+ * Extracted from the /rc/fetch route below so the archive job and the browser
+ * proxy share ONE implementation. This file's own comment records why that
+ * matters: "Duplicating the token handling here is what let it be an unguarded
+ * second door."
+ *
+ * ⚠️ The two url shapes differ in their TAIL — a fax attachment ends
+ * /content/{attachmentId} while a recording ends AT /content — so `fetchUrlAllowed`
+ * is what keeps one regex from silently 403ing every recording.
+ *
+ * Returns a Response, including a 429-shaped refusal when the budget says no,
+ * so every `!res.ok` caller handles throttling with no special case.
+ */
+export async function rcMediaFetch(rawUrl, opts = {}) {
+  if (!rcConfigured()) throw new Error("RingCentral is not configured on the gateway (missing RC_* env vars).");
+  let u;
+  try {
+    u = new URL(String(rawUrl || ""));
+  } catch {
+    throw new Error("bad RingCentral media url");
+  }
+  if (!fetchUrlAllowed(u)) throw new Error("RingCentral media url not allowed");
+
+  const verdict = rcGuard.check({ tier: opts.tier || "interactive", caller: opts.caller || "gateway" });
+  if (!verdict.ok) return refusalResponse(verdict);
+
+  const pull = (token) => fetch(u.toString(), { headers: { Authorization: `Bearer ${token}` } });
+  let token = await rcAccessToken();
+  let up = await pull(token);
+  if (up.status === 401) {
+    token = await rcAccessToken(true);
+    up = await pull(token);
+  }
+  rcGuard.note({ status: up.status, retryAfter: retryAfterMs(up.headers.get("retry-after")) });
+  // ⚠️ The rate-limit GROUP is logged once per distinct value. RingCentral's own
+  // recordings guide says to read this header rather than trust a doc page, and
+  // it is the only authoritative statement of which budget this endpoint is in
+  // — which is what settles callArchiveRules' RECORDING_GAP_MS with a fact.
+  noteRateLimitGroup(u.pathname, up.headers.get("x-rate-limit-group"));
+  return up;
+}
+
+/** Log each (path shape, rate-limit group) pair once. Once, because this runs
+ *  on every media fetch and a per-request log line is noise that buries the
+ *  one thing worth knowing. */
+const _seenGroups = new Set();
+function noteRateLimitGroup(pathname, group) {
+  if (!group) return;
+  const shape = /\/recording\//.test(pathname) ? "recording" : "attachment";
+  const k = `${shape}:${group}`;
+  if (_seenGroups.has(k)) return;
+  _seenGroups.add(k);
+  console.log(`RingCentral rate-limit group for ${shape} content: ${group}`);
+}
+
 export { rcConfigured };
 
 /**
@@ -233,22 +297,11 @@ export function registerRingCentral({ app }) {
       if (!fetchUrlAllowed(u)) {
         return res.status(403).json({ error: "url not allowed" });
       }
-      // Media lives on a DIFFERENT host and is binary, so it is not coalesced —
-      // but it is still budgeted. An unguarded door is an unguarded door, and
-      // this one can be looped by a component just as easily as any other.
-      const verdict = rcGuard.check({ tier: "interactive", caller });
-      if (!verdict.ok) {
-        return res
-          .status(429)
-          .set("Retry-After", String(Math.max(1, Math.ceil((verdict.retryAfterMs || 0) / 1000))))
-          .json({ error: verdict.message, reason: verdict.reason });
-      }
-      const pull = (token) => fetch(u.toString(), { headers: { Authorization: `Bearer ${token}` } });
+      // ⚠️ Goes through rcMediaFetch rather than its own fetch + token dance, so
+      // this route CANNOT bypass the budget — and so the archive job and this
+      // proxy can never disagree about what a media fetch does.
       try {
-        let token = await rcAccessToken();
-        let up = await pull(token);
-        if (up.status === 401) { token = await rcAccessToken(true); up = await pull(token); }
-        rcGuard.note({ status: up.status, retryAfter: retryAfterMs(up.headers.get("retry-after")) });
+        const up = await rcMediaFetch(u.toString(), { tier: "interactive", caller });
         const ct = up.headers.get("content-type") || "application/octet-stream";
         const buf = Buffer.from(await up.arrayBuffer());
         return res.status(up.status).set("Content-Type", ct).send(buf);

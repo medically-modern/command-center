@@ -36,6 +36,7 @@ import { toE164, phoneHmac, hashingConfigured } from "./phoneHash.mjs";
 import { confirmSmsAccepted } from "./smsSend.mjs";
 import { registerSmsArchive, readArchivedConversation } from "./smsArchive.mjs";
 import { registerPatientDirectory } from "./patientDirectory.mjs";
+import { registerCallArchive } from "./callArchive.mjs";
 import { mergeConversation } from "./smsArchiveRules.mjs";
 
 export { toE164, phoneHmac };
@@ -148,6 +149,15 @@ export function registerMessaging({ app }) {
   // its "metadata only, no PHI" property. Additive — its own tables, its own
   // routes, and every caller falls back to the live Monday lookup on a miss.
   registerPatientDirectory({ app, pool, requireCaller });
+
+  // A durable copy of every recorded call — plus the call log itself, so the
+  // metadata survives too — with the audio in an S3 bucket and an index row
+  // here. Registered on THIS pool for the same reason as the two above, and
+  // more so: a call recording is a patient's voice, which is the furthest this
+  // gateway's no-PHI-in-the-audit-DB line has ever been pushed. Additive — its
+  // own tables, its own routes, RingCentral read on the `background` tier, and
+  // it simply does not run when no bucket is configured. See callArchive.mjs.
+  registerCallArchive({ app, pool, requireCaller });
 
   /**
    * Send a text to a patient and record who sent it.
