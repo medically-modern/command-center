@@ -37,7 +37,8 @@
         "confirmReceipt"
       ],
       "homeView": [
-        "bars"
+        "bars",
+        "oversight"
       ]
     },
     "josh@medicallymodern.com": {
