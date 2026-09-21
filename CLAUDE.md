@@ -7337,7 +7337,7 @@ needle, identifier columns take the typed digits ONLY) · `dobNeedles` ⇄ `Boar
 `shell.css`'s `.swatches`.
 
 
-### 5.44 Call recordings are archived off RingCentral's retention clock (Sep 2026)
+### 5.47 Call recordings are archived off RingCentral's retention clock (Sep 2026)
 Josh, 2026-09-21: *"RC saves recorded calls for 10 days then deletes them. we cant have that …
 we need a simple system that saves and downloads the calls everyday … so CC can always access
 these"*. Plan: [`CALL_RECORDING_ARCHIVE_PLAN.md`](CALL_RECORDING_ARCHIVE_PLAN.md). Built:
@@ -7455,10 +7455,24 @@ reporting healthy is the one outcome that looks exactly like success), or when a
 alert that fires for a working system is the one everybody swipes away. `POST /calls/archive-run`
 forces a pass and is **authenticated AND rate-floored**, both, for §5.27's reason.
 
+**TWO windows, and a shed pass is not a completed one.** The hourly run reads
+`CALL_ARCHIVE_SCAN_DAYS` (2); a **deep** pass over `WINDOW_DAYS` repairs gaps about daily. ⚠️ A
+429 on the call log is **routine, not a fault** — `background` is the tier `rcLimiter` sheds first,
+by design — so a shed page waits out the window and retries (absorbed by the gateway's own breaker,
+never reaching RingCentral), then stops paging and lets the run carry on **to the drain**. The
+first live run did the opposite: it threw on a 429 having found 1,014 recordings and fetched none.
+⚠️ Neither a shed nor a truncated pass counts as a completed deep pass, or the archive parks for a
+whole interval believing it repaired a gap it never read.
+⚠️ `PAGE_SIZE` is **1000, as big as RingCentral allows**, because REQUESTS are the scarce resource:
+a shed pass restarts from page 1, so at 250 it spent every run re-reading pages it already had and
+being shed in the same place.
+
 **Env** (on `cmd ctr server`): `CALL_ARCHIVE_BUCKET` / `_S3_ENDPOINT` / `_S3_REGION` / `_S3_KEY_ID`
 / `_S3_SECRET` as Variable References to the bucket; optional `CALL_ARCHIVE_ENABLED=0` (kill
-switch), `_SERVICE_TOKEN`, `_WINDOW_DAYS`, `_SCAN_DAYS`, `_PER_RUN`, `_GAP_MS`, `_STALE_HOURS`,
-`_URL_TTL_SECONDS`, `_S3_FORCE_PATH_STYLE`.
+switch), `_SERVICE_TOKEN`, `_WINDOW_DAYS`, `_SCAN_DAYS`, `_DEEP_EVERY_HOURS`, `_EVERY_HOURS`,
+`_PAGE_SIZE`, `_MAX_PAGES`, `_PER_RUN`, `_GAP_MS`, `_SHED_RETRIES`, `_SHED_PAUSE_MS`,
+`_MAX_ATTEMPTS`, `_STALE_HOURS`, `_URL_TTL_SECONDS`, `_FORCE_MIN_GAP_MINUTES`,
+`_S3_FORCE_PATH_STYLE`.
 
 **Keep-in-agreement:**
 1. `callArchiveRules.WINDOW_DAYS` ⇄ RingCentral's real retention ⇄ `STALE_AFTER_MS` ⇄
@@ -8552,9 +8566,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
 | A recording won't play, or a call has no Play/⤓ at all | §5.16 — first check the call's AGE: RingCentral deletes recordings at **90 days** and keeps the log row, so an old call looks identical to one never recorded and the audio is unrecoverable. Inside 90 days, no audio means the call never connected (auto-recording is on for both directions, measured 760/774). A 403 on download is the `ReadCallRecording` permission |
-| "Are we actually saving the recordings?" | §5.44 — `GET /calls/archive-health` on the gateway (unauthenticated). `ok:false` with *no successful run* means the job has never completed one; `storeConfigured:false` means no bucket is wired up. A **pending** backlog is normal and is not a fault — that is a backfill draining |
-| A recording is in the archive but the Command Center won't play it | §5.44 — the chain is `useArchivedAudio` → `hasPlayableAudio` (draws the button) → `recordingSource` (picks archive over RingCentral) → `archivedPlaybackUrl` (presigned). ⚠️ If the button is simply ABSENT, the render gate has gone back to `c.recording`, which is false for every purged call — `archivedRecordings.test.ts` should have failed |
-| Another service needs call metadata (who called, when) | §5.44 — `POST /calls/archive/query` with a Google identity or `CALL_ARCHIVE_SERVICE_TOKEN`. ⚠️ It answers `last4`, never the number: send the number you already hold and it hashes it, the `/directory/lookup` posture |
+| "Are we actually saving the recordings?" | §5.47 — `GET /calls/archive-health` on the gateway (unauthenticated). `ok:false` with *no successful run* means the job has never completed one; `storeConfigured:false` means no bucket is wired up. A **pending** backlog is normal and is not a fault — that is a backfill draining |
+| A recording is in the archive but the Command Center won't play it | §5.47 — the chain is `useArchivedAudio` → `hasPlayableAudio` (draws the button) → `recordingSource` (picks archive over RingCentral) → `archivedPlaybackUrl` (presigned). ⚠️ If the button is simply ABSENT, the render gate has gone back to `c.recording`, which is false for every purged call — `archivedRecordings.test.ts` should have failed |
+| Another service needs call metadata (who called, when) | §5.47 — `POST /calls/archive/query` with a Google identity or `CALL_ARCHIVE_SERVICE_TOKEN`. ⚠️ It answers `last4`, never the number: send the number you already hold and it hashes it, the `/directory/lookup` posture |
 | A bulk download stopped part-way | §5.16 — `lib/callHistory/recordingDownload.ts`. The run is paced at ~24/min against `rcLimiter`'s 40-per-caller budget and retries a throttled file once; the toast reports how many failed. Closing the tab ends it — whatever already saved is kept |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
 | A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Since the 2026-09-03 cutover the six live notes columns are uncapped `text`, so this now means a column still `long_text` (Request Message `long_text_mm4cnw52`, the Escalation Notes, the two Insurance call logs) — `columnType.isCappedColumn` asks the board. Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |

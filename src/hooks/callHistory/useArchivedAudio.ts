@@ -5,7 +5,7 @@
  * aged-out call arrives from RingCentral's call log with no `recording` object
  * at all, so the Play and download buttons are never DRAWN — the screen looks
  * exactly as it did before the archive existed, and the bytes sit in the bucket
- * unreachable (CLAUDE.md §5.16, §5.44).
+ * unreachable (CLAUDE.md §5.16, §5.47).
  *
  * Structured like `useDirectoryNames`, and for the same reasons — a
  * call-history panel renders for every patient a rep clicks through, so a

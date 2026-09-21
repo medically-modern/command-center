@@ -20,7 +20,7 @@ this is the most sensitive artifact we would have ever stored.
 ## 0. STATUS — built and running, 2026-09-21
 
 **Phases 1–4 shipped and are live.** The plan below is kept as the reasoning; this is what
-exists. Architecture reference for a future session: **`CLAUDE.md` §5.44**.
+exists. Architecture reference for a future session: **`CLAUDE.md` §5.47**.
 
 | | |
 |---|---|

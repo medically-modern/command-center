@@ -238,7 +238,7 @@ export interface BulkResult {
  * we saved. Without the archive map this function is the reason an aged-out
  * call cannot be downloaded even when the bytes are sitting in our bucket: the
  * call-log row has no `recording`, so it is filtered out before anything else
- * gets a chance to look (§5.44).
+ * gets a chance to look (§5.47).
  */
 export function withRecordings<T extends DownloadableCall>(
   calls: readonly T[],

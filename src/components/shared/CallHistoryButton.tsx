@@ -135,7 +135,7 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
    * RingCentral drops the `recording` object from the log row and keeps the
    * row, so without this the buttons are never drawn and the bytes in our
    * bucket are unreachable — a fallback on the download path alone fixes
-   * nothing a rep can see (§5.44).
+   * nothing a rep can see (§5.47).
    */
   const callIds = useMemo(() => calls.map((c) => c.id), [calls]);
   const archived = useArchivedAudio(callIds);

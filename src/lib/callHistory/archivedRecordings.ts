@@ -5,7 +5,7 @@
  * call that was never recorded.** RingCentral drops the `recording` object from
  * the call-log row and keeps the row, so an aged-out call renders with its date,
  * its duration and no Play button — and until this module, the Command Center
- * had no way to know the audio existed anywhere (§5.16, §5.44). The gateway's
+ * had no way to know the audio existed anywhere (§5.16, §5.47). The gateway's
  * `callArchive` now holds those bytes; this is how a screen finds out.
  *
  * Two halves, and the first is the one that is easy to leave out:
