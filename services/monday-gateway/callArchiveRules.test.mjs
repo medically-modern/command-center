@@ -530,7 +530,11 @@ describe("callArchive.mjs invariants", () => {
     const fn = src.slice(src.indexOf("async function presignSelfCheck"), src.indexOf("/* ──────"));
     expect(fn).toMatch(/PRESIGN_CHECK_MS/);
     expect(fn).toMatch(/catch \(e\)/);
-    expect(fn).toMatch(/method: "HEAD"/);
+    // A ranged GET, not a HEAD: a HEAD returns no body, so an S3 403 arrives
+    // with nothing saying WHY — and it proves metadata is reachable rather
+    // than that bytes come back.
+    expect(fn).toMatch(/method: "GET", headers: \{ Range: "bytes=0-0" \}/);
+    expect(fn).toMatch(/res\.text\(\)/);
     expect(fn).toMatch(/AbortController/);
     // A boolean and nothing else: no url, no key, no call id in the payload.
     expect(src).toMatch(/presignOk,/);

@@ -607,9 +607,26 @@ async function presignSelfCheck(pool) {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 10_000);
     try {
-      const res = await fetch(url, { method: "HEAD", signal: ctl.signal });
+      // ⚠️ A ranged GET of ONE BYTE, not a HEAD. Two reasons, and the second is
+      // why the first version of this was hard to debug: a HEAD returns no
+      // body, so an S3 403 arrives with nothing saying whether it was
+      // SignatureDoesNotMatch, AccessDenied or an expired clock — and a HEAD
+      // also proves only that metadata is reachable, where the thing we care
+      // about is whether BYTES come back.
+      const res = await fetch(url, { method: "GET", headers: { Range: "bytes=0-0" }, signal: ctl.signal });
       _presign = { at: Date.now(), ok: res.ok };
-      if (!res.ok) console.error(`call_archive: presigned GET self-check failed (${res.status})`);
+      if (!res.ok) {
+        // S3 error bodies are XML naming the exact code. No PHI in them — the
+        // key is a call id, which this process already logs nowhere else, so
+        // the body is trimmed hard and the URL is never logged.
+        let detail = "";
+        try {
+          detail = (await res.text()).replace(/\s+/g, " ").slice(0, 300);
+        } catch {
+          /* no body */
+        }
+        console.error(`call_archive: presigned GET self-check failed (${res.status}) ${detail}`);
+      }
       return res.ok;
     } finally {
       clearTimeout(t);

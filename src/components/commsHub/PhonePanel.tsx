@@ -30,6 +30,8 @@ import {
   type BulkProgress,
   type DownloadableCall,
 } from "@/lib/callHistory/recordingDownload";
+import { hasPlayableAudio } from "@/lib/callHistory/archivedRecordings";
+import { useArchivedAudio } from "@/hooks/callHistory/useArchivedAudio";
 import { contactKey } from "@/lib/contactState/contactState";
 import type { VoicemailRecord } from "@/lib/fax/ringcentralApi";
 import { fmtPhone } from "@/lib/assignedPatients/format";
@@ -239,9 +241,25 @@ export function PhonePanel({
     [labelled, missedOnly, todayOnly, q, digits],
   );
 
+  /**
+   * Which of these calls we saved before RingCentral deleted them.
+   *
+   * ⚠️ Keyed on the WHOLE list rather than the filtered one, so flipping
+   * Missed or Today does not re-ask about calls we already have an answer for.
+   * The hook caches per id anyway, but asking the right question is cheaper
+   * than relying on the cache to absorb the wrong one.
+   */
+  const allCallIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const archived = useArchivedAudio(allCallIds);
+
   /** Every recording in the list as currently filtered — which is what the
-   *  bulk button offers, so what it will save is exactly what is on screen. */
-  const downloadable = useMemo(() => withRecordings(shownCalls.map(toDownloadable)), [shownCalls]);
+   *  bulk button offers, so what it will save is exactly what is on screen.
+   *  ⚠️ Includes recordings RingCentral has already purged and we still hold;
+   *  without the archive map this silently offers fewer files than exist. */
+  const downloadable = useMemo(
+    () => withRecordings(shownCalls.map(toDownloadable), archived),
+    [shownCalls, archived],
+  );
   /** id → the name the row shows, so a saved file is named after the person
    *  rather than their number wherever we resolved one. */
   const labelById = useMemo(
@@ -250,11 +268,12 @@ export function PhonePanel({
   );
 
   const saveOne = async (r: CallRow & { label: string; source: NameSource }) => {
-    if (!r.recording || saving[r.id]) return;
+    if (!hasPlayableAudio(toDownloadable(r), archived) || saving[r.id]) return;
     setSaving((s) => ({ ...s, [r.id]: true }));
     try {
       const name = await downloadRecording(toDownloadable(r), {
         who: r.source === "number" ? undefined : r.label,
+        archived,
       });
       toast.success(`Saved ${name}`);
     } catch (e) {
@@ -290,6 +309,7 @@ export function PhonePanel({
     try {
       const res = await downloadRecordings(downloadable, {
         nameFor: (c) => labelById.get(c.id),
+        archived,
         onProgress: setBulk,
         signal: ctl.signal,
       });
@@ -422,7 +442,7 @@ export function PhonePanel({
                     // RingCentral happened to keep that call's audio.
                     className={cn(
                       "flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3 text-left",
-                      r.recording ? "pr-1" : "pr-3",
+                      hasPlayableAudio(toDownloadable(r), archived) ? "pr-1" : "pr-3",
                     )}
                   >
                     <Initials
@@ -460,7 +480,7 @@ export function PhonePanel({
                     </span>
                     <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{listTime(r.at)}</span>
                   </button>
-                  {r.recording && (
+                  {hasPlayableAudio(toDownloadable(r), archived) && (
                     <button
                       onClick={() => void saveOne(r)}
                       disabled={!!saving[r.id] || !!bulk}
