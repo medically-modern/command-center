@@ -7435,6 +7435,17 @@ name. **Two things still want an answer from a human:** whether Railway's BAA co
 default is keep-forever because the bill does not argue otherwise (~$1–5/month at any plausible
 bitrate; ⚠️ the bitrate is bracketed, not measured, and the first stored object settles it).
 
+⚠️⚠️ **`presignOk` — SAVING AND SERVING ARE DIFFERENT SIGNING CHAINS.** An upload proves the
+header-signed path; a presigned URL is query-string SigV4 against Tigris, so the archive can fill
+perfectly while every playback 403s and nothing says so. The health route therefore signs a URL for
+a real stored object and fetches one byte of it, reporting a boolean and nothing else (never the
+URL, the key or a call id), cached because the route is unauthenticated.
+⚠️ **It must be a GET, never a HEAD.** SigV4 signs the METHOD, so a URL signed from a
+`GetObjectCommand` is a GET-only URL and a HEAD to it is `SignatureDoesNotMatch` — 403, every
+time. The first version did exactly that and reported `presignOk: false` against a perfectly
+healthy serving path: **a false alarm on the one signal that exists to be trusted**, which is
+worse than no signal. Verified true in production 2026-09-21 once fixed.
+
 **Watched by `services/calls-monitor`** via `CALL_ARCHIVE_HEALTH_URL` → `GET /calls/archive-health`
 (unauthenticated, counts and timestamps only, like `/calls/health` beside it). ⚠️ Not ok when **no
 run has ever succeeded** (a job deployed but never running must not read healthy on an empty table),

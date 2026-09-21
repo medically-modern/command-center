@@ -607,12 +607,21 @@ async function presignSelfCheck(pool) {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 10_000);
     try {
-      // ⚠️ A ranged GET of ONE BYTE, not a HEAD. Two reasons, and the second is
-      // why the first version of this was hard to debug: a HEAD returns no
-      // body, so an S3 403 arrives with nothing saying whether it was
-      // SignatureDoesNotMatch, AccessDenied or an expired clock — and a HEAD
-      // also proves only that metadata is reachable, where the thing we care
-      // about is whether BYTES come back.
+      // ⚠️⚠️ A ranged GET of ONE BYTE, and it MUST NOT be a HEAD.
+      //
+      // SigV4 signs the HTTP METHOD into the canonical request, so a URL signed
+      // from a GetObjectCommand is a GET-only URL: sending HEAD to it is
+      // SignatureDoesNotMatch, i.e. a 403, every single time. The first version
+      // of this check did exactly that and reported `presignOk: false` against
+      // a serving path that was perfectly healthy — a false alarm on the one
+      // signal that exists to be trusted, which is worse than no signal at all.
+      // If this ever needs a HEAD, sign a HeadObjectCommand for it.
+      //
+      // Two lesser reasons it stays a GET: a HEAD returns no body, so an S3 403
+      // arrives with nothing saying WHICH error it was; and a HEAD proves only
+      // that metadata is reachable, where the question is whether BYTES come
+      // back. `Range: bytes=0-0` makes that one byte rather than a whole
+      // recording.
       const res = await fetch(url, { method: "GET", headers: { Range: "bytes=0-0" }, signal: ctl.signal });
       _presign = { at: Date.now(), ok: res.ok };
       if (!res.ok) {

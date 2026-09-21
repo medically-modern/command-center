@@ -124,6 +124,30 @@ describe("CallHistoryButton is wired to the archive", () => {
   });
 });
 
+describe("the Comms Hub Phone tab is wired the same way", () => {
+  const src = read("src/components/commsHub/PhonePanel.tsx");
+
+  // ⚠️ Half the places a rep reaches a recording is not "wired". This panel has
+  // its own per-row and bulk download, so leaving it on `r.recording` means a
+  // purged call shows nothing here while showing fine in the Calls pop-up.
+  it("draws its download button from playable audio", () => {
+    expect(src).toMatch(/\{hasPlayableAudio\(toDownloadable\(r\), archived\) && \(/);
+    expect(src).not.toMatch(/\{r\.recording && \(/);
+  });
+
+  it("passes the archive through both download paths", () => {
+    expect(src).toMatch(/withRecordings\(shownCalls\.map\(toDownloadable\), archived\)/);
+    expect(src).toMatch(/archived,/);
+  });
+
+  // ⚠️ Keyed on the whole list, not the filtered one: flipping Missed or Today
+  // must not re-ask about calls we already have an answer for.
+  it("asks about the whole list, not the filtered one", () => {
+    expect(src).toMatch(/const allCallIds = useMemo\(\(\) => rows\.map\(\(r\) => r\.id\), \[rows\]\)/);
+    expect(src).toMatch(/useArchivedAudio\(allCallIds\)/);
+  });
+});
+
 describe("the archive client", () => {
   const src = read("src/lib/callHistory/archivedRecordings.ts");
 
