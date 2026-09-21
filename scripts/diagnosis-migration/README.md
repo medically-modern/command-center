@@ -45,6 +45,7 @@ app's write path and neither is a destination of these hops. Flagged, not touche
 | `boards.mjs` | the from → to map and the shared `gql` (which throws on a 200-with-`errors[]`, §10) | no |
 | `createColumns.mjs [--apply]` | creates the five dropdowns beside the status originals; idempotent, matched on title + type; writes `columns.json` | only with `--apply` |
 | `migrateDiagnosis.mjs [--apply] [--board ID] [--source-wins]` | copies old status text → new dropdown per item, batched, read back and verified | only with `--apply` |
+| `backfillLabels.mjs [--apply]` | tops every dropdown up to the full historic vocabulary — the 43 real ICD-10 codes the ten columns knew between them | only with `--apply` |
 
 ### migrateDiagnosis rules
 
@@ -74,6 +75,19 @@ back exactly. That is the same mutation shape the gateway's `writeMultiple` send
 - **App** re-pointed in the same commit — `src/lib/shared/diagnosisCell.ts` owns the
   read/write shape, `diagnosisColumnIds.test.ts` pins the five ids and scans `src/`
   for any surviving retired id. 4,063 tests pass; zero new type errors.
+- **Labels topped up** 2026-09-21 ~20:30 UTC — `migrateDiagnosis` creates a label only
+  for a code some item HOLDS, so the dropdowns came out with 26–37 of the 43 real
+  ICD-10 codes. `backfillLabels.mjs --apply` minted the union on all five (+64), which
+  is what makes the picker unchanged for reps **and** removes the missing-label half
+  of the hop risk for every code we have ever used. Five non-codes are deliberately
+  not carried over: `10.649`, `10.676767`, `Collect`, `E024.414`, `Evaluate` — none is
+  on any row, and the Evaluate picker already filtered two of them out.
+- ⚠️ **The cutover window is real and was observed, not theorised.** Maximilian
+  Sisalli hopped Welcome Call → Subscription + New Order at 20:15:36Z carrying
+  `E10.65` in the RETIRED column only; both new dropdowns arrived blank. A re-run of
+  `migrateDiagnosis --apply` copied them (`copied 2 | already done 3901 | diverged 0`).
+  That is exactly what step 2 below is for, and every hop that fires before the
+  re-point does the same thing.
 - ⚠️ **The hop automations are NOT re-pointed** — that is Josh's evening job, and
   the workflow-builder API cannot edit board automations of this vintage (it
   answers "General error"; see the notes-migration README). Until then the hops
@@ -106,11 +120,16 @@ Subscription and New Order; check every Diagnosis row inside each, not just the 
 
 ## Then, in this order
 
+0. **Already done — don't redo:** the values are migrated (3,903 of 3,903, 0 diverged,
+   verified twice) and every dropdown carries all 43 codes. Nothing below needs a
+   re-migration first.
 1. **Test whether a hop CREATES a missing label on the destination dropdown.**
    Unknown, and it matters: if it does not, a brand-new code entered at Evaluate will
    not carry to Insurance on the hop. Both sends write with
    `create_labels_if_missing`, so the next send self-heals either way — but measure
-   it, the way `hopTest.mjs` measured the notes hop, rather than assuming.
+   it, the way `hopTest.mjs` measured the notes hop, rather than assuming. Since
+   `backfillLabels.mjs` ran, every HISTORIC code exists on every board, so this
+   question now only bites a code nobody has used before.
 2. **Re-run `node migrateDiagnosis.mjs --apply`** to close the cutover window (a hop
    that fired between the app deploy and the re-point delivered an empty dropdown).
    It reports `diverged` rather than overwriting anything a rep has since set.
