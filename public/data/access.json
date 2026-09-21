@@ -74,6 +74,7 @@
         "viewOthers": true
       },
       "homeView": [
+        "bars",
         "oversight"
       ]
     },
