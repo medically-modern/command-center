@@ -28,6 +28,11 @@
  */
 
 import { fetchRecordingBlob } from "../fax/ringcentralApi";
+import {
+  archivedPlaybackUrl,
+  recordingSource,
+  type ArchivedAudio,
+} from "./archivedRecordings";
 
 /** The least a call has to carry to be downloadable. `PatientCall` satisfies
  *  this, and so does a row built from a raw call-log record, so both surfaces
@@ -167,13 +172,45 @@ export function saveBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
+/**
+ * Save a file the browser fetches itself, from a URL we do not own.
+ *
+ * ⚠️ The `download` attribute is IGNORED cross-origin, so this only names the
+ * file because the gateway signs a `Content-Disposition` into the presigned
+ * URL. Setting one without the other saves the object key instead, which is a
+ * call id and a recording id — unreadable in a folder, and not what a rep is
+ * looking for in an appeal.
+ */
+function saveViaUrl(url: string, filename: string): void {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 /** Fetch one recording and save it. Returns the filename actually used. */
 export async function downloadRecording(
   call: DownloadableCall,
-  opts: { who?: string } = {},
+  opts: { who?: string; archived?: Record<string, ArchivedAudio> } = {},
 ): Promise<string> {
-  if (!call.recording?.contentUri) throw new Error("This call has no recording.");
-  const blob = await fetchRecordingBlob(call.recording.contentUri);
+  const source = recordingSource(call, opts.archived);
+  if (!source) throw new Error("This call has no recording.");
+
+  // ⚠️ The ARCHIVE path never touches RingCentral and never buffers the file
+  // into the tab: the browser fetches the bytes straight from the bucket, where
+  // egress is free and the gateway is not in the middle. That is also why the
+  // filename has to be decided BEFORE the fetch — it is signed into the URL.
+  if (source.kind === "archive") {
+    const ext = extensionFor(opts.archived?.[call.id]?.contentType ?? undefined);
+    const name = recordingFilename(call, { who: opts.who, ext });
+    saveViaUrl(await archivedPlaybackUrl(source.callId, { download: true, filename: name }), name);
+    return name;
+  }
+
+  const blob = await fetchRecordingBlob(source.contentUri);
   const name = recordingFilename(call, { who: opts.who, ext: extensionFor(blob.type) });
   saveBlob(blob, name);
   return name;
@@ -194,9 +231,20 @@ export interface BulkResult {
   cancelled: boolean;
 }
 
-/** Only calls that actually carry audio — the rest have nothing to fetch. */
-export function withRecordings<T extends DownloadableCall>(calls: readonly T[]): T[] {
-  return calls.filter((c) => !!c.recording?.contentUri);
+/**
+ * Only calls that actually carry audio — the rest have nothing to fetch.
+ *
+ * ⚠️ "Carries audio" includes a recording RingCentral has already DELETED and
+ * we saved. Without the archive map this function is the reason an aged-out
+ * call cannot be downloaded even when the bytes are sitting in our bucket: the
+ * call-log row has no `recording`, so it is filtered out before anything else
+ * gets a chance to look (§5.44).
+ */
+export function withRecordings<T extends DownloadableCall>(
+  calls: readonly T[],
+  archived: Record<string, ArchivedAudio> = {},
+): T[] {
+  return calls.filter((c) => recordingSource(c, archived) !== null);
 }
 
 /**
@@ -217,13 +265,15 @@ export async function downloadRecordings(
   opts: {
     /** Display name per call id, where the caller knows one. */
     nameFor?: (call: DownloadableCall) => string | undefined;
+    /** What the archive holds, so a purged recording is still downloadable. */
+    archived?: Record<string, ArchivedAudio>;
     gapMs?: number;
     onProgress?: (p: BulkProgress) => void;
     /** Abort a run in flight. Whatever has already saved stays saved. */
     signal?: AbortSignal;
   } = {},
 ): Promise<BulkResult> {
-  const list = withRecordings(calls);
+  const list = withRecordings(calls, opts.archived);
   const gap = opts.gapMs ?? DEFAULT_GAP_MS;
   const failures: BulkResult["failures"] = [];
   let ok = 0;
@@ -234,7 +284,7 @@ export async function downloadRecordings(
     }
     const call = list[i];
     try {
-      await downloadRecording(call, { who: opts.nameFor?.(call) });
+      await downloadRecording(call, { who: opts.nameFor?.(call), archived: opts.archived });
       ok++;
     } catch (first) {
       // Almost always a throttle. Wait longer than the gap, try once more, and
@@ -242,7 +292,7 @@ export async function downloadRecordings(
       await sleep(RETRY_PAUSE_MS);
       if (opts.signal?.aborted) return { ok, failures, cancelled: true };
       try {
-        await downloadRecording(call, { who: opts.nameFor?.(call) });
+        await downloadRecording(call, { who: opts.nameFor?.(call), archived: opts.archived });
         ok++;
       } catch (second) {
         failures.push({

@@ -12,7 +12,7 @@
  * button can't show a missed-call count until it's opened, which is the trade
  * the feature was specified around ("click and see").
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Download,
@@ -30,6 +30,12 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { fetchPatientCallHistory, fetchRecordingBlobUrl } from "@/lib/fax/ringcentralApi";
+import {
+  archivedPlaybackUrl,
+  hasPlayableAudio,
+  recordingSource,
+} from "@/lib/callHistory/archivedRecordings";
+import { useArchivedAudio } from "@/hooks/callHistory/useArchivedAudio";
 import {
   callOutcomeLabel,
   summarizeCalls,
@@ -122,6 +128,18 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
   /** Blob URLs we minted, so they can be released rather than leaked. */
   const blobs = useRef<string[]>([]);
 
+  /**
+   * Which of these calls we hold audio for after RingCentral deleted it.
+   *
+   * ⚠️ This is what makes the Play and ⤓ buttons APPEAR on an aged-out call.
+   * RingCentral drops the `recording` object from the log row and keeps the
+   * row, so without this the buttons are never drawn and the bytes in our
+   * bucket are unreachable — a fallback on the download path alone fixes
+   * nothing a rep can see (§5.44).
+   */
+  const callIds = useMemo(() => calls.map((c) => c.id), [calls]);
+  const archived = useArchivedAudio(callIds);
+
   const load = async () => {
     setLoading(true);
     setErr(null);
@@ -152,10 +170,22 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
   }, []);
 
   const play = async (call: PatientCall) => {
-    if (!call.recording || audio[call.id]?.url || audio[call.id]?.loading) return;
+    const source = recordingSource(call, archived);
+    if (!source || audio[call.id]?.url || audio[call.id]?.loading) return;
     setAudio((a) => ({ ...a, [call.id]: { loading: true } }));
     try {
-      const url = await fetchRecordingBlobUrl(call.recording.contentUri);
+      // ⚠️ The ARCHIVE hands back a presigned URL that is used as a bare `src`,
+      // never fetched: a cross-origin `fetch()` would need CORS on the bucket,
+      // which Railway exposes no way to set, while an <audio src> needs none.
+      // It is therefore NOT a blob URL and must not be pushed onto `blobs` —
+      // revoking a URL we did not create is a no-op, but tracking it would
+      // imply we own bytes we never held.
+      if (source.kind === "archive") {
+        const signed = await archivedPlaybackUrl(source.callId);
+        setAudio((a) => ({ ...a, [call.id]: { url: signed } }));
+        return;
+      }
+      const url = await fetchRecordingBlobUrl(source.contentUri);
       blobs.current.push(url);
       setAudio((a) => ({ ...a, [call.id]: { url } }));
     } catch (e) {
@@ -166,10 +196,10 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
   /** Save one recording. The filename carries the patient's name and the ET
    *  date/time, so a folder of them is readable without opening any. */
   const save = async (call: PatientCall) => {
-    if (!call.recording || saving[call.id]) return;
+    if (!hasPlayableAudio(call, archived) || saving[call.id]) return;
     setSaving((s) => ({ ...s, [call.id]: true }));
     try {
-      const name = await downloadRecording(call, { who: display });
+      const name = await downloadRecording(call, { who: display, archived });
       toast.success(`Saved ${name}`);
     } catch (e) {
       toast.error(`Couldn't download that recording. ${e instanceof Error ? e.message : String(e)}`);
@@ -187,7 +217,7 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
    * work and saving a fraction of the files.
    */
   const saveAll = async () => {
-    const recorded = withRecordings(calls);
+    const recorded = withRecordings(calls, archived);
     if (!recorded.length || bulk) return;
     const mins = estimateMinutes(recorded.length);
     if (
@@ -206,6 +236,7 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
     try {
       const res = await downloadRecordings(recorded, {
         nameFor: () => display,
+        archived,
         onProgress: setBulk,
         signal: ctl.signal,
       });
@@ -219,6 +250,16 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
   };
 
   const summary = summarizeCalls(calls);
+  /**
+   * How many of these a rep can actually hear.
+   *
+   * ⚠️ NOT `summary.recorded`, which counts what RingCentral still has. Once a
+   * recording is purged that number falls even though the audio is safe in our
+   * bucket — so the footer would offer "Download all (0)" on a patient whose
+   * whole history we saved. The honest number is what is playable from
+   * anywhere.
+   */
+  const playable = useMemo(() => withRecordings(calls, archived).length, [calls, archived]);
 
   // No number on file, no history to look up. Guarded here rather than at each
   // call site so every header can drop the button in unconditionally.
@@ -246,7 +287,7 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
             <p className="text-xs text-muted-foreground">
               {summary.total} {summary.total === 1 ? "call" : "calls"}
               {summary.missedInbound > 0 && ` · ${summary.missedInbound} missed`}
-              {summary.recorded > 0 && ` · ${summary.recorded} recorded`}
+              {playable > 0 && ` · ${playable} recorded`}
             </p>
           )}
         </DialogHeader>
@@ -289,7 +330,7 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
                       >
                         {callOutcomeLabel(c)}
                       </span>
-                      {c.recording && (
+                      {hasPlayableAudio(c, archived) && (
                         <span className="flex shrink-0 items-center gap-0.5">
                           {!a.url && (
                             <button
@@ -344,7 +385,7 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
             <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} /> Refresh
           </button>
           <div className="flex items-center gap-3">
-            {summary.recorded > 0 &&
+            {playable > 0 &&
               (bulk ? (
                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -361,7 +402,7 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
                   onClick={() => void saveAll()}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[color:var(--mm-teal)] hover:bg-muted/60"
                 >
-                  <Download className="h-3 w-3" /> Download all ({summary.recorded})
+                  <Download className="h-3 w-3" /> Download all ({playable})
                 </button>
               ))}
             <span className="text-[11px] text-muted-foreground">Last 12 months</span>

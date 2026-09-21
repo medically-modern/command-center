@@ -54,7 +54,16 @@ export const EVERY_MS = Math.max(Number(process.env.CALL_ARCHIVE_EVERY_HOURS) ||
 export const MIN_GAP_MS =
   Math.max(Number(process.env.CALL_ARCHIVE_MIN_GAP_MINUTES) || 20, 0) * 60_000;
 
-export const PAGE_SIZE = Math.min(Math.max(Number(process.env.CALL_ARCHIVE_PAGE_SIZE) || 250, 1), 1000);
+/**
+ * ⚠️ AS BIG AS RingCentral ALLOWS, because REQUESTS are the scarce resource
+ * here, not bytes. The first live run paged at 250 and RingCentral 429'd the
+ * call-log part way through a 95-day pass — and since a shed pass restarts from
+ * page 1 next time, it would have spent every run re-reading pages it already
+ * had and getting shed in the same place. At 1000 the same window is ~10
+ * requests instead of ~40, which is the difference between a deep pass that
+ * completes and one that never can.
+ */
+export const PAGE_SIZE = Math.min(Math.max(Number(process.env.CALL_ARCHIVE_PAGE_SIZE) || 1000, 1), 1000);
 export const MAX_PAGES = Math.max(Number(process.env.CALL_ARCHIVE_MAX_PAGES) || 40, 1);
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -354,6 +363,8 @@ export function archiveHealth({
   newest,
   oldestPendingAt,
   firstRunAt,
+  /** null = nothing stored yet, so nothing to sign. See presignSelfCheck. */
+  presignOk,
   now = Date.now(),
 } = {}) {
   const okAt = lastOkAt ? new Date(lastOkAt).getTime() : null;
@@ -382,14 +393,21 @@ export function archiveHealth({
     reason =
       `the ${WINDOW_DAYS}-day repair window has not been read all the way through for ` +
       `${Math.floor(deepAgeMs / 3600_000)}h — deep passes are being cut short`;
+  else if (presignOk === false)
+    // ⚠️ Ahead of the `failed` count, because this one is worse: recordings are
+    // being saved perfectly and NONE of them can be played back. An archive
+    // nobody can read from is the failure this module exists to prevent,
+    // wearing the costume of one that is working.
+    reason = "recordings are being saved but cannot be served — the presigned-URL check is failing";
   else if (failedCount > 0)
     reason = `${failedCount} recording(s) RingCentral has but we could not fetch`;
 
   return {
-    ok: !stale && !truncated && !deepStale && failedCount === 0,
+    ok: !stale && !truncated && !deepStale && presignOk !== false && failedCount === 0,
     stale,
     truncated,
     deepStale,
+    presignOk: presignOk === undefined ? null : presignOk,
     reason,
     lastOkAt: okAt ? new Date(okAt).toISOString() : null,
     lastRunAt: lastRunAt ? new Date(lastRunAt).toISOString() : null,

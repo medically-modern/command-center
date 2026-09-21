@@ -319,6 +319,27 @@ describe("archiveHealth", () => {
     expect(h.reason).toMatch(/no successful run/i);
   });
 
+  // ⚠️⚠️ Saving and serving are different signing chains. An upload proves the
+  // header-signed path; a presigned URL is query-string SigV4 against Tigris.
+  // An archive can fill perfectly while nothing can be played back, and that is
+  // the failure this module exists to prevent wearing the costume of success.
+  it("is NOT ok when stored recordings cannot be served back", () => {
+    const h = archiveHealth({ ...healthy, presignOk: false });
+    expect(h.ok).toBe(false);
+    expect(h.reason).toMatch(/cannot be served/);
+  });
+
+  it("outranks a failed count, because unreadable is worse than incomplete", () => {
+    const h = archiveHealth({ ...healthy, presignOk: false, failed: 4 });
+    expect(h.reason).toMatch(/cannot be served/);
+  });
+
+  it("treats a not-yet-checked presign as unknown, not as broken", () => {
+    expect(archiveHealth({ ...healthy, presignOk: null }).ok).toBe(true);
+    expect(archiveHealth({ ...healthy }).ok).toBe(true);
+    expect(archiveHealth({ ...healthy }).presignOk).toBeNull();
+  });
+
   it("reports counts and never anything identifying", () => {
     const h = archiveHealth(healthy);
     const json = JSON.stringify(h);
@@ -500,6 +521,19 @@ describe("callArchive.mjs invariants", () => {
   // park the archive for a whole interval believing a gap was repaired.
   it("does not count a shed or truncated deep pass as a completed one", () => {
     expect(src).toMatch(/WHERE ok AND deep AND NOT truncated AND NOT shed/);
+  });
+
+  // ⚠️ A self-check that can fail the check it lives in is worse than none, and
+  // an unauthenticated route must not be a free way to make the gateway sign
+  // and fetch on demand.
+  it("self-checks the presigned path, cached, and never throws into health", () => {
+    const fn = src.slice(src.indexOf("async function presignSelfCheck"), src.indexOf("/* ──────"));
+    expect(fn).toMatch(/PRESIGN_CHECK_MS/);
+    expect(fn).toMatch(/catch \(e\)/);
+    expect(fn).toMatch(/method: "HEAD"/);
+    expect(fn).toMatch(/AbortController/);
+    // A boolean and nothing else: no url, no key, no call id in the payload.
+    expect(src).toMatch(/presignOk,/);
   });
 
   it("keeps the runs table migratable, since it already exists in production", () => {

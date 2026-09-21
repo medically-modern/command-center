@@ -17,6 +17,68 @@ this is the most sensitive artifact we would have ever stored.
 
 ---
 
+## 0. STATUS — built and running, 2026-09-21
+
+**Phases 1–4 shipped and are live.** The plan below is kept as the reasoning; this is what
+exists. Architecture reference for a future session: **`CLAUDE.md` §5.44**.
+
+| | |
+|---|---|
+| Bucket | **`call-recordings`** (`sjc`) in `handsome-simplicity` / production — S3 name `call-recordings-mjhojqkrf` |
+| Code | `services/monday-gateway/callArchive.mjs` + `callArchiveRules.mjs` (pure, 65 tests) + `callArchiveStore.mjs`; `rcMediaFetch` extracted into `ringcentral.mjs` |
+| Index | `call_archive`, `call_archive_runs`, `call_archive_access` on the **messaging** pool |
+| Cadence | hourly; a ~daily **deep** pass over the full window repairs gaps |
+| Health | `GET /calls/archive-health` (unauthenticated, counts only) |
+| Monitor | `services/calls-monitor` — set **`CALL_ARCHIVE_HEALTH_URL`** on it to arm the push |
+| Serving | `GET /calls/recording?callId=` → 302 presigned · `?mode=proxy` · `POST /calls/recordings/have` · `POST /calls/archive/query` |
+| Command Center | `lib/callHistory/archivedRecordings.ts` + `hooks/callHistory/useArchivedAudio.ts`; Play and ⤓ in `CallHistoryButton` now appear on purged calls and serve from the bucket |
+
+⚠️ **Phase 3 needed no separate backfill script and there deliberately is none.** The audio queue
+does not care how old a recording is, so ordinary hourly runs drain the backlog; a redeploy costs
+one run's progress rather than a night's.
+
+### What the first live run measured
+
+It indexed **8,166 calls** and found **3,800 recordings to fetch** across the full 95-day window.
+**Average stored size: ~880 KB** (66 samples, 59.5 MB) — about 24 kbps, the LOW end of §3's
+bracket, so **~15 GB/year and roughly $0.25/month in year one**. §3's table stands; the real number
+is its top row.
+
+⚠️⚠️ **AND IT IS EVIDENCE AGAINST THE 10-DAY NUMBER (§1).** `oldestPendingHours` settled at
+exactly **2159 — 90.0 days**, with `gone: 0`. A row is `pending` only because RingCentral's call log still carried a
+`recording` object for it, and §5.16's measurement is that the log DROPS that object once the
+audio is purged. So RingCentral was still advertising audio for a call three weeks old.
+**That is one measurement, not a policy read** — the call log could in principle keep advertising
+a recording it no longer serves, which the archive will settle on its own the moment those
+downloads either succeed or come back 404 (they land as `gone`, and `gone` is counted on the
+health route). **Check the health endpoint's `gone` count in a day**: a big `gone` number
+concentrated in older calls means 10 days is real and the log is lying; `gone` near zero with
+`stored` climbing means the 90-day policy holds. Either way the admin-console check in §1 is
+still the cheapest answer.
+
+### What it also found — a real bug, fixed the same hour
+
+The first run read 11 pages, took a **429**, threw, and therefore never reached the audio queue at
+all. `background` is the tier `rcLimiter` sheds *first* — that is the point of putting bulk work
+on it — so a throttle there is routine by design, and treating it as fatal abandoned the expensive
+half of the job to protect the cheap half. Now: a shed page waits out the window and retries,
+bounded; the drain runs whatever the scan managed; and **a 429 no longer burns a download
+attempt**, which would otherwise have let one busy afternoon park good recordings as permanently
+`failed`.
+
+### Still to do
+
+- ⚠️ **Set `CALL_ARCHIVE_HEALTH_URL`** on the `calls-monitor` service. Until then nothing pages
+  when the archive stops, which is the failure mode it exists for.
+- **Settle the retention number (§1)** and set `CALL_ARCHIVE_WINDOW_DAYS` / `CALL_ARCHIVE_STALE_HOURS`.
+- **Phase 5, voicemail audio** (§7) — a ~30-day clock, tighter than recordings, still unarchived.
+- **The Comms Hub Phone tab** has its own recording list and was deliberately left alone this pass;
+  it takes the same three lines as `CallHistoryButton` when wanted.
+- Two answers wanted from a human: Railway's BAA coverage of **Tigris**, and a retention policy
+  (§8). The default is keep-forever.
+
+---
+
 ## 1. ⚠️ First: 10 days or 90? It changes the urgency, not the design
 
 **I could not verify the 10 days from this session and I am not going to guess at it.** Two

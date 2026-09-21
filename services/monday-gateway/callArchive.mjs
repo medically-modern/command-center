@@ -181,11 +181,17 @@ CREATE INDEX IF NOT EXISTS call_archive_access_call_idx ON call_archive_access (
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Tries per call-log page when the budget refuses it, and how long to wait
- *  between them. The guard's window is 60s, so ~30s twice is enough to ride out
- *  an ordinary shed without becoming the hot retry loop that keeps a throttle
- *  alive. */
-const SHED_RETRIES = Math.max(Number(process.env.CALL_ARCHIVE_SHED_RETRIES) || 3, 1);
+/**
+ * Tries per call-log page when the budget refuses it, and how long to wait
+ * between them. The guard's window is 60s, so ~30s apiece rides out an ordinary
+ * shed.
+ *
+ * ⚠️ Retrying here is NOT hammering RingCentral. `rcGuard.note` opens on a 429,
+ * so the retries that follow are absorbed by the GATEWAY's own breaker and
+ * never reach the account — which is what makes patience the right answer
+ * rather than a way to keep a throttle alive.
+ */
+const SHED_RETRIES = Math.max(Number(process.env.CALL_ARCHIVE_SHED_RETRIES) || 5, 1);
 const SHED_PAUSE_MS = Math.max(Number(process.env.CALL_ARCHIVE_SHED_PAUSE_MS) || 30_000, 1_000);
 
 /** Rows per INSERT. 14 columns, so 100 rows is 1,400 bind parameters — well
@@ -556,6 +562,65 @@ export async function reconcileCallArchive({ pool, now = Date.now(), force = fal
   }
 }
 
+/**
+ * Can we actually GET a recording back out?
+ *
+ * ⚠️⚠️ **SAVING AND SERVING ARE DIFFERENT CHAINS, AND ONLY ONE OF THEM PROVES
+ * ITSELF.** A successful upload proves the credentials, the endpoint and the
+ * HEADER-signed request work. A presigned URL is QUERY-string SigV4 — a
+ * different code path, against a different service (Tigris, behind Railway's
+ * bucket) — so an archive can be filling perfectly while every attempt to play
+ * a recording 403s, and nothing anywhere would say so. That is the worst
+ * version of this module's failure mode: we would believe we were safe, and
+ * find out only when somebody needed a call.
+ *
+ * So the health route signs a URL for a real stored object and HEADs it, the
+ * same way a browser would. Reports a BOOLEAN and nothing else — never the
+ * URL, never the key, never a call id.
+ *
+ * ⚠️ Cached, because /calls/archive-health is unauthenticated and polled every
+ * ten minutes by the monitor; without this it would be a free way to make the
+ * gateway sign and fetch on demand.
+ * ⚠️ Never throws. A self-check that can fail the check it lives in is worse
+ * than no self-check.
+ */
+let _presign = { at: 0, ok: null };
+const PRESIGN_CHECK_MS = 5 * 60_000;
+
+async function presignSelfCheck(pool) {
+  if (!storeConfigured()) return null;
+  if (Date.now() - _presign.at < PRESIGN_CHECK_MS) return _presign.ok;
+  _presign = { at: Date.now(), ok: _presign.ok };
+  try {
+    const q = await pool.query(
+      `SELECT object_key, content_type FROM call_archive
+        WHERE audio_state = 'stored' AND object_key IS NOT NULL
+        ORDER BY stored_at DESC LIMIT 1`,
+    );
+    const row = q.rows[0];
+    // Nothing stored yet is not a failure — there is simply nothing to sign.
+    if (!row) {
+      _presign = { at: Date.now(), ok: null };
+      return null;
+    }
+    const url = await presignGet({ key: row.object_key, expiresIn: 60, contentType: row.content_type });
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 10_000);
+    try {
+      const res = await fetch(url, { method: "HEAD", signal: ctl.signal });
+      _presign = { at: Date.now(), ok: res.ok };
+      if (!res.ok) console.error(`call_archive: presigned GET self-check failed (${res.status})`);
+      return res.ok;
+    } finally {
+      clearTimeout(t);
+    }
+  } catch (e) {
+    console.error("call_archive: presigned GET self-check errored:", String((e && e.message) || e));
+    _presign = { at: Date.now(), ok: false };
+    return false;
+  }
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Routes
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -662,6 +727,7 @@ export function registerCallArchive({ app, pool, requireCaller }) {
            (SELECT min(started_at) FROM call_archive_runs)                                        AS first_run`,
       );
       const r = q.rows[0] || {};
+      const presignOk = await presignSelfCheck(pool);
       res.json({
         ...archiveHealth({
           lastOkAt: r.last_ok,
@@ -679,6 +745,7 @@ export function registerCallArchive({ app, pool, requireCaller }) {
           newest: r.newest,
           oldestPendingAt: r.oldest_pending,
           firstRunAt: r.first_run,
+          presignOk,
         }),
         storeConfigured: storeConfigured(),
         bucket: storeConfigured() ? storeName() : null,

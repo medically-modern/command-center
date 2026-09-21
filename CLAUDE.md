@@ -7463,11 +7463,38 @@ switch), `_SERVICE_TOKEN`, `_WINDOW_DAYS`, `_SCAN_DAYS`, `_PER_RUN`, `_GAP_MS`, 
 5. `registerCallArchive` is called from **`messaging.mjs`**, never `index.mjs`, so it lands on the
    messaging pool (pinned by a test).
 
-**Not built yet** (phase 4 of the plan): the SPA wiring — `fetchRecordingBlob` falling back to the
-archive, and `CallHistoryButton` / the Comms Hub Phone tab calling `/calls/recordings/have` so an
-aged-out call gets a Play button at all. Until that lands the archive is filling but the Command
-Center still only shows what RingCentral still has. Voicemail audio (~30-day message store, a
-**tighter** clock) is phase 5 and also unbuilt.
+**The Command Center plays them back** — `lib/callHistory/archivedRecordings.ts` (the rule) +
+`hooks/callHistory/useArchivedAudio.ts` (one batched lookup per list, the `useDirectoryNames`
+shape) + `CallHistoryButton`.
+⚠️⚠️ **THE HALF THAT IS EASY TO MISS IS DRAWING THE BUTTON AT ALL.** A purged call arrives with no
+`recording` object, so `{c.recording && …}` renders nothing and a fallback on the *download* path
+can never run — the screen looks exactly as it did before the archive existed and the bytes sit in
+the bucket unreachable. The gate is `hasPlayableAudio(c, archived)`, and
+`archivedRecordings.test.ts` fails the build if it goes back (verified).
+⚠️ **The archive WINS where we have it** (`recordingSource`), rather than being a fallback: our
+copy is free to serve, spends no RingCentral budget, and will still be there next year.
+RingCentral remains the source for anything recorded since the last run — the one window the
+archive structurally cannot cover.
+⚠️ The presigned URL is used as a bare `<audio src>` / `<a href>` and **never `fetch()`ed** — a
+cross-origin redirect followed by `fetch` needs CORS on the bucket and Railway exposes no way to
+set it, while a media element needs none. It is therefore **not a blob URL** and must not be
+tracked for revoking.
+⚠️ The footer counts `playable`, not `summary.recorded`: that one counts what RINGCENTRAL still
+has, so it falls to zero on a patient whose whole history we saved and the footer would offer
+*"Download all (0)"* over a full archive.
+
+**Measured on the live account as it filled, 2026-09-21:**
+- ⚠️⚠️ **`oldestPendingHours` came back at exactly 2159 — 90.0 days** — i.e. RingCentral's call log
+  was still advertising a `recording` for a call 90 days old, with `gone: 0`. **That is evidence
+  the retention here is the published 90 days, not 10.** It is not yet proof: the check that
+  settles it is whether those oldest downloads succeed or come back 404 (they land as `gone`, which
+  the health route counts). **Read `gone` after a day.**
+- **~880 KB per recording** (66 stored, 59.5 MB) ≈ 24 kbps, i.e. the LOW end of the plan's
+  bracket: **~15 GB/year, about $0.25/month in year one and ~$1.60/month at seven years.** Storage
+  was never the problem; requests are.
+
+**Not built** (phase 5): **voicemail audio**, which is on the ~30-day message-store clock — three
+times TIGHTER than recordings — and has no archive at all. Same module, same bucket when wanted.
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -8515,7 +8542,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
 | A recording won't play, or a call has no Play/⤓ at all | §5.16 — first check the call's AGE: RingCentral deletes recordings at **90 days** and keeps the log row, so an old call looks identical to one never recorded and the audio is unrecoverable. Inside 90 days, no audio means the call never connected (auto-recording is on for both directions, measured 760/774). A 403 on download is the `ReadCallRecording` permission |
 | "Are we actually saving the recordings?" | §5.44 — `GET /calls/archive-health` on the gateway (unauthenticated). `ok:false` with *no successful run* means the job has never completed one; `storeConfigured:false` means no bucket is wired up. A **pending** backlog is normal and is not a fault — that is a backfill draining |
-| A recording is in the archive but the Command Center won't play it | §5.44 — the SPA wiring is **phase 4 and not built**: `fetchRecordingBlob` does not yet fall back to `/calls/recording`, and `CallHistoryButton` does not yet ask `/calls/recordings/have`, so an aged-out call still draws no Play button. The bytes are there; nothing on screen reaches for them |
+| A recording is in the archive but the Command Center won't play it | §5.44 — the chain is `useArchivedAudio` → `hasPlayableAudio` (draws the button) → `recordingSource` (picks archive over RingCentral) → `archivedPlaybackUrl` (presigned). ⚠️ If the button is simply ABSENT, the render gate has gone back to `c.recording`, which is false for every purged call — `archivedRecordings.test.ts` should have failed |
 | Another service needs call metadata (who called, when) | §5.44 — `POST /calls/archive/query` with a Google identity or `CALL_ARCHIVE_SERVICE_TOKEN`. ⚠️ It answers `last4`, never the number: send the number you already hold and it hashes it, the `/directory/lookup` posture |
 | A bulk download stopped part-way | §5.16 — `lib/callHistory/recordingDownload.ts`. The run is paced at ~24/min against `rcLimiter`'s 40-per-caller budget and retries a throttled file once; the toast reports how many failed. Closing the tab ends it — whatever already saved is kept |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |

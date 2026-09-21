@@ -142,6 +142,10 @@ export async function rcApiFetch(path, init = {}, opts = {}) {
       res = await go(token);
     }
     rcGuard.note({ status: res.status, retryAfter: retryAfterMs(res.headers.get("retry-after")) });
+    // Which budget this path is actually in, from RingCentral's own header.
+    // Their docs tell you to read it rather than trust the published tables,
+    // and it is the only way to size a paced job against the real ceiling.
+    noteRateLimitGroup(path.split("?")[0], res.headers.get("x-rate-limit-group"));
     if (res.status === 429) {
       console.warn(`RingCentral 429 on ${path.split("?")[0]} — pausing non-critical calls`);
     }
@@ -237,7 +241,13 @@ export async function rcMediaFetch(rawUrl, opts = {}) {
 const _seenGroups = new Set();
 function noteRateLimitGroup(pathname, group) {
   if (!group) return;
-  const shape = /\/recording\//.test(pathname) ? "recording" : "attachment";
+  const shape = /\/recording\//.test(pathname)
+    ? "recording"
+    : /\/call-log/.test(pathname)
+      ? "call-log"
+      : /\/message-store/.test(pathname)
+        ? "message-store"
+        : "other";
   const k = `${shape}:${group}`;
   if (_seenGroups.has(k)) return;
   _seenGroups.add(k);
