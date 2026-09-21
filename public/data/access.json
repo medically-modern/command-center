@@ -74,8 +74,8 @@
         "viewOthers": true
       },
       "homeView": [
-        "bars",
-        "oversight"
+        "oversight",
+        "bars"
       ]
     },
     "brandon@medicallymodern.com": {
