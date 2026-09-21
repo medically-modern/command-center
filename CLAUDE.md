@@ -5517,14 +5517,15 @@ the board's facts in cards, then the notes — or `ordersPage`, whose bottom hal
 history table** (Order # · Created · Type · Items · Status · Shipped · Delivered, newest first).
 That is what is built, `?sub=orders` on the URL so a tab survives a reload and a shared link.
 
-⚠️⚠️ **READ-ONLY, and that is a DEPARTURE from the mockup taken deliberately.** His version carries
-**Save / Reset** and edits the Subscription columns in place. This screen's founding promise is that
-it is purely additive and writes nothing (§5.39, pinned by `patientScreen.test.ts`), and two writers
-for one column is the failure this codebase records over and over — the Secondary Insurance select
-leaving `PatientInfoCard` (§5.31c), the phone editor leaving the Welcome Call banner (§5.31d). The
-mockup itself renders *"Read-only for <name>"* whenever `editProfile` is off, so this ships as its
-own read-only state shown to everyone; **Open the profile** is the one door that writes, and it
-opens the tool that already owns those columns and already gates on `editProfile` (§5.39h).
+⚠️⚠️ **IT SHIPPED READ-ONLY AND THAT WAS REVERSED THE SAME DAY — see §5.45b.** The argument was
+that this screen's founding promise is to write nothing (§5.39, pinned by `patientScreen.test.ts`)
+and that two writers for one column is the failure this codebase records over and over. Half of
+that still holds and is why the edit path calls `/subscription`'s OWN writer rather than a second
+one; the other half was wrong, and Josh said so: *"is this what edit profile was about? … if the
+person has edit profile access they should be able to edit from this page too / read only if you
+dont have it, the way it is today"*. The mockup renders *"Read-only for <name>"* whenever
+`editProfile` is off, which is the ability this app already has — so read-only for everyone was
+reading his design's FALLBACK as its whole intent.
 
 ⚠️ **The no-writer scan now reads the DIRECTORY, not a hand-kept list.** `patientScreen.test.ts`
 named five files, so a file added to this screen later would simply not have been scanned — the
@@ -5567,7 +5568,7 @@ clipped Delivered off the edge. Measured in a browser at 1100 (§5.30d's rule), 
 With a floor the `.scroll-x` wrapper does its job and every row stays one or two lines. Verified at
 1440 (no overflow), 1100 (scrolls inside the card) and 1440 dark.
 
-**Not built, and each for its own reason:** his **Save / Reset** (above); **Financials** — the
+**Not built, and each for its own reason:** **Financials** — the
 Subscription board really does carry them (`numeric_mm2xsjm5` and its siblings are in the
 subscription slice's own `COL`), but they are not in `stageDetail`'s SUBSCRIPTION map, which is the
 **Comms Hub dossier's** map too, and money is not what a rep on a call needs in that pane (§5.28);
@@ -5582,6 +5583,100 @@ short-circuit (both, so neither file can be read as the only guard) · `SUB_PARA
 ⇄ `PatientPage`'s `setParam`. Tests: `components/patient/subscriptionView.test.ts` (the tab default,
 the fail-closed read, the shared-rule scans — the fail-closed one verified to fail when the guard is
 removed) and `lib/patient/patientScreen.test.ts`'s directory-wide no-writer scan.
+
+### 5.45b The Subscription profile is EDITABLE behind `editProfile` (Sep 2026)
+Josh, 2026-09-21, hours after §5.45 shipped read-only: *"is this what edit profile was about? this
+is read only unless we have edit profile access? if the person has edit profile access they should
+be able to edit from this page too"* · *"read only if you dont have it, the way it is today"*.
+**No board change; app only.** Files: `components/patient/SubscriptionView.tsx`,
+`hooks/patient/useSubscriptionRecord.ts`, `components/subscription/SendToMondayButton.tsx`
+(a `compact` prop), `pages/patient/redesign.css`.
+
+⚠️⚠️ **ONE WRITER, TWO SCREENS — never a second implementation.** The tab renders
+`/subscription`'s own `SubscriptionForm` and sends with its own `sendPatientToMonday`. That is the
+opposite of the failure §5.45 was worried about: two writers for one column is how the Secondary
+Insurance select ended up leaving `PatientInfoCard` (§5.31c) and the phone editor left the Welcome
+Call banner (§5.31d) — calling the existing writer from a second screen is what keeps there being
+one. `patientScreen.test.ts` scans for a hand-rolled `change_column_value` /
+`executeWritesWithVerification` in the edit path and fails on one.
+
+⚠️⚠️ **THE READ IS FULL-WIDTH, deliberately not the dossier's columns.** The screen already holds
+this item, but through the Comms Hub dossier, whose read carries only the columns `stageDetail`'s
+SUBSCRIPTION map names — a subset (§5.28). Handing a subset to `sendPatientToMonday` is the §5.25
+partial-record hazard: `col()` defaults a missing column to `""`, which is indistinguishable from a
+blank board cell. `useSubscriptionRecord` reads the board's own `READ_COLUMN_IDS` through the
+subscription slice's `fetchItemById` and maps it with the slice's `mondayItemToPatient`, so the
+object that reaches the writer is byte-for-byte the one `/subscription` sends.
+> The writer guards every task (`if (p.xIndex !== null)`), so a subset would have written FEWER
+> columns rather than blanking any — the full read is belt and braces, chosen because "it would
+> only have under-written" is not a property anybody should have to re-derive.
+
+⚠️ **Fetched only when the Profile tab is open AND the person may edit**, so a rep without the
+ability costs exactly what the read-only screen cost. Every INCIDENT_2026-08-20 guard otherwise:
+module-scope cache, one in-flight request per item with the `finally` on the CHAINED promise
+(§5.28), a `want` ref so a slow answer cannot paint the previous patient's record into the open
+one, no timer, and a FAILURE that is not cached so re-opening retries.
+
+⚠️ **Gated TWICE — `useAbility("editProfile")` on the control and `if (!canEdit) return` inside the
+handler.** §5.39h's rule: the button is what a rep sees, the handler is what stops the write, and a
+typed URL, a stale tab or an ability revoked mid-session all reach the second and not the first.
+Without the ability the tab is byte-identical to what §5.45 shipped — every section as a read-only
+card — plus `AbilityLockNote`, which names the switch and links an admin to Users.
+
+**The Save is Brandon's `dirty-bar`** (mockup line 2200), merged with the Save he also keeps in the
+toggle row: ONE row above the form, quiet while clean, amber *"Unsaved changes. Nothing is written
+to Monday until you press Send."* with Discard once dirty.
+⚠️ **It sits ABOVE the form because the form is taller than the viewport** — measured at 1440×900,
+the bar lands at y=413 and the form's foot is off screen, so a Save at the bottom is below the fold
+on every patient. Two Saves at opposite ends is two affordances to keep in step, which is why his
+two became one.
+⚠️ **The bar renders in BOTH states, not only when dirty.** A long form with no Save visible reads
+as read-only, and a record can be invalid while clean — `SendToMondayButton`'s own validation list
+is what says why, so it must be on screen before the first edit (§5.31b: a greyed-out control with
+no stated reason is the dead end this codebase records reversing).
+⚠️ `SendToMondayButton` grew an **opt-in `compact`** size for it; `/subscription` passes nothing
+and is byte-identical. Every state (idle · sending · success · retry-on-error) and the validation
+list are outside the size branch — a hand-rolled small Save here would be a second send affordance
+with none of them.
+
+⚠️ **`FORM_SECTIONS` hides the sections the form renders as inputs**, matched by TITLE against
+`stageDetail`'s SUBSCRIPTION map: one fact editable and the same fact read-only, on one screen, is
+worse than either alone. ⚠️ **"Next order" is listed and is not in practice filtered** — it is the
+first mapped section, so it wears the teal overview strip rather than being a card, and that is
+right: the strip is this screen's `PatientInfoCard`, and `/subscription` shows the same six facts
+read-only above its own form (Status · Days to Order · Ordering Cycle · Next Order · Order Type).
+It stays listed so the filter still holds if that map is reordered. ⚠️ A section renamed in
+`stageDetail.ts` makes the filter match nothing and the facts double-render **with nothing
+erroring**, so `subscriptionView.test.ts` asserts both strings against the live map — verified to
+fail on a rename.
+
+⚠️ `GatewayPendingError` is caught and is **not** a failure (§5.2): the job is durably queued and
+WILL run, so the toast says "queued, don't repeat", the edits stay on screen and nothing re-reads
+— the board would still hand back the OLD values. Every other failure toasts and rethrows, so
+`SendToMondayButton` shows its retry state. A clean send clears the edits and re-reads the board
+rather than trusting them.
+
+⚠️ `ProfileTab` is keyed on `item.itemId`, so local edits cannot survive a patient switch — §9's
+notes-box rule, which this codebase records costing a note filed against the wrong chart.
+
+**Still the /subscription page's alone:** MN documents and the visit date, because each carries
+side effects this card does not (§5.36 — the visit-date save writes the MR rung, and MN Expiry
+arms a board automation). The footer says so rather than leaving a rep to discover it.
+
+**Rendered in a browser before shipping** (§5.30d's rule), at 1440 · 1100 · 1440 dark, in all three
+states: with the ability (bar quiet, Send enabled, "What ships" correctly absent from the cards),
+dirty (amber bar, Discard + Send, the typed date held), and without it (lock note, all five cards,
+no edit block). No page errors, no horizontal overflow at either width.
+
+**Keep-in-agreement:** `useSubscriptionRecord` must read through the **subscription slice's own**
+`fetchItemById` + `mondayItemToPatient` — never the dossier's columns · the double gate
+(`useAbility` + the handler check) ⇄ `patientScreen.test.ts`, which scans for both ·
+`FORM_SECTIONS` ⇄ `stageDetail.ts`'s SUBSCRIPTION titles ⇄ `ProfileTab`'s filter ·
+`SendToMondayButton`'s `compact` ⇄ its default of `false`, which is what keeps `/subscription`
+unchanged. Tests: `components/patient/subscriptionView.test.ts` and
+`lib/patient/patientScreen.test.ts` (whose no-writer scan now carries a named `EDIT_PATH` carve-out
+rather than being deleted — the promise narrowed to "writes nothing WITHOUT the ability", and the
+three assertions that replace it are what hold that).
 
 ### 5.46 Diagnosis is a DROPDOWN — monday status columns cap at 39 labels (Sep 2026)
 A rep sent an Evaluate patient on 2026-09-21 and the send failed four times with
@@ -8548,6 +8643,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Borrowing somebody's view shows my tabs, or theirs reach a write | §5.39h — `lib/shell/viewAs.ts`. The HEADER answers for the borrowed person (tabs, Manage, Users); `AbilityGate`, `AbilityLock` and every write guard answer for the signed-in one; the softphone is never borrowed. `viewAsScope.test.ts` pins all three |
 | A page sits 36px short, or the header grows a blank band | §5.39h — `--cc-head` is the HEADER's height and `--cc-chrome` is everything above a page. The borrow banner raises the second, never the first; raising both made `.gh` taller AND stacked the banner under it |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
+| The Subscription profile won't save, or says "Read-only" | §5.45b — `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). MN documents and the visit date are still `/subscription` and `/update-clinicals` alone — each carries side effects this card does not (§5.36) |
+| A fact shows TWICE on the Subscription profile — once editable, once as a card | §5.45b — `FORM_SECTIONS` matches `stageDetail.ts`'s SUBSCRIPTION section TITLES, so a rename there makes the filter match nothing with nothing erroring. `subscriptionView.test.ts` pins both strings. ⚠️ The teal overview strip restating Next order / Cycle / Order type is NOT that bug — it is this screen's `PatientInfoCard`, and `/subscription` shows the same six facts above its own form |
 | The order history table mangles its rows on a narrow window | §5.45 — `.cc-pt .otable`'s `min-width: 720px`. Without it the table squeezes instead of scrolling inside `.scroll-x` and the Items cell collapses to one word per line. Reproduce at **1100**, where the 380px comms rail leaves the main column at ~672px — at 1440 it fits and looks correct whatever is broken |
 | The Cardinal stock page / "where is Inventory?" | §5.39i — `/orders?view=stock`, one table with category chips, `components/orders/SkuTrackerView.tsx`. OOP price is the board's column, never `cost × 1.25`; Status sorts by the VERDICT, not the raw label; the order sidebar is hidden there by design |
 | "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |

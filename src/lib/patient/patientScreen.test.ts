@@ -214,12 +214,28 @@ describe("the patient screen is READ-ONLY", () => {
     readdirSync(resolve(process.cwd(), d))
       .filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith(".test.ts") && !f.endsWith(".test.tsx"))
       .map((f) => `${d}/${f}`);
-  const files = [
+  const all = [
     "src/pages/PatientPage.tsx",
     ...dir("src/components/patient"),
     ...dir("src/hooks/patient"),
     ...dir("src/lib/patient"),
   ];
+
+  /**
+   * ⚠️⚠️ **THE ONE CARVE-OUT, AND IT IS A NARROWING OF THE PROMISE RATHER THAN
+   * A HOLE IN IT** (Josh, 2026-09-21: *"if the person has edit profile access
+   * they should be able to edit from this page too / read only if you dont
+   * have it, the way it is today"*). §5.45b: the Subscription Profile tab
+   * renders `/subscription`'s OWN form and calls its OWN send, behind
+   * `editProfile`. Everything else on this screen still writes nothing, and
+   * the block below pins what these two files must satisfy in place of the
+   * blanket ban — so the carve-out cannot quietly widen into a second writer.
+   */
+  const EDIT_PATH = [
+    "src/components/patient/SubscriptionView.tsx",
+    "src/hooks/patient/useSubscriptionRecord.ts",
+  ];
+  const files = all.filter((f) => !EDIT_PATH.includes(f));
 
   it("⚠️ the scan really found the screen's files", () => {
     // A glob that silently matched nothing passes every assertion below it.
@@ -229,7 +245,7 @@ describe("the patient screen is READ-ONLY", () => {
       "src/hooks/patient/usePatientRecord.ts",
       "src/lib/patient/patientScreen.ts",
     ]) {
-      expect(files, `${f} is not being scanned`).toContain(f);
+      expect(all, `${f} is not being scanned`).toContain(f);
     }
   });
 
@@ -243,6 +259,41 @@ describe("the patient screen is READ-ONLY", () => {
       expect(text, `${f} must not mutate Monday`).not.toMatch(/change_(multiple_)?column_value/);
       expect(text, `${f} must not run a verified write`).not.toMatch(/executeWritesWithVerification/);
     }
+  });
+
+  it("⚠️⚠️ the edit path calls the EXISTING writer — never a second implementation", () => {
+    // Two INDEPENDENT writers for one column is what §5.31c · §5.31d record
+    // going wrong. Calling `/subscription`'s own send from a second screen is
+    // the opposite: there is still exactly one place that knows how these
+    // columns are written.
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    expect(view).toContain('from "@/lib/subscription/mondayWrite"');
+    expect(view).toContain("sendPatientToMonday");
+    for (const f of EDIT_PATH) {
+      const text = src(f);
+      expect(text, `${f} must not hand-roll a mutation`).not.toMatch(/change_(multiple_)?column_value/);
+      expect(text, `${f} must not run its own verified write`).not.toMatch(/executeWritesWithVerification/);
+    }
+  });
+
+  it("⚠️⚠️ the write is gated on editProfile TWICE — the control and the handler", () => {
+    // §5.39h: the button is what a rep sees, the handler is what stops the
+    // write. A typed URL, a stale tab and a revoked ability all reach the
+    // second and not the first.
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    expect(view).toMatch(/useAbility\("editProfile"\)/);
+    // The handler refuses before it sends.
+    expect(view).toMatch(/if \(!canEdit\) return;[\s\S]{0,400}sendPatientToMonday/);
+    // And the editor is not even mounted without it.
+    expect(view).toMatch(/canEdit && <SubscriptionEditor/);
+  });
+
+  it("⚠️ somebody WITHOUT the ability is told why, rather than shown nothing", () => {
+    // Hiding the control is the dead end §5.10 · §5.20 · §5.31c each record
+    // reversing — a rep who cannot see it concludes the page is broken.
+    expect(src("src/components/patient/SubscriptionView.tsx")).toContain(
+      '<AbilityLockNote ability="editProfile" />',
+    );
   });
 
   it("⚠️ never polls — the record is fetched on OPEN only", () => {

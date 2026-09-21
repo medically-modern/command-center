@@ -305,6 +305,28 @@
 .cc-pt .ordlink:hover { text-decoration: underline; }
 .cc-pt .chip.latest { font-size: 10px; padding: 0 5px; }
 
+/* ── The editable Order details block (§5.45b) ────────────────────────────── */
+/* ⚠️ `SubscriptionForm` and `SendToMondayButton` are the /subscription page's
+   OWN shadcn components, dropped in here unchanged — so these rules give them
+   spacing and nothing else. Restyling them from this file would be a second
+   opinion about how that form looks, which is the drift the shared component
+   exists to prevent. Tailwind reaches inside `.cc-pt` normally (unlike
+   `.pf-root`, which resets `button` and out-specifies every utility, §9). */
+.cc-pt .sub-edit { display: flex; flex-direction: column; gap: 14px; }
+/* Brandon's `dirty-bar`, quiet until there is something to save. It is the ONE
+   place the Save lives, so it renders in both states rather than appearing
+   only when dirty — a form with no Save on it reads as read-only. */
+.cc-pt .sub-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; border-radius: 12px; font-size: 12px;
+  background: var(--mut); border: 1px solid var(--bd);
+}
+.cc-pt .sub-bar.dirty {
+  background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn-fg);
+}
+.cc-pt .sub-bar .grow { flex: 1; min-width: 200px; }
+.cc-pt .sub-bar .ico { width: 15px; height: 15px; flex: none; }
+
 
 /* ── Right column: Texts | Calls ──────────────────────────────────────────── */
 .cc-pt .pt-side .hd { padding: 10px 12px; border-bottom: 1px solid var(--bd); }

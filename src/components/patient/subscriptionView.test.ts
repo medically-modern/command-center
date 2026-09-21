@@ -10,7 +10,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseSubTab } from "./SubscriptionView";
+import { FORM_SECTIONS, parseSubTab } from "./SubscriptionView";
+import { STAGE_DETAIL } from "@/lib/commsHub/stageDetail";
 
 const src = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 
@@ -92,3 +93,56 @@ describe("⚠️ the view reads the ORDERS page's own rules, never a second copy
     expect(src("src/components/patient/SubscriptionView.tsx")).toContain("partial: true");
   });
 });
+
+describe("⚠️⚠️ the form-owned sections are matched by TITLE, so the titles must exist", () => {
+  // `ProfileTab` hides exactly these two snapshot cards while the form is on
+  // screen, because the form renders the same facts as inputs. It matches on
+  // the section TITLE, which is a string in another file — rename one there and
+  // this filter silently stops matching, so the patient's Next order shows
+  // TWICE, once editable and once not, with nothing erroring.
+  const SUBSCRIPTION_BOARD = 18407459988;
+
+  it("every FORM_SECTIONS title is a live section of the Subscription map", () => {
+    const titles = STAGE_DETAIL[SUBSCRIPTION_BOARD].map((s) => s.title);
+    for (const t of FORM_SECTIONS) {
+      expect(titles, `"${t}" is no longer a section — the filter matches nothing`).toContain(t);
+    }
+  });
+
+  it("and the filter really is the thing that hides them", () => {
+    const text = src("src/components/patient/SubscriptionView.tsx");
+    expect(text).toMatch(/FORM_SECTIONS\.includes\(sc\.title\)/);
+    // Only while editing: without the ability every section renders as a card,
+    // which is the read-only page this replaced.
+    expect(text).toMatch(/canEdit \? rest\.filter/);
+  });
+});
+
+describe("⚠️ the compact Send is the SAME button, not a second one", () => {
+  // The patient screen carries the send inside a one-line bar, so the shared
+  // component grew a `compact` size. Every state and the validation list stay
+  // in that one component — a hand-rolled small Save in this file would be a
+  // second send affordance to keep in step with the real one.
+  const btn = () => src("src/components/subscription/SendToMondayButton.tsx");
+
+  it("is opt-in, so /subscription is byte-identical without it", () => {
+    expect(btn()).toContain("compact = false");
+    // The page that has always had it must not have started passing it.
+    expect(src("src/pages/SubscriptionPage.tsx")).not.toMatch(/SendToMondayButton[^>]*compact/);
+  });
+
+  it("⚠️ compact keeps the validation list — a disabled Save must say why", () => {
+    // §5.31b: a greyed-out control with no stated reason is the dead end this
+    // codebase records reversing. The list is outside every size branch.
+    const text = btn();
+    expect(text).toContain("Required before sending:");
+    expect(text, "the list moved inside a size branch").not.toMatch(/compact[^)]*Required before sending/);
+  });
+
+  it("the patient screen passes it, and does not build its own", () => {
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    expect(view).toMatch(/<SendToMondayButton\s+compact/);
+    expect(view, "a second Save appeared").not.toMatch(/btn primary[^"]*"[^>]*onClick=\{handleSend/);
+  });
+});
+
