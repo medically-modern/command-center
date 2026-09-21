@@ -72,7 +72,11 @@
       "roleFilters": {},
       "perms": {
         "viewOthers": true
-      }
+      },
+      "homeView": [
+        "oversight",
+        "bars"
+      ]
     },
     "brandon@medicallymodern.com": {
       "name": "brandon",
