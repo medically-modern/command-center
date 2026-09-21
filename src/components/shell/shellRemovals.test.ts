@@ -152,14 +152,14 @@ describe("⚠️ the header advertises every live destination, and no dead one",
     expect(liveLines(read("App.tsx"))).toContain('path="/oversight"');
   });
 
-  it("⚠️ System Management is back on the menu, under Manage", () => {
-    // Off it on 2026-09-18 — *"remove system management, the search from there
-    // is now in the top bar"* — which was true of SEARCH and of nothing else on
-    // that page: Stage Manager, Operations and Oversight all live there too, and
-    // each had no other door. Restored the same day under Brandon's own
-    // **Manage ▾** heading, which is where his mockup puts it.
-    // `lossless.test.ts` is the standing guard on all five entries.
-    expect(live).toContain('navigate("/system-mgmt")');
+  it("⚠️ System Management is OFF the menu again — the top bar covers its tabs", () => {
+    // It was restored on 2026-09-18 because commenting its tabs out took Stage
+    // Manager and Operations out of the product entirely. Both are header tabs
+    // in their own right now, so the page itself no longer needs advertising
+    // (Josh, 2026-09-21). ⚠️ The ROUTE must survive — a bookmark still works,
+    // and its Search tab's pipeline chart has no other home.
+    expect(read("components/shell/GlobalHeader.tsx")).not.toContain('navigate("/system-mgmt")');
+    expect(read("App.tsx")).toContain('path="/system-mgmt"');
   });
 
   it("⚠️ Reports & Metrics is BACK, and ability-gated", () => {

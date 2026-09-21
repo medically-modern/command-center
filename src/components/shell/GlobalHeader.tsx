@@ -310,10 +310,16 @@ export function GlobalHeader() {
                     <ArrowRightLeft style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
                     Stage Manager
                   </button>
-                  <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/system-mgmt"); }}>
-                    <ListChecks style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                    System Management
-                  </button>
+                  {/* ⚠️ **System Management left this menu on 2026-09-21** (Josh:
+                      "as far as system managment goes the full top bar now
+                      handles that") — and it does: Search IS the header's
+                      search box, Communications and Stage Manager are header
+                      tabs, Operations is what Reports & Metrics opens, and
+                      Oversight is above. The `/system-mgmt` ROUTE survives for
+                      a bookmark. ⚠️ What genuinely has no other door is the
+                      days-in-stage PipelineChart on its Search tab, filtered by
+                      the current results — the same component is on Stage
+                      Manager, over a different population. */}
                   {/* ⚠️ Here AND on the admin-only Users button beside this menu
                       — `isAdmin` is true for every manager only while `admins`
                       is empty (§5.39c), so the day somebody names the first
@@ -325,16 +331,18 @@ export function GlobalHeader() {
                   <div className="divider" />
                 </>
               )}
-              {/* ⚠️ The fax screens stay UNGATED — they are rep tools, and both
-                  are listed deliberately (§5.39c): Brandon's combined bar was
-                  added beside the Fax Inbox rather than replacing it. */}
-              <div className="eyebrow">Faxes</div>
-              <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/fax"); }}>
-                Faxes — with the sending office
-              </button>
-              <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/fax-inbox"); }}>
-                Fax Inbox
-              </button>
+              {/* ⚠️ **THE FAXES SECTION WAS REMOVED on 2026-09-21** (Josh: "no
+                  need for the faxes section in settings i think either").
+                  Checked before removing, because §5.39c added `/fax` BESIDE
+                  `/fax-inbox` rather than replacing it and this menu was the
+                  only place both were listed:
+                    · `/fax-inbox` keeps a real door — the **FAX role bar**,
+                      which is clickable in both `DailyBurndown` and
+                      `OperationsTab` and is special-cased to open it (§4).
+                    · `/fax` had NO other door. Its function is not lost: the
+                      Communications hub's **Fax tab** already shows the sending
+                      office and its patients (§5.28), and Communications is a
+                      header tab. The route survives for a bookmark. */}
               {/* ⚠️ **THE LOWER-LEFT FLOATING GEAR IS GONE** (Josh, 2026-09-21:
                   "putt everything in the lower left setting into the upper
                   right settings"). Everything it held is here: the appearance

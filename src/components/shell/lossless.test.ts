@@ -85,33 +85,60 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     expect(app).toMatch(/ability="stageManager"[\s\S]{0,120}StageManagerPage/);
   });
 
-  it("⚠️ the MANAGE ▾ menu is gone, and its two orphans moved rather than went with it", () => {
-    // Josh, 2026-09-21: "also remove the manage tab / i think everything that
-    // exists there exists other places now". Two of its three entries did NOT:
-    // System Management had no other door at all, and Access & permissions had
-    // only the admin-only Users button. Both are on the settings menu now.
+  it("⚠️ the MANAGE ▾ menu is gone, and the orphan that needed a home got one", () => {
+    // Josh, 2026-09-21: "also remove the manage tab". Two of its three entries
+    // did not exist elsewhere at the time; Access & permissions still needs
+    // this menu (the Users button beside it is ADMIN-only), so it moved here.
     const h = header();
     expect(h, "the Manage button is still here").not.toContain('title="Manager tools"');
-    expect(h).toContain('navigate("/system-mgmt")');
     expect(h).toContain('navigate("/access")');
   });
 
-  it("⚠️⚠️ …and moving them did not WIDEN them — the section is manager-gated", () => {
-    // The settings menu's Manager section was ungated before this; the Manage
-    // menu was gated. Folding an admin-shaped entry into an ungated list is how
-    // a move becomes a widening.
+  it("⚠️⚠️ …and moving it did not WIDEN it — the section is manager-gated", () => {
+    // That section was ungated before the move; the Manage menu was gated.
+    // Folding an admin-shaped entry into an ungated list is how a move becomes
+    // a widening.
     const h = header();
-    const section = h.slice(h.indexOf("{managerish && ("), h.indexOf('<div className="eyebrow">Faxes</div>'));
-    for (const route of ['navigate("/access")', 'navigate("/system-mgmt")', 'navigate("/stage-manager")']) {
+    const section = h.slice(h.indexOf("{managerish && ("), h.indexOf("</>\n              )}"));
+    for (const route of ['navigate("/access")', 'navigate("/oversight")', 'navigate("/stage-manager")']) {
       expect(section, `${route} escaped the manager gate`).toContain(route);
     }
   });
 
-  it("⚠️ but the FAX screens stayed ungated — they are rep tools", () => {
+  it("⚠️⚠️ System Management left the menu — every TAB of it is on the top bar", () => {
+    // Josh, 2026-09-21: "as far as system managment goes the full top bar now
+    // handles that". Checked rather than taken on trust, tab by tab: Search IS
+    // the header's search box, Communications and Stage Manager are header
+    // tabs, Operations is what Reports & Metrics opens, Oversight is on this
+    // menu. The route survives for a bookmark; it is just not advertised.
     const h = header();
-    const after = h.slice(h.indexOf('<div className="eyebrow">Faxes</div>'));
-    expect(after).toContain('navigate("/fax")');
-    expect(after).toContain('navigate("/fax-inbox")');
+    expect(h, "System Management is back on the menu").not.toContain('navigate("/system-mgmt")');
+    expect(h, "the search box went with it").toContain("<GlobalSearch");
+    for (const to of ['to: "/assigned-patients"', 'to: "/stage-manager"', 'to: "/operations"']) {
+      expect(h, `${to} is not a tab`).toContain(to);
+    }
+    expect(h).toContain('navigate("/oversight")');
+    expect(live(read("App.tsx")), "the route itself is gone").toContain('path="/system-mgmt"');
+  });
+
+  it("⚠️⚠️ the FAXES section left too — and only ONE of the two had another door", () => {
+    // Josh, 2026-09-21: "no need for the faxes section in settings i think
+    // either". Checked before removing, because §5.39c added /fax BESIDE
+    // /fax-inbox and this menu was the only place both appeared.
+    const h = header();
+    expect(h, "the Faxes section is back").not.toContain('navigate("/fax-inbox")');
+    expect(h).not.toContain('navigate("/fax")');
+
+    // /fax-inbox keeps a REAL door: the FAX role bar, special-cased in both
+    // burndowns to open it (§4).
+    expect(live(read("components/dashboard/DailyBurndown.tsx"))).toContain('navigate("/fax-inbox")');
+    expect(live(read("components/systemMgmt/OperationsTab.tsx"))).toContain("/fax-inbox?from=system-mgmt");
+
+    // /fax has NO door left. That is accepted, not overlooked: its function —
+    // an inbound fax joined to the sending office and that office's patients —
+    // is the Communications hub's Fax tab (§5.28), which is a header tab.
+    expect(live(read("App.tsx")), "the route is gone as well").toContain('path="/fax"');
+    expect(live(read("hooks/commsHub/useHubData.ts")), "the hub lost its fax list").toContain("fax");
   });
 
   it("⚠️ Access is on the settings menu AND the Users button, which is admin-only", () => {
