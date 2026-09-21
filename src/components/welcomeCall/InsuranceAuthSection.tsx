@@ -61,7 +61,15 @@ export function InsuranceBlock({
      a patient already carrying NY Medicaid showed **Unknown** on screen while
      Advance stayed shut on a CIN the rep had just said nobody knew. Same
      reader for both now (`secondaryStateFor`), and the overlay keys it per
-     patient by construction, so it cannot follow a sidebar click. */
+     patient by construction, so it cannot follow a sidebar click.
+     ⚠️⚠️ **YES needed exactly the same home, and did not get it until
+     2026-09-21** — that fix covered the answer it was reported for and left
+     its twin broken. A Yes with no type yet has no board label either, so it
+     too wrote nothing and snapped back to No, and the Type buttons that would
+     have given it a label render only once the answer IS yes: a closed loop,
+     reported by Masani through Brandon on a Medicare A&B patient with a real
+     BCBS secondary. `secondaryYes` is that home. Adding a fourth answer here
+     means giving it one as well if `secondaryWrites` cannot express it. */
   const state = secondaryStateFor(patient);
   const memberId2 = patient.memberId2Edited ?? patient.memberId2;
   const notes = patient.insuranceNotesEdited ?? patient.insuranceNotes ?? "";
@@ -72,7 +80,12 @@ export function InsuranceBlock({
   /** Apply an answer to the board-bound fields. Absent keys leave a column
    *  alone — see `secondaryWrites` for why Unknown writes nothing. */
   const answer = (next: { answer: SecondaryAnswer; type: SecondaryType | null }) => {
+    /* ⚠️ BOTH flags on every click, so they cannot both be set and the last
+       answer always wins. These are the two answers `secondaryWrites` has no
+       board label for; a click it cannot mirror is a click that leaves no
+       trace (see below). */
     onFieldChange("secondaryUnknown", next.answer === "unknown");
+    onFieldChange("secondaryYes", next.answer === "yes");
     const w = secondaryWrites(next);
     if (w.secondaryInsurance !== undefined) {
       onFieldChange("secondaryInsuranceEdited", w.secondaryInsurance);
@@ -83,13 +96,18 @@ export function InsuranceBlock({
         w.secondaryInsurance
       ];
       onFieldChange("secondaryInsuranceIndex" as keyof Patient, index ?? null);
-    }
-    if (w.memberId2 !== undefined) onFieldChange("memberId2Edited", w.memberId2);
-    // Unknown: nothing is written, and the control simply shows the answer.
-    if (next.answer === "unknown") {
+    } else {
+      /* Unknown, and a Yes with no type yet: this answer names no label, so a
+         label an EARLIER click left on the overlay has to go with it.
+         ⚠️ Not just tidiness — the send writes `secondaryInsuranceEdited`
+         whenever it is non-null, so a leftover `None` from a previous No would
+         be written to the board for a patient the rep has just said HAS a
+         secondary. The column keeps whatever it held instead, which is the
+         honest state of a question still being answered. */
       onFieldChange("secondaryInsuranceEdited", null);
       onFieldChange("secondaryInsuranceIndex" as keyof Patient, null);
     }
+    if (w.memberId2 !== undefined) onFieldChange("memberId2Edited", w.memberId2);
   };
 
   return (

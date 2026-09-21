@@ -122,12 +122,29 @@ export function secondaryWrites(i: SecondaryState): SecondaryWrites {
 /**
  * The answer as the REP has it, which is not always what the column holds.
  *
- * ⚠️ **Unknown is the one answer with no board representation.** A blank column
+ * ⚠️ **TWO answers have no board representation, not one.** A blank column
  * reads Unknown on its own, but "the patient didn't know" on top of an existing
  * `NY Medicaid` cannot clear that column — clearing would destroy a real policy
  * record (`secondaryWrites` returns `{}` for exactly this reason). So the rep's
  * Unknown rides the page overlay as `secondaryUnknown`, and BOTH the control
  * and the send gate read it through here rather than off the column.
+ *
+ * ⚠️⚠️ **A typeless YES is the same case, and it was missed until 2026-09-21.**
+ * `secondaryWrites` returns `{}` for `{answer: "yes", type: null}` — correctly:
+ * there is no board label meaning "yes, we don't know which kind yet", and
+ * inventing one would file a policy type nobody stated. But the control mirrors
+ * only what that returns, so a Yes with no type left NO trace: the state was
+ * re-derived from the board, which still said `None`, and the button snapped
+ * straight back to No. Masani, on Barbara Mussomele (Medicare A&B, a real BCBS
+ * secondary): *"the options to update the information for 2ndary coverage won't
+ * allow me to change to yes"* — 29 of the 41 live Welcome Call / Final Confirm
+ * patients sat on `None` or blank, so Yes was unreachable for all of them, and
+ * 15 were Medicare A&B, i.e. patients the card itself prompts in red to ask.
+ * ⚠️ And it was a CLOSED LOOP: the Type buttons are the only place a type can
+ * be set — the one thing that gives Yes a board label — and they render behind
+ * `state.answer === "yes"`. No passing move, the dead end §5.10 · §5.20 · §5.31c
+ * each record reversing. So Yes gets an overlay home too (`secondaryYes`), and
+ * the gate then asks for the type with the Type buttons on screen to answer it.
  *
  * They used to disagree. The control was rendered from a flag local to
  * `InsuranceBlock` while `unmetSendRequirements` re-read the board, so a rep who
@@ -139,9 +156,17 @@ export function secondaryWrites(i: SecondaryState): SecondaryWrites {
  */
 export function secondaryStateFor(p: {
   secondaryUnknown?: boolean;
+  secondaryYes?: boolean;
   secondaryInsuranceEdited: string | null;
   secondaryInsurance: string;
 }): SecondaryState {
   if (p.secondaryUnknown) return { answer: "unknown", type: null };
-  return secondaryStateFromBoard(p.secondaryInsuranceEdited ?? p.secondaryInsurance);
+  const board = secondaryStateFromBoard(p.secondaryInsuranceEdited ?? p.secondaryInsurance);
+  /* ⚠️ The board WINS when it already names a type. Returning a bare
+     `{yes, null}` here would drop `NY Medicaid` off a patient who has one —
+     hiding their Member ID 2 field and asking the rep to re-pick a type that
+     is already on the row. The flag only has to cover the case the column
+     cannot express: yes, type not chosen yet. */
+  if (p.secondaryYes && board.answer !== "yes") return { answer: "yes", type: null };
+  return board;
 }

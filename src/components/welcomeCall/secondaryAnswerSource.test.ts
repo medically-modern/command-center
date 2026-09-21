@@ -46,4 +46,23 @@ describe("the secondary-coverage answer", () => {
     expect(block).toContain('onFieldChange("secondaryUnknown"');
     expect(block).not.toMatch(/useState[<(]/);
   });
+
+  /* ⚠️ BOTH no-label answers, not just the one that was reported. A typeless
+     Yes writes nothing either, so without its own overlay flag the click left
+     no trace and the control snapped back to No — Yes was unreachable for any
+     patient whose column read `None` or blank, which was 29 of the 41 live ones
+     (Masani via Brandon, 2026-09-21). */
+  it("keeps a typeless Yes on the overlay too", () => {
+    expect(block).toContain('onFieldChange("secondaryYes"');
+  });
+
+  /* The old handler mirrored only what `secondaryWrites` returned and then
+     special-cased Unknown to clear the stale label. A typeless Yes needs that
+     same clear — otherwise a `None` left by an earlier No click is what the
+     send writes for a patient who HAS a secondary — so the clear belongs to
+     "this answer names no label", not to Unknown by name. */
+  it("clears a stale label for ANY answer with no board label", () => {
+    expect(block).not.toContain('if (next.answer === "unknown") {');
+    expect(block).toMatch(/if \(w\.secondaryInsurance !== undefined\) \{[\s\S]*?\} else \{/);
+  });
 });

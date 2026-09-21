@@ -3201,9 +3201,9 @@ not fetched** — one request per voicemail to fill a list nobody asked to read.
   fabricated answer permanent on the next save. ⚠️ Unknown writes nothing and never gates
   Advance (*"patients often don't know"*). ⚠️ An **unrecognised** label reads as Yes/untyped,
   so the rep re-states it rather than having a real policy silently cleared.
-  ⚠️⚠️ **Unknown is the one answer with NO board representation, so it rides the page overlay
-  as `secondaryUnknown` and BOTH ends read it through `secondaryStateFor` — never off the
-  column.** A blank column reads Unknown on its own, but "the patient didn't know" on top of an
+  ⚠️⚠️ **TWO of the three answers have NO board representation, so each rides the page overlay
+  — `secondaryUnknown` and `secondaryYes` — and BOTH ends read them through `secondaryStateFor`,
+  never off the column.** A blank column reads Unknown on its own, but "the patient didn't know" on top of an
   existing `NY Medicaid` cannot clear that column, because clearing would destroy a real policy
   record. So the answer has to live somewhere, and where it lives is the whole bug: held as a
   `useState` inside `InsuranceBlock` it was invisible to the page, whose send gate went on
@@ -3217,6 +3217,33 @@ not fetched** — one request per voicemail to fill a list nobody asked to read.
   either reaches for the column again or the flag moves back into component state. ⚠️ The field
   is session-only with no column, and `mondayWrite` names every column it sends, so it cannot
   leak into a write.
+  ⚠️⚠️ **A TYPELESS YES IS THE SAME CASE, AND THE 2026-09-09 FIX COVERED ONLY THE ANSWER IT WAS
+  REPORTED FOR** (Masani via Brandon, 2026-09-21, on Barbara Mussomele `12950395348` — Medicare
+  A&B, a real BCBS secondary): *"the options to update the information for 2ndary coverage won't
+  allow me to change to yes … I couldn't toggle and change it at all."* `secondaryWrites` returns
+  `{}` for `{answer: "yes", type: null}`, and correctly — the board has no "yes, kind not known
+  yet" label and inventing one would file a policy type nobody stated. But the control mirrored
+  **only what that returned**, so clicking Yes wrote nothing, the state was re-derived from a
+  column still reading `None`, and the button snapped straight back to No.
+  ⚠️ **It was a CLOSED LOOP, which is why no rep could work around it**: the Type buttons are the
+  only place a type can be set — the one thing that would give Yes a board label — and they render
+  behind `state.answer === "yes"`. No passing move, the dead end §5.10 · §5.20 · §5.31c · §5.32c ·
+  §5.39d each record reversing, now the sixth time.
+  ⚠️ **Measured before fixing**: of the 41 live Welcome Call + Final Profile Confirmation rows,
+  **29 sat on `None` or blank**, so Yes was unreachable for 71% of them — and **15 of those 29 are
+  Medicare A&B**, i.e. exactly the population this card prompts in red to ask. The cost is
+  **silent**: `secondaryMissing` returns `[]` for No, so Advance is never blocked — the patient
+  advances with Secondary = None and the real policy lives only in the call notes, which is what
+  Masani did.
+  ⚠️ `secondaryStateFor` lets the **BOARD win whenever it already names a type**: a bare
+  `{yes, null}` would drop `NY Medicaid` off a patient who has one, hiding their Member ID 2 field
+  and asking the rep to re-pick a type already on the row. The flag covers only the case the
+  column cannot express. ⚠️ The control writes **both** flags on every click, so they can never
+  both be set, and `answer()`'s stale-label clear now keys on *"this answer names no label"*
+  (`w.secondaryInsurance === undefined`) rather than on Unknown by name — otherwise a `None` left
+  on the overlay by an earlier No click is what the send would write for a patient who HAS a
+  secondary. A FOURTH answer added here needs an overlay home too if `secondaryWrites` cannot
+  express it.
   ⚠️ **The details ARE required once the answer is Yes** — Brandon's word — so `secondaryMissing`
   feeds `unmetSendRequirements` as `secondary-incomplete`. **Advance only**, never the call
   itself: Welcome Call's own send gate is unchanged, per §5.17's rule that this stage can only
@@ -5893,6 +5920,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A Welcome Call order went down the wrong New Order branch / no order was created | §5.22b — Monitor Qty must be **0 or 1, never blank** (`lib/shared/monitorQty.ts`). ⚠️ Read the automations' WHOLE chain first: "pump only" (7918341001) opens with **Monitor Qty is empty** and "monitor only" (7918341011) with **Pump Qty is empty**, so a coerced 0 silences the first by design — 7921725444 must be enabled in its place |
 | An infusion set is missing from the dropdown, or its stock pill is wrong | §5.31b — `lib/welcomeCall/infusionSelection.ts` filters by pump compatibility and excludes the other slot's set; `withCurrentSelection` means a value the BOARD holds is always shown, so a genuinely absent option was filtered. Stock is `stockApi` → `infusionStock`: "No stock data" means no tracker row for that label (re-run the name-join audit), "Stock unknown" means either a stale stamp or a row with no readable quantity — neither is a shortage |
 | Send is greyed out on Welcome Call with no obvious reason | §5.31b — the button and its reasons come from ONE array (`sendGates.unmetSendRequirements`), so the sentences under it are the answer. They apply to **Advance only**; the pump confirmation is hidden entirely when the serving sells no pump device |
+| A rep can't change an answer on the Welcome Call form / a button snaps back to its old value | §5.31c — an answer `secondaryWrites` (or the equivalent write rule) has no board label for needs its own home on the page overlay, or the click leaves no trace and the state re-derives from the column. Both Unknown and a typeless **Yes** ride there (`secondaryUnknown` / `secondaryYes`), read at both ends through `secondaryStateFor`; `secondaryAnswerSource.test.ts` scans the page AND the card, because neither file is wrong on its own |
 | A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |
 | An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |

@@ -231,6 +231,13 @@ export interface Patient {
    *  somebody else. Never written by `mondayWrite`, which names every column
    *  it sends. */
   secondaryUnknown?: boolean;
+  /** The rep answered **Yes** before picking a type — the second answer with
+   *  no board label (see `secondaryCoverage.secondaryStateFor`). Same overlay,
+   *  same reason: `secondaryWrites` has nothing to write for it, so without a
+   *  home the click left no trace and the control snapped back to No. Read
+   *  only through `secondaryStateFor`; never written by `mondayWrite`, which
+   *  names every column it sends. */
+  secondaryYes?: boolean;
 }
 
 // Infusion Set 1 / 2 options are NOT hardcoded here any more.
