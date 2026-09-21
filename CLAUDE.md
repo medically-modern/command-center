@@ -5242,6 +5242,98 @@ Files: `lib/shell/{viewAs,homeProfile,abilities}.ts`,
 `lib/accessStore.ts`, `App.tsx` (+ `viewAsScope.test.ts`, `homeViewBorrow.test.tsx`,
 `abilities.test.ts`, `shellRemovals.test.ts`, `lossless.test.ts`, `patientScreen.test.ts`).
 
+### 5.40 Dark mode — it was configured, styled, and unreachable (Sep 2026)
+Josh, 2026-09-21: *"audit dark mode and make sure it works across the app and actually
+displays"*. **No board change; app only.**
+
+⚠️⚠️ **THE AUDIT'S ONE-LINE ANSWER: NOTHING IN THE APP HAS EVER SET THE `dark` CLASS.**
+`tailwind.config.ts` has carried `darkMode: ["class"]` and `index.css` a `.dark` token block
+from the first commit, and **59 component files carry 493 `dark:` variants** — but no code in
+`src/` adds that class, and there is no `prefers-color-scheme` fallback either. `ThemePicker`
+writes `data-theme` for six COLOUR themes, none of which is dark. So every one of those 493
+variants, the `.dark` block and `patient/redesign.css`'s lone `:root[data-theme="dark"]` rule
+were dead code: a mode the product could not enter, quietly accruing styling nobody could see.
+The switch is **`lib/shell/appearance.ts`** + `hooks/shell/useAppearance.ts`, offered as
+Light · Dark · System in BOTH settings surfaces (the `ThemePicker` popover and the global
+header's gear menu), the layout toggle's own two-places rule.
+
+⚠️ **Appearance is ORTHOGONAL to the colour theme, not a seventh theme.** The themes shift the
+accent hue; this shifts how light the surfaces are. Folded together, "dark" would cost somebody
+their Emerald and would need a dark variant of each of the six `[data-theme]` blocks to give it
+back.
+⚠️⚠️ **Which is why `.dark` no longer touches `--primary` / `--accent` / `--ring`.** Those live
+in the `[data-theme]` blocks, written at the SAME specificity (one class vs one attribute) and
+LATER in the file — so a value set in `.dark` survives only under the default theme and silently
+loses under the other five. The old block paired a dark `--primary-foreground` with a primary the
+theme still owned: **Emerald + Dark rendered near-black text on dark green.** Appearance owns the
+surfaces, the theme owns the hue, and nothing has to know about both.
+⚠️ **The default is LIGHT and `"system"` is opt-in.** Every surface here was drawn light and
+worked on for a year under that assumption; honouring the OS by default would flip the whole
+company on one deploy. Same reasoning as an ability defaulting ON (§5.39c) — absence is not a
+decision.
+⚠️ **`applyAppearanceAtBoot()` runs in `main.tsx` BEFORE `createRoot`**, beside
+`applyLayoutFromUrl`, for both its reasons: **`?appearance=light` is the recovery route** from a
+scheme that renders a page unreadable (§5.39d's one-way door, which cost Josh an afternoon), and
+a hook inside a tree that renders nothing useful does not run. It also means no white flash
+before the first paint. The param is stripped with `replaceState` once applied.
+⚠️ **Both the class AND `data-appearance`**: Tailwind compiles every `dark:` variant against
+`.dark`, and `pages/patient/redesign.css` was written against `:root[data-theme="dark"]`. Setting
+one leaves half the app light. `data-appearance` is a THIRD attribute rather than overwriting
+`data-theme`, which carries the colour theme.
+
+**What was broken, and how it was found — by RENDERING it (§5.30d), not by reading it.** A
+Playwright pass that walks every painted element, converts its background to relative luminance
+and reports the light ones on a dark page. The home screen came back with **one** light surface
+and `/orders` with four; a purely static reading would have flagged all 124 `bg-white`
+occurrences, of which **the overwhelming majority are correct** — `bg-white text-navy` buttons and
+`hover:bg-white/10` on a page header that is navy in BOTH appearances.
+
+1. ⚠️⚠️ **`.dark` covered 20 of the 34 tokens `:root` defines, and a token it misses keeps its
+   LIGHT value.** The gap included **`--gradient-subtle`, the page background of 29 files** (§5.39h
+   recorded it as "dormant CSS, tell whoever turns dark mode on" — this is that), `--gradient-navy`,
+   three near-white `--mm-*` SURFACES (`--mm-mint` at 0.973, `--mm-rose-soft` at 0.94,
+   `--mm-card-border` at 0.929), `--mm-teal` at 0.36 (a DARK teal used as heading text, i.e.
+   invisible on a dark card), `--success` / `--warning` / `--escalate`, `--navy` and all three
+   `--shadow-*`. So dark mode produced white pages wearing white text.
+2. ⚠️⚠️ **FOUR PAGE-LEVEL DESIGN SYSTEMS REDECLARE THE TOKENS AS LITERAL LIGHT VALUES, so
+   flipping index.css reaches none of them** — `profile/redesign.css` + `profile/intake.css` under
+   `.pf-root`, `samantha/benefitsRedesign.css` + `samantha/submitAuthRedesign.css` under `.bnr`.
+   Each now carries a `.dark <scope>` block re-pointing the SAME local names, so every rule already
+   written against `var(--card)` / `var(--mm-teal)` follows for free, plus grouped overrides for
+   the ~120 hardcoded light backgrounds. **Every selector is under `.dark`, so light mode cannot
+   move** — which matters most here, since intake.css's own header rule is that Profile Send-Off
+   "must not shift by a pixel".
+3. **The eleven sidebar search fields** (`bg-white text-gray-900 placeholder:text-gray-400`) and
+   two one-off surfaces took `dark:` variants rather than token swaps, for the same reason: a
+   variant cannot change light mode at all.
+4. **`shell.css`** hardcoded the header's navy instead of reading `--gradient-navy`, so the header
+   followed neither the colour theme nor the dark lift, and the global search was a pure-white
+   pill — the ONE light surface the first measurement found. Both are byte-identical under the
+   default theme (`--card` is `0 0% 100%`; the gradient literal matched the token exactly).
+   ⚠️ `shell.css` can carry no `.dark` rule at all: `patientScreen.test.ts` requires every selector
+   to start `.cc-shell`, so tokens are the only mechanism there. That is the constraint, not an
+   oversight.
+
+**Two carve-outs, deliberate, and both are written into the CSS:**
+⚠️ **Coloured chips stay light** — `.stage-chip`, `.method-pill.*`, `.sc.*`, `.pill.*`, `.mp.green`,
+`.pos-badge`, `.prov .src.*`. Each is a light background paired with dark text of the SAME hue, so
+the PAIR is self-consistent and readable whatever is behind it; darkening the background alone puts
+dark text on a dark chip. Flip them as pairs or not at all.
+⚠️ **Washes below 0.5 alpha stay** — 30% of a near-white over a dark card lands near L*43, which
+still carries the light foreground at ~5:1; at 0.6 it is ~2.2:1. That is where the line is drawn,
+and it is why the ones at 0.5 and above are re-pointed and the ones below are not.
+
+⚠️ **A PDF page stays white** (`FileViewerModal`'s canvas): the document IS white paper, and a
+scan inverted to suit a theme is a different document.
+
+**Keep-in-agreement:** `:root` in `index.css` ⇄ its `.dark` block — **a token added to one belongs
+in the other**, and the failure is silent and light-on-light · `.dark` must NOT name `--primary` /
+`--accent` / `--ring` (the `[data-theme]` blocks own them and win on source order) ·
+`lib/shell/appearance.ts` ⇄ `main.tsx`'s boot call, which must stay **before** `createRoot` ⇄ the
+two settings surfaces (`ThemePicker`'s `ThemeList` and `GlobalHeader`'s gear menu), which must
+number at least two for the §5.39d reason · each design system's light token block ⇄ its
+`.dark` block.
+
 ### 5.39i Inventory — the Cardinal stock page in Brandon's layout (Sep 2026)
 Josh, 2026-09-19: *"re-write the cardinal stock page to look much more like his."* His
 `viewInventoryList` is ONE page — title, search, Refresh, a row of category chips and a single

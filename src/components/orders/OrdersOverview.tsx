@@ -62,7 +62,7 @@ export function OrdersOverview({ orders, skuRows, onSelect, onShowStock, loading
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder="Patient name, phone, Cardinal order # or tracking #"
             aria-label="Find an order"
-            className="w-full h-12 pl-10 pr-10 rounded-xl border border-border bg-white text-gray-900 text-base placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[color:var(--mm-green)]"
+            className="w-full h-12 pl-10 pr-10 rounded-xl border border-border bg-white dark:bg-card text-gray-900 dark:text-foreground text-base placeholder:text-gray-400 dark:placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[color:var(--mm-green)]"
           />
           {query && (
             <button onClick={() => onQueryChange("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" title="Clear">

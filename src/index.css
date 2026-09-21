@@ -91,6 +91,25 @@ h3 { font-size: 1.125rem; font-weight: 600; }
     --sidebar-ring: 217 91% 55%;
   }
 
+  /* ── Dark surfaces (§5.40) ────────────────────────────────────────────────
+     Set by `lib/shell/appearance.ts` on <html>, which also mirrors it as
+     `data-appearance` for the one rule written against `[data-theme="dark"]`.
+
+     ⚠️⚠️ **THIS BLOCK MUST COVER EVERY TOKEN `:root` DEFINES, or the ones it
+     misses stay at their LIGHT value and render light-on-light.** It missed
+     fourteen of them until 2026-09-21 — including `--gradient-subtle`, the
+     page background of 29 files, and three near-white `--mm-*` surfaces — so
+     turning dark mode on produced white pages wearing white text. Nobody had
+     seen it, because nothing in the app could set this class.
+
+     ⚠️⚠️ **THE ACCENT AXIS IS DELIBERATELY ABSENT.** `--primary`, `--accent`
+     and `--ring` belong to the six `[data-theme]` blocks below, which are
+     written with the SAME specificity (one class vs one attribute) and win on
+     source order — so a value set here survives only under the default theme
+     and silently loses under the other five. Worse, this block used to pair a
+     dark `--primary-foreground` with a primary the theme still owned: Emerald
+     + Dark rendered near-black text on dark green. Appearance owns the
+     surfaces, the theme owns the hue, and the two compose with no interaction. */
   .dark {
     --background: 215 50% 8%;
     --foreground: 210 33% 96%;
@@ -98,19 +117,48 @@ h3 { font-size: 1.125rem; font-weight: 600; }
     --card-foreground: 210 33% 96%;
     --popover: 215 50% 11%;
     --popover-foreground: 210 33% 96%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 215 50% 8%;
     --secondary: 215 40% 16%;
     --secondary-foreground: 210 33% 96%;
     --muted: 215 40% 16%;
     --muted-foreground: 215 20% 65%;
-    --accent: 199 89% 55%;
-    --accent-foreground: 215 50% 8%;
     --destructive: 0 70% 55%;
     --destructive-foreground: 210 33% 96%;
     --border: 215 40% 20%;
     --input: 215 40% 20%;
-    --ring: 217 91% 60%;
+
+    /* Medically Modern palette. The light values are built for ink on white:
+       `--mm-teal` is a DARK teal used as heading text, and mint / rose-soft /
+       card-border are near-whites used as surfaces and rules. Inverted rather
+       than nudged — a 0.97-lightness "surface" on an 8% page is the §5.30d
+       invisible bar, and 0.36 teal on an 11% card is invisible text. */
+    --mm-teal: oklch(0.84 0.05 200);
+    --mm-green: oklch(0.74 0.11 175);
+    --mm-green-12: oklch(0.74 0.11 175 / 0.18);
+    --mm-mint: oklch(0.26 0.03 175);
+    --mm-mint-ring: oklch(0.44 0.05 175);
+    --mm-rose: oklch(0.75 0.13 18);
+    --mm-rose-12: oklch(0.75 0.13 18 / 0.18);
+    --mm-rose-soft: oklch(0.29 0.06 18);
+    --mm-card-border: oklch(0.32 0.012 255.508);
+
+    /* Status hues lift just enough to read on an 11% card while keeping their
+       white foregrounds legible as badges — both jobs, one pair of tokens. */
+    --primary-glow: 217 95% 70%;
+    --success: 152 58% 46%;
+    --warning: 38 92% 55%;
+    --escalate: 280 70% 66%;
+
+    /* A navy header sits ABOVE the page, so it lifts rather than darkening —
+       at the light value it would be indistinguishable from the background. */
+    --navy: 215 45% 19%;
+    --gradient-navy: linear-gradient(180deg, hsl(215 42% 22%), hsl(215 48% 15%));
+    --gradient-subtle: linear-gradient(180deg, hsl(215 50% 10%), hsl(215 50% 7%));
+
+    /* A 5%-black shadow does nothing on a dark surface; depth has to come from
+       real black at real alpha, or every card reads as flat. */
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.45);
+    --shadow-md: 0 4px 12px -2px hsl(0 0% 0% / 0.55);
+    --shadow-lg: 0 12px 32px -8px hsl(0 0% 0% / 0.65);
   }
 }
 

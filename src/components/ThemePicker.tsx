@@ -5,10 +5,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { Settings, LogOut, LayoutGrid } from "lucide-react";
+import { Settings, LogOut, LayoutGrid, Sun, Moon, Monitor } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authRequired, signOut, getUser } from "@/lib/shared/auth";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
+import { useAppearance } from "@/hooks/shell/useAppearance";
+import type { Appearance } from "@/lib/shell/appearance";
 
 const THEMES = [
   { id: "default", label: "Clinical Blue", swatch: "bg-blue-600" },
@@ -18,6 +20,18 @@ const THEMES = [
   { id: "rose",    label: "Rose",          swatch: "bg-rose-500" },
   { id: "amber",   label: "Amber",         swatch: "bg-amber-500" },
 ] as const;
+
+/**
+ * ⚠️ Appearance is a SEPARATE choice from the colour theme above, not a
+ * seventh entry in it (§5.40): the themes shift the accent hue, this shifts how
+ * light the surfaces are, and folding them together would make "dark" cost
+ * somebody their Emerald.
+ */
+const APPEARANCES: { id: Appearance; label: string; Icon: typeof Sun }[] = [
+  { id: "light",  label: "Light",  Icon: Sun },
+  { id: "dark",   label: "Dark",   Icon: Moon },
+  { id: "system", label: "System", Icon: Monitor },
+];
 
 function useTheme() {
   const [theme, setThemeState] = useState(() => localStorage.getItem("mm-theme") || "default");
@@ -102,6 +116,7 @@ export function ThemePickerButton({ className }: { className?: string }) {
  */
 function ThemeList({ theme, setTheme }: { theme: string; setTheme: (t: string) => void }) {
   const [layout, setLayout] = useShellLayout();
+  const { appearance, setAppearance } = useAppearance();
   return (
     <>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5 px-1">
@@ -114,6 +129,28 @@ function ThemeList({ theme, setTheme }: { theme: string; setTheme: (t: string) =
         <LayoutGrid className="h-3.5 w-3.5 shrink-0" />
         {layout === "redesign" ? "Switch to the layout as it was" : "Switch to the new layout"}
       </button>
+      <div className="my-2 border-t border-border" />
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5 px-1">
+        Appearance
+      </p>
+      <div className="grid grid-cols-3 gap-1">
+        {APPEARANCES.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            onClick={() => setAppearance(id)}
+            title={id === "system" ? "Follow this computer's setting" : `Always ${label.toLowerCase()}`}
+            className={cn(
+              "flex flex-col items-center gap-1 rounded-md px-1 py-1.5 text-[10px] transition-colors",
+              appearance === id
+                ? "bg-accent text-accent-foreground font-medium"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" />
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="my-2 border-t border-border" />
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5 px-1">
         Theme

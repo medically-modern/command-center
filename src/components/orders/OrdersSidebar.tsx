@@ -150,7 +150,7 @@ export function OrdersSidebar({
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               placeholder="Name, phone, order # or tracking…"
-              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white dark:bg-card text-gray-900 dark:text-foreground text-sm placeholder:text-gray-400 dark:placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
             {query && (
               <button onClick={() => onQueryChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" title="Clear">

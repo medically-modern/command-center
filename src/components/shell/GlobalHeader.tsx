@@ -36,11 +36,12 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Activity, ArrowRightLeft, BarChart3, ChevronDown, Grid3x3, KeyRound, ListChecks, LogOut, MessageSquare, Package, Settings, Sliders, Stethoscope, Users } from "lucide-react";
+import { Activity, ArrowRightLeft, BarChart3, ChevronDown, Grid3x3, KeyRound, ListChecks, LogOut, MessageSquare, Package, Monitor, Moon, Settings, Sliders, Stethoscope, Sun, Users } from "lucide-react";
 import { getUser, signOut } from "@/lib/shared/auth";
 import { GlobalSearch } from "./GlobalSearch";
 import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
+import { useAppearance } from "@/hooks/shell/useAppearance";
 import { useAccessContext } from "@/components/AccessProvider";
 import { hasAbility, isAdmin, isManagerOf } from "@/lib/shell/abilities";
 import { useViewAs } from "@/lib/shell/viewAs";
@@ -99,6 +100,7 @@ export function GlobalHeader() {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const [layout, setLayout] = useShellLayout();
+  const { appearance, setAppearance } = useAppearance();
   const { email, config } = useAccessContext();
   /**
    * ⚠️⚠️ **WHOSE HEADER THIS IS.** `viewAs` is set by the home screen's
@@ -281,6 +283,32 @@ export function GlobalHeader() {
               >
                 {layout === "redesign" ? "Switch to the layout as it was" : "Switch to the new layout"}
               </button>
+              <div className="divider" />
+              {/* ⚠️ Appearance is a SEPARATE axis from the colour theme in the
+                  settings popover, not a seventh theme (§5.40) — and it is in
+                  BOTH menus for the layout toggle's reason: a scheme you cannot
+                  read is a scheme you must be able to leave from wherever you
+                  are. `?appearance=light` is the route from a page with neither
+                  menu. */}
+              <div className="eyebrow">Appearance</div>
+              <div className="seg" role="group" aria-label="Appearance">
+                {([
+                  ["light", "Light", Sun],
+                  ["dark", "Dark", Moon],
+                  ["system", "System", Monitor],
+                ] as const).map(([id, label, Icon]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={appearance === id ? "on" : undefined}
+                    aria-pressed={appearance === id}
+                    onClick={() => setAppearance(id)}
+                  >
+                    <Icon style={{ width: 13, height: 13 }} />
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="divider" />
               <div className="eyebrow">Manager</div>
               {/* ⚠️ `/oversight`, NOT `/system-mgmt?tab=oversight` — that tab is

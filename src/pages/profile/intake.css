@@ -485,3 +485,45 @@
    media query, which collapsed the split on every ordinary laptop. Stacking is
    now the base state and the split is turned on by the container query at the
    top of this file — see the comment there. */
+
+/* ── DARK SURFACES (§5.40) ───────────────────────────────────────────────────
+   The PART B layer. Its tokens come from redesign.css's `.pf-root`, which the
+   dark block there re-points, so only this file's own hardcoded light values
+   need naming. Same two carve-outs: coloured chips stay light (they are
+   self-consistent pairs), and washes under 0.5 alpha still carry light text.
+   Nothing here can reach light mode — every selector is under `.dark`. */
+
+.dark .pf-root .phdr,
+.dark .pf-root .sect,
+.dark .pf-root .why-h .conf,
+.dark .pf-root .seg button.on,
+.dark .pf-root .pillbtn,
+.dark .pf-root .cat,
+.dark .pf-root .cat .bx,
+.dark .pf-root .chip-sm,
+.dark .pf-root .eth,
+.dark .pf-root .eth-row,
+.dark .pf-root .checkline,
+.dark .pf-root .whycard { background: var(--card); }
+
+.dark .pf-root .upzone,
+.dark .pf-root .eth-open,
+.dark .pf-root .bookrow,
+.dark .pf-root .bo { background: oklch(0.225 0.013 240); }
+
+.dark .pf-root .pane-head,
+.dark .pf-root .why,
+.dark .pf-root .route.adv.on,
+.dark .pf-root .pillbtn.on,
+.dark .pf-root .cat.on,
+.dark .pf-root .upzone:hover,
+.dark .pf-root .upzone.over,
+.dark .pf-root .msgbox.out,
+.dark .pf-root .gate.ready,
+.dark .pf-root .checkline.done,
+.dark .pf-root .para-row.sel { background: oklch(0.235 0.028 175); }
+
+.dark .pf-root .bo.eq { background: oklch(0.50 0.07 175 / 0.26); }
+.dark .pf-root .seg { background: oklch(0.46 0.012 250 / 0.30); }
+.dark .pf-root .fld .ro { background: oklch(0.40 0 0 / 0.30); }
+.dark .pf-root .whyicon { background: oklch(0.38 0.014 250); }

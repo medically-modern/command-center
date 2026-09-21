@@ -128,7 +128,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search patients…"
-              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white dark:bg-card text-gray-900 dark:text-foreground text-sm placeholder:text-gray-400 dark:placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
             {searchQuery && (
               <button

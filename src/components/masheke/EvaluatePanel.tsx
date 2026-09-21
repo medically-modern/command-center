@@ -1914,7 +1914,7 @@ function FileUploadCard({
                     className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
                       isSelected
                         ? "bg-[color:var(--mm-green)] border-[color:var(--mm-green)]"
-                        : "border-[color:var(--mm-mint-ring)] bg-white"
+                        : "border-[color:var(--mm-mint-ring)] bg-white dark:bg-card"
                     }`}
                   >
                     {isSelected && (

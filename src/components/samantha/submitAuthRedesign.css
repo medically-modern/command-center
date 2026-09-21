@@ -87,3 +87,13 @@
 /* ============ monday drawer per-product group heads ============ */
 .bnr .mon-row.grp-head{background:oklch(0.968 0.007 247.896 / 0.5)}
 .bnr .mon-row.grp-head .mlabel{color:var(--mm-teal);font-weight:800}
+
+/* ── DARK SURFACES (§5.40) ───────────────────────────────────────────────────
+   Scoped under `.bnr` too, so benefitsRedesign.css's dark token block already
+   covers everything written against `--bnr-*` / `--mm-*`. Only the three washes
+   at 0.5 alpha and above need re-pointing: below that a near-white over a dark
+   card still carries the light foreground (see redesign.css's block). */
+
+.dark .bnr .ccx-card { background: oklch(0.50 0.09 85 / 0.26); }
+.dark .bnr .intake-box,
+.dark .bnr .mon-row.grp-head { background: oklch(0.48 0.07 235 / 0.26); }

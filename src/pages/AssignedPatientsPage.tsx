@@ -696,7 +696,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                 }}
                 placeholder="Call any number…"
                 aria-label="Call any number"
-                className="w-56 rounded-lg bg-white py-2 pl-8 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-emerald-400"
+                className="w-56 rounded-lg bg-white dark:bg-card py-2 pl-8 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-emerald-400"
               />
             </div>
             <button

@@ -368,3 +368,112 @@
 .pf-root .sms-fail-icon { flex-shrink:0;width:13px;height:13px;margin-top:1px }
 
 /* deploy bump 7126c6b */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DARK SURFACES (§5.40)
+
+   ⚠️⚠️ **THIS FILE IS A SELF-CONTAINED LIGHT PALETTE — it REDECLARES
+   `--background`, `--foreground`, `--card`, `--muted`, `--border` and the
+   `--mm-*` family as literal light values at the top, so it deliberately opts
+   OUT of the app's tokens.** That is correct for a ported design system and it
+   is exactly why dark mode could not reach it: flipping index.css did nothing
+   here. The block below re-points the SAME local names, so every rule already
+   written against `var(--card)` / `var(--border)` / `var(--mm-teal)` follows
+   for free; what follows it are the rules that hardcoded a light value.
+
+   ⚠️ **Nothing here can change light mode**: every selector is under `.dark`,
+   which only exists while `lib/shell/appearance.ts` has put it on <html>. That
+   is the property to preserve — this page is Profile Send-Off, and it "must not
+   shift by a pixel" (intake.css's own header rule).
+
+   ⚠️ **COLOURED CHIPS ARE DELIBERATELY LEFT LIGHT** — `.stage-chip`,
+   `.method-pill.*`, `.sc.*`, `.res .ri`, `.mp.green`, `.pos-badge`. Each is a
+   light background paired with dark text of the same hue, so the PAIR is
+   self-consistent and readable whatever the page behind it does; darkening the
+   background alone would put dark text on a dark chip. They read brighter than
+   a typical dark theme, which is a look, not a defect. Flip them as pairs or
+   not at all.
+
+   ⚠️ Washes below 0.5 alpha are also left: 30% of a near-white over a dark card
+   lands around L*43, which still carries the light foreground at ~5:1. At 0.6
+   it is ~2.2:1, which is why the ones at 0.5 and above are re-pointed.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.dark .pf-root {
+  --background: oklch(0.145 0.012 255);
+  --foreground: oklch(0.95 0.008 255);
+  --card: oklch(0.19 0.013 255);
+  --muted: oklch(0.26 0.012 255);
+  --muted-foreground: oklch(0.70 0.015 255);
+  --border: oklch(0.30 0.012 255);
+  --input: oklch(0.30 0.012 255);
+  --mm-teal: oklch(0.84 0.05 200);
+  --mm-green: oklch(0.74 0.11 175);
+  --mm-green-12: oklch(0.74 0.11 175 / 0.18);
+  --mm-mint: oklch(0.30 0.04 175);
+  --mm-mint-ring: oklch(0.44 0.05 175);
+  --mm-rose: oklch(0.75 0.13 18);
+  --mm-rose-soft: oklch(0.29 0.06 18);
+  --amber: oklch(0.80 0.12 80);
+  --amber-soft: oklch(0.30 0.06 85);
+  --amber-ring: oklch(0.45 0.08 85);
+}
+
+/* Card-level surfaces — the big white slabs. */
+.dark .pf-root .rail-card,
+.dark .pf-root #ref-drawer,
+.dark .pf-root .docnotes,
+.dark .pf-root .locwrap,
+.dark .pf-root .loc,
+.dark .pf-root .para-panel,
+.dark .pf-root .results,
+.dark .pf-root .dgrid,
+.dark .pf-root .viewer-top,
+.dark .pf-root .sugg-alts .alt,
+.dark .pf-root .sugg-chip2.alt2,
+.dark .pf-root .btn.secondary,
+.dark .pf-root .btn.rose,
+.dark .pf-root .btn.amber { background: var(--card); }
+
+/* Strips that sit just ABOVE a card — headers, footers, read-only cells. */
+.dark .pf-root .rail-head,
+.dark .pf-root .recv-card,
+.dark .pf-root .ref-drawer-head,
+.dark .pf-root .rcell,
+.dark .pf-root .doctop,
+.dark .pf-root .para-bar,
+.dark .pf-root .para-foot { background: oklch(0.225 0.013 240); }
+
+.dark .pf-root .modal { background: oklch(0.165 0.012 250); }
+
+/* The mint tint — this design system's "selected / done / running" surface. */
+.dark .pf-root .ok-banner,
+.dark .pf-root .file-row,
+.dark .pf-root .match-banner,
+.dark .pf-root .loc\.sel,
+.dark .pf-root .loc.sel,
+.dark .pf-root .res:hover,
+.dark .pf-root .provcard,
+.dark .pf-root .route.adv.on,
+.dark .pf-root .stedi-running { background: oklch(0.235 0.028 175); }
+
+.dark .pf-root .para-row:hover { background: oklch(0.245 0.022 175); }
+.dark .pf-root .para-row.sel { background: oklch(0.35 0.07 175); }
+.dark .pf-root .para-tool:hover { background: oklch(0.38 0.055 175); }
+.dark .pf-root .para-tool,
+.dark .pf-root .filled { background: oklch(0.50 0.07 175 / 0.20); }
+.dark .pf-root .para-grp.match { background: oklch(0.50 0.07 175 / 0.24); }
+.dark .pf-root .recv-title .as { background: oklch(0.46 0.012 250 / 0.28); }
+
+/* Neutral hovers and the one disabled state. */
+.dark .pf-root .ref-drawer-head button:hover,
+.dark .pf-root .vt-tools button:hover { background: oklch(0.28 0.014 250); }
+.dark .pf-root .btn.primary:disabled { background: oklch(0.32 0.012 220); }
+
+/* Two one-off hue tints. */
+.dark .pf-root .res.para:hover { background: oklch(0.26 0.03 245); }
+.dark .pf-root .frm:hover { background: oklch(0.26 0.04 25); }
+
+/* `.rv` is a deliberately faint value on white; on a dark card it has to come
+   DOWN in lightness rather than up, or a placeholder reads as live data. */
+.dark .pf-root .rcell .rv { color: oklch(0.62 0.012 250); }

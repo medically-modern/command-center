@@ -340,3 +340,39 @@
   .bnr .prod-grid{grid-template-columns:1fr}
   .bnr .mon-row{grid-template-columns:1fr;gap:4px}
 }
+
+/* ── DARK SURFACES (§5.40) ───────────────────────────────────────────────────
+   `.bnr` is a second self-contained light palette — its own `--bnr-*` names
+   plus a private copy of the `--mm-*` family — so, like `.pf-root`, flipping
+   index.css reached none of it. Re-point the same names and every rule written
+   against them follows. Coloured chips and sub-0.5 washes are left as they are,
+   for the reasons redesign.css's block sets out. Nothing here touches light. */
+
+.dark .bnr {
+  --bnr-background: oklch(0.145 0.012 255);
+  --bnr-foreground: oklch(0.95 0.008 255);
+  --bnr-card: oklch(0.19 0.013 255);
+  --bnr-muted: oklch(0.26 0.012 255);
+  --bnr-muted-foreground: oklch(0.70 0.015 255);
+  --bnr-border: oklch(0.30 0.012 255);
+  --bnr-input: oklch(0.30 0.012 255);
+  --mm-teal: oklch(0.84 0.05 200);
+  --mm-green: oklch(0.74 0.11 175);
+  --mm-green-12: oklch(0.74 0.11 175 / 0.18);
+  --mm-mint: oklch(0.30 0.04 175);
+  --mm-mint-ring: oklch(0.44 0.05 175);
+  --mm-rose: oklch(0.75 0.13 18);
+  --mm-rose-soft: oklch(0.29 0.06 18);
+  --mm-amber: oklch(0.80 0.12 80);
+  --mm-amber-soft: oklch(0.30 0.06 85);
+  --mm-sky: oklch(0.74 0.11 230);
+  --mm-sky-soft: oklch(0.28 0.05 230);
+}
+
+.dark .bnr .tbtn:hover,
+.dark .bnr .ph-phone-edit:hover,
+.dark .bnr .subcard.ok,
+.dark .bnr .cl-add:hover { background: oklch(0.235 0.028 175); }
+
+.dark .bnr .dvs-note { background: oklch(0.50 0.07 175 / 0.24); }
+.dark .bnr .missing-box { background: oklch(0.50 0.09 85 / 0.26); }
