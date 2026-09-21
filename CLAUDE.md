@@ -4632,11 +4632,21 @@ page that already exists**, which is the "route our current function into his ne
 taken literally: My Dashboard → `/`, Communications → `/assigned-patients`, Inventory →
 `/orders?view=stock` (the Cardinal SKU tracker, §5.35), Reports & Metrics →
 `/system-mgmt?tab=operations`.
-⚠️ **Reports & Metrics points at Operations DELIBERATELY** (Josh, 2026-09-18). Brandon draws a
-Patient Pipeline Tracker that does not exist here and whose numbers are specified nowhere; his own
-feature audit calls Operations' grouping *"the most sensible map of the roles anywhere in the app"*.
-A tab opening a page of invented numbers is worse than one opening a real page under a borrowed
-name.
+⚠️ **Reports & Metrics points at Operations DELIBERATELY** (Josh, 2026-09-18) — his own feature
+audit calls Operations' grouping *"the most sensible map of the roles anywhere in the app"*, and a
+tab opening a real page under a borrowed name beats one opening an empty shell.
+⚠️⚠️ **THIS NOTE USED TO SAY THE TRACKER'S NUMBERS WERE "SPECIFIED NOWHERE". THAT IS WRONG —
+CORRECTED 2026-09-21.** The handoff's Reports & Metrics row names it exactly: Katie's **Patient
+Pipeline Tracker**, the monday full-page app on **board `18425649613`, app feature `121528191`**,
+in the *Katie Tyler Vibes* workspace, embedded under the same monday sign-in — and under it,
+numbers computed from the Command Center's OWN data so the two can be compared: onboarding pipeline
+per stage with average days in stage (Intake naming how many are imported referral rows), stuck and
+escalated counts, web-form leads by drop-off step, total in pipeline; active/paused subscriptions,
+patients late for an order, MR expired, open orders with Cardinal problems; and **"Queues today"** —
+one line per bar with its count. So this is an UNBUILT page with a written spec, not an
+unspecifiable one. ⚠️ Every one of those numbers is a counting-contract question (§5.8): whatever
+computes them must mirror `useRoleCounts` and both baseline generators, or the tab disagrees with
+the burndown all day. Read the handoff before building it, not this line.
 
 ⚠️⚠️ **THE FIT OVERRIDES ARE WHAT MAKE THIS ADDITIVE RATHER THAN A REWRITE OF 30 PAGES.** Every
 existing page sizes itself against the viewport (`min-h-screen`, and `h-screen` on the
@@ -4748,7 +4758,8 @@ menu** (Josh, 2026-09-18, three asks in one message). **No board change; app onl
   question is left: this tab would be a second door to a page already on the Manage menu, under a
   name ("Reports & Metrics") it does not have. Three ways forward, in preference order: uncomment it
   pointing at Operations and accept the two doors; rename the tab to match what it opens; or build
-  Brandon's Patient Pipeline Tracker, whose numbers are specified nowhere. ⚠️ `shellRemovals
+  Brandon's `#/reports` for real — the tracker embed plus the computed numbers, both specified in
+  the handoff (§5.39b has the board id and the list). ⚠️ `shellRemovals
   .test.ts` scans the **TABS array**, not the file, precisely because the Manage menu links there —
   a whole-file scan would fail on the door and read as though the tab had come back.
 - ⚠️⚠️ **`fetchAccess` REBUILDS THE CONFIG FROM A WHITELIST OF KEYS, so a top-level field missing
@@ -5098,14 +5109,61 @@ for a spec the code is generated from (Josh: *"to some folder that wont get conf
 ⚠️ **The REAL-DATA mockup is deliberately NOT in the repo**: it carries live patient rows, and this
 repo force-pushes to prod (§8). Read it from wherever he sent it and leave it there.
 
-**Known loss, still outstanding — nobody has decided these yet, so they are not bugs to fix
-quietly:** the patient screen's per-stage panels are LINKS, not the read-only real stage components
-his handoff asks for (§5.39 has the price — extending `reviewMode` across 13 pages plus a
-shell/body split of each); the global search matches name + phone + order identifiers while its
-placeholder promises *"name, DOB, phone, member ID, order #, doctor"* (the OLD System Management
-search had the same limits, so that is unbuilt spec rather than a regression). ✅ **Reports &
-Metrics and all six abilities landed 2026-09-19 — §5.39h**; the ability list is no longer
-decoration, and **Subscription's Profile | Orders tabs landed 2026-09-21 — §5.45**.
+**⚠️⚠️ THE STANDING GAP LIST — audited against the handoff 2026-09-21, after Josh asked *"is
+there any where else that we have a gap like this?"*.** *"This"* is the §5.45 shape: a place where
+the redesign shipped a LINK or a stub where the handoff specifies real content. None of these is a
+bug to fix quietly — each is a decision — but none should be rediscovered either. Ordered by what
+a person would notice first:
+
+1. ⚠️⚠️ **The per-stage panels are LINKS, not the read-only real tools.** The handoff is explicit:
+   *"the same page Josh already renders at /unverified-referrals, /evaluate, … with exactly one
+   difference: the navy page header and the patient header card are not carried over. Everything
+   else is the real thing"*, plus a sub-stage toggle per multi-stage board, greyed-out steps the
+   patient never reached, and a *"Snapshot · as it looked when \<sub-stage\> was left \<date\> by
+   \<rep\>"* stamp. What is built is `?completedStage=` review mode (§5.38 · §5.39b), which opens
+   the real tool in a new page rather than inline. The price is in §5.39: `reviewMode` across 13
+   pages plus a shell/body split of each. **This is the largest one and the one Brandon's own
+   mockup marks *"Stand-in"*.**
+2. ⚠️ **Reports & Metrics is a borrowed page.** The real `#/reports` is fully specified — see
+   §5.39b for the board id, the app feature and the list of numbers. Unbuilt.
+3. ⚠️ **The Fax bar's right pane is a LINK to `/update-clinicals`.** The handoff moves that whole
+   flow in: the selected fax's details, *Find a patient* (25 results with a board chip and DOB),
+   *Likely matches* (patients whose doctor's fax IS the sending number), the patient header,
+   *Clinicals on the monday item*, then Update Visit Date / Office replied / Submit — back to
+   Evaluate. `/update-clinicals` keeps its own door (the `updateClinicals` role bar), so nothing
+   is lost — it is not embedded. Same shape as §5.45 was.
+4. ⚠️ **The right rail's Calls tab is a BUTTON, not Brandon's inline list.** He specifies All /
+   Missed / Voicemail chips, an inline player, voicemail transcripts with a new badge, Call back,
+   and a red count on the tab. `PatientCommsColumn`'s own header says why: an inline list fetches
+   on MOUNT, which is a per-patient RingCentral read on a screen a rep clicks through
+   (INCIDENT_2026-08-20's shape). Building it means solving that first, not just moving markup.
+5. ⚠️ **"Recent notes" under both rail tabs was never built** — the board's notes column, newest
+   first, an All-notes expander and an add-a-note box. Its CSS is in the port: `notes-mini` is the
+   **only unused `.cc-pt` class in the file**, which is how this one is findable.
+6. ⚠️ **The onboarding info strip is six facts, not his eight.** Built: Stage · Board · Days in
+   stage · Next action · DOB · Phone. Specified: Intake date `date_mm1wf43j` + days since · stage
+   start `date_mm1w6jeq` + days in stage **red over 14** · Request type · Primary insurance · Pump
+   path · CGM path · Referral source · Stage with a Stuck chip / "Web-form lead" / "Onboarding
+   complete \<date\>". ⚠️ `topBarFacts`' own comment says *"four facts — name · DOB · email ·
+   phone"* and it returns THREE: **Email and its edit pencil are missing**, which is the field
+   §5.31h just made editable one stage over.
+7. ⚠️ **The global search's placeholder is now honest but narrower than the spec** (§5.44): member
+   ID, doctor name/phone/clinic and insurance name are unmatched, and no row says WHICH field hit
+   ("Phone (607) …", "Order # 1119726084"). The old System Management search had the same limits,
+   so it is unbuilt spec, not a regression.
+8. ⚠️ **The Subscription profile is missing Financials, Demographics/Contacts and the MN card's
+   own visit-date + MN-docs controls** — §5.45 · §5.45b have the argument for each (the first two
+   widen the Comms Hub's shared `stageDetail` map; the third carries side effects, §5.36).
+9. ⚠️ **Auth Denied is still unclickable** (§4 · §7), where the handoff makes `/stage/authDenied`
+   render the Auth Outstanding steps — *"Brandon's call 'for now'"*. A real difference of opinion
+   about an unbuilt stage, not an oversight.
+10. ⚠️ **The Settings menu has Appearance, themes, sign-out and Access**; the handoff also puts the
+    ring preferences (*Ring me for incoming patient calls* · *Which calls ring me*) and a **Texts:
+    notify me about new texts** group there. The ring prefs exist but are reached from the Comms
+    Hub header (§5.13); the text notification does not exist at all.
+
+✅ Landed since: **Reports & Metrics and all six abilities 2026-09-19 (§5.39h)** · **Subscription's
+Profile | Orders tabs 2026-09-21 (§5.45)** · **that tab's edit path the same day (§5.45b)**.
 
 **Keep-in-agreement:** `components/shell/lossless.test.ts` is the door list — a tool added to the
 redesign's navigation, or removed from it, belongs there · `GlobalHeader`'s Manage menu ⇄
@@ -8656,7 +8714,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A setting ticked on `/access` reverts a few seconds later | §5.39c — `fetchAccess` rebuilds the config from a whitelist, so a top-level key it does not name is written to GitHub and dropped by the next 10s poll. `admins` did this. `perms`/`homeView` are safe because they sit inside `processors` |
 | "Let me see what a processor sees" / the Viewing dropdown is missing or shows me myself | §5.39c — the dropdown needs **`viewOthers`, which is OPT-IN**: granted to josh@ and brandon@ only, and a manager does **not** get it for being a manager. Missing dropdown ⇒ check `perms.viewOthers === true` on that person's **processor** entry (a pure manager with no processor entry cannot hold it). Dropdown present but the screen does not change ⇒ that is the `<Index />` bug, fixed 2026-09-18; the borrow must render `ProcessorView` with the borrowed profile. A stale `?viewing=` says so in amber rather than quietly showing you yourself. The grant does not cross a prod sync — tick it once on prod's `/access` |
 | A fax doesn't match an office, or "view fax is broken" | §5.39c — `/fax` is the combined bar; `/fax-inbox` and the Comms Fax tab still exist beside it. The join strips `@rcfax.com` via `faxDigits` and reads BOTH the patient boards and the Doctor Database; an unmatched number usually means the office sent from a different line than the one we fax to (§5.28, audited clean). A blank viewer means the attachment URI went in without `fetchFaxBlobUrl` |
-| A header tab opens the wrong thing / "where is Reports & Metrics?" | §5.39b — every tab points at an EXISTING page, and Reports & Metrics points at `/system-mgmt?tab=operations` deliberately (Josh, 2026-09-18): Brandon's Patient Pipeline Tracker has no data behind it in this build |
+| A header tab opens the wrong thing / "where is Reports & Metrics?" | §5.39b — every tab points at an EXISTING page, and Reports & Metrics points at `/system-mgmt?tab=operations` deliberately (Josh, 2026-09-18). ⚠️ The real `#/reports` — Katie's tracker embedded (board `18425649613`) plus numbers computed from our own data — IS specified in the handoff and is UNBUILT (§5.39b); every number in it is a §5.8 counting-contract change |
+| "Did the redesign skip something the mockup shows?" | §5.39f's **standing gap list** — ten items, audited against the handoff 2026-09-21 and ordered by what a person notices first. Each is a DECISION, not a bug: the per-stage panels being links rather than the real tools read-only is the largest, and `notes-mini` being the only unused `.cc-pt` class is how the missing "Recent notes" strip stays findable. ⚠️ Check Brandon's own mockup in `_reference/brandon-redesign/` before concluding he did not specify something — this list exists because a note here once claimed the Reports numbers were unspecified when the handoff names every one |
 | "Show what this stage looked like when the patient left it" / a handoff asks for stage snapshots | §5.38 — **the completed item on each board already IS the snapshot**; do not build a history store. `lib/systemMgmt/stageCompletion.ts` (which page, and when it completed) → `useCompletedStageReview` (review mode) → §7's completion badges. Granularity is per BOARD, not per sub-stage |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
 | "Open this patient's whole record" / where the redesign's patient screen lives | §5.39 — `/patient/:itemId?board=<boardId>` (`pages/PatientPage.tsx`). READ-ONLY and additive: it writes nothing and every action deep-links to the stage page. It is a thin view over the Comms Hub dossier (§5.28), keyed on the ITEM not the phone, fetched on open with no poll. A completed step opens in review mode via §5.38. The door in is the dossier pane's **Open profile page** button |
