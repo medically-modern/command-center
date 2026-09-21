@@ -7143,6 +7143,99 @@ test · `dossierCols` ⇄ `BoardDef.escalationColId` (null on the four boards wi
 
 ---
 
+### 5.44 Three ways the search said "No patient matches" — and one settings menu (Sep 2026)
+Josh, 2026-09-21, in four messages while testing. **No board change; app only.** Every failure
+below was REPRODUCED against the live boards before it was fixed, and the measurements are what
+chose each rule.
+
+**1. ⚠️⚠️ A MISSPELLED LETTER RETURNED NOTHING — the loose pass.** *"megan hemberger - it says no
+patient matches"*. The board holds her as **MEGHAN** HEMBERGER, name terms are ANDed, and
+`contains_text` is a contiguous substring — so a query is only as good as its WORST word. Live:
+`megan` **0 rows** · `megan AND hemberger` **0** · `hemberger` **1** · `meghan` 2. This is §7's
+Augustina/Agustina Rodriguez failure in the search box rather than across boards.
+So when the exact query finds NOBODY, `searchPatientsLive` asks once more with the same words
+**ORed** (`looseNameLiteral`). One extra round trip on a query that was about to return nothing,
+and it recovers a typo in EITHER name — verified live: `megan OR hemberger` -> her;
+`meghan OR hemburger` -> her.
+⚠️ **Only on ZERO rows.** Widening a query that worked turns "jose delgado" into every Jose —
+`rulesLiteral`'s own warning, and the rep never asked for that.
+⚠️ **Two or more terms.** One word is already the broadest name query `contains_text` can express.
+⚠️ **The rows are MARKED `matchedBy: "partial"` and BOTH screens say so**, because a row whose
+name does not contain what was typed reads as the search misfiring — the same rule
+`matchedBy: "phone"` follows.
+
+**2. ⚠️⚠️ A NUMBER TYPED WITH ITS COUNTRY CODE FOUND NOBODY.** *"phone doesnt work"*. These boards
+store both shapes — `9739511857` and `16078737352` sit in the same column — so an eleven-digit
+`19738008324` misses a record holding `9738008324`, while the ten digits match BOTH. Live:
+11 digits **0 rows**, 10 digits **1**. The failure is ONE-DIRECTIONAL, which is why it survived:
+omitting the 1 always worked, so only a rep pasting a `+1` number ever saw it.
+⚠️ `PHONE_NEEDLE_DIGITS`' own comment has said this since §5.29 — the last ten "finds either shape
+where an exact match finds one". It was applied to the same-number pass and **never to the query
+the rep types**. `phoneNeedlesFor` now asks for both.
+⚠️ **BOTH, never just the last ten.** A 12-digit FedEx tracking number arrives here as a phone
+query too (§5.35) and is matched against the ORDER IDENTIFIER columns **as typed** — truncating it
+would break tracking search to fix phone search.
+
+**3. ⚠️⚠️ A DATE OF BIRTH WAS SEARCHING THE PHONE COLUMNS.** *"dob search doesnt work"*. It was
+unbuilt (§5.39f records the placeholder over-promising) AND actively wrong: `01-15-1957` strips its
+dashes under the digit test, becomes `01151957`, and was asked of the phone columns — silently the
+wrong question. `liveSearchRules` now recognises a date **first**, and `BoardDef.dobColId` carries
+the column on all seven patient boards.
+⚠️ **SEPARATORS ARE REQUIRED.** `02241981` is eight digits and so is half of what reps paste;
+treating bare digits as a date would hijack phone search.
+⚠️ **BOTH PADDINGS, because the boards hold both** — `12/5/1960` and `02/24/1981` are live values
+in the SAME column, and a contiguous substring means a typed `12/05/1960` does not match a stored
+`12/5/1960`. Four-digit years only: `12/5/60` is 1960 or 2060, and would over-match as a substring.
+⚠️ `dobColId` is the ONE declaration — `commsHub/dossierApi` kept its own `DOB_COLS` map and now
+reads this. Two hand-maintained lists of the same ids is the §5.7 hazard, and here it fails in the
+worst direction: the dossier uses DOB to decide whether two records are the SAME PATIENT
+(`nameMatchAccepted`), so a drifted id makes that check fail closed and silently drop a patient's
+completed records.
+⚠️ **A board may now DECLINE a query** — `rulesLiteral` returns null where there is no DOB column
+and `fetchLiveRows` leaves that board out of the request. The alias index stays the board's index
+in `LIVE_SEARCH_BOARDS`, never its position in the filtered list, or results come back attached to
+the wrong board and every row is mapped with another board's column ids: not an error, just wrong
+data. The New Order Board's `dobColId` is null on purpose — an order is not a patient (§5.35).
+⚠️ **The placeholder is a CONTRACT and it was lying.** It promised "member ID" and "doctor",
+neither of which any board is searched for; a rep who types a member ID and gets "No patient
+matches" learns to distrust the whole box. It now reads *name, DOB, phone or order #* — the four
+that work. **Member ID and doctor remain unbuilt.**
+
+**4. ONE SETTINGS MENU, and the redesign is the app.** Three asks, taken together:
+- *"also remove the manage tab / i think everything that exists there exists other places now"* —
+  ⚠️ **two of its three entries did NOT exist elsewhere.** Stage Manager did (a header tab);
+  **System Management had no other door at all**, and **Access & permissions** had only the Users
+  button, which is ADMIN-only and reads as manager-wide merely because `admins` is empty (§5.39c) —
+  the day somebody names the first admin, a non-admin manager would have lost `/access` entirely.
+  Both moved to the settings menu.
+  ⚠️⚠️ **And moving them did not WIDEN them.** That menu's Manager section was UNGATED; the Manage
+  menu was gated. Folding an admin-shaped entry into an ungated list is how a move becomes a
+  widening, so the gate came with them. The **fax screens stay ungated** — they are rep tools.
+- *"putt everything in the lower left setting into the upper right settings"* — the floating gear
+  (`ThemePickerButton`) is deleted with its file. Its appearance switch, its six colour themes and
+  its sign-out are all on the header's menu; `THEMES` moved out of the component into
+  `lib/shell/theme.ts`, which is why the header could not offer it before. It was also the button
+  the call notices kept covering (§5.39d) — a corner this menu cannot be pushed into.
+- *"remove switch to tlayout as it ws"* — the toggle is gone from every menu. The MECHANISM
+  survives (`AppShell` still branches, `?layout=current` still works), so a comparison is still
+  possible, but it is no longer somewhere a person lands by accident.
+  ⚠️⚠️ **REMOVING A CONTROL DOES NOT MOVE THE BROWSERS ALREADY BEHIND IT.** Anybody whose
+  localStorage said `"current"` would have opened into a layout with no header — and the header is
+  where the toggle lived — so there was no way out but a URL they have never been told about. That
+  is exactly the one-way door §5.39d records costing Josh an afternoon. `migrateOffOldLayout` moves
+  them once at boot, and stands down when `?layout=` asked deliberately in the same boot, or the
+  param would look broken.
+
+**Keep-in-agreement:** `phoneNeedlesFor` ⇄ `rulesLiteral`'s phone branch (phone columns take every
+needle, identifier columns take the typed digits ONLY) · `dobNeedles` ⇄ `BoardDef.dobColId` ⇄
+`dossierApi`'s DOB read (one declaration) · `looseNameLiteral` runs only on zero rows and only on
+2+ terms ⇄ `looseSearchTerms`, which both UIs call to SAY so · `GlobalSearch`'s placeholder ⇄ what
+`liveSearchRules` actually routes · `migrateOffOldLayout` ⇄ `applyLayoutFromUrl`'s return value ⇄
+`main.tsx`, which must call them in that order · `lib/shell/theme.ts` ⇄ the header's swatch row ⇄
+`shell.css`'s `.swatches`.
+
+---
+
 ## 6. Patient flow across boards (the big picture)
 
 ```

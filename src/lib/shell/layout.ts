@@ -44,6 +44,30 @@ export function readLayout(): ShellLayout {
   }
 }
 
+/**
+ * ⚠️⚠️ **A ONE-TIME MIGRATION OFF THE OLD LAYOUT** (§5.44). The toggle was
+ * removed on 2026-09-21 (Josh: *"remove switch to tlayout as it ws"*) — and
+ * removing a control does not move the browsers already sitting behind it.
+ * Anybody whose localStorage said `"current"` would have opened the app into a
+ * layout with no header, which is where the toggle used to live, and therefore
+ * no way out but a URL they do not know about. That is precisely the one-way
+ * door §5.39d records costing Josh an afternoon, so it is closed by moving
+ * them rather than by trusting nobody is there.
+ *
+ * ⚠️ It runs AFTER `applyLayoutFromUrl`, so `?layout=current` still works for
+ * the length of a page view — the mechanism survives for comparison, it is
+ * just no longer somewhere a person can land by accident. Set the flag so a
+ * deliberate param is not undone by the same boot that honoured it.
+ */
+export function migrateOffOldLayout(fromUrl: boolean): void {
+  if (fromUrl) return;
+  try {
+    if (localStorage.getItem(KEY) === "current") writeLayout(DEFAULT_LAYOUT);
+  } catch {
+    /* A browser that refuses storage was never stuck in the first place. */
+  }
+}
+
 export function writeLayout(next: ShellLayout): void {
   try {
     localStorage.setItem(KEY, next);
@@ -76,11 +100,11 @@ export const LAYOUT_EVENT = "mm-shell-layout-change";
  * URL makes every later in-app navigation carry an instruction the person gave
  * once, and a copied link would re-flip somebody else's browser.
  */
-export function applyLayoutFromUrl(): void {
+export function applyLayoutFromUrl(): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
     const want = params.get("layout");
-    if (want !== "redesign" && want !== "current") return;
+    if (want !== "redesign" && want !== "current") return false;
     writeLayout(want);
     params.delete("layout");
     const qs = params.toString();
@@ -89,7 +113,9 @@ export function applyLayoutFromUrl(): void {
       "",
       window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash,
     );
+    return true;
   } catch {
     /* A URL we cannot read is not worth failing the app's first paint over. */
+    return false;
   }
 }

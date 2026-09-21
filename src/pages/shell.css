@@ -220,6 +220,21 @@
   color: hsl(var(--muted-foreground)); font-family: inherit;
 }
 .cc-shell .menu .seg button:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+/* The six colour themes, as swatches rather than six more menu lines — they
+   are one question with six answers and the current one has to be readable at
+   a glance, exactly like the appearance row above (§5.44). */
+.cc-shell .menu .swatches { display: flex; gap: 6px; padding: 2px 10px 6px; }
+.cc-shell .menu .swatches button {
+  width: 22px; height: 22px; border-radius: 999px; padding: 0; cursor: pointer;
+  background: none; border: 2px solid transparent; display: grid; place-items: center;
+}
+.cc-shell .menu .swatches button:hover { border-color: hsl(var(--border)); }
+.cc-shell .menu .swatches button.on { border-color: hsl(var(--foreground)); }
+.cc-shell .menu .swatches .sw {
+  width: 14px; height: 14px; border-radius: 999px;
+  box-shadow: inset 0 0 0 1px hsl(0 0% 0% / 0.12);
+}
+
 .cc-shell .menu .seg button.on {
   background: hsl(var(--accent)); color: hsl(var(--accent-foreground));
   border-color: hsl(var(--accent)); font-weight: 600;

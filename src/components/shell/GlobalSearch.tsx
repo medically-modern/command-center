@@ -22,6 +22,7 @@ import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { useLiveSearch } from "@/hooks/systemMgmt/useLiveSearch";
 import { searchBucket } from "@/lib/systemMgmt/searchBuckets";
+import { looseSearchTerms } from "@/lib/systemMgmt/mondayApi";
 import { groupSearchHits, hitCaption } from "@/lib/shell/searchPeople";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 
@@ -110,6 +111,15 @@ export function GlobalSearch() {
 
   const typed = query.trim().length > 0;
 
+  /** "No exact match … showing anyone matching X or Y", when the loose pass
+   *  answered. Derived from the query rather than threaded through the hook. */
+  const looseNote = useMemo(() => {
+    if (!results.some((r) => r.matchedBy === "partial")) return "";
+    const terms = looseSearchTerms(query);
+    if (!terms) return "";
+    return `No exact match — showing anyone matching ${terms.join(" or ")}.`;
+  }, [results, query]);
+
   return (
     <div className="gsearch" ref={box}>
       <Search className="mag" />
@@ -122,7 +132,12 @@ export function GlobalSearch() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKey}
-        placeholder="Search patient name, DOB, phone, member ID, order #, doctor…"
+        // ⚠️ The placeholder is a CONTRACT. It promised "member ID" and "doctor",
+        // neither of which any board is searched for — §5.39f recorded that as
+        // unbuilt spec, and a rep who types a member ID and gets "No patient
+        // matches" learns to distrust the whole box. DOB and phone are real
+        // (§5.44); the other two come off until they are built.
+        placeholder="Search patient name, DOB, phone or order #…"
         aria-label="Search patients"
         aria-expanded={open && typed}
         autoComplete="off"
@@ -131,6 +146,11 @@ export function GlobalSearch() {
 
       {open && typed && (
         <div className="gs-drop" role="listbox">
+          {/* ⚠️ A loose answer must SAY it is loose (§5.44). These rows matched
+              ONE of the typed words, so without this line a row whose name
+              does not contain what the rep typed reads as the search
+              misfiring — the same rule the same-number pass follows. */}
+          {looseNote && <div className="gs-note">{looseNote}</div>}
           {rows.map((hit, i) => (
             <button
               key={hit.key}

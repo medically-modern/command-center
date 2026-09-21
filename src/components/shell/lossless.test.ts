@@ -65,9 +65,9 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     //     renders the live Oversight page as somebody's landing screen;
     //   · /system-mgmt's own Oversight tab.
     // If any of those goes, Oversight needs a link back in the header FIRST.
-    const manageMenu = header().split('<div className="eyebrow">Managers</div>')[1]?.split("</span>")[0] ?? "";
-    expect(manageMenu, "the Manage menu still lists Oversight").not.toContain("Oversight");
-    expect(manageMenu, "…and still lists Operations").not.toContain("Operations");
+    // The Manage menu is gone entirely (2026-09-21); Oversight's door is the
+    // settings menu's manager section, plus the home view and the tab.
+    expect(header(), "the Manage button came back").not.toContain('title="Manager tools"');
     expect(header(), "no door left in the header at all").toContain('navigate("/oversight")');
     const host = live(read("components/shell/HomeViewHost.tsx"));
     expect(host).toContain("oversight");
@@ -85,18 +85,39 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     expect(app).toMatch(/ability="stageManager"[\s\S]{0,120}StageManagerPage/);
   });
 
-  it("the Manage menu renders them for a manager", () => {
+  it("⚠️ the MANAGE ▾ menu is gone, and its two orphans moved rather than went with it", () => {
+    // Josh, 2026-09-21: "also remove the manage tab / i think everything that
+    // exists there exists other places now". Two of its three entries did NOT:
+    // System Management had no other door at all, and Access & permissions had
+    // only the admin-only Users button. Both are on the settings menu now.
     const h = header();
-    expect(h).toMatch(/managerish && \(/);
-    expect(h).toContain('title="Manager tools"');
+    expect(h, "the Manage button is still here").not.toContain('title="Manager tools"');
+    expect(h).toContain('navigate("/system-mgmt")');
+    expect(h).toContain('navigate("/access")');
   });
 
-  it("⚠️ Manage Access is ALSO on the Manage menu, not only the admin-only Users button", () => {
-    // The roster rail's footer carried it; the rail is gone (§5.39h — the home
-    // is now the signed-in person's own view and the roster's job belongs to
-    // the Viewing dropdown), and the header's Users button is ADMIN-only — so
-    // a manager who is not an admin would have had no route to /access at all.
-    // The Manage menu is manager-gated, which is the wider set.
+  it("⚠️⚠️ …and moving them did not WIDEN them — the section is manager-gated", () => {
+    // The settings menu's Manager section was ungated before this; the Manage
+    // menu was gated. Folding an admin-shaped entry into an ungated list is how
+    // a move becomes a widening.
+    const h = header();
+    const section = h.slice(h.indexOf("{managerish && ("), h.indexOf('<div className="eyebrow">Faxes</div>'));
+    for (const route of ['navigate("/access")', 'navigate("/system-mgmt")', 'navigate("/stage-manager")']) {
+      expect(section, `${route} escaped the manager gate`).toContain(route);
+    }
+  });
+
+  it("⚠️ but the FAX screens stayed ungated — they are rep tools", () => {
+    const h = header();
+    const after = h.slice(h.indexOf('<div className="eyebrow">Faxes</div>'));
+    expect(after).toContain('navigate("/fax")');
+    expect(after).toContain('navigate("/fax-inbox")');
+  });
+
+  it("⚠️ Access is on the settings menu AND the Users button, which is admin-only", () => {
+    // `isAdmin` is true for every manager only while `admins` is empty
+    // (§5.39c). The day somebody names the first admin, the settings menu is
+    // the one route a non-admin manager has to /access.
     const h = header();
     expect(h).toContain('"/access"');
     expect(h).toMatch(/managerish && \(/);

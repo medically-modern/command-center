@@ -42,6 +42,8 @@ import { GlobalSearch } from "./GlobalSearch";
 import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
 import { useAppearance } from "@/hooks/shell/useAppearance";
+import { useTheme } from "@/hooks/shell/useTheme";
+import { THEMES } from "@/lib/shell/theme";
 import { useAccessContext } from "@/components/AccessProvider";
 import { hasAbility, isAdmin, isManagerOf } from "@/lib/shell/abilities";
 import { useViewAs } from "@/lib/shell/viewAs";
@@ -114,6 +116,7 @@ export function GlobalHeader() {
   const navigate = useNavigate();
   const [layout, setLayout] = useShellLayout();
   const { appearance, setAppearance } = useAppearance();
+  const { theme, setTheme } = useTheme();
   const { email, config } = useAccessContext();
   /**
    * ⚠️⚠️ **WHOSE HEADER THIS IS.** `viewAs` is set by the home screen's
@@ -213,50 +216,6 @@ export function GlobalHeader() {
             ⚠️ Manager-gated, not admin-gated: these are manager tools, and
             `/access` is already reachable for admins via the Users button
             beside this. */}
-        {managerish && (
-          <span style={{ position: "relative" }} ref={manageBox}>
-            <button
-              className="ib"
-              onClick={() => setManage((m) => !m)}
-              title="Manager tools"
-              aria-haspopup="menu"
-              aria-expanded={manage}
-            >
-              <Sliders style={{ width: 16, height: 16 }} />
-              <span className="lbl">Manage</span>
-              <ChevronDown style={{ width: 12, height: 12 }} />
-            </button>
-            {manage && (
-              <div className="menu" role="menu">
-                <div className="eyebrow">Managers</div>
-                {/* ⚠️ **Oversight and Operations left this menu on 2026-09-21**
-                    (Josh: "in manage menu remove oversight and operations from
-                    that menu") — because each now has a better door than a
-                    menu entry, which is the §5.39f trim rather than a loss.
-                    Operations IS the Reports & Metrics tab above. Oversight is
-                    an assignable HOME VIEW (§5.39c `homeView: "oversight"`) and
-                    keeps its own `/oversight` route, so a manager who works
-                    from it lands on it. ⚠️ If Oversight is ever taken off the
-                    home views too, it needs a door back here first —
-                    `lossless.test.ts` is where that is written down. */}
-                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/stage-manager"); }}>
-                  <ArrowRightLeft style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                  Stage Manager
-                </button>
-                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/system-mgmt"); }}>
-                  <ListChecks style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                  System Management
-                </button>
-                <div className="divider" />
-                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/access"); }}>
-                  <KeyRound style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                  Access &amp; permissions
-                </button>
-              </div>
-            )}
-          </span>
-        )}
-
         {/* ⚠️ Admins only, per Brandon — and `isAdmin` returns true for every
             MANAGER while `admins` is empty (§5.39c), which is every config
             today. So this renders exactly as it did until somebody names the
@@ -284,21 +243,16 @@ export function GlobalHeader() {
           </button>
           {menu && (
             <div className="menu" role="menu">
-              <div className="eyebrow">Layout</div>
-              {/* ⚠️ Brandon's own switch, ported with the design. It is what
-                  makes a whole-app navigation change reversible in one click —
-                  see lib/shell/layout.ts. */}
-              <button
-                className="opt"
-                role="menuitem"
-                onClick={() => {
-                  setLayout(layout === "redesign" ? "current" : "redesign");
-                  setMenu(false);
-                }}
-              >
-                {layout === "redesign" ? "Switch to the layout as it was" : "Switch to the new layout"}
-              </button>
-              <div className="divider" />
+              {/* ⚠️⚠️ **THE LAYOUT TOGGLE IS GONE** (Josh, 2026-09-21: "remove
+                  switch to tlayout as it ws"). The redesign is the app now.
+                  The MECHANISM survives — `AppShell` still branches and
+                  `?layout=current` still works — so there is a way to compare
+                  if something ever looks wrong, but it is no longer a control
+                  anybody can land on by accident. ⚠️ `readLayout` migrates a
+                  stored "current" back to the redesign at boot, or the handful
+                  of browsers sitting in the old layout would have been stranded
+                  in it with no header and therefore no menu (§5.39d, the exact
+                  one-way door this project already paid for once). */}
               {/* ⚠️ Appearance is a SEPARATE axis from the colour theme in the
                   settings popover, not a seventh theme (§5.40) — and it is in
                   BOTH menus for the layout toggle's reason: a scheme you cannot
@@ -325,40 +279,85 @@ export function GlobalHeader() {
                 ))}
               </div>
               <div className="divider" />
-              <div className="eyebrow">Manager</div>
-              {/* ⚠️ `/oversight`, NOT `/system-mgmt?tab=oversight` — that tab is
-                  commented out (2026-09-18). Oversight has its own full-screen
-                  route (`OversightPage`), which is why commenting the tab took
-                  nothing away; Stage Manager and Operations have no second
-                  door and really are off until somebody uncomments them. */}
-              <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/oversight"); }}>
-                Pipeline Oversight
-              </button>
-              {/* ── System Management — removed from the menu 2026-09-18
-                     (Josh: "remove system management, the search from there is
-                     now in the top bar"). The route still exists, so a
-                     bookmark works; it just is not advertised here any more.
-              <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/system-mgmt"); }}>
-                System Management
-              </button>
-              ── */}
-              {/* ⚠️ BOTH fax screens are listed, deliberately (Josh, 2026-09-18):
-                  Brandon's combined bar was added beside the Fax Inbox rather
-                  than replacing it, so both stay reachable until we trim. */}
+              {/* ⚠️ **THE MANAGE ▾ MENU WAS REMOVED** (Josh, 2026-09-21: "also
+                  remove the manage tab / i think everything that exists there
+                  exists other places now"). Two of its three entries did NOT
+                  exist elsewhere, so they moved here rather than going with it:
+                  **System Management** had no other door at all, and
+                  **Access & permissions** had only the Users button beside this
+                  one — which is ADMIN-only, and `isAdmin` is true for every
+                  manager merely because `admins` is empty (§5.39c). The day
+                  somebody names the first admin, a manager who is not one would
+                  have lost `/access` entirely. Stage Manager really did have
+                  another door: it is a header tab. */}
+              {/* ⚠️ **GATED ON `managerish`, which the pre-2026-09-21 version of
+                  this section was NOT.** It already offered Pipeline Oversight
+                  and System Management to every processor — harmless for
+                  Oversight, which guards itself with "Managers only." — and the
+                  Manage ▾ menu that just folded into it WAS gated. Folding an
+                  admin-shaped entry into an ungated list is how a move becomes
+                  a widening, so the gate comes with them. Nothing is lost: the
+                  pages that guard themselves still do, and Stage Manager is
+                  ability-gated at its route either way. */}
+              {managerish && (
+                <>
+                  <div className="eyebrow">Manager</div>
+                  <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/oversight"); }}>
+                    <BarChart3 style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                    Pipeline Oversight
+                  </button>
+                  <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/stage-manager"); }}>
+                    <ArrowRightLeft style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                    Stage Manager
+                  </button>
+                  <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/system-mgmt"); }}>
+                    <ListChecks style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                    System Management
+                  </button>
+                  {/* ⚠️ Here AND on the admin-only Users button beside this menu
+                      — `isAdmin` is true for every manager only while `admins`
+                      is empty (§5.39c), so the day somebody names the first
+                      admin this is the one route a non-admin manager has. */}
+                  <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/access"); }}>
+                    <KeyRound style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
+                    Access &amp; permissions
+                  </button>
+                  <div className="divider" />
+                </>
+              )}
+              {/* ⚠️ The fax screens stay UNGATED — they are rep tools, and both
+                  are listed deliberately (§5.39c): Brandon's combined bar was
+                  added beside the Fax Inbox rather than replacing it. */}
+              <div className="eyebrow">Faxes</div>
               <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/fax"); }}>
                 Faxes — with the sending office
               </button>
               <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/fax-inbox"); }}>
                 Fax Inbox
               </button>
-              {/* ⚠️⚠️ **SIGN OUT LIVES HERE BECAUSE THE FLOATING ONE CAN BE
-                  COVERED.** `ThemePickerButton` is the app's sign-out, and on
-                  the no-sidebar home (§5.39c) it is the only one — but it sits
-                  at `fixed bottom-4 left-4 z-40` and the call-status notices
-                  sit at the SAME corner with `z-[60]`, so an unhealthy call
-                  stream hides it. Measured in a browser, not reasoned about.
-                  Losing the theme picker behind a notice is a nuisance; losing
-                  sign-out is not, so it gets a route that nothing can cover. */}
+              {/* ⚠️ **THE LOWER-LEFT FLOATING GEAR IS GONE** (Josh, 2026-09-21:
+                  "putt everything in the lower left setting into the upper
+                  right settings"). Everything it held is here: the appearance
+                  switch above, these six colour themes, and sign-out below. It
+                  was also the button the call-status notices kept covering
+                  (§5.39d) — a corner this menu cannot be pushed into. */}
+              <div className="divider" />
+              <div className="eyebrow">Theme</div>
+              <div className="swatches" role="group" aria-label="Colour theme">
+                {THEMES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    title={t.label}
+                    aria-label={t.label}
+                    aria-pressed={theme === t.id}
+                    className={theme === t.id ? "on" : undefined}
+                    onClick={() => setTheme(t.id)}
+                  >
+                    <span className={`sw ${t.swatch}`} />
+                  </button>
+                ))}
+              </div>
               <div className="divider" />
               <div className="eyebrow">{getUser()?.email || "Signed in"}</div>
               <button className="opt" role="menuitem" onClick={signOut}>

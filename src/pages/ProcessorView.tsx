@@ -2,7 +2,6 @@ import { useFilteredRoleCounts } from "@/hooks/useFilteredRoleCounts";
 import { DailyBurndown } from "@/components/dashboard/DailyBurndown";
 import type { ProcessorProfile } from "@/lib/accessStore";
 import { orderedRoleIds } from "@/lib/roleView";
-import { ThemePickerButton } from "@/components/ThemePicker";
 import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
 import { Stethoscope } from "lucide-react";
 
@@ -81,7 +80,6 @@ export default function ProcessorView({
       {/* Settings gear — lower-left, identical to the manager view: click for
           theme colors + the signed-in email + sign out. */}
       <div className="fixed bottom-4 left-4 z-40">
-        <ThemePickerButton />
       </div>
     </div>
   );

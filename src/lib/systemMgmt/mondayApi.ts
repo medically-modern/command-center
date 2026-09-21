@@ -135,6 +135,19 @@ export interface BoardDef {
   /** Column ID for Next Action Date (date column, null = board has none) */
   nextActionDateColId: string | null;
   /**
+   * Date of birth — a TEXT column on every board that has one, holding
+   * `MM/DD/YYYY` and sometimes unpadded (`12/5/1960` sits beside `02/24/1981`
+   * on the same board). Null where the board has none.
+   *
+   * ⚠️ **This is the ONE declaration.** `commsHub/dossierApi` kept its own
+   * `DOB_COLS` map and now reads this instead — two hand-maintained lists of
+   * the same six ids is the §5.7 hazard, and here it would have failed in the
+   * worst direction: the dossier uses DOB to decide whether two records are the
+   * SAME PATIENT (`nameMatchAccepted`), so a drifted id makes that check fail
+   * closed and silently drop a patient's completed records.
+   */
+  dobColId: string | null;
+  /**
    * Columns a board needs beyond the fields above, added to `searchColumnIds`
    * verbatim. Only the New Order Board uses it (`ordersSearch.ts`): its stage
    * is read from API Status + Hold Reason + API Message, which no field here
@@ -212,6 +225,7 @@ export const BOARDS: BoardDef[] = [
     notesColId: "long_text_mm1b4jf7",
     notesColType: "long_text",
     nextActionDateColId: null,
+    dobColId: "text_mkzsyzmf",
   },
   {
     // Second source for Patient Questions (§7); its patients were unfindable
@@ -237,6 +251,7 @@ export const BOARDS: BoardDef[] = [
     notesColId: "long_text_mkzrx7ke",
     notesColType: "long_text",
     nextActionDateColId: "date_mkxpynj",
+    dobColId: "text_mkp3y5ax",
   },
   {
     boardId: 18407459988,
@@ -260,6 +275,7 @@ export const BOARDS: BoardDef[] = [
     notesColId: "text_mm6vp1z3",
     notesColType: "text",
     nextActionDateColId: null,
+    dobColId: "text_mkvdefh1",
   },
   {
     boardId: 18406352652,
@@ -289,6 +305,7 @@ export const BOARDS: BoardDef[] = [
     notesColId: "text_mm389fs",
     notesColType: "text",
     nextActionDateColId: null,
+    dobColId: "text_mm1xvxst",
   },
   {
     boardId: 18406060017,
@@ -307,6 +324,7 @@ export const BOARDS: BoardDef[] = [
     notesColId: "text_mm6vevjf",
     notesColType: "text",
     nextActionDateColId: "date_mm1wadgs",
+    dobColId: "text_mm1xvxst",
   },
   {
     boardId: 18410601299,
@@ -329,6 +347,7 @@ export const BOARDS: BoardDef[] = [
     notesColId: "text_mm6vzc7q",
     notesColType: "text",
     nextActionDateColId: null,
+    dobColId: "text_mm1xvxst",
   },
   {
     boardId: 18410804557,
@@ -349,6 +368,7 @@ export const BOARDS: BoardDef[] = [
     notesColId: "text_mm6vqq2k",
     notesColType: "text",
     nextActionDateColId: null,
+    dobColId: "text_mm1xvxst",
   },
 ];
 
@@ -362,10 +382,12 @@ export interface SystemPatient {
    * How this row reached the results — absent means the ordinary way, by the
    * name the rep typed. `"phone"` marks a row found by the same-number pass
    * (`sameNumberNeedles`): it is a REAL record for a patient whose board name
-   * does not contain the query, and the UI must say so, or a row carrying an
-   * unfamiliar name reads as the search misfiring rather than as the answer.
+   * does not contain the query. `"partial"` marks a row found by the loose
+   * pass (§5.44), which matched ONE of the typed words rather than all of them.
+   * In both cases the UI must say so, or a row carrying an unfamiliar name
+   * reads as the search misfiring rather than as the answer.
    */
-  matchedBy?: "phone";
+  matchedBy?: "phone" | "partial";
   boardId: number;
   boardName: string;
   groupId: string;
@@ -786,7 +808,69 @@ const PHONE_NEEDLE_DIGITS = 10;
 
 export type LiveSearchRules =
   | { kind: "phone"; digits: string }
+  | { kind: "dob"; needles: string[] }
   | { kind: "name"; terms: string[] };
+
+/**
+ * The digit strings a typed number should be matched against (§5.44).
+ *
+ * ⚠️⚠️ **A NUMBER TYPED WITH ITS COUNTRY CODE FOUND NOBODY.** These boards
+ * store both shapes — `9739511857` and `16078737352` sit in the same column —
+ * so `contains_text` on the eleven digits `19738008324` misses a record holding
+ * `9738008324`, while the ten digits match BOTH. Verified against the live
+ * board 2026-09-21: 11 digits → 0 rows, 10 digits → the patient. The failure is
+ * one-directional, which is why it survived: omitting the 1 always worked, so
+ * only a rep who pasted a `+1` number saw "no patient matches".
+ *
+ * `PHONE_NEEDLE_DIGITS`' own comment has said this since §5.29 — the last ten
+ * "finds either shape where an exact match finds one". It was applied to the
+ * same-number pass and never to the query the rep types.
+ *
+ * ⚠️ **Both are returned, never just the last ten.** A 12-digit FedEx tracking
+ * number arrives here as a phone query too (§5.35) and is matched against the
+ * order identifier columns AS TYPED; truncating it would break tracking search
+ * to fix phone search.
+ */
+export function phoneNeedlesFor(digits: string): string[] {
+  const out = [digits];
+  if (digits.length > PHONE_NEEDLE_DIGITS) {
+    const last = digits.slice(-PHONE_NEEDLE_DIGITS);
+    if (last !== digits) out.push(last);
+  }
+  return out;
+}
+
+/**
+ * A typed date of birth, as the strings to `contains_text` against — or null
+ * when the query is not a date at all (§5.44).
+ *
+ * ⚠️ **SEPARATORS ARE REQUIRED.** `02241981` is eight digits and so is half the
+ * phone numbers a rep pastes; treating a bare run of digits as a date would
+ * hijack phone search. A date has to look like one.
+ *
+ * ⚠️ **BOTH PADDINGS, because the boards hold both.** `12/5/1960` and
+ * `02/24/1981` are live values in the SAME column, and `contains_text` is a
+ * contiguous substring — so a typed `12/05/1960` does not match a stored
+ * `12/5/1960`. Returning both shapes ORed is what makes the search independent
+ * of how either side was typed.
+ *
+ * ⚠️ Four-digit years only. A two-digit year is ambiguous (`12/5/60` is 1960 or
+ * 2060) and would also match far more than it should as a substring.
+ */
+export function dobNeedles(raw: string): string[] | null {
+  const t = (raw ?? "").trim();
+  const us = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
+  const iso = /^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})$/.exec(t);
+  if (!us && !iso) return null;
+  const [mm, dd, yyyy] = us
+    ? [Number(us[1]), Number(us[2]), Number(us[3])]
+    : [Number(iso![2]), Number(iso![3]), Number(iso![1])];
+  // A real date, loosely — the point is to rule OUT a mistyped phone number,
+  // not to reject 31 February, which simply matches nothing.
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31 || yyyy < 1900 || yyyy > 2100) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return [...new Set([`${pad(mm)}/${pad(dd)}/${yyyy}`, `${mm}/${dd}/${yyyy}`])];
+}
 
 /**
  * What a typed query asks Monday for — pure, so it is testable without a board.
@@ -802,6 +886,12 @@ export type LiveSearchRules =
 export function liveSearchRules(query: string): LiveSearchRules | null {
   const trimmed = query.trim();
   if (!trimmed) return null;
+  /* ⚠️ DOB FIRST, and it has to be: `01-15-1957` strips to `01151957` under the
+     digit test below and became a PHONE search — eight digits asked of the
+     phone columns, silently the wrong question. A date is the more specific
+     shape, so it is recognised before anything else. */
+  const dob = dobNeedles(trimmed);
+  if (dob) return { kind: "dob", needles: dob };
   const isDigits = /^\d+$/.test(trimmed.replace(/[\s\-().+]/g, ""));
   if (isDigits) {
     const digits = trimmed.replace(/\D/g, "");
@@ -827,7 +917,7 @@ export function liveSearchRules(query: string): LiveSearchRules | null {
  * a wrong operator or a missing column returns 200 with an empty list, which
  * reads as "this patient is not in the system".
  */
-export function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
+export function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string | null {
   const rule = (columnId: string, value: string) =>
     `{column_id: ${JSON.stringify(columnId)}, compare_value: [${JSON.stringify(value)}], operator: contains_text}`;
   const orOf = (rs: string[]) => `{rules: [${rs.join(", ")}], operator: or}`;
@@ -851,11 +941,27 @@ export function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
      Search silently returning zero rows is the failure this whole file's
      comments keep recording. */
   if (rules.kind === "phone") {
-    if (!idCols.length) return phoneRulesLiteral(board, [rules.digits]);
+    /* ⚠️ The PHONE columns take every needle — the digits as typed AND, for an
+       11-digit number, the last ten, because the boards hold both shapes
+       (`phoneNeedlesFor`). The IDENTIFIER columns take the digits AS TYPED
+       only: a 12-digit tracking number is not a phone number with a country
+       code, and matching its last ten would find the wrong orders. */
+    const needles = phoneNeedlesFor(rules.digits);
+    if (!idCols.length) return phoneRulesLiteral(board, needles);
     return orOf([
-      ...phoneColIdsFor(board).map((c) => rule(c, rules.digits)),
+      ...needles.flatMap((d) => phoneColIdsFor(board).map((c) => rule(c, d))),
       ...idCols.map((c) => rule(c, rules.digits)),
     ]);
+  }
+  /* ⚠️ A DOB query asks ONE column and nothing else. Falling back to a name
+     search on a board with no DOB column would return every row whose NAME
+     contains "02/24/1981" — none, today — but the honest answer is that this
+     board cannot answer the question, which is what returning null says.
+     `fetchLiveRows` then leaves the board out of the request entirely. */
+  if (rules.kind === "dob") {
+    if (!board.dobColId) return null;
+    const col = board.dobColId;
+    return orOf(rules.needles.map((n) => rule(col, n)));
   }
   /* ⚠️ ONE term only. An order identifier never contains a space, so a
      multi-word query is a name and keeps the AND — widening it to an OR there
@@ -867,6 +973,41 @@ export function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
   }
   const list = rules.terms.map((t) => rule("name", t));
   return `{rules: [${list.join(", ")}], operator: and}`;
+}
+
+/**
+ * The same name terms, ORed instead of ANDed — the LOOSE pass (§5.44).
+ *
+ * ⚠️ **Only ever a FALLBACK for a query that returned nothing**, never the
+ * first thing asked. `rulesLiteral`'s own comment is the reason: an OR turns
+ * "jose delgado" into "jose OR delgado" and hands back every Jose on the board.
+ * That is a bad ANSWER and a fine LAST RESORT — when the exact query found
+ * nobody, "here is everyone close" beats "no patient matches".
+ *
+ * ⚠️ Name column only. `rulesLiteral` widens a SINGLE-word query to the order
+ * identifiers, and this pass never runs on one word: with one term there is
+ * nothing to loosen, the AND and the OR are the same query.
+ */
+export function looseNameLiteral(board: BoardDef, terms: string[]): string {
+  void board; // every board searches the same column here — kept for symmetry
+  const list = terms.map(
+    (t) => `{column_id: "name", compare_value: [${JSON.stringify(t)}], operator: contains_text}`,
+  );
+  return `{rules: [${list.join(", ")}], operator: or}`;
+}
+
+/**
+ * The words a loose pass would search for, or null if there is nothing to
+ * loosen — pure, so the UI can say what the search did without re-deriving it.
+ *
+ * ⚠️ Needs TWO OR MORE terms. One word is already the broadest name query
+ * there is; "loosening" it would mean fuzzy matching, which `contains_text`
+ * cannot do and which Monday has no operator for.
+ */
+export function looseSearchTerms(query: string): string[] | null {
+  const rules = liveSearchRules(query);
+  if (!rules || rules.kind !== "name" || rules.terms.length < 2) return null;
+  return rules.terms;
 }
 
 /**
@@ -979,7 +1120,40 @@ export async function searchPatientsLive(
   const rules = liveSearchRules(query);
   if (!rules || !hasToken()) return [];
 
-  const named = await fetchLiveRows((b) => rulesLiteral(b, rules), signal);
+  let named = await fetchLiveRows((b) => rulesLiteral(b, rules), signal);
+
+  /* ── The loose pass (§5.44) ──────────────────────────────────────────
+     ⚠️ ONE MISSPELLED LETTER RETURNED "No patient matches" FOR A PATIENT WHO
+     IS RIGHT THERE. Name terms are ANDed and `contains_text` is a contiguous
+     substring, so a query is only as good as its WORST word: Josh typed
+     "megan hemberger" for a patient the board holds as MEGHAN HEMBERGER, and
+     got nothing — "megan" is not inside "MEGHAN". Verified against the live
+     board 2026-09-21: `megan` 0 rows, `megan AND hemberger` 0, `hemberger` 1.
+
+     So when the exact query finds NOBODY, ask once more with the same words
+     ORed. It costs one extra round trip on a query that was about to return
+     nothing, and it recovers a typo in EITHER name: `megan OR hemberger` found
+     her by the surname, and `meghan OR hemburger` finds her by the first name.
+
+     ⚠️ Only on ZERO rows. Widening a query that worked is how "jose delgado"
+     starts returning every Jose (`rulesLiteral`'s own warning), and the rep
+     never asked for that. ⚠️ And the rows are MARKED, because a row whose name
+     does not contain what was typed reads as the search misfiring unless the
+     screen says otherwise — the same rule `matchedBy: "phone"` follows. */
+  if (rules.kind === "name" && rules.terms.length >= 2 && named.length === 0) {
+    try {
+      const loose = await fetchLiveRows((b) => looseNameLiteral(b, rules.terms), signal);
+      // The UI re-derives which words were used via `looseSearchTerms`, so
+      // nothing has to be threaded back through the hook for it to say so.
+      if (loose.length) named = loose.map((r) => ({ ...r, matchedBy: "partial" as const }));
+    } catch (e) {
+      /* Best effort, exactly like the same-number pass below: the exact answer
+         (nothing) is still an answer, so a failed widening costs the extra rows
+         and nothing else. An abort propagates — latest-wins depends on it. */
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      console.error("[searchPatientsLive] loose pass failed", e);
+    }
+  }
 
   /* ── The same-number pass ────────────────────────────────────────────
      ⚠️ A NAME IS NOT A KEY, and on these boards it is not even stable.
@@ -1034,13 +1208,25 @@ export async function searchPatientsLive(
 
 /** One aliased request across every board, mapped to rows. */
 async function fetchLiveRows(
-  literalFor: (board: BoardDef) => string,
+  literalFor: (board: BoardDef) => string | null,
   signal?: AbortSignal,
 ): Promise<SystemPatient[]> {
-  const aliases = LIVE_SEARCH_BOARDS.map(
-    (b, i) => `
+  /* ⚠️ A board may DECLINE a query — a DOB search skips the boards with no DOB
+     column (§5.44). The alias index stays the board's index in
+     `LIVE_SEARCH_BOARDS` rather than its position in this filtered list, or the
+     results come back attached to the wrong board and every row is mapped with
+     another board's column ids: not an error, just wrong data. */
+  const asked = LIVE_SEARCH_BOARDS.map((b, i) => ({ b, i, literal: literalFor(b) })).filter(
+    (a): a is { b: BoardDef; i: number; literal: string } => a.literal !== null,
+  );
+  // Nothing can answer this question. An empty `query { }` is a syntax error,
+  // and "no board can be asked" is an empty result, not a failure.
+  if (!asked.length) return [];
+
+  const aliases = asked.map(
+    ({ b, i, literal }) => `
       b${i}: boards(ids: [${b.boardId}]) {
-        items_page(limit: ${LIVE_SEARCH_PER_BOARD}, query_params: ${literalFor(b)}) {
+        items_page(limit: ${LIVE_SEARCH_PER_BOARD}, query_params: ${literal}) {
           items {
             id
             name
@@ -1057,7 +1243,7 @@ async function fetchLiveRows(
   );
 
   const rows: SystemPatient[] = [];
-  LIVE_SEARCH_BOARDS.forEach((b, i) => {
+  asked.forEach(({ b, i }) => {
     const items = data[`b${i}`]?.[0]?.items_page?.items ?? [];
     const mapped = items.map((item) => mapToSystemPatient(item, b));
     // Monday answers in board order — by group, then position — which on the

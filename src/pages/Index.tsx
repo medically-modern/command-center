@@ -2,7 +2,6 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAccessContext } from "@/components/AccessProvider";
 import ProcessorView from "@/pages/ProcessorView";
 import { DashboardMainView } from "@/components/dashboard/DashboardMainView";
-import { ThemePickerButton } from "@/components/ThemePicker";
 import { cn } from "@/lib/utils";
 import { Shield, LayoutDashboard, Stethoscope, KeyRound } from "lucide-react";
 import { processorPeople, type Person } from "@/lib/people";
@@ -98,7 +97,6 @@ const Index = () => {
           >
             <KeyRound className="w-4 h-4" /> Manage Access
           </button>
-          <ThemePickerButton />
         </div>
       </aside>
 

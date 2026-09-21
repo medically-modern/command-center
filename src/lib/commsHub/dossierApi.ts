@@ -110,14 +110,15 @@ const indexOf = (it: RawItem, colId: string | null): number | null => {
  * missing first chip on a patient's path — and failing closed is the direction
  * that cannot put another patient's notes on this conversation.
  */
-const DOB_COLS: Record<number, string> = {
-  18406352652: "text_mm1xvxst", // Profile Send Off
-  18406060017: "text_mm1xvxst", // Medical Evaluation
-  18410601299: "text_mm1xvxst", // Insurance
-  18410804557: "text_mm1xvxst", // Welcome Call
-  18407459988: "text_mkvdefh1", // Subscription
-  18413019028: "text_mkp3y5ax", // Secondary Claims
-};
+/**
+ * ⚠️ **ONE DECLARATION, on the board registry** (§5.44). This was its own
+ * hand-maintained map of the same six ids until 2026-09-21 — the §5.7 hazard,
+ * and here it fails in the worst direction: DOB is what decides whether two
+ * records are the SAME PATIENT (`nameMatchAccepted`), so a drifted id makes
+ * that check fail CLOSED and silently drop a patient's completed records.
+ */
+const dobColOf = (boardId: number): string | null =>
+  BOARDS.find((b) => b.boardId === boardId)?.dobColId ?? null;
 
 /** Which groups on this board mean "finished", per the BOARDS registry. */
 function completedGroupIds(board: BoardDef): Set<string> {
@@ -145,7 +146,7 @@ function toDossierItem(board: BoardDef, it: RawItem): DossierItem {
     groupId,
     groupTitle,
     isCompleted: completedGroupIds(board).has(groupId),
-    dob: textOf(it, DOB_COLS[board.boardId] ?? null).trim(),
+    dob: textOf(it, dobColOf(board.boardId)).trim(),
     route: routeFor(board, groupId),
     stageAdvancerText: textOf(it, board.stageAdvancerColId).trim(),
     notes: textOf(it, board.notesColId),
@@ -198,7 +199,7 @@ function dossierCols(board: BoardDef): string[] {
     // ⚠️ Without this the DOB reads "" on every record and every blank-phone
     // name match fails closed — safe, but it would silently drop the completed
     // records the name pass exists to find.
-    DOB_COLS[board.boardId] ?? null,
+    dobColOf(board.boardId),
     // ⚠️ The escalation column (§5.43). Without it a PROPOSED stuck record —
     // escalation index 2, sitting in an ordinary working group — reads as an
     // everyday item here while `searchBuckets.searchBucket` files it under

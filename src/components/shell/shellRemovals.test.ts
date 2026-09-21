@@ -81,9 +81,19 @@ describe("⚠️ the home roster comes off only where a replacement exists", () 
     expect(index).not.toContain("rosterReplaced");
   });
 
-  it("⚠️ keeps the theme/sign-out button in the layout that still has a sidebar", () => {
-    // ThemePickerButton IS sign-out, and the sidebar is its home in "as today".
-    expect(index).toContain("ThemePickerButton");
+  it("⚠️⚠️ sign-out survived the floating gear's deletion", () => {
+    // That button WAS the app's sign-out on the no-sidebar home, which is why
+    // it was pinned here. It is gone (Josh, 2026-09-21: "putt everything in the
+    // lower left setting into the upper right settings"), so what has to hold
+    // now is that the header's settings menu carries sign-out, the appearance
+    // switch and the six colour themes — everything the floating one held.
+    const header = read("components/shell/GlobalHeader.tsx");
+    expect(header).toContain("signOut");
+    expect(header).toContain("setAppearance(");
+    expect(header).toContain("THEMES.map(");
+    for (const f of ["pages/Index.tsx", "pages/ProcessorView.tsx"]) {
+      expect(read(f), f).not.toContain("ThemePickerButton");
+    }
   });
 
   it("⚠️⚠️ and SIGN OUT is also in the header, where nothing can cover it", () => {

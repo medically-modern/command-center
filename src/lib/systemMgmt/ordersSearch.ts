@@ -95,6 +95,10 @@ export const ORDERS_SEARCH_BOARD: BoardDef = {
   // ⚠️ NOT Order Date. That column is the placement date, and on an On Hold
   // order it is the day the snooze returns it — neither is a "next action" the
   // rest of the app means, and `systemProfileStatus` would read it as Waiting.
+  // ⚠️ An ORDER has no date of birth and is not a patient record (§5.35), so a
+  // DOB query must never return one. Null is what keeps this board out of the
+  // DOB pass entirely rather than matching nothing inside it.
+  dobColId: null,
   nextActionDateColId: null,
   extraColumnIds: Object.values(ORDER_SEARCH_COLS),
 };

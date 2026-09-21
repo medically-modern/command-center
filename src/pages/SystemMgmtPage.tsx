@@ -60,6 +60,7 @@ import {
 import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
 import { OperationsTab } from "@/components/systemMgmt/OperationsTab";
+import { looseSearchTerms } from "@/lib/systemMgmt/mondayApi";
 import { AbilityGate } from "@/components/shell/AbilityGate";
 import OversightTab from "@/components/oversight/OversightTab";
 import { ProfileStatusBadge } from "@/components/shared/ProfileStatusBadge";
@@ -692,6 +693,13 @@ function SearchView({
   // the FIRST lot's — the extras are few by construction and are the point of
   // the pass — so the count line has to be told apart from `results.length` or
   // it reports a cap it is not applying.
+  /* ⚠️ A loose answer must SAY it is loose (§5.44) — these rows matched ONE of
+     the typed words, so a row whose name does not contain what was typed reads
+     as the search misfiring unless the screen says otherwise. Same rule the
+     same-number pass follows just below. */
+  const looseTerms = results.some((p) => p.matchedBy === "partial")
+    ? looseSearchTerms(query)
+    : null;
   const nameResults = results.filter((p) => p.matchedBy !== "phone");
   const sameNumberResults = results.filter((p) => p.matchedBy === "phone");
   return (
@@ -822,6 +830,11 @@ function SearchView({
             {nameResults.length > 50
               ? `Showing 50 of ${bucketResultCount(bucket, nameResults.length)} — refine your search`
               : bucketResultCount(bucket, nameResults.length)}
+            {looseTerms && (
+              <span className="ml-2 text-warning">
+                No exact match — showing anyone matching {looseTerms.join(" or ")}.
+              </span>
+            )}
             {sameNumberResults.length > 0
               ? ` · ${sameNumberResults.length} more on the same phone number`
               : ""}

@@ -1,19 +1,27 @@
 /**
- * ⚠️⚠️ **THE LAYOUT SWITCH MUST BE REVERSIBLE FROM INSIDE BOTH LAYOUTS.**
+ * ⚠️⚠️ **NOBODY MAY BE STRANDED IN A LAYOUT THEY CANNOT LEAVE.**
  *
- * It shipped as a ONE-WAY DOOR on 2026-09-18: the toggle lived only in the
- * global header's gear menu, and "as today" removes the header — so switching
- * away deleted the only control that could switch back, on every page at once.
- * Reported the same day: *"i saw it for a minute and then pressed show me the
- * original view and never was able to get back"*.
+ * The layout switch shipped as a ONE-WAY DOOR on 2026-09-18: the toggle lived
+ * only in the global header's gear menu, and "as today" removes the header — so
+ * switching away deleted the only control that could switch back, on every page
+ * at once. Reported the same day: *"i saw it for a minute and then pressed show
+ * me the original view and never was able to get back"*.
  *
- * Everything here is that failure, pinned.
+ * ⚠️ **The TOGGLE was removed on 2026-09-21** (Josh: *"remove switch to tlayout
+ * as it ws"*) — the redesign is the app now. That does not retire this file, it
+ * changes what it has to prove: removing a control does not move the browsers
+ * already sitting behind it, so the guarantee is now a one-time MIGRATION plus
+ * `?layout=`, and both are pinned below.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { DEFAULT_LAYOUT, applyLayoutFromUrl, readLayout } from "@/lib/shell/layout";
+import { describe, expect, it, beforeEach } from "vitest";
+import {
+  DEFAULT_LAYOUT,
+  applyLayoutFromUrl,
+  migrateOffOldLayout,
+  readLayout,
+} from "@/lib/shell/layout";
 
 const SRC = join(__dirname, "..", "..");
 const read = (p: string) => readFileSync(join(SRC, p), "utf8");
@@ -22,40 +30,59 @@ const read = (p: string) => readFileSync(join(SRC, p), "utf8");
 const live = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((l) => l.trim() && !l.trim().startsWith("//")).join("\n");
 
-vi.mock("@/lib/shared/auth", () => ({
-  authRequired: () => false,
-  signOut: () => {},
-  getUser: () => null,
-}));
-
-describe("⚠️ the way back", () => {
+describe("⚠️⚠️ the one-time migration off the old layout", () => {
   beforeEach(() => localStorage.clear());
 
-  it("is in the settings popover, which renders in BOTH layouts", async () => {
-    const { ThemePickerButton } = await import("@/components/ThemePicker");
+  it("moves a browser stored on the old layout to the redesign", () => {
+    // Without this, removing the toggle strands them: the old layout has no
+    // header, the header is where the toggle was, so there is no way out but a
+    // URL they have never been told about.
     localStorage.setItem("mm-shell-layout", "current");
-    render(<ThemePickerButton />);
-    fireEvent.click(screen.getByTitle("Settings"));
-
-    // Stuck in "as today": the control offered must take you BACK.
-    const back = screen.getByText("Switch to the new layout");
-    fireEvent.click(back);
+    migrateOffOldLayout(false);
     expect(readLayout()).toBe("redesign");
   });
 
-  it("offers the other direction once you are in the redesign", async () => {
-    const { ThemePickerButton } = await import("@/components/ThemePicker");
+  it("leaves a browser already on the redesign alone", () => {
     localStorage.setItem("mm-shell-layout", "redesign");
-    render(<ThemePickerButton />);
-    fireEvent.click(screen.getByTitle("Settings"));
-    expect(screen.getByText("Switch to the layout as it was")).toBeTruthy();
+    migrateOffOldLayout(false);
+    expect(readLayout()).toBe("redesign");
   });
 
-  it("⚠️ the gear menu is NOT the only writer any more", () => {
-    // The whole bug: one call site, inside a menu that one layout deletes.
-    const writers = ["components/shell/GlobalHeader.tsx", "components/ThemePicker.tsx"]
-      .filter((f) => live(read(f)).includes("setLayout("));
-    expect(writers.length).toBeGreaterThanOrEqual(2);
+  it("⚠️ does NOT undo a deliberate ?layout=current in the same boot", () => {
+    // The mechanism survives for comparison; it is just no longer a control
+    // anybody lands on by accident. Honouring the param and then migrating it
+    // away in the same breath would make the param look broken.
+    localStorage.setItem("mm-shell-layout", "current");
+    migrateOffOldLayout(true);
+    expect(readLayout()).toBe("current");
+  });
+
+  it("runs from main.tsx, fed by whether the URL asked", () => {
+    const main = live(read("main.tsx"));
+    expect(main).toContain("migrateOffOldLayout(applyLayoutFromUrl())");
+  });
+});
+
+describe("⚠️ the toggle is gone from every menu", () => {
+  it("no component writes the layout any more", () => {
+    // One settings menu now, in the header (Josh, 2026-09-21), and it does not
+    // offer the old layout at all.
+    const header = live(read("components/shell/GlobalHeader.tsx"));
+    expect(header).not.toContain("setLayout(");
+    expect(header).not.toContain("Switch to the layout as it was");
+  });
+
+  it("⚠️ and the floating lower-left gear it used to live in is deleted", () => {
+    // "putt everything in the lower left setting into the upper right
+    // settings" — its appearance switch, its six colour themes and its
+    // sign-out are all on the header's gear menu.
+    for (const f of ["pages/Index.tsx", "pages/ProcessorView.tsx"]) {
+      expect(live(read(f)), f).not.toContain("ThemePickerButton");
+    }
+    const header = live(read("components/shell/GlobalHeader.tsx"));
+    expect(header).toContain("THEMES.map(");
+    expect(header).toContain("setAppearance(");
+    expect(header).toContain("signOut");
   });
 });
 
@@ -119,11 +146,13 @@ describe('⚠️ "as today" renders today\'s app, and nothing from the redesign'
   });
 });
 
-describe("⚠️ nothing may cover the settings button", () => {
-  // It is sign-out AND the layout escape hatch, and it sits at
-  // `fixed bottom-4 left-4 z-40`. The call notices were at the same corner
-  // with z-[60] and pointer events on, and a browser reported the click
-  // intercepted by them — along with "Manage Access" in the old sidebar.
+describe("⚠️ the call notices may never intercept a click", () => {
+  // They sit at `fixed bottom-4 left-4 z-[60]`, and with pointer events ON a
+  // browser reported them swallowing clicks on whatever was underneath — the
+  // old floating settings gear and the sidebar's "Manage Access". That gear has
+  // since been deleted, but the rule is the one worth keeping: a status notice
+  // is not a control and must not behave like one, whatever it happens to
+  // cover next.
   it("the call notices cannot intercept a click, whatever they cover", () => {
     const host = live(read("components/inboundCalls/IncomingCallHost.tsx"));
     // The fix that holds however tall the stack grows or where it moves.
@@ -140,7 +169,7 @@ describe("⚠️ nothing may cover the settings button", () => {
     expect(note).toContain("Reload");
   });
 
-  it("and it clears the button visually, so the hatch stays findable", () => {
+  it("and it sits clear of the corner rather than on top of it", () => {
     const host = live(read("components/inboundCalls/IncomingCallHost.tsx"));
     expect(host).not.toContain("fixed bottom-4 left-4 z-[60]");
   });
