@@ -14,6 +14,9 @@ export const VIEW_PARAM = "view";
 export const SIDE_PARAM = "side";
 export const STEP_PARAM = "step";
 export const SNAP_PARAM = "snap";
+/** Profile | Orders inside the Subscription view (§5.45) — in the URL like
+ *  every other pane choice on this screen, so a link can name one. */
+export const SUB_PARAM = "sub";
 /** Carries the board, because a Monday item id alone does not say which board
  *  it is on and `fetchDossierItemsForPick` needs both. */
 export const BOARD_PARAM = "board";

@@ -50,6 +50,7 @@ import {
   BOARD_PARAM,
   SIDE_PARAM,
   SNAP_PARAM,
+  SUB_PARAM,
   STEP_PARAM,
   VIEW_PARAM,
   buildStages,
@@ -63,6 +64,7 @@ import {
   type PatientSide,
 } from "@/lib/patient/patientScreen";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
+import { SubscriptionView, parseSubTab } from "@/components/patient/SubscriptionView";
 import "./patient/redesign.css";
 
 export default function PatientPage() {
@@ -105,6 +107,7 @@ export default function PatientPage() {
   const active = dossier?.active ?? null;
   const phone = dossier?.phone || active?.phone || "";
   const subItem = subscriptionItem(dossier);
+  const subTab = parseSubTab(params.get(SUB_PARAM));
   const facts = topBarFacts(dossier);
 
   /** What an outbound text is attributed to. Null when there is no live record —
@@ -225,7 +228,12 @@ export default function PatientPage() {
                 onSnap={(id) => setParam({ [SNAP_PARAM]: id })}
               />
             ) : (
-              <SubscriptionView item={subItem} />
+              <SubscriptionView
+                item={subItem}
+                phone={dossier?.phone ?? ""}
+                tab={subTab}
+                onTab={(next) => setParam({ [SUB_PARAM]: next })}
+              />
             )}
           </div>
 
@@ -241,37 +249,6 @@ export default function PatientPage() {
   );
 }
 
-/**
- * The Subscription view.
- *
- * ⚠️ **Profile and Orders are the EXISTING pages, linked rather than
- * duplicated.** Brandon draws them as tabs inside this view; rebuilding either
- * here would put a second writer on the Subscription columns and a second copy
- * of the order rules (§5.35). The tabs come when those pages are split into
- * shell and body — a later phase, and a decision with a known price.
- */
-function SubscriptionView({ item }: { item: { itemId: string; groupTitle: string; stageAdvancerText: string } }) {
-  return (
-    <section className="card pad">
-      <div className="section-h">
-        <h2 style={{ fontSize: 16 }}>Subscription</h2>
-        <span className="chip">{item.stageAdvancerText || item.groupTitle}</span>
-      </div>
-      <div className="row wrap" style={{ gap: 8 }}>
-        <Link className="btn outline sm" to={`/subscription?patientId=${item.itemId}&from=patient`}>
-          Open the profile <ArrowUpRight style={{ width: 13, height: 13 }} />
-        </Link>
-        <Link className="btn outline sm" to={`/update-clinicals?patientId=${item.itemId}&from=patient`}>
-          Update clinicals <ArrowUpRight style={{ width: 13, height: 13 }} />
-        </Link>
-      </div>
-      <p className="xs muted" style={{ marginTop: 10, marginBottom: 0 }}>
-        Profile and Orders open their existing pages, so there is exactly one place that writes
-        these columns.
-      </p>
-    </section>
-  );
-}
 
 /**
  * Back, history-first (§9) — the same `useBackNavigation` every other page uses,

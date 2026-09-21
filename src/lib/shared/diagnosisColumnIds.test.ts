@@ -7,7 +7,7 @@
  * dropped the write at HTTP 200 with no `errors[]`. A stray OLD id here would
  * read a frozen column and write into one nothing displays — silently, which is
  * the whole failure mode the conversion removes. Same guard, same reasoning, as
- * notesColumnIds.test.ts. CLAUDE.md §5.40.
+ * notesColumnIds.test.ts. CLAUDE.md §5.46.
  */
 import { describe, it, expect } from "vitest";
 import { COL as MASHEKE } from "@/lib/masheke/mondayApi";

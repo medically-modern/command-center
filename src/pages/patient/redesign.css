@@ -250,6 +250,62 @@
 }
 .cc-pt .input.sm { padding: 5px 8px; font-size: 12px; }
 
+/* ── Subscription view: Profile | Orders (§5.45) ──────────────────────────── */
+/* Brandon's own `.segc`, ported at his sizes. Nothing here may lose the
+   `.cc-pt` prefix: `.segc` is a bare class in his file and the live app has its
+   own segmented controls. */
+.cc-pt .sub-toggle { justify-content: space-between; gap: 10px; margin: 2px 0; }
+.cc-pt .segc {
+  display: inline-flex; background: var(--mut); padding: 2px;
+  border-radius: 8px; border: 1px solid var(--bd);
+}
+.cc-pt .segc button {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 9px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  color: var(--mfg); white-space: nowrap;
+  background: none; border: 0; cursor: pointer; font-family: inherit;
+}
+.cc-pt .segc button.on { background: var(--cd); color: var(--tfg); box-shadow: var(--sh-sm); }
+.cc-pt .segc .n {
+  font-size: 10px; font-weight: 700; background: var(--mut);
+  border-radius: 999px; padding: 0 5px; min-width: 16px; text-align: center;
+}
+.cc-pt .segc button.on .n { background: var(--p10); color: var(--p); }
+
+/* ── Order history table ──────────────────────────────────────────────────── */
+.cc-pt .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+/* The table is wider than the column on a narrow window, and a table that
+   overflows the PAGE is what puts a rep's horizontal scrollbar at the bottom of
+   the document instead of under the thing that overflows (§5.30c). */
+.cc-pt .scroll-x { overflow-x: auto; }
+.cc-pt .ordhead { padding: 12px 14px; border-bottom: 1px solid var(--bd); margin-bottom: 0; }
+/* ⚠️ `min-width` is CORRECTNESS, not polish. A `width: 100%` table inside a
+   672px column (1100px viewport, minus the 380px comms rail) does not scroll —
+   it SQUEEZES, and at seven columns the Items cell collapses to one word per
+   line and a row runs 300px tall while Delivered is clipped off the edge.
+   Measured in a browser at 1100. With a floor the `.scroll-x` wrapper does its
+   job and every row stays one or two lines. */
+.cc-pt .otable { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 12px; }
+.cc-pt .otable th {
+  text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--mfg); padding: 8px 12px;
+  background: var(--mut); border-bottom: 1px solid var(--bd); white-space: nowrap;
+}
+.cc-pt .otable td { padding: 10px 12px; border-bottom: 1px solid var(--bd); vertical-align: top; white-space: nowrap; }
+.cc-pt .otable tr:last-child td { border-bottom: 0; }
+/* The one cell that may wrap — a three-product order is a sentence, and the
+   others are dates, a stage pill and an order number. */
+.cc-pt .otable td.items {
+  min-width: 220px; max-width: 320px; white-space: normal; overflow-wrap: anywhere;
+}
+.cc-pt .ordlink {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--p); font-weight: 600; text-decoration: none;
+}
+.cc-pt .ordlink:hover { text-decoration: underline; }
+.cc-pt .chip.latest { font-size: 10px; padding: 0 5px; }
+
+
 /* ── Right column: Texts | Calls ──────────────────────────────────────────── */
 .cc-pt .pt-side .hd { padding: 10px 12px; border-bottom: 1px solid var(--bd); }
 .cc-pt .side-tabs { display: inline-flex; background: var(--mut); padding: 2px; border-radius: 8px; border: 1px solid var(--bd); }

@@ -9,7 +9,7 @@
  * test is the only thing that would catch it.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import {
@@ -203,13 +203,35 @@ describe("facts", () => {
 /* ── The additive promise ──────────────────────────────────────────────────── */
 
 describe("the patient screen is READ-ONLY", () => {
+  /**
+   * ⚠️ **Read off the DIRECTORY, not a hand-kept list.** The list was hardcoded
+   * and a file added to this screen later would simply not have been scanned —
+   * the "a list that must be updated when something changes will not be" trap
+   * this repo records in §5.9 · §5.10 · §5.29. The three folders ARE the
+   * screen, so a new file is covered the moment it is written.
+   */
+  const dir = (d: string) =>
+    readdirSync(resolve(process.cwd(), d))
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith(".test.ts") && !f.endsWith(".test.tsx"))
+      .map((f) => `${d}/${f}`);
   const files = [
     "src/pages/PatientPage.tsx",
-    "src/components/patient/OnboardingView.tsx",
-    "src/components/patient/PatientCommsColumn.tsx",
-    "src/hooks/patient/usePatientRecord.ts",
-    "src/lib/patient/patientScreen.ts",
+    ...dir("src/components/patient"),
+    ...dir("src/hooks/patient"),
+    ...dir("src/lib/patient"),
   ];
+
+  it("⚠️ the scan really found the screen's files", () => {
+    // A glob that silently matched nothing passes every assertion below it.
+    for (const f of [
+      "src/components/patient/OnboardingView.tsx",
+      "src/components/patient/SubscriptionView.tsx",
+      "src/hooks/patient/usePatientRecord.ts",
+      "src/lib/patient/patientScreen.ts",
+    ]) {
+      expect(files, `${f} is not being scanned`).toContain(f);
+    }
+  });
 
   it("⚠️ imports no mondayWrite, and calls no Monday mutation", () => {
     // Two writers for one column is how they disagree (§5.31c · §5.31d). This

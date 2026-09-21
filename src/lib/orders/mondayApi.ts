@@ -389,6 +389,46 @@ export async function fetchOrders(
  * in the viewer. `null` when Monday no longer has the item (deleted — the
  * board's human user deleted 14 in the week of 9/8).
  */
+/**
+ * This patient's orders, newest first (§5.45).
+ *
+ * ⚠️ **NOT `fetchOrders`.** That pages the WHOLE board — 1,477 rows in four
+ * sequential round trips — which is the right shape for the orders page's own
+ * sidebar and absurd for one tab on one patient. This asks Monday to do the
+ * filtering, the way the live search does.
+ *
+ * ⚠️ **Matched on the last ten digits, and on BOTH stored shapes.** These
+ * boards hold `9739511857` and `16078737352` in the same column (§5.29), so a
+ * `contains_text` on the ten digits finds either where an exact match finds
+ * one — the same rule §5.44 had to apply to the typed query after a number with
+ * a country code returned nobody.
+ *
+ * ⚠️ A patient with no phone returns NOTHING rather than everything: an
+ * unfiltered board read here would hand one patient's screen every order in the
+ * company. Failing closed is the only safe direction.
+ */
+export async function fetchOrdersForPatient(
+  phone: string,
+  signal?: AbortSignal,
+): Promise<MondayItem[]> {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  const needle = digits.length > 10 ? digits.slice(-10) : digits;
+  if (needle.length < 10) return [];
+  const literal = `{rules: [{column_id: ${JSON.stringify(COL.phone)}, compare_value: [${JSON.stringify(needle)}], operator: contains_text}]}`;
+  const data = await gql<{ boards: { items_page: { items: MondayItem[] } }[] }>(
+    `query ($boardId: ID!, $cols: [String!]) {
+      boards(ids: [$boardId]) {
+        items_page(limit: 100, query_params: ${literal}) {
+          items { id name created_at group { id } column_values(ids: $cols) { id text value } }
+        }
+      }
+    }`,
+    { boardId: String(BOARD_ID), cols: LIST_COLUMN_IDS },
+    signal,
+  );
+  return data.boards?.[0]?.items_page?.items ?? [];
+}
+
 export async function fetchOrderById(itemId: string, signal?: AbortSignal): Promise<MondayItem | null> {
   const data = await gql<{ items: MondayItem[] }>(
     `query ($ids: [ID!]!, $cols: [String!]) {
