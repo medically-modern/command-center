@@ -31,11 +31,21 @@ const header = () => live(read("components/shell/GlobalHeader.tsx"));
 const sysMgmt = () => live(read("pages/SystemMgmtPage.tsx"));
 
 describe("⚠️ every manager tool still has a door in the redesign", () => {
-  /** Where each one is reachable from. A tool with no door has left the app. */
+  /**
+   * Where each one is reachable from. A tool with no door has left the app.
+   *
+   * ⚠️ **The doors MOVED on 2026-09-21 and this list moved with them** (Josh:
+   * *"in manage menu remove oversight and operations from that menu"* ·
+   * *"make reports and metrics ONLY the daily operations screen"* · *"add stage
+   * manager as an assignable top tab"*). Operations and Stage Manager were
+   * promoted OUT of a menu and into the header's own tabs, which is a better
+   * door, not a lost one — so what this list asserts is the promotion rather
+   * than the old wording. Oversight is the one that left the header entirely;
+   * its own test is below, because its door is no longer a link.
+   */
   const doors: Array<[string, string, () => string]> = [
-    ["Oversight", "/oversight", header],
-    ["Operations", "/system-mgmt?tab=operations", header],
-    ["Stage Manager", "/system-mgmt?tab=stageManager", header],
+    ["Operations — the Reports & Metrics tab", "/operations", header],
+    ["Stage Manager — its own tab", "/stage-manager", header],
     ["System Management", "/system-mgmt", header],
     ["Access & permissions", "/access", header],
   ];
@@ -45,6 +55,35 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
       expect(src()).toContain(route);
     });
   }
+
+  it("⚠️⚠️ Oversight left the MANAGE menu — and still has three doors", () => {
+    // Josh took it off that menu on 2026-09-21, naming the Manage menu
+    // specifically. It is a trim rather than a removal only because every
+    // other way in still works, so this asserts the removal AND the survivors:
+    //   · the settings (gear) menu's "Pipeline Oversight", a different menu;
+    //   · `homeView: "oversight"`, assignable per person on /access, which
+    //     renders the live Oversight page as somebody's landing screen;
+    //   · /system-mgmt's own Oversight tab.
+    // If any of those goes, Oversight needs a link back in the header FIRST.
+    const manageMenu = header().split('<div className="eyebrow">Managers</div>')[1]?.split("</span>")[0] ?? "";
+    expect(manageMenu, "the Manage menu still lists Oversight").not.toContain("Oversight");
+    expect(manageMenu, "…and still lists Operations").not.toContain("Operations");
+    expect(header(), "no door left in the header at all").toContain('navigate("/oversight")');
+    const host = live(read("components/shell/HomeViewHost.tsx"));
+    expect(host).toContain("oversight");
+    expect(sysMgmt()).toContain('label="Oversight"');
+    const store = live(read("lib/accessStore.ts"));
+    expect(store).toMatch(/HOME_VIEWS[^;]*"oversight"/);
+  });
+
+  it("⚠️ a header tab is not a gate — both new routes are gated at the route too", () => {
+    // §5.39h: the route still answers a typed URL, a bookmark and a Back.
+    // Stage Manager in particular WRITES the Stage Advancer, which is what
+    // every board automation fires on.
+    const app = live(read("App.tsx"));
+    expect(app).toMatch(/ability="reports"[\s\S]{0,120}OperationsPage/);
+    expect(app).toMatch(/ability="stageManager"[\s\S]{0,120}StageManagerPage/);
+  });
 
   it("the Manage menu renders them for a manager", () => {
     const h = header();

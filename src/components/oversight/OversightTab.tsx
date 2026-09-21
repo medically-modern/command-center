@@ -1827,9 +1827,11 @@ function DrilldownModal({
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-/** Sentinel value for the dropdown's Assigned Patients entry. Not a stage —
- *  selecting it navigates to the role page rather than swapping the charts. */
-const ASSIGNED_PATIENTS_OPTION = "__assigned-patients__";
+/* ⚠️ **"Communications" left this dropdown on 2026-09-21** (Josh). It was never
+   a stage — no board, no group, no days-in-stage, so there was nothing to chart
+   and picking it navigated away instead of swapping the charts below. It is a
+   header tab of its own now (§5.39c), which is a better door than an entry in a
+   list of stages that quietly is not one. */
 
 export default function OversightTab() {
   const navigate = useNavigate();
@@ -2274,22 +2276,7 @@ export default function OversightTab() {
           <h2 className="text-2xl font-bold text-foreground">
             Pipeline Oversight
           </h2>
-          {/* Assigned Patients rides in this dropdown but is NOT a stage: it has
-              no board, no group and no days-in-stage, so there is nothing to
-              chart. Picking it navigates to the role page instead of changing
-              the charts below. `from=system-mgmt` is what puts that page into
-              its MANAGER view (employee rail + Assign) — arriving from the
-              burndown role bar without the marker gives the processor view. */}
-          <Select
-            value={selectedStage}
-            onValueChange={(v) => {
-              if (v === ASSIGNED_PATIENTS_OPTION) {
-                navigate("/assigned-patients?from=system-mgmt");
-                return;
-              }
-              setSelectedStage(v);
-            }}
-          >
+          <Select value={selectedStage} onValueChange={setSelectedStage}>
             <SelectTrigger className="w-[220px] h-9 font-semibold">
               <SelectValue placeholder="Select a stage…" />
             </SelectTrigger>
@@ -2297,7 +2284,6 @@ export default function OversightTab() {
               {OVERSIGHT_SECTIONS.map((s) => (
                 <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
               ))}
-              <SelectItem value={ASSIGNED_PATIENTS_OPTION}>Communications</SelectItem>
             </SelectContent>
           </Select>
           <span className="text-sm text-muted-foreground tabular-nums">

@@ -53,6 +53,8 @@ const AccessAdminPage = lazyWithReload(() => import("./pages/AccessAdminPage"));
 
 // Oversight (full-screen managers grid)
 const OversightPage = lazyWithReload(() => import("./pages/OversightPage"));
+const OperationsPage = lazyWithReload(() => import("./pages/OperationsPage"));
+const StageManagerPage = lazyWithReload(() => import("./pages/StageManagerPage"));
 
 // Fax Inbox (RingCentral inbound faxes)
 const FaxInboxPage = lazyWithReload(() => import("./pages/FaxInboxPage"));
@@ -165,6 +167,27 @@ const App = () => (
           <Route path="/system-mgmt" element={<SystemMgmtPage />} />
           <Route path="/access" element={<AccessAdminPage />} />
           <Route path="/oversight" element={<OversightPage />} />
+          {/* Reports & Metrics and Stage Manager as their own pages (§5.41) —
+              Josh, 2026-09-21. Both were tabs of /system-mgmt, so a header tab
+              landed on a screen wearing a second tab bar; /system-mgmt keeps
+              both tabs, so neither door is closed. Gated at the ROUTE, because
+              a gate on the tab is not a gate on the page (§5.39h). */}
+          <Route
+            path="/operations"
+            element={
+              <AbilityGate ability="reports">
+                <OperationsPage />
+              </AbilityGate>
+            }
+          />
+          <Route
+            path="/stage-manager"
+            element={
+              <AbilityGate ability="stageManager">
+                <StageManagerPage />
+              </AbilityGate>
+            }
+          />
           <Route path="/fax-inbox" element={<FaxInboxPage />} />
           {/* ⚠️ Gated on `comms` (§5.39g). The header tab is not enough on its
               own: the route still answers a typed URL, a bookmark and a Back,

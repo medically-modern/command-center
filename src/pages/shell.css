@@ -139,7 +139,7 @@
 .cc-shell .gh .cc-phone .ib[aria-disabled="true"] { cursor: default; }
 
 /* ── Global search — the door into any patient, on every page ─────────────── */
-.cc-shell .gsearch { flex: 1; max-width: 520px; position: relative; margin: 0 auto; }
+.cc-shell .gsearch { flex: 1 1 220px; min-width: 180px; max-width: 520px; position: relative; margin: 0 auto; }
 .cc-shell .gsearch input {
   width: 100%; background: hsl(var(--card)); color: hsl(var(--card-foreground));
   border: 1px solid hsl(0 0% 100% / 0.2); border-radius: 10px;
@@ -225,7 +225,30 @@
   border-color: hsl(var(--accent)); font-weight: 600;
 }
 
-@media (max-width: 1250px) {
+/* ⚠️ **1500, not 1250 — a FIFTH tab moved this breakpoint** (Stage Manager,
+   2026-09-21). Measured in a browser at 1920 · 1680 · 1600 · 1512 · 1500 ·
+   1440 · 1280 · 1100: five labelled tabs are 781px, and at 1280 they squeezed
+   the global search down to **50px** and still pushed the document to 1353px —
+   a horizontal scrollbar on the header of every page. `.gsearch` now has a
+   `min-width`, so it can never be squeezed away again whatever else joins this
+   row; that alone moved the overflow up to 1440, which is why the labels
+   collapse to icons at 1500 rather than 1250. 1500 is the same width §5.30c
+   measured for the Care Coordinator header, which is a coincidence worth
+   knowing rather than a shared constant. ⚠️ A SIXTH tab must re-measure —
+   the number is an outcome, not a setting. */
+/* Step 1 — tighten before hiding. Five labelled tabs are 781px at the full
+   padding and did not fit beside a usable search at 1440; at 8px padding and a
+   12px label they are 684px, which does. Legibility is the point of a label,
+   so it is the LAST thing to go. */
+@media (max-width: 1500px) {
+  .cc-shell .gh .tab { padding: 0 8px; gap: 6px; font-size: 12px; }
+  .cc-shell .gh .topnav { gap: 0; margin-left: 2px; }
+}
+/* Step 2 — icons only, with the active tab keeping its word so the header
+   still says where you are. ⚠️ **1380, not 1250**: with the tightening above,
+   the tightened row plus a 180px search lands the document at a constant
+   1374px, so every viewport below that overflowed. */
+@media (max-width: 1380px) {
   .cc-shell .gh .tab { padding: 0 10px; }
   .cc-shell .gh .tab .lbl { display: none; }
   .cc-shell .gh .tab.active .lbl { display: inline; }

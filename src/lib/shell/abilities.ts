@@ -281,6 +281,7 @@ export const ABILITY_LABEL: Record<Ability, string> = {
   adjustOrders: "Adjust orders",
   viewOthers: "View others' views",
   reports: "Reports & Metrics",
+  stageManager: "Stage Manager",
   inventory: "Inventory",
   editProfile: "Edit profile",
 };
@@ -292,7 +293,9 @@ export const ABILITY_HINT: Record<Ability, string> = {
     "Can adjust an open order — the backorder substitution pick that emails Cardinal (§5.35).",
   viewOthers:
     "Off unless granted. Adds the “Viewing” dropdown on the home screen, which shows anyone else’s home screen exactly as they see it.",
-  reports: "Shows the Reports & Metrics tab in the header.",
+  reports: "Shows the Reports & Metrics tab in the header — the daily operations screen.",
+  stageManager:
+    "Shows the Stage Manager tab in the header. That screen MOVES a patient between stages by writing the Stage Advancer, which is what board automations fire on — so it is a write, not a view.",
   inventory: "Shows the Inventory tab in the header.",
   editProfile:
     "Can change the Subscription profile — order details, visit date, address and phone. Without it that page is read-only.",

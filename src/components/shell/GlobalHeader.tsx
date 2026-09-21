@@ -89,10 +89,23 @@ const TABS: Tab[] = [
   {
     key: "reports",
     label: "Reports & Metrics",
-    to: "/system-mgmt?tab=operations",
+    // ⚠️ `/operations`, NOT `/system-mgmt?tab=operations` (Josh, 2026-09-21:
+    // "make reports and metrics ONLY the daily operations screen no need for
+    // system management bar"). The tab used to open the whole System
+    // Management page — navy header, five-tab bar — with Operations inside it,
+    // so a header tab landed you on a screen wearing a second set of tabs.
+    to: "/operations",
     icon: BarChart3,
-    match: (p, s) => p === "/system-mgmt" && s.includes("tab=operations"),
+    match: (p, s) => p === "/operations" || (p === "/system-mgmt" && s.includes("tab=operations")),
     ability: "reports",
+  },
+  {
+    key: "stageManager",
+    label: "Stage Manager",
+    to: "/stage-manager",
+    icon: ArrowRightLeft,
+    match: (p, s) => p === "/stage-manager" || (p === "/system-mgmt" && s.includes("tab=stageManager")),
+    ability: "stageManager",
   },
 ];
 
@@ -216,15 +229,17 @@ export function GlobalHeader() {
             {manage && (
               <div className="menu" role="menu">
                 <div className="eyebrow">Managers</div>
-                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/oversight"); }}>
-                  <BarChart3 style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                  Oversight
-                </button>
-                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/system-mgmt?tab=operations"); }}>
-                  <Activity style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                  Operations
-                </button>
-                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/system-mgmt?tab=stageManager"); }}>
+                {/* ⚠️ **Oversight and Operations left this menu on 2026-09-21**
+                    (Josh: "in manage menu remove oversight and operations from
+                    that menu") — because each now has a better door than a
+                    menu entry, which is the §5.39f trim rather than a loss.
+                    Operations IS the Reports & Metrics tab above. Oversight is
+                    an assignable HOME VIEW (§5.39c `homeView: "oversight"`) and
+                    keeps its own `/oversight` route, so a manager who works
+                    from it lands on it. ⚠️ If Oversight is ever taken off the
+                    home views too, it needs a door back here first —
+                    `lossless.test.ts` is where that is written down. */}
+                <button className="opt" role="menuitem" onClick={() => { setManage(false); navigate("/stage-manager"); }}>
                   <ArrowRightLeft style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
                   Stage Manager
                 </button>

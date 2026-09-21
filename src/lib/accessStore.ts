@@ -80,6 +80,8 @@ export type Ability =
   | "viewOthers"
   /** Open Reports & Metrics. */
   | "reports"
+  /** Open Stage Manager — move a patient between stages by hand. */
+  | "stageManager"
   /** Open Inventory — the Cardinal SKU tracker. */
   | "inventory"
   /** Change the Subscription profile; without it that page is read-only. */
@@ -90,6 +92,7 @@ export const ABILITIES: readonly Ability[] = [
   "adjustOrders",
   "viewOthers",
   "reports",
+  "stageManager",
   "inventory",
   "editProfile",
 ] as const;

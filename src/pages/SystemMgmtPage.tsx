@@ -1249,7 +1249,14 @@ function NotesPanel({
 
 const MOVABLE_BOARD_IDS = new Set([18406060017, 18410601299]);
 
-function StageManagerView({
+/**
+ * ⚠️ EXPORTED for `/stage-manager` (§5.41), which is the tab Josh asked for on
+ * 2026-09-21. It stays defined here rather than moving into its own file so
+ * the System Management tab and the standalone page are literally the same
+ * component — two copies of a screen that WRITES the Stage Advancer is how one
+ * of them stops matching the other.
+ */
+export function StageManagerView({
   patients,
   onMoved,
 }: {
