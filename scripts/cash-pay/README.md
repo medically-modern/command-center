@@ -65,6 +65,60 @@ All three verified against the live boards, 2026-09-22.
 ⚠️ Steps 2 and 3 in that ORDER, matching 7917676280: the create reads the
 trigger item's columns, and moving it first is a race nobody needs.
 
+## Doing it in monday's UI
+
+Verified against 7917676280's live structure, 2026-09-22. It is a **workflow**,
+not a legacy automation, so it opens in the Workflow builder — and its shape is
+exactly the shape you are rebuilding: three blocks, **When status changes to
+something → Create item in board → Move item to group**, wired 1 → 2 → 3.
+
+⚠️ **Try Duplicate first, but expect to redo the mappings.** 7917676280 is one
+board away from what this needs — same trigger column, same move-to-Completed
+step — so duplicating it and changing two things is far less work than three
+blocks from scratch. The catch: the 38 mappings are keyed by the DESTINATION
+board's column ids, so changing the create-item block's board almost certainly
+drops them. Treat a surviving mapping as a bonus, not a plan.
+
+Two things change on the duplicate, and one does not:
+
+1. the trigger's label — **Advance to MN** → **Advance to Welcome Call**
+2. the create-item block's board — **Medical Evaluation** → **Welcome Call**,
+   and its group to **Welcome Call**
+3. the move block is already correct — it points at Profile Send Off's
+   **Completed**, which is where this one goes too
+
+### The mapping grid is not uniform, and that is normal
+
+Of the 38 rows, **20 are a plain column pick** and **18 are a text box**:
+
+- **Status, dropdown, date and location** targets give you a dropdown of the
+  trigger item's columns. Pick the source column.
+- **Text, phone and email** targets give you a **text box** instead — you insert
+  the source column as a variable token rather than picking it from a list.
+  That is what 7917676280 does for all 31 of its text-like columns, the four
+  that change type from `numbers` to `text` included, so it is the supported
+  route and not a workaround.
+
+### 34 of the 38 match by title — only four need choosing
+
+Every row below except these four has the same title on both boards, so it is
+confirming rather than choosing:
+
+| Profile Send Off | Welcome Call |
+|---|---|
+| Insurance Plan | **Plan Name** |
+| Profile Send Off Notes | **Profile Send-Off Notes** |
+| Pt. Phone | **Primary Phone** |
+| Stedi QMB? | **Stedi QMB** |
+
+⚠️ Welcome Call also carries **Profile Send-Off Notes (retired)**. Do not pick
+it — see *Deliberately NOT mapped* below.
+
+⚠️ Matching titles do not mean matching ids: **16 of the 38 have a different id
+on the far side**, and row 26 is the reverse case (**Pt. Phone** and **Primary
+Phone** are the same id, `phone_mm1x44yk`, under two titles). Titles are the
+right handle in the UI; the ids below are the right handle everywhere else.
+
 ## The mapping — 38 columns
 
 Derived 2026-09-22 by chaining the three live hop automations that a column
