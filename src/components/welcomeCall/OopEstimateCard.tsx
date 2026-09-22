@@ -23,11 +23,16 @@
  * time somebody reconciled the two by hand.
  */
 import { useMemo } from "react";
+import { ExternalLink } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { estimateOop } from "@/lib/welcomeCall/oopEstimator";
 import type { OopEstimate, OopLineItem } from "@/lib/welcomeCall/oopEstimator";
 import { benefitInputs, isCareCentrixReferral, oopReason } from "@/lib/welcomeCall/oopContext";
+import { isCashPayPatient } from "@/lib/shared/cashPay";
+import {
+  CASH_PAY_OOP_NOTE, CASH_PAY_OOP_TITLE, INVENTORY_HREF, INVENTORY_LINK_LABEL,
+} from "@/lib/welcomeCall/cashPayNote";
 
 interface Props {
   patient: Patient;
@@ -165,6 +170,7 @@ const FIELD_WARNINGS: Record<string, string> = {
 
 export function OopEstimateCard({ patient, infusionSets }: Props) {
   const isCarecentrix = isCareCentrixReferral(patient);
+  const isCash = isCashPayPatient(patient);
 
   // A mid-call edit (e.g. Secondary Insurance → NY Medicaid) must flip the
   // estimate immediately — the board value lags until the Monday write
@@ -172,7 +178,7 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
   const secondaryInsurance = patient.secondaryInsuranceEdited || patient.secondaryInsurance;
 
   const result = useMemo(() => {
-    if (isCarecentrix) return null;
+    if (isCarecentrix || isCash) return null;
     const parsedSets = parseInt(patient.qtyInf1 || "0", 10) + parseInt(patient.qtyInf2 || "0", 10);
     const sets = infusionSets ?? (parsedSets > 0 ? parsedSets : 3);
 
@@ -187,6 +193,7 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
     });
   }, [
     isCarecentrix,
+    isCash,
     patient.primaryInsurance,
     secondaryInsurance,
     patient.serving,
@@ -197,6 +204,40 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
     patient.oopMaxRemaining,
     infusionSets,
   ]);
+
+  /* Cash pay: there is no benefit to estimate, so the calculator is replaced
+     by the one thing a rep can act on — Cardinal's costs.
+
+     ⚠️ Checked BEFORE CareCentrix, deliberately. The two are answers to
+     different questions — this one is about the PAYER column, CareCentrix
+     about who prices the patient — and if a row ever carried both, "there is
+     no insurance" is the more specific fact and the one that changes what the
+     rep says next. In practice they cannot collide: every CareCentrix referral
+     on the live board is Horizon BCBS (§5.32g).
+
+     ⚠️ Without this branch the card prints `No rate schedule for "Cash Pay"`,
+     which reads as a data problem rather than as the answer (cashPayNote.ts). */
+  if (isCash) {
+    return (
+      <Card className="p-4">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          OOP Estimate (Per Fill)
+        </p>
+        <p className="text-sm font-medium">{CASH_PAY_OOP_TITLE}</p>
+        <p className="text-sm text-muted-foreground mt-1">{CASH_PAY_OOP_NOTE}</p>
+        {/* A NEW TAB: this form holds unsaved edits mid-call. */}
+        <a
+          href={INVENTORY_HREF}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+        >
+          {INVENTORY_LINK_LABEL}
+          <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      </Card>
+    );
+  }
 
   // CareCentrix: replace entire OOP calculator with a note
   if (isCarecentrix) {
