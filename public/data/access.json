@@ -136,12 +136,8 @@
     },
     "corey@medicallymodern.com": {
       "name": "Corey",
-      "roles": [
-        "welcomeCall"
-      ],
-      "roleFilters": {
-        "welcomeCall": "crossSell"
-      }
+      "roles": [],
+      "roleFilters": {}
     }
   },
   "callAnswerers": [
