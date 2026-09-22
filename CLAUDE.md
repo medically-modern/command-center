@@ -5296,7 +5296,11 @@ for a spec the code is generated from (Josh: *"to some folder that wont get conf
 repo force-pushes to prod (§8). Read it from wherever he sent it and leave it there.
 
 **⚠️⚠️ THE STANDING GAP LIST — audited against the handoff 2026-09-21, after Josh asked *"is
-there any where else that we have a gap like this?"*.** *"This"* is the §5.45 shape: a place where
+there any where else that we have a gap like this?"*.** ⚠️ **A full screen-by-screen diff was
+run on 2026-09-22 and lives in `_reference/brandon-redesign/DIFF_2026-09-22.md`** — fifteen
+sections, each item marked MISSING · DIFFERENT · DELIBERATE, plus a short list of what a person
+notices first. Read it before re-deriving any of this; the ten items below are the largest of
+what it found, not the whole of it. *"This"* is the §5.45 shape: a place where
 the redesign shipped a LINK or a stub where the handoff specifies real content. None of these is a
 bug to fix quietly — each is a decision — but none should be rediscovered either. Ordered by what
 a person would notice first:
