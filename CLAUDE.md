@@ -7962,6 +7962,184 @@ overnight) and never a fixed offset (a twice-yearly bug); weekends run free.
 
 **Not built** (phase 5): **voicemail audio**, which is on the ~30-day message-store clock — three
 times TIGHTER than recordings — and has no archive at all. Same module, same bucket when wanted.
+
+### 5.48 Cash Pay — a patient with no insurance, priced and charged (Sep 2026)
+Brandon's handoff, 2026-08-18, after Janelle could not move **Debbie Hinze**: 90 days of t:slim
+cartridges, AutoSoft XC 9mm 43" and Dexcom G7, quoted **$1,030.69**, stuck at Intake because the
+Advance button cannot be satisfied without insurance on file. Eight points, and the instruction
+that matters most is *"a real Cash Pay path, not a one-off"* — the fix is a route through the whole
+pipeline, not a workaround for one patient.
+
+**One marker, and it travels: `lib/shared/cashPay.ts`.** A rep picks **General Insurance = "Cash
+Pay"** at intake; the page mirrors it into **Primary Insurance**, and THAT is the value that rides
+the board hops to Welcome Call, Subscription and the Order board. `isCashPayPatient` reads either
+column, because the two are set at different moments and a row arriving by another route may carry
+only one.
+⚠️ **`isCashPay` is an EXACT match on the trimmed, case-folded label** — not a prefix, not a
+substring, the opposite call from §5.32c's Humana rule and for the opposite reason. There the safe
+direction is to keep checking (an over-broad match costs a rep one question); here a substring rule
+would let a future *"Cash Pay Plan"* silently skip the benefit check and route past Medical
+Necessity and Insurance. Widening it is a decision with a population behind it.
+⚠️⚠️ **THE LABEL ID IS PER BOARD AND THE FOUR AGREEING IS A COINCIDENCE.** `CASH_PAY_LABEL_ID`
+carries one id per column — Profile Send Off General `16`, Profile Send Off Primary `152`, Welcome
+Call `152`, Subscription `152`, New Order `152` — each read back from the live `settings_str` on
+2026-09-21. All four happened to have slot 152 free; that is luck, not a rule. Never collapse them
+to a constant and never infer a fifth board's id (§5.12 · §5.20 · §5.31c · §5.31d · §5.33 — seven
+times now). A write to a label id a column does not have is dropped at HTTP 200 with nothing in the
+logs.
+
+**Intake — `lib/profile/cashPayIntake.ts`.** Picking Cash Pay hides **section 1 (Verified
+Insurance)** and the benefit check (Stedi has no payer to ask about), and drops the insurance rows
+from the readiness checklist so Advance can be satisfied. `memberIdRequired` is the single row that
+actually stranded Debbie: Primary Insurance passes on its own once the mirror has run, and Member
+ID 1 can never be satisfied by somebody with no insurance.
+⚠️ **SECTION 3 (Select Correct Provider) IS STILL REQUIRED** — a deliberate departure from
+Brandon's wording, on Josh's call (2026-09-21: *"keep doctor required. since we need it to
+order"*). Cardinal's submit payload carries a mandatory `doctorInfo` block, so hiding the doctor
+step would let cash pay orders reach Cardinal with an empty doctor and fail GATE 1 hours downstream
+of the only stage where somebody is still on the phone with the patient.
+⚠️⚠️ **THE MIRROR LIVES IN THE PAGES' EDIT HANDLER, NOT ON THE PICKER**
+(`cashPayMirrorEdit`). `primaryInsuranceForGeneral` shipped with **no caller at all** — tested,
+green, and absent from the product, which is §5.31b's own failure ("a module nobody calls does not
+fail; it is absent, and its green tests say otherwise"). A mirror wired to one control is one a
+second control silently skips, so it wraps the handler every field edit funnels through and returns
+the patch **by identity** when it does not fire.
+⚠️⚠️ **ON THE INTAKE PAGE IT MUST ALSO REACH `verified`, AND THAT IS NOT BELT AND BRACES.** Advance
+writes Primary Insurance from `buildVerifiedInsuranceTasks(p.id, opts.verified, …)` — the RIGHT
+pane's state, not the patient overlay — and that state is seeded once per patient. Section 1 is
+hidden for a cash pay patient, so nobody could put it right by hand either: mirror into the overlay
+alone and the column stays blank all the way to the Order board, where the cash pay card keys on it.
+⚠️ Applied on **BOTH** intake routes (`/profile` and `/unverified-referrals` + `/profile-cleanup`),
+for §5.19b's reason: the doctor-fax requirement blocked on one route while the banner shared by both
+told reps it blocked on each. `cashPayIntakeWiring.test.ts` scans every half.
+
+**⚠️⚠️ THE SKIP-TO-WELCOME-CALL ROUTE IS DARK — `CASH_PAY_SKIPS_TO_WELCOME_CALL = false`.** A cash
+pay patient has no medical necessity to document and no auth to chase, so they should skip Medical
+Evaluation and Insurance entirely (Corey, 2026-08-14). The board label **"Advance to Welcome Call"**
+(`color_mm1zmeb3` id 6) exists live; monday workflow **18432110599** carries the trigger and the
+move-to-Completed step correctly and its **create-item mapping is an unpublished draft** — that step
+could not be built through the API (§10 refuses board automations outright) and needs a person in
+monday's UI. Writing the label first is worse than not offering it: the label lands, nothing fires,
+the item never leaves Profile Clean-Up and the rep has pressed a button that silently did nothing
+(§9's advancer class). While the flag is false a cash pay patient still advances, on "Advance to
+MN", exactly as today — so nobody is stranded either way and flipping it only changes WHICH board
+they land on. **Automation 7917676280 is deliberately untouched**: it triggers on label id 1, so an
+insured patient's route is byte-identical to what it has always been.
+
+**Pricing — `lib/orders/cashPayPricing.ts`.** Each line is the Cardinal SKU Tracker **Cost**
+(`numeric_mm4wd6b`, scraped daily at 9:05 ET) × the order's quantity, ×**1.25**, **rounded per
+line**; then a **profit floor at ORDER level** — under $10 of markup, a separate **$10 "Shipping &
+handling"** line, because 25% alone does not cover posting one box of cartridges.
+⚠️ **Anchored to a price a patient actually agreed to pay.** Debbie's order: 30.95 / 71.94 / 57.32
+of tracker cost = $824.55, per-line ×1.25 → 116.06 + 269.78 + 644.85 = **$1,030.69**, the figure
+Janelle quoted her to the cent. If that test stops matching, the rule has drifted from the one
+number a human signed off.
+⚠️⚠️ **`Math.round(n * 100)` IS WRONG HERE AND COSTS A CENT ON A REAL ORDER.** Her infusion-set line
+is 215.82 × 1.25 = 269.775, stored as 269.77499999999998; scaled by 100 that rounds DOWN and the
+order totals $1,030.68. `Number.EPSILON` is six orders of magnitude too small to correct a 4e-12
+scaling error. `round2` snaps through `toPrecision(12)` first.
+⚠️ **A LINE WE CANNOT PRICE REFUSES THE WHOLE QUOTE — never a total that quietly omits a product.**
+The tracker carries real rows whose Cost reads `0` (every Inactive product), and a missing row is
+indistinguishable from a product Cardinal has stopped selling. Same direction as §5.31b's "a missing
+quantity is UNKNOWN, not zero".
+⚠️ **The quote is HONOURED once sent** (Josh, 2026-09-21). Tracker costs move daily and Stripe fixes
+the amount when the session is created, so an order priced on Monday ships at Monday's price. The
+margin absorbs it; nothing re-prices. `quoteDrift` REPORTS a difference and never acts on one.
+⚠️ The cents charged are summed from the **line items**, never from `total` re-rounded — a receipt
+whose lines do not add up to its total is the kind of thing a patient telephones about.
+
+**The ordering gate — `lib/orders/cashPayGate.ts`.** An unpaid cash pay order cannot be placed
+(handoff item 7, reaffirmed by Josh after briefly allowing an ungated reorder: *"Keep the full
+gate"*). `orderingRefusal` composes the existing status rule with the money rule.
+⚠️⚠️ **THE GATE READS THE PAYMENT COLUMNS, NOT THE "PAID CASH" LABEL, and that is the whole reason
+reusing that label is safe.** Order Status has carried `Paid Cash` (id 6) since long before this
+build and it is a TERMINAL marker on the two historical cash orders — **Debbie's sits at `Paid Cash`
+while the order is Delivered**. A label-keyed gate would read her finished order as ready to place.
+**Stripe Charge ID `text_mm7dkma5`** and **Cash Pay Paid Date `date_mm7dejzt`** are written by one
+thing only, the `checkout.session.completed` webhook, so they mean what they say.
+⚠️ **"Paid Cash" became PLACEABLE on 2026-09-21, and that is a reversal.** It used to be refused as
+"already placed", right while the label was only ever set by hand on a finished order; it is now
+what the webhook writes when payment lands, i.e. the one state that most needs placing (Josh chose
+to reuse the label rather than add "Paid — OK to Order"). What refuses a FINISHED cash order instead
+is its **CAH Order Number** — Cardinal writes it on acceptance, so it is positive evidence, where
+the status label is ambiguous. Debbie's carries 1120157406.
+⚠️ **There is deliberately a way through, and it is manager-only with a typed reason.** Janelle on
+Debbie: *"she is older and does not have Venmo."* Patients pay by cheque and over the phone, and a
+Stripe-only gate would leave those orders unplaceable for ever — the dead end §5.10 · §5.20 ·
+§5.31c · §5.31f · §5.39d each record reversing. `releaseCashPayOrder` stamps the reason into the
+order's Notes through `appendStampedNote`; that stamp is the only record anywhere of why goods went
+out against no Stripe payment, which is why a reason is required rather than a confirm dialog, and
+why `hasCashPayRelease` keys on a marker in the notes rather than on a column.
+⚠️ **Every refusal is re-checked inside the write, against columns read fresh.** The disabled button
+is what a person sees; the pre-write read is what stops a release landing on an order that was paid
+while the card sat open — the same reasoning as `markOrdered`'s. And the **notes column is re-read
+immediately before appending**: Monday has no compare-and-set, so appending onto the 60-second
+poll's copy would silently delete whatever the substitution service wrote in between (§5.28).
+
+**The Order board card — `components/orders/CashPayCard.tsx`.** Renders for cash pay orders only
+(null otherwise, so the page mounts it unconditionally) under "What was ordered": the headline
+state, **one total**, the link, the two presses and the release.
+⚠️ **NOT ability-gated** (Josh, asked directly: *"No gate — any rep"*). Reading a patient their
+total is the job; the manager-only RELEASE inside it is a different question.
+⚠️ **ONE number, itemisation folded away** — §5.35's say-it-once rule bites hard here, because
+`OrderLinesCard` directly above already names every product, family, SKU and quantity. What a rep
+needs mid-call is the total; "what's that made of?" is one click down.
+⚠️⚠️ **THE TWO PRESSES ARE DARK — `CASH_PAY_LINK_FROM_COMMAND_CENTER = false`** — because both reach
+outside this repo and neither destination exists: **Generate** needs `coins-form-payment`'s
+`POST /api/cash-pay/create-link` (mint the Stripe Checkout session, write Cash Pay Link
+`text_mm7dzgzd` + Cash Pay Amount `numeric_mm7devxs` back), **Send** needs the order board's texting
+trigger column and automation. They render **INERT with the reason on screen, never hidden**
+(§5.39g). A `notBuilt` toast is wired to both anyway, so flipping the flag before the endpoint
+exists refuses loudly instead of being a button that does nothing.
+⚠️ **What does NOT wait is the QUOTE** — the card prices the order today, so a rep on the phone can
+read the patient their number and take payment the way they do now. That is the half that actually
+unblocked Debbie, and it is why the flag gates the presses rather than the card.
+⚠️ **Two presses, deliberately** (Josh): Generate mints, Send texts. `cashPayLinkStep` names the
+five states and **`paid` outranks everything**; once a link exists **its amount IS the price**.
+
+**Welcome Call — a link, not a quote** (`lib/welcomeCall/cashPayNote.ts`). The OOP card printed
+`No rate schedule for "Cash Pay"`, which is honest (there is no payer to schedule) and reads as a
+data problem somebody should fix, on the one card a rep quotes from. It now says there is no benefit
+to estimate and links to the in-app Cardinal costs.
+⚠️ **The form carries the products and quantities, so it COULD price the order. It must not** —
+Josh's amendment. At Welcome Call those quantities are still being negotiated on the call, so a
+figure here is one a rep reads to a patient and then changes; the price becomes real on the ORDER,
+where Stripe fixes it. Two places quoting one patient two numbers, and the wrong one heard first.
+⚠️ The href carries **`BASE_URL`**: a bare `/orders?view=stock` lands outside the app on GitHub
+Pages, because the router has a `basename` and a plain `<a>` does not apply it — and a plain `<a>`
+is what a new tab needs, which this is, because the form holds unsaved edits mid-call.
+⚠️⚠️ **ON THAT BOARD THE MARKER IS PRIMARY INSURANCE ALONE** — Welcome Call has no General Insurance
+column (§5.30e) and its `Patient` type has no such field, so `isCashPayPatient` can only ever answer
+from the second column it reads. That is what makes the intake mirror load-bearing rather than tidy:
+a patient whose Primary was never mirrored arrives indistinguishable from an insured one, here and
+on the Order board.
+
+**Deliberately NOT built, each for its own reason:**
+- **The Stripe half**, in `coins-form-payment`: `POST /api/cash-pay/create-link`, the
+  `checkout.session.completed` cash branch (writing the charge id, the paid date and Order Status →
+  Paid Cash), the link-text webhook, the 15-day reminder loop, and the branded cash-pay mode on the
+  payment page. Same Stripe account and the same itemized flow as pay-secondary, so HSA/FSA, the
+  descriptor and the emailed receipt come free (handoff item 5).
+- **Cash Pay labels on Medical Evaluation and Insurance** — a cash pay patient is meant to skip both
+  boards, so a label there would only be reachable by the route this build exists to avoid.
+- **The reconciliation stamp** (handoff item 8) rides on the charge id already being written, so it
+  needs the Stripe half first.
+
+**Keep-in-agreement:**
+1. **The marker** — `lib/shared/cashPay.ts` `isCashPay` / `isCashPayPatient` / `CASH_PAY_LABEL_ID`.
+   Five slices read it (`profile`, `welcomeCall`, `finalConfirm`, `orders`, the Comms Hub dossier);
+   a copy per slice is the §5.7/§5.17 hazard and here its failure mode is money.
+2. **The mirror** — `cashPayIntake.cashPayMirrorEdit` ⇄ `ProfilePage.onUpdate` ⇄
+   `UnverifiedReferralsPage.edit` **and its `setVerified` half**. `cashPayIntakeWiring.test.ts`
+   scans all three, each verified to fail.
+3. **The price** — `cashPayPricing` `CASH_PAY_MARKUP` / `MIN_ORDER_MARKUP` / `round2` ⇄ the Debbie
+   anchor test ⇄ whatever `coins-form-payment` charges. When the Stripe half lands, the session must
+   be built from `cashPayLineItems`, never re-derived.
+4. **The gate** — `cashPayGate` ⇄ `mondayWrite.orderingRefusal` / `markOrdered`'s pre-write read ⇄
+   `CashPayCard`'s disabled states. The button is what a person sees; the write is what stops it.
+5. **The switches** — `orders/config.CASH_PAY_LINK_FROM_COMMAND_CENTER` and
+   `profile/cashPayIntake.CASH_PAY_SKIPS_TO_WELCOME_CALL`, both pinned at false by tests. Each test
+   failing is the reminder to read this section before flipping.
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -9052,6 +9230,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's records are split across boards under two spellings of their name | §7 — Search's same-number pass (`sameNumberNeedles` / `mergeSameNumberRows`), rendered under "Same phone number, filed under a different name". It fires only when the query has narrowed to ≤3 distinct numbers, so a bare surname deliberately does not trigger it. If the records share no phone either, nothing joins them — search the number |
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
+| A cash pay patient can't be advanced from Intake / is asked for insurance they don't have | §5.48 — `lib/profile/cashPayIntake.ts`. Picking **General Insurance = Cash Pay** hides section 1 and drops the insurance readiness rows; **section 3 (the doctor) is still required** on Josh's call, because Cardinal's payload needs it. Still blocked ⇒ check the mirror actually ran: Primary Insurance is what travels, and on the intake page it also has to reach the `verified` state, which is what Advance writes |
+| A cash pay patient reads as insured on Welcome Call or the Order board | §5.48 — those boards have **no General Insurance column**, so Primary Insurance is the only marker there and the intake mirror (`cashPayMirrorEdit`) is what puts it on the row. A patient whose Primary was never mirrored is indistinguishable from an insured one, with nothing erroring |
+| "What does this cash pay patient owe?" / the total looks wrong by a cent | §5.48 — `lib/orders/cashPayPricing.ts`: tracker cost x qty, x1.25 **rounded per line**, plus a $10 shipping line under $10 of markup. The Debbie Hinze test ($1,030.69) is the anchor — if it stops matching, the rule has drifted from a price a patient agreed to. ⚠️ `round2` goes through `toPrecision(12)`; a naive `Math.round(n*100)` loses a cent on her infusion-set line. A REFUSAL rather than a total means a line has no tracker cost, and quoting short is the one thing it must not do |
+| The cash pay Generate / Send buttons do nothing | §5.48 — they are inert behind `orders/config.CASH_PAY_LINK_FROM_COMMAND_CENTER`, with the reason on screen: both halves live in `coins-form-payment` and neither is built. The QUOTE above them is live regardless. Flipping the flag before the endpoint exists gets a loud refusal, not a silent no-op |
+| An unpaid cash pay order won't go to Cardinal / a paid one is refused | §5.48 — `lib/orders/cashPayGate.ts` reads the **payment columns**, never the `Paid Cash` label (Debbie's delivered order sits at that label). A finished order is refused by its **CAH Order Number**, which is positive evidence. The way through is a **manager** release with a typed reason, stamped into the order's notes |
 | A new ICD-10 code won't save / an Evaluate send times out on verify | §5.46 — Diagnosis is a **dropdown** since 2026-09-21 (`lib/shared/diagnosisCell.ts`). monday status columns cap at **39 labels / id 160** and all three Diagnosis columns were full, so `create_labels_if_missing` was dropped at HTTP 200 with no error. If it recurs, check the write shape is `{labels:[code]}` and the COL map points at the `dropdown_` id — `diagnosisColumnIds.test.ts` scans `src/` for retired ids. ⚠️ A blank Diagnosis downstream usually means the **hop automation** still copies the retired status column: re-run `scripts/diagnosis-migration/migrateDiagnosis.mjs --apply` |
 | A payer is $0 on one screen and charged on another | §5.37 — `src/lib/shared/payerPolicy.json` is canonical; `node scripts/check-payer-policy.mjs` names every copy that disagrees. A DECLARED deviation is a difference somebody has signed off; profile's CGM-monitor exclusion is the only one. A drift line right after a push to another repo may be the raw CDN being ~5 min stale — re-run with `GITHUB_TOKEN` set. The **Python** copy is in another org and is checked by nobody |
 | A patient's Medical Records still read "MR Expired" after new records went in | §5.36 — `lib/subscription/mrStatus.ts` (the rung rule) → `mondayWrite.saveVisitDateVerified`. The board's five automations only count DOWN and nothing there writes **MR Valid**, so before 2026-09-16 the only fix was by hand. If it recurs: check the Update Visit Date save actually ran (it writes MN Expiry AND MR), then that `MR_STATUS_INDEX` still matches `color_mktyr8xg`'s live `settings_str` — a stale id is dropped at HTTP 200 with nothing in the logs |
