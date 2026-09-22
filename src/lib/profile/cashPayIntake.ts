@@ -160,10 +160,14 @@ export function advanceLabelFor(p: Patient | null | undefined): string {
  * nothing. The label already exists on the live board (id 6), so this is
  * reachable the moment somebody flips the flag.
  *
- * Workflow **18432110599** carries the trigger and the move-to-Completed step
- * correctly; its create-item mapping could not be built through the API and is
- * an unpublished draft awaiting a person in monday's UI. Same dark-switch shape
- * as `orders/config.ORDERING_FROM_COMMAND_CENTER` (§5.35).
+ * ⚠️ **No draft exists — all three steps are still to be built.** An earlier
+ * note here claimed workflow 18432110599 already carried the trigger and the
+ * move-to-Completed step; checked against `list_automations` on 2026-09-22 it
+ * is on neither list, and nothing on that board names the Welcome Call board at
+ * all. It could not be built through the API either: `create_automation` times
+ * out on the 38-column payload and `create_workflow` only makes an empty shell.
+ * A person in monday's UI, then. Same dark-switch shape as
+ * `orders/config.ORDERING_FROM_COMMAND_CENTER` (§5.35).
  *
  * **The runbook is `scripts/cash-pay/README.md`** — the three steps and all 38
  * column mappings, derived from the three hops a column must survive today so

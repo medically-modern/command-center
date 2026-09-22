@@ -8440,10 +8440,13 @@ told reps it blocked on each. `cashPayIntakeWiring.test.ts` scans every half.
 **⚠️⚠️ THE SKIP-TO-WELCOME-CALL ROUTE IS DARK — `CASH_PAY_SKIPS_TO_WELCOME_CALL = false`.** A cash
 pay patient has no medical necessity to document and no auth to chase, so they should skip Medical
 Evaluation and Insurance entirely (Corey, 2026-08-14). The board label **"Advance to Welcome Call"**
-(`color_mm1zmeb3` id 6) exists live; monday workflow **18432110599** carries the trigger and the
-move-to-Completed step correctly and its **create-item mapping is an unpublished draft** — that step
-could not be built through the API (§10 refuses board automations outright) and needs a person in
-monday's UI. **`scripts/cash-pay/README.md` is that person's runbook** — the three steps and all
+(`color_mm1zmeb3` id 6) exists live; the **automation does not**. ⚠️ An earlier note here said
+workflow 18432110599 carried the trigger and the move-to-Completed step as an unpublished draft —
+checked against `list_automations` 2026-09-22, it is on neither that board's workflow nor its legacy
+list, and **nothing on Profile Send Off names the Welcome Call board at all**. All three steps are to
+be built, by a person in monday's UI: `create_automation` times out on the 38-column payload (three
+attempts, board verifiably unchanged after each) and `create_workflow` only makes an empty shell this
+session cannot add steps to. **`scripts/cash-pay/README.md` is that person's runbook** — the three steps and all
 38 column mappings, derived from the three hop automations a column must survive today so the item
 this creates is shaped exactly like one that took the long way round, plus
 `deriveHopChain.mjs` to re-derive the table rather than trust it. Writing the label first is worse than not offering it: the label lands, nothing fires,

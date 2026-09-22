@@ -28,11 +28,26 @@ which board they land on.
 
 ## The automation
 
-Host board: **Profile Send Off `18406352652`**. Existing draft:
-**workflow `18432110599`** — its trigger and its move-to-Completed step are
-already correct; the **Create item in board** step is what is missing.
-`list_automations` does not return unpublished drafts, so if the draft has gone,
-rebuild all three steps from here.
+Host board: **Profile Send Off `18406352652`**. **Build all three steps from
+scratch.**
+
+⚠️ An earlier draft of this file said a draft workflow `18432110599` already
+carried the trigger and the move-to-Completed step. **It does not exist.**
+Checked against `list_automations` on 2026-09-22: that board has 18 workflows
+and 16 legacy automations, none of them is `18432110599`, and **not one of them
+names the Welcome Call board `18410804557` anywhere**. Josh reported the same
+thing from the UI (*"i dont see a draft autoamtion"*). Take this page as the
+whole job.
+
+⚠️ **I could not build it from here, and it is worth knowing why before
+trying again.** `create_automation` timed out three times on the 60-second MCP
+ceiling — the 38-column mapping is simply a large payload — and each time the
+board was re-checked and was verifiably unchanged, so nothing half-made is
+lying around. The other path, `create_workflow`, creates an *empty* workflow
+and needs `invoke_workflow_expert`'s `create-step` to fill it, which this
+session does not have (only `get-step`). A partial automation is worse than
+none: trigger + move-to-Completed without the create-item step would take a
+patient out of the pipeline and put them nowhere.
 
 All three verified against the live boards, 2026-09-22.
 
