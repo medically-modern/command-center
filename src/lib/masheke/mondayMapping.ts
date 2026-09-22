@@ -1,8 +1,9 @@
 // Monday board column mappings for Medical Necessity (18406060017)
 
 import type { Patient } from "./workflow";
-import type { MondayItem, MondayColumnValue } from "./mondayApi";
+import { COL, type MondayItem, type MondayColumnValue } from "./mondayApi";
 import { readEmailCell } from "../shared/emailCell";
+import { readDiagnosis } from "../shared/diagnosisCell";
 
 // ---- Sub-Stage index → tab mapping ----
 export const SUB_STAGE_INDEX = {
@@ -176,7 +177,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     oowDate: col(item, "color_mm1wmv5c") || undefined,
     oowDateValue: col(item, "date_mm4kyfte") || undefined,
     malfunction: col(item, "color_mm1wp4e9") || undefined,
-    diagnosis: col(item, "color_mm1wf7rv") || undefined,
+    diagnosis: readDiagnosis(col(item, COL.diagnosis)) || undefined,
     mrsClinicals: col(item, "color_mm1y8rv8") || undefined,
     lastVisit: col(item, "date_mm1wb9br") || undefined,
     mrExpiryDate: col(item, "date_mm1ymthz") || undefined,

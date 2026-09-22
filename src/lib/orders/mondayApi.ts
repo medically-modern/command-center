@@ -144,7 +144,7 @@ export const COL = {
   secondaryInsurance: "color_mm18h6yn",
   secondaryId: "text_mm18c6z4",
   otherPayerId: "text_mm3zyqdj",
-  diagnosisCode: "color_mm189t0b",
+  diagnosisCode: "dropdown_mm7dds6y",
   cgmCoverage: "color_mm18ds28",
   medicarePriorPumpDate: "text_mm584phh",
 

@@ -2,6 +2,7 @@ import { COL, ESCALATION_INDEX } from "./mondayApi";
 import type { Patient } from "./workflow";
 import type { MondayItem } from "./mondayApi";
 import { parseIntakeBlock, emptyIntake } from "./callIntake";
+import { readDiagnosis } from "../shared/diagnosisCell";
 
 /**
  * Convert a Monday board item into a Patient row.
@@ -86,7 +87,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     clinicName: txt(COL.clinicName),
     referralSource: txt(COL.referralSource),
     referralReceivedDate: txt(COL.referralReceivedDate),
-    diagnosis: txt(COL.diagnosis),
+    diagnosis: readDiagnosis(txt(COL.diagnosis)),
     notes: txt(COL.notes),
     // Facts with no board column, recovered from the LAST intake block in the
     // notes log (lib/welcomeCall/callIntake.ts). Monday stays the store: a rep

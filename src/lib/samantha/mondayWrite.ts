@@ -49,6 +49,7 @@ import { etNow } from "../masheke/etDate";
 import { userInitials } from "../shared/auth";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
+import { diagnosisWriteValue, diagnosisExpectedText } from "../shared/diagnosisCell";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -1280,13 +1281,37 @@ export async function sendPatientToMonday(
       });
     }
   }
-  // Diagnosis (status column — write by label)
+  // ----- Diagnosis (DROPDOWN — HOISTED OUT OF THE BATCH) -----
+  // A dropdown since 2026-09-21 (lib/shared/diagnosisCell): the status column it
+  // replaced was full at monday's 39-label ceiling, so a new ICD-10 code was
+  // dropped at HTTP 200 with no error. Diagnosis is free text on this board
+  // (samantha/PatientProfileCard's editingProfile), so a code this board has
+  // never seen is reachable and the write must be allowed to create the label.
+  //
+  // Same hoist, and for exactly the same reason, as Clinic Name below: the
+  // batch carries ONE create_labels_if_missing flag for the WHOLE transaction,
+  // so it must stay STRICT. The awaited call makes the LABEL EXIST; the task
+  // pushed straight after writes the same value inside the strict batch, which
+  // keeps the column in `verifyColIds` and holds the Stage Advancer until
+  // monday reads it back. `expectedText` is required for the reason spelled out
+  // on Clinic Name — the Phase 2 snapshot is taken after the hoist, so
+  // snapshot-diff cannot tell "already correct" from "still stale".
   if (p.diagnosis) {
+    const dx = p.diagnosis;
+    const diagnosisFailure = await executeWithRetry({
+      label: 'Diagnosis (create label)',
+      columnId: COL.diagnosis,
+      fn: () => writeDropdownLabels(p.id, COL.diagnosis, [dx], true),
+    });
+    if (diagnosisFailure) {
+      throw new Error(`Diagnosis failed after retries — stage NOT advanced. ${diagnosisFailure}`);
+    }
     tasks.push({
       label: 'Diagnosis',
       columnId: COL.diagnosis,
-      value: { label: p.diagnosis! },
-      fn: () => writeSimpleValue(p.id, COL.diagnosis, p.diagnosis!),
+      value: diagnosisWriteValue(dx),
+      expectedText: diagnosisExpectedText(dx),
+      fn: () => writeDropdownLabels(p.id, COL.diagnosis, [dx]),
     });
   }
   // Doctor fields

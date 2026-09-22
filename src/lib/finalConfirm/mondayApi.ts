@@ -45,7 +45,7 @@ export const COL = {
   clinicAddress: "location_mm1xjnfv",
 
   // Medical Necessity (read-only display)
-  diagnosis: "color_mm1wf7rv",
+  diagnosis: "dropdown_mm7dvqts",
   cgmCoveragePath: "color_mm2wsam4",
   ipCoveragePath: "color_mm2xtn41",
   mrExpiryDate: "date_mm1ymthz",
@@ -534,6 +534,68 @@ export async function writeEmail(itemId: string, columnId: string, email: string
  * Write a dropdown column by option IDs.
  * Monday dropdown columns expect: {"ids": [10]}
  */
+/**
+ * Write a dropdown column BY LABEL, optionally creating labels this board does
+ * not have yet. Diagnosis needs that: ICD-10 is an open vocabulary and the
+ * status column it replaced hit monday's 39-label ceiling, where
+ * create_labels_if_missing silently drops the write (lib/shared/diagnosisCell).
+ * Only enable createIfMissing for columns where new values are expected.
+ */
+export async function writeDropdownLabels(
+  itemId: string,
+  columnId: string,
+  labels: string[],
+  createIfMissing = false,
+): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value, create_labels_if_missing: ${createIfMissing}) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({ labels }),
+  });
+}
+
+/**
+ * Fetch every {index, label} pair on a DROPDOWN column.
+ *
+ * ⚠️ Not the same payload shape as a status column, which is why this is its
+ * own function rather than a call to fetchStatusOptions: a dropdown's
+ * `settings_str.labels` is an ARRAY of `{id, name}`, a status column's is an
+ * OBJECT keyed by index. Reading a dropdown with the status parser returns an
+ * empty list — a picker with no options and no error.
+ */
+export async function fetchDropdownOptions(
+  columnId: string,
+): Promise<{ index: number; label: string }[]> {
+  const query = `
+    query ($boardId: [ID!]!) {
+      boards(ids: $boardId) {
+        columns(ids: ["${columnId}"]) {
+          settings_str
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    boards: { columns: { settings_str: string }[] }[];
+  }>(query, { boardId: BOARD_ID });
+  const raw = data.boards?.[0]?.columns?.[0]?.settings_str ?? "{}";
+  const labels = JSON.parse(raw).labels ?? [];
+  const list = Array.isArray(labels)
+    ? labels.map((l: { id?: number; name?: string }) => ({ index: Number(l?.id), label: l?.name ?? "" }))
+    // tolerated so a column mid-conversion still populates the picker
+    : Object.entries(labels as Record<string, string | { label?: string }>).map(([k, v]) => ({
+        index: Number(k),
+        label: typeof v === "string" ? v : v.label ?? "",
+      }));
+  return list.filter((o) => o.label && !Number.isNaN(o.index));
+}
+
 export async function writeDropdownIds(itemId: string, columnId: string, ids: number[]): Promise<void> {
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {

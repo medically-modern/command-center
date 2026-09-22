@@ -1,6 +1,7 @@
 import type { Patient } from "./workflow";
 import { COL, type MondayItem } from "./mondayApi";
 import { readEmailCell } from "../shared/emailCell";
+import { readDiagnosis } from "../shared/diagnosisCell";
 
 function cv(item: MondayItem, id: string) {
   return item.column_values.find((c) => c.id === id);
@@ -11,6 +12,22 @@ function parseIndex(value: string | null): number | null {
   try {
     const parsed = JSON.parse(value);
     return typeof parsed?.index === "number" ? parsed.index : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A DROPDOWN's raw value is `{"ids":[n]}` where a status column's was
+ * `{"index":n}` — Diagnosis moved types on 2026-09-21 (see shared/diagnosisCell).
+ * Reading the old shape here would quietly return null for every patient.
+ */
+function parseDropdownId(value: string | null): number | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    const first = Array.isArray(parsed?.ids) ? parsed.ids[0] : null;
+    return typeof first === "number" ? first : null;
   } catch {
     return null;
   }
@@ -62,8 +79,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     clinicAddressLng: null,
 
     // Medical Necessity
-    diagnosis: cv(item, COL.diagnosis)?.text ?? "",
-    diagnosisIndex: parseIndex(cv(item, COL.diagnosis)?.value ?? null),
+    diagnosis: readDiagnosis(cv(item, COL.diagnosis)?.text),
+    diagnosisIndex: parseDropdownId(cv(item, COL.diagnosis)?.value ?? null),
     cgmCoveragePath: cv(item, COL.cgmCoveragePath)?.text ?? "",
     cgmCoveragePathIndex: parseIndex(cv(item, COL.cgmCoveragePath)?.value ?? null),
     ipCoveragePath: cv(item, COL.ipCoveragePath)?.text ?? "",

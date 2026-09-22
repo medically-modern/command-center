@@ -1,4 +1,20 @@
-import { writeStatusIndex, writeStatusLabel, writeLongText, writeText, writeNumber, writeLocation, writeDate, writePhone, writeEmail, writeDropdownIds, renameItem, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
+import {
+  writeStatusIndex,
+  writeStatusLabel,
+  writeLongText,
+  writeText,
+  writeNumber,
+  writeLocation,
+  writeDate,
+  writePhone,
+  writeEmail,
+  writeDropdownIds,
+  renameItem,
+  readColumnTexts,
+  COL,
+  BOARD_ID,
+  writeDropdownLabels,
+} from "./mondayApi";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
@@ -7,6 +23,7 @@ import { coercePumpQty } from "../shared/servingLines";
 import { coerceMonitorQty } from "../shared/monitorQty";
 import type { Patient } from "./workflow";
 import { CLINIC_NAME_OPTIONS, servingIncludesCgm, servingIncludesPump } from "./workflow";
+import { diagnosisWriteValue, diagnosisExpectedText } from "../shared/diagnosisCell";
 
 // Stage Advancer: index 4 = Completed
 const STAGE_ADVANCER_COMPLETED = 4;
@@ -187,8 +204,10 @@ export async function sendPatientToMonday(
     tasks.push({ label: "Carecentrix Intake ID", columnId: COL.carecentrixIntakeId, value: p.carecentrixIntakeId, fn: () => writeText(p.id, COL.carecentrixIntakeId, p.carecentrixIntakeId) });
 
   // ─── Medical Necessity edits ─────────────────────────────
-  // Diagnosis (status column — written by label; createIfMissing=true so
-  // custom ICD-10 codes become permanent statuses on Monday)
+  // Diagnosis (DROPDOWN since 2026-09-21 — lib/shared/diagnosisCell; written by
+  // label with createIfMissing=true so custom ICD-10 codes become permanent
+  // options. It was a status column until monday's 39-label ceiling made
+  // create_labels_if_missing a silent no-op.)
   // HOISTED out of the batch on purpose: change_multiple_column_values carries
   // ONE transaction-wide create_labels_if_missing flag, so batching this write
   // would let every other label-shaped write in this send mint junk board
@@ -222,7 +241,7 @@ export async function sendPatientToMonday(
     const diagnosisFailure = await executeWithRetry({
       label: "Diagnosis (create label)",
       columnId: COL.diagnosis,
-      fn: () => writeStatusLabel(p.id, COL.diagnosis, p.diagnosis, true),
+      fn: () => writeDropdownLabels(p.id, COL.diagnosis, [p.diagnosis], true),
     });
     if (diagnosisFailure) {
       throw new Error(`Diagnosis failed after retries — stage NOT advanced. ${diagnosisFailure}`);
@@ -240,9 +259,9 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Diagnosis",
       columnId: COL.diagnosis,
-      value: { label: p.diagnosis },
-      expectedText: p.diagnosis,
-      fn: () => writeStatusLabel(p.id, COL.diagnosis, p.diagnosis, true),
+      value: diagnosisWriteValue(p.diagnosis),
+      expectedText: diagnosisExpectedText(p.diagnosis),
+      fn: () => writeDropdownLabels(p.id, COL.diagnosis, [p.diagnosis]),
     });
   }
 

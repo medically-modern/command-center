@@ -251,7 +251,7 @@ const WELCOME_CALL: StageSection[] = [
     fields: [
       { label: "DOB", col: "text_mm1xvxst" },
       { label: "Email", col: "text_mm1xc140" },
-      { label: "Diagnosis", col: "color_mm1wf7rv" },
+      { label: "Diagnosis", col: "dropdown_mm7dvqts" },
       { label: "Call attempts", col: "text_mm322fg9" },
       { label: "Follow up", col: "date_mm38a7k7" },
     ],

@@ -70,7 +70,7 @@ export const COL = {
   /** OOW date — real date column (created 2026-06-23) for the OOW Pump path. */
   oowDateValue: "date_mm4kyfte",
   malfunction: "color_mm1wp4e9",
-  diagnosis: "color_mm1wf7rv",
+  diagnosis: "dropdown_mm7daf4m",
 
   // MRs / Clinicals
   mrsClinicals: "color_mm1y8rv8",
@@ -358,6 +358,45 @@ export async function fetchStatusLabels(columnId: string): Promise<string[]> {
  * Fetch every {index, label} pair currently defined on a status column.
  * Returns the full mapping so the UI can resolve indexes without a hardcoded list.
  */
+/**
+ * Fetch every {index, label} pair on a DROPDOWN column.
+ *
+ * ⚠️ A dropdown's `settings_str.labels` is an ARRAY of `{id, name}`; a status
+ * column's is an OBJECT keyed by index. Reading a dropdown with the status
+ * parser returns an empty list — a picker with no options and no error. See
+ * lib/shared/diagnosisCell for why Diagnosis moved types.
+ */
+export async function fetchDropdownOptions(
+  columnId: string,
+): Promise<{ index: number; label: string }[]> {
+  const query = `
+    query ($boardId: ID!) {
+      boards(ids: [$boardId]) {
+        columns(ids: ["${columnId}"]) {
+          settings_str
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    boards: { columns: { settings_str: string }[] }[];
+  }>(query, { boardId: BOARD_ID });
+  const settingsStr = data.boards?.[0]?.columns?.[0]?.settings_str;
+  if (!settingsStr) return [];
+  try {
+    const labels = JSON.parse(settingsStr).labels ?? [];
+    const list = Array.isArray(labels)
+      ? labels.map((l: { id?: number; name?: string }) => ({ index: Number(l?.id), label: l?.name ?? "" }))
+      : Object.entries(labels as Record<string, string | { label?: string }>).map(([k, v]) => ({
+          index: Number(k),
+          label: typeof v === "string" ? v : v.label ?? "",
+        }));
+    return list.filter((o) => o.label && !Number.isNaN(o.index));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchStatusOptions(
   columnId: string,
 ): Promise<{ index: number; label: string }[]> {
