@@ -17,6 +17,7 @@ function patient(name: string, over: Partial<SystemPatient> = {}): SystemPatient
     id: name.replace(/\W/g, ""),
     name,
     phone: "",
+    dob: "",
     boardId: 18406352652,
     boardName: "Profile Send Off",
     groupId: "group_mm5z87zt",

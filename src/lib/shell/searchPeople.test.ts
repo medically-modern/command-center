@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupKeyFor, groupSearchHits, hitCaption, last10, pickLead } from "./searchPeople";
+import { groupKeyFor, groupSearchHits, hitCaption, last10, pickLead, sameHuman } from "./searchPeople";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 
 /**
@@ -21,6 +21,7 @@ function row(p: Partial<SystemPatient> & { id: string; boardId: number }): Syste
   return {
     name: "JAMIE RIVERS",
     phone: "5555550142",
+    dob: "03/14/1958",
     boardName: "",
     groupId: "",
     groupTitle: "",
@@ -72,8 +73,13 @@ describe("one row per patient, not one per board item", () => {
     expect(hit.rows.map((r) => r.id)).toContain("2002");
   });
 
-  it("the caption says the stage AND that there is more behind it", () => {
-    expect(hitCaption(groupSearchHits(SIX)[0])).toBe("Welcome Call · +5 more records");
+  it("⚠️ the caption is the STAGE and nothing else — no record count", () => {
+    // Josh, 2026-09-22: "Shouldn't show the +4 more records". §5.42 put one
+    // there so a folded row would not read like a single-record patient; from
+    // the floor it reads as clutter about our own data model. The records are
+    // still all on the hit and still all reachable one click in.
+    expect(hitCaption(groupSearchHits(SIX)[0])).toBe("Welcome Call");
+    expect(hitCaption(groupSearchHits(SIX)[0])).not.toMatch(/more record/);
   });
 
   it("a patient with one record says just the stage", () => {
@@ -101,6 +107,36 @@ describe("one row per patient, not one per board item", () => {
   });
 });
 
+describe("⚠️⚠️ the row opens the SUBSCRIPTION record when there is one", () => {
+  const SUB = 18407459988;
+
+  it("a subscribed patient's row leads with their Subscription record", () => {
+    // Josh, 2026-09-22: "it should open up to their subscription page if
+    // they're on it, and the onboarding tab if subscription profile does not
+    // exist". A patient who has reached Subscription is being SERVED, so
+    // opening their Welcome Call record is the wrong half of the record.
+    const hits = groupSearchHits([
+      ...SIX,
+      row({ id: "5001", boardId: SUB, boardName: "Subscription Board - Updated", groupTitle: "Active" }),
+    ]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].lead.id).toBe("5001");
+  });
+
+  it("⚠️ it beats a LIVE pipeline record, not just a finished one", () => {
+    expect(
+      pickLead([
+        row({ id: "4001", boardId: BOARD.wc.id, groupTitle: "Welcome Call" }),
+        row({ id: "5001", boardId: SUB, groupTitle: "Active" }),
+      ]).id,
+    ).toBe("5001");
+  });
+
+  it("with no Subscription record the old ranking still decides", () => {
+    expect(groupSearchHits(SIX)[0].lead.id).toBe("4001");
+  });
+});
+
 describe("⚠️⚠️ a name is not an identity — the folding fails closed", () => {
   it("two patients on DIFFERENT numbers stay two rows", () => {
     const hits = groupSearchHits([
@@ -110,12 +146,61 @@ describe("⚠️⚠️ a name is not an identity — the folding fails closed", 
     expect(hits).toHaveLength(2);
   });
 
-  it("a record with NO phone stands alone — SystemPatient carries no DOB to corroborate with", () => {
+  it("⚠️⚠️ a BLANK phone folds on the DOB — this is the case Josh kept seeing", () => {
+    // A completed record routinely carries a blank or differently-typed phone
+    // (§5.28), so keying on `name|phone10` alone left every one of them in its
+    // own row: the folding looked implemented and did nothing for the patients
+    // it was written for.
     const hits = groupSearchHits([
       row({ id: "a", boardId: BOARD.wc.id, phone: "5555550142" }),
-      row({ id: "b", boardId: BOARD.ins.id, phone: "" }),
+      row({ id: "b", boardId: BOARD.ins.id, phone: "", dob: "03/14/1958" }),
+    ]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].rows).toHaveLength(2);
+  });
+
+  it("a blank phone and NO dob on either side still stands alone", () => {
+    const hits = groupSearchHits([
+      row({ id: "a", boardId: BOARD.wc.id, phone: "5555550142", dob: "" }),
+      row({ id: "b", boardId: BOARD.ins.id, phone: "", dob: "" }),
     ]);
     expect(hits).toHaveLength(2);
+  });
+
+  it("a blank phone whose DOB DISAGREES stands alone", () => {
+    const hits = groupSearchHits([
+      row({ id: "a", boardId: BOARD.wc.id, phone: "5555550142", dob: "03/14/1958" }),
+      row({ id: "b", boardId: BOARD.ins.id, phone: "", dob: "11/02/1971" }),
+    ]);
+    expect(hits).toHaveLength(2);
+  });
+
+  it("⚠️ two non-blank phones that differ stay apart even when the DOB agrees", () => {
+    // Almost always one patient with an old number — but this cannot tell, and
+    // over-merging is the direction that puts one history under another name.
+    const hits = groupSearchHits([
+      row({ id: "a", boardId: BOARD.wc.id, phone: "5555550142", dob: "03/14/1958" }),
+      row({ id: "b", boardId: BOARD.ins.id, phone: "5555550199", dob: "03/14/1958" }),
+    ]);
+    expect(hits).toHaveLength(2);
+  });
+
+  it("⚠️ a bridging record MERGES two clusters that did not yet know they matched", () => {
+    // Phone-only, DOB-only, then one carrying both — order must not decide it.
+    const hits = groupSearchHits([
+      row({ id: "a", boardId: BOARD.wc.id, phone: "5555550142", dob: "" }),
+      row({ id: "b", boardId: BOARD.ins.id, phone: "", dob: "03/14/1958" }),
+      row({ id: "c", boardId: BOARD.mn.id, phone: "5555550142", dob: "03/14/1958" }),
+    ]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].rows).toHaveLength(3);
+  });
+
+  it("sameHuman is the rule, and it is the one `nameMatchAccepted` uses", () => {
+    const withPhone = row({ id: "a", boardId: BOARD.wc.id, phone: "5555550142", dob: "03/14/1958" });
+    const blankPhone = row({ id: "b", boardId: BOARD.ins.id, phone: "", dob: "3-14-1958" });
+    expect(sameHuman(withPhone, blankPhone)).toBe(true);
+    expect(sameHuman(withPhone, row({ id: "c", boardId: BOARD.ins.id, phone: "", dob: "" }))).toBe(false);
   });
 
   it("a record with no NAME stands alone", () => {
@@ -159,7 +244,7 @@ describe("ordering", () => {
     expect(hits.map((h) => h.name)).toEqual(["ZARA WEST", "JAMIE RIVERS"]);
   });
 
-  it("the lead is first in `rows`, so \"+N more\" is stable between polls", () => {
+  it("the lead is first in `rows`, so the folded set is stable between polls", () => {
     expect(groupSearchHits(SIX)[0].rows[0].id).toBe("4001");
   });
 });

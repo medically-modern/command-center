@@ -112,9 +112,12 @@ describe("⚠️⚠️ the form-owned sections are matched by TITLE, so the titl
   it("and the filter really is the thing that hides them", () => {
     const text = src("src/components/patient/SubscriptionView.tsx");
     expect(text).toMatch(/FORM_SECTIONS\.includes\(sc\.title\)/);
-    // Only while editing: without the ability every section renders as a card,
-    // which is the read-only page this replaced.
-    expect(text).toMatch(/canEdit \? rest\.filter/);
+    /* ⚠️ UNCONDITIONAL from 2026-09-22 (§5.46b). The form renders for
+       everybody now — inert without the ability — so a `canEdit ?` here would
+       double-render its fields for exactly the people who cannot correct
+       them: once as a greyed input and once as a read-only row. */
+    expect(text).toMatch(/const cards = sections\.filter/);
+    expect(text, "the filter went back to being conditional").not.toMatch(/canEdit \? rest\.filter/);
   });
 });
 

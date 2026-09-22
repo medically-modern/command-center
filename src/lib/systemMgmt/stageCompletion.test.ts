@@ -154,7 +154,7 @@ describe("formatStageCompletedAt", () => {
 
 function patient(over: Partial<SystemPatient>): SystemPatient {
   return {
-    id: "1", name: "Jane Doe", phone: "", boardId: MASHEKE, boardName: "Medical Evaluation",
+    id: "1", name: "Jane Doe", phone: "", dob: "", boardId: MASHEKE, boardName: "Medical Evaluation",
     groupId: MASHEKE_DONE, groupTitle: "Completed", roleRoute: "", pipelineStage: "Completed",
     escalated: false, escalationText: "", escalationNotes: "", hasPage: false, isCompleted: true,
     daysSinceStage: "", notes: "", stageAdvancerText: "Completed", nextActionDate: "",

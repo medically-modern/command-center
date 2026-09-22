@@ -34,16 +34,35 @@
  * on the screen, and still pins that the write is ability-gated on the control
  * AND inside the handler — §5.39h's rule, because the button is what a rep
  * sees and the handler is what stops the write.
+ *
+ * ⚠️⚠️ **THE ORDER-DETAILS FORM RENDERS FOR EVERYBODY FROM 2026-09-22, INERT
+ * WITHOUT THE ABILITY** (Josh: *"Delete the open read-only button in the
+ * profile view and just use that view it takes you to display in the bottom
+ * section"* · *"there shouldn't be a button at the bottom taking you to open
+ * the profile and update clinicals"*). Those two buttons were the screen
+ * admitting it was a summary: a rep read four cards and then left for
+ * `/subscription` to see the rest. Brandon's `profilePage` has no such link —
+ * it draws the order-details grid inline and `disabled`s it for somebody who
+ * cannot edit, which is what this now does.
+ *
+ * ⚠️ **`inert` is the mechanism, not a per-control `disabled` prop**, the same
+ * one `StagePanelEmbed` uses for the same job (§5.39c2): measured in Chrome
+ * 141, a real click is not hittable and focus cannot enter the subtree. Every
+ * write in `SubscriptionForm` is in an event handler, so nothing behind it can
+ * fire — and the callbacks are no-ops on top, because a form that cannot be
+ * clicked still should not be handed a writer.
  */
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
-import { AlertTriangle, ArrowUpRight, Package, RotateCcw, User } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Eye, Package, RotateCcw, User } from "lucide-react";
 import type { DossierItem } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
+import { subscriptionOverview, type OverviewFact } from "@/lib/patient/subscriptionOverview";
 import { mondayItemToOrder } from "@/lib/orders/mondayMapping";
 import { fmtDate, orderStage, type Order } from "@/lib/orders/workflow";
+import { orderHeadline } from "@/lib/orders/headline";
 import { orderLines } from "@/lib/orders/skuJoin";
 import { StagePill } from "@/components/orders/pills";
 import { usePatientOrders } from "@/hooks/patient/usePatientOrders";
@@ -93,12 +112,20 @@ export function SubscriptionView({
   tab: SubTab;
   onTab: (next: SubTab) => void;
 }) {
-  // ⚠️ Fetched only while the Orders tab is open — a per-patient board read on a
-  // page a rep clicks through is INCIDENT_2026-08-20's shape if it runs on
-  // render. The count on the tab therefore appears once they have looked, which
-  // is the same trade §5.16 makes for the call log.
   const canEdit = useAbility("editProfile");
-  const { orders: raw, loading, error } = usePatientOrders(phone, tab === "orders");
+  /**
+   * ⚠️ **Read once for the WHOLE Subscription view, not once per tab.** It was
+   * gated on `tab === "orders"`; the Profile tab's overview strip needs the
+   * FIRST order date (§5.46b), and the tab badge should carry the count before
+   * a rep has pressed it, exactly as Brandon draws it.
+   *
+   * ⚠️ That is still "on open, never on render": this view is mounted only when
+   * a rep is looking at it, and `fetchOrdersForPatient` is ONE filtered query
+   * against the order board, module-cached per number. It is not the shape
+   * INCIDENT_2026-08-20 warns about — that is a read per ROW, or a read on a
+   * timer — and it does not touch RingCentral at all.
+   */
+  const { orders: raw, loading, error } = usePatientOrders(phone, true);
   /* ⚠️ `partial: true` — these rows come from the LIST columns, so every column
      the list did not ask for is "" (§5.25). The flag is what stops a partial
      record ever being rendered as the OPEN order, which is the orders page's
@@ -109,6 +136,13 @@ export function SubscriptionView({
     [raw],
   );
   const count = orders?.length ?? null;
+  /* ⚠️ Computed ONCE for both tabs — the Profile strip and the Orders tab's
+     upcoming card are the same four facts, and two derivations of "when is the
+     next box due" is how the two tabs of one screen come to disagree. */
+  const overview = useMemo(
+    () => subscriptionOverview(item.cols, orders?.map((o) => o.orderDate) ?? null),
+    [item.cols, orders],
+  );
 
   return (
     <>
@@ -129,24 +163,37 @@ export function SubscriptionView({
       </div>
 
       {tab === "profile" ? (
-        <ProfileTab key={item.itemId} item={item} canEdit={canEdit} />
+        <ProfileTab key={item.itemId} item={item} canEdit={canEdit} overview={overview} />
       ) : (
-        <OrdersTab orders={orders} loading={loading} error={error} hasPhone={!!phone} />
+        <OrdersTab
+          orders={orders}
+          loading={loading}
+          error={error}
+          hasPhone={!!phone}
+          overview={overview}
+        />
       )}
     </>
   );
 }
 
-function ProfileTab({ item, canEdit }: { item: DossierItem; canEdit: boolean }) {
+function ProfileTab({
+  item,
+  canEdit,
+  overview,
+}: {
+  item: DossierItem;
+  canEdit: boolean;
+  overview: OverviewFact[];
+}) {
   const sections = useMemo(() => buildStageDetail(item.boardId, item.cols), [item]);
-  // Brandon leads with a teal "Subscription overview" strip — the facts that
-  // answer "when does the next box go out". That is this board's first mapped
-  // section, so it wears the strip rather than being restated.
-  const [overview, ...rest] = sections;
-  // ⚠️ The form OWNS its two sections, so they are not also rendered as cards:
-  // one fact editable and the same fact read-only, on one screen, is worse
-  // than either alone.
-  const cards = canEdit ? rest.filter((sc) => !FORM_SECTIONS.includes(sc.title)) : rest;
+  /* ⚠️ Filtered ALWAYS now, not only while editing: the order-details form is
+     rendered for everybody (inert without the ability), so its fields would
+     otherwise appear twice — once as an input and once as a read-only row.
+     ⚠️ Matching by TITLE is why `subscriptionView.test.ts` asserts both strings
+     against the live SUBSCRIPTION map: renamed there, the filter matches
+     nothing and the facts double-render with nothing erroring. */
+  const cards = sections.filter((sc) => !FORM_SECTIONS.includes(sc.title));
 
   return (
     <>
@@ -158,23 +205,33 @@ function ProfileTab({ item, canEdit }: { item: DossierItem; canEdit: boolean }) 
         </div>
       )}
 
-      {overview && (
-        <section className="card pad left-teal">
-          <div className="eyebrow" style={{ marginBottom: 10 }}>
-            {overview.title}
-          </div>
-          <div className="strip">
-            {overview.fields.map((f) => (
-              <div className="fact" key={f.col}>
-                <div className="k">{f.label}</div>
-                <div className="v">{f.value}</div>
+      {/* Brandon's teal "Subscription overview" strip — four facts, his four
+          (§5.46b). ⚠️ Rendered unconditionally so the shape of the screen does
+          not change with the data: a blank is an em dash, never a missing row,
+          because a fact nobody has answered and a fact that is not asked look
+          identical once the row disappears. */}
+      <section className="card pad left-teal">
+        <div className="eyebrow" style={{ marginBottom: 10 }}>
+          Subscription overview
+        </div>
+        <div className="strip">
+          {overview.map((f) => (
+            <div className="fact" key={f.label}>
+              <div className="k">{f.label}</div>
+              <div className="v">
+                {f.value || "—"}
+                {f.note && (
+                  <span className={`xs ${f.warn ? "warn" : "muted"}`} style={{ marginLeft: 6 }}>
+                    {f.value ? `(${f.note})` : f.note}
+                  </span>
+                )}
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+            </div>
+          ))}
+        </div>
+      </section>
 
-      {canEdit && <SubscriptionEditor itemId={item.itemId} />}
+      <SubscriptionEditor itemId={item.itemId} canEdit={canEdit} />
 
       {cards.map((sc) => (
         <section className="card snapcard" key={sc.title}>
@@ -200,24 +257,17 @@ function ProfileTab({ item, canEdit }: { item: DossierItem; canEdit: boolean }) 
         </section>
       )}
 
-      <section className="card pad">
-        <div className="row wrap" style={{ gap: 8 }}>
-          <Link className="btn outline sm" to={`/subscription?patientId=${item.itemId}&from=patient`}>
-            Open the profile <ArrowUpRight style={{ width: 13, height: 13 }} />
-          </Link>
-          <Link className="btn outline sm" to={`/update-clinicals?patientId=${item.itemId}&from=patient`}>
-            Update clinicals <ArrowUpRight style={{ width: 13, height: 13 }} />
-          </Link>
-          <span className="xs muted">
-            {item.boardName} · {item.groupTitle}
-          </span>
-        </div>
-        <p className="xs muted" style={{ marginTop: 10, marginBottom: 0 }}>
-          {canEdit
-            ? "MN documents and the visit date are still on their own pages — each has side effects this card does not carry."
-            : "Both open their existing pages, so there is exactly one place that writes these columns."}
-        </p>
-      </section>
+      {/* ⚠️ The "Open the profile / Update clinicals" card that used to sit here
+          is GONE (Josh, 2026-09-22) — the profile it linked to is rendered
+          above. Update Clinicals keeps its own page and its own role bar, and
+          the visit date is still only writable there, because that save also
+          writes the MR rung (§5.36); what is removed is a button, not a route.
+          The board and group the record lives on now ride in the footer line so
+          nothing is lost from the screen. */}
+      <p className="xs muted" style={{ margin: "2px 2px 0" }}>
+        {item.boardName} · {item.groupTitle} · medical-necessity documents and the visit date are
+        on Update Clinicals, which writes the Medical Records status with them.
+      </p>
     </>
   );
 }
@@ -230,9 +280,12 @@ function ProfileTab({ item, canEdit }: { item: DossierItem; canEdit: boolean }) 
  * a draft cannot survive a patient switch — §9's notes-box rule, which this
  * codebase records costing a note filed against the wrong chart.
  */
-function SubscriptionEditor({ itemId }: { itemId: string }) {
-  const canEdit = useAbility("editProfile");
-  const { patient, loading, error, reload } = useSubscriptionRecord(itemId, canEdit);
+function SubscriptionEditor({ itemId, canEdit }: { itemId: string; canEdit: boolean }) {
+  /* ⚠️ Read for EVERYBODY now, not only for an editor — the read-only half of
+     this screen is the same form, inert. It is one item read against the
+     board, and the cards above render from the dossier we already hold, so
+     nothing is blank while it lands. */
+  const { patient, loading, error, reload } = useSubscriptionRecord(itemId, true);
   const [edits, setEdits] = useState<Partial<SubPatient>>({});
 
   const merged = useMemo(
@@ -290,7 +343,7 @@ function SubscriptionEditor({ itemId }: { itemId: string }) {
   if (!merged) {
     return (
       <section className="card pad small muted">
-        {loading ? "Reading the Subscription board…" : "Nothing to edit yet."}
+        {loading ? "Reading the Subscription board…" : "Nothing to show yet."}
       </section>
     );
   }
@@ -305,77 +358,142 @@ function SubscriptionEditor({ itemId }: { itemId: string }) {
           at opposite ends of an 800px form is two affordances to keep in step.
           ⚠️ It sits ABOVE the form on purpose: the form is taller than the
           viewport, so a Save at its foot is below the fold on every patient. */}
-      <div className={`sub-bar${dirty ? " dirty" : ""}`}>
-        {dirty && <AlertTriangle className="ico" />}
-        <div className="grow">
-          {dirty ? (
-            <>
-              <b>Unsaved changes.</b> Nothing is written to Monday until you press Send.
-            </>
-          ) : (
-            <span className="muted">
-              Editable — the same write as the profile page, on the same board.
-            </span>
+      {canEdit ? (
+        <div className={`sub-bar${dirty ? " dirty" : ""}`}>
+          {dirty && <AlertTriangle className="ico" />}
+          <div className="grow">
+            {dirty ? (
+              <>
+                <b>Unsaved changes.</b> Nothing is written to Monday until you press Send.
+              </>
+            ) : (
+              <span className="muted">
+                Editable — the same write as the profile page, on the same board.
+              </span>
+            )}
+          </div>
+          {dirty && (
+            <button type="button" className="btn ghost sm" onClick={() => setEdits({})}>
+              <RotateCcw style={{ width: 13, height: 13 }} /> Discard
+            </button>
           )}
+          <SendToMondayButton
+            compact
+            onSend={handleSend}
+            disabled={!validation.valid}
+            validationErrors={validation.errors}
+          />
         </div>
-        {dirty && (
-          <button type="button" className="btn ghost sm" onClick={() => setEdits({})}>
-            <RotateCcw style={{ width: 13, height: 13 }} /> Discard
-          </button>
-        )}
-        <SendToMondayButton
-          compact
-          onSend={handleSend}
-          disabled={!validation.valid}
-          validationErrors={validation.errors}
-        />
-      </div>
+      ) : (
+        <div className="sub-bar">
+          <Eye className="ico" />
+          <div className="grow">
+            <AbilityLockNote ability="editProfile" />
+          </div>
+        </div>
+      )}
 
-      <SubscriptionForm patient={merged} onFieldChange={onFieldChange} />
+      {/* ⚠️⚠️ `inert` is the read-only guard and it is load-bearing (§5.39c2):
+          the wrapper cannot be clicked and focus cannot enter it, so none of
+          `SubscriptionForm`'s event handlers can fire. The no-op callback is
+          belt and braces — a form nobody can click still should not hold a
+          writer. Rendering the real form rather than a second read-only copy
+          is what stops the two drifting (§5.31c · §5.31d). */}
+      <div
+        className={canEdit ? undefined : "sub-ro"}
+        {...(canEdit ? {} : { inert: "" as unknown as boolean })}
+      >
+        <SubscriptionForm patient={merged} onFieldChange={canEdit ? onFieldChange : noop} />
+      </div>
     </section>
   );
 }
 
-/** Brandon's `ordersPage` history table, minus the selected-order card above it
- *  — that card is the /orders page, which a row opens. */
+/** A form handed to somebody who may not edit gets a writer that writes
+ *  nothing — declared once so it is a stable identity across renders. */
+function noop() {}
+
+/**
+ * Brandon's `ordersPage`: the **upcoming order**, then the **latest order**,
+ * then the history table (§5.46b).
+ *
+ * Josh, 2026-09-22: *"Order tab should look identical to the redesign view,
+ * like: Should show the upcoming order and latest order information on top"*.
+ * What shipped was the history table alone, so the answer to the question this
+ * tab exists for — *where is my order, and when is the next one* — was a row a
+ * rep had to find and read across.
+ *
+ * ⚠️ **They are two different orders and the card says which.** The upcoming
+ * one is the Subscription board's NEXT ORDER DATE — a box that does not exist
+ * yet — and the latest is the most recent row on the New Order Board. Merging
+ * them into one "current order" card is how a rep tells a patient their next
+ * delivery has shipped.
+ */
 function OrdersTab({
   orders,
   loading,
   error,
   hasPhone,
+  overview,
 }: {
   orders: Order[] | null;
   loading: boolean;
   error: string;
   hasPhone: boolean;
+  /** The Subscription board's own next-order facts, for the upcoming card. */
+  overview: OverviewFact[];
 }) {
+  // ⚠️ A patient with no number on file gets an honest sentence, never an
+  // unfiltered board read — that would hand one patient's screen every order in
+  // the company (`fetchOrdersForPatient` fails closed for the same reason).
+  /* ⚠️ The upcoming card rides on EVERY branch below, the failures included:
+     it is read from the Subscription board, which this screen already has in
+     hand, so "we could not reach the order board" must not also take away the
+     one fact that did not come from it (§9 — a failed read is not an empty
+     answer, and it is not an excuse to blank what did load). */
+  const upcoming = <UpcomingOrder facts={overview} />;
+
   // ⚠️ A patient with no number on file gets an honest sentence, never an
   // unfiltered board read — that would hand one patient's screen every order in
   // the company (`fetchOrdersForPatient` fails closed for the same reason).
   if (!hasPhone) {
     return (
-      <section className="card pad small muted">
-        No phone number on this record, and orders are matched by number — add one on the profile
-        page to see this patient&apos;s order history.
-      </section>
+      <>
+        {upcoming}
+        <section className="card pad small muted">
+          No phone number on this record, and orders are matched by number — add one on the profile
+          page to see this patient&apos;s order history.
+        </section>
+      </>
     );
   }
   if (error) {
     return (
-      <section className="card pad small">
-        <b>Couldn&apos;t read the order board.</b> <span className="muted">{error}</span>
-      </section>
+      <>
+        {upcoming}
+        <section className="card pad small">
+          <b>Couldn&apos;t read the order board.</b> <span className="muted">{error}</span>
+        </section>
+      </>
     );
   }
   if (loading && !orders) {
-    return <section className="card pad small muted">Reading the order board…</section>;
+    return (
+      <>
+        {upcoming}
+        <section className="card pad small muted">Reading the order board…</section>
+      </>
+    );
   }
   if (!orders?.length) {
     return (
-      <section className="card pad small muted">
-        No orders on the order board for this number. The first one is created at Final Profile
-        Confirmation.
-      </section>
+      <>
+        {upcoming}
+        <section className="card pad small muted">
+          No orders on the order board for this number. The first one is created at Final Profile
+          Confirmation.
+        </section>
+      </>
     );
   }
 
@@ -384,7 +502,10 @@ function OrdersTab({
   const rows = [...orders].sort((a, b) => (b.orderDate || "").localeCompare(a.orderDate || ""));
 
   return (
-    <section className="card">
+    <>
+      {upcoming}
+      <LatestOrder order={rows[0]} />
+      <section className="card">
       <div className="section-h ordhead">
         <div>
           <b className="small">Order history</b>
@@ -414,6 +535,115 @@ function OrdersTab({
           </tbody>
         </table>
       </div>
+      </section>
+    </>
+  );
+}
+
+/**
+ * Brandon's `upcomingOrder` — the box that has NOT gone out yet.
+ *
+ * ⚠️ **Every fact here is the Subscription board's**, not the order board's:
+ * there is no item for a delivery that has not been created. So it renders
+ * even when the order read failed, and it renders "—" rather than borrowing
+ * the latest order's date, which would answer a different question.
+ */
+function UpcomingOrder({ facts }: { facts: OverviewFact[] }) {
+  const next = facts.find((f) => f.label === "Next order");
+  return (
+    <section className="card pad left-teal">
+      <div className="section-h" style={{ marginBottom: 10 }}>
+        <div className="eyebrow">Upcoming order</div>
+        {next?.note && (
+          <span className={`chip${next.warn ? " amber" : ""}`}>{next.note}</span>
+        )}
+      </div>
+      <div className="strip">
+        {facts
+          .filter((f) => f.label !== "First order")
+          .map((f) => (
+            <div className="fact" key={f.label}>
+              <div className="k">{f.label}</div>
+              <div className="v">
+                {f.value || "—"}
+                {f.label !== "Next order" && f.note && (
+                  <span className="xs muted" style={{ marginLeft: 6 }}>
+                    {f.note}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Brandon's "Latest order" header — the most recent row on the New Order
+ * Board, answered in ONE sentence.
+ *
+ * ⚠️ **`orderHeadline` and `orderStage` are the orders page's own rules, never
+ * a second reading of the status columns here** (§5.35): the group is not the
+ * stage on that board and the API status is, so a local rule would have this
+ * card disagreeing with the page its own button opens.
+ *
+ * ⚠️ It is a SUMMARY. Everything that acts on an order — placing it, the
+ * backorder substitution, the cash-pay link — stays on `/orders`, because each
+ * of those writes, and two writers for one column is the failure this codebase
+ * keeps recording (§5.31c · §5.31d).
+ */
+function LatestOrder({ order: o }: { order: Order }) {
+  const head = orderHeadline(o);
+  const lines = orderLines(o);
+  return (
+    <section className="card pad">
+      <div className="section-h" style={{ marginBottom: 10 }}>
+        <div>
+          <div className="eyebrow">Latest order</div>
+          <b style={{ fontSize: 15 }}>{head.text}</b>
+          {head.detail && <div className="xs muted">{head.detail}</div>}
+        </div>
+        <Link className="btn outline sm" to={`/orders?orderId=${o.id}&from=patient`}>
+          Open order <ArrowUpRight style={{ width: 13, height: 13 }} />
+        </Link>
+      </div>
+      <div className="strip">
+        <div className="fact">
+          <div className="k">Order #</div>
+          <div className="v mono">{o.cahOrderNumber || o.poNumber || `#${o.id.slice(-4)}`}</div>
+        </div>
+        <div className="fact">
+          <div className="k">Placed</div>
+          <div className="v">{o.orderDate ? fmtDate(o.orderDate) : "—"}</div>
+        </div>
+        <div className="fact">
+          <div className="k">Status</div>
+          <div className="v">
+            <StagePill stage={orderStage(o)} size="sm" />
+          </div>
+        </div>
+        <div className="fact">
+          <div className="k">{o.deliveryDate ? "Delivered" : "Shipped"}</div>
+          <div className="v">
+            {o.deliveryDate
+              ? fmtDate(o.deliveryDate)
+              : o.shipDate
+                ? fmtDate(o.shipDate)
+                : "—"}
+            {!o.deliveryDate && o.carrier && (
+              <span className="xs muted" style={{ marginLeft: 6 }}>
+                {o.carrier}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      {!!lines.length && (
+        <p className="xs muted" style={{ margin: "10px 2px 0" }}>
+          {lines.map((l) => `${l.quantity} × ${l.product}`).join(", ")}
+        </p>
+      )}
     </section>
   );
 }

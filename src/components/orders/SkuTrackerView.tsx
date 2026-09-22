@@ -48,6 +48,16 @@ interface Props {
   error: string | null;
   lastRun: string;
   orders: Order[];
+  /**
+   * The ORDER BOARD's first read has not resolved yet.
+   *
+   * ⚠️ **It is the difference between "no open orders" and "we have not
+   * counted yet"** — and on this page the second is the common case, because
+   * Inventory no longer waits behind that read (§5.46b). Rendering the 0 an
+   * empty list produces would tell a rep nothing is on order for a SKU that
+   * has forty, which is the one direction this column must not be wrong in.
+   */
+  ordersLoading?: boolean;
   onRefresh: () => void;
 }
 
@@ -92,7 +102,7 @@ interface InvRow {
   openOrders: number;
 }
 
-export function SkuTrackerView({ rows, loading, error, lastRun, orders, onRefresh }: Props) {
+export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLoading = false, onRefresh }: Props) {
   const today = etToday();
   const [cat, setCat] = useState<string>("All");
   const [q, setQ] = useState("");
@@ -290,8 +300,9 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, onRefres
                     <td className="py-2 pr-3 text-right tabular-nums">{r.qtyAvail == null ? "—" : r.qtyAvail.toLocaleString("en-US")}</td>
                     <td className="py-2 pr-3 text-right tabular-nums">{r.unitCost == null ? "—" : fmtMoney(String(r.unitCost))}</td>
                     <td className="py-2 pr-3 text-right tabular-nums">{r.oopPrice == null ? "—" : fmtMoney(String(r.oopPrice))}</td>
-                    <td className={cn("py-2 text-right tabular-nums", n > 0 && v.tone === "red" ? "font-bold text-rose-700 dark:text-rose-300" : n === 0 ? "text-muted-foreground" : "")}>
-                      {n}
+                    <td className={cn("py-2 text-right tabular-nums", !ordersLoading && n > 0 && v.tone === "red" ? "font-bold text-rose-700 dark:text-rose-300" : ordersLoading || n === 0 ? "text-muted-foreground" : "")}>
+                      {/* ⚠️ "—", never 0, until the order board has answered. */}
+                      {ordersLoading ? "—" : n}
                     </td>
                   </tr>
                 ))

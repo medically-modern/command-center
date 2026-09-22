@@ -118,11 +118,30 @@ export function markStuck<T extends { groupTitle: string }>(item: T): boolean {
   return isStuckGroup(item.groupTitle);
 }
 
-/** Digits of a date of birth, so `01/15/1957` and `01-15-1957` compare equal.
- *  Deliberately NOT a date parse: an ISO value and a US value would normalise
- *  to different digit strings, which REJECTS the match — the safe direction. */
+/**
+ * Digits of a date of birth, so `01/15/1957` and `01-15-1957` compare equal.
+ *
+ * Deliberately NOT a date parse: an ISO value and a US value would normalise to
+ * different digit strings, which REJECTS the match — the safe direction.
+ *
+ * ⚠️ **A `M/D/YYYY` value IS zero-padded first, and that is not cosmetic.**
+ * These boards hold both paddings in the SAME column — §5.44 measured
+ * `12/5/1960` and `02/24/1981` side by side — so digits alone make `3/14/1958`
+ * (`3141958`) and `03/14/1958` (`03141958`) two different people. That is one
+ * patient, and the mismatch is silent: `nameMatchAccepted` fails closed, so
+ * their completed records simply do not join their trail. Padding can only ever
+ * make a TRUE match; two genuinely different dates still differ (`1/11/1958` →
+ * `01111958` vs `11/1/1958` → `11011958`).
+ *
+ * ⚠️ Applied only to a value that really is `M/D/Y` with separators, so an ISO
+ * `1958-03-14` and anything unrecognised fall through to the digits unchanged
+ * rather than being rearranged into a date it never claimed to be.
+ */
 export function dobKey(raw: string): string {
-  return String(raw ?? "").replace(/\D/g, "");
+  const s = String(raw ?? "").trim();
+  const m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/.exec(s);
+  if (m) return `${m[1].padStart(2, "0")}${m[2].padStart(2, "0")}${m[3]}`;
+  return s.replace(/\D/g, "");
 }
 
 /** What we know about the patient from the phone pass — the anchor every name

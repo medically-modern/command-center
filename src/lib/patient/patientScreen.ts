@@ -36,6 +36,35 @@ export type PatientSide = "texts" | "calls";
 export function parseView(raw: string | null): PatientView {
   return raw === "subscription" ? "subscription" : "onboarding";
 }
+
+/**
+ * Which view the screen OPENS on when the URL names none.
+ *
+ * ⚠️ Josh, 2026-09-22: *"it should open up to their subscription page if
+ * they're on it, and the onboarding tab if subscription profile does not
+ * exist"* — which is Brandon's own default (`patientMain`: `q.view || (j.mode
+ * === 'subscription' ... ? 'subscription' : 'onboarding')`). A patient who has
+ * reached Subscription is being SERVED; the onboarding trail behind them is
+ * history, so landing on it and making them press a toggle opens the wrong half
+ * of the record.
+ *
+ * ⚠️ **Keyed on the ROW'S EXISTENCE, never on a status** — the same rule the
+ * toggle itself follows (`subscriptionItem`). The row is created at Final
+ * Profile Confirmation, so a patient stuck in Insurance whose row was created
+ * early still lands on it; reading a status would send exactly the patient the
+ * view exists for to the other tab.
+ *
+ * ⚠️ An explicit `?view=` always wins, or a link naming a view would not open
+ * it and Back would not restore it.
+ */
+export function defaultView(dossier: PatientDossier | null): PatientView {
+  return subscriptionItem(dossier) ? "subscription" : "onboarding";
+}
+
+/** The view to render: what the URL says, else what the record implies. */
+export function viewFor(raw: string | null, dossier: PatientDossier | null): PatientView {
+  return raw === null || raw === "" ? defaultView(dossier) : parseView(raw);
+}
 export function parseSide(raw: string | null): PatientSide {
   return raw === "calls" ? "calls" : "texts";
 }

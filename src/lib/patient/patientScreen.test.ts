@@ -325,8 +325,19 @@ describe("the patient screen is READ-ONLY", () => {
     expect(view).toMatch(/useAbility\("editProfile"\)/);
     // The handler refuses before it sends.
     expect(view).toMatch(/if \(!canEdit\) return;[\s\S]{0,400}sendPatientToMonday/);
-    // And the editor is not even mounted without it.
-    expect(view).toMatch(/canEdit && <SubscriptionEditor/);
+    /* ⚠️ The EDITOR is mounted for everybody from 2026-09-22 (§5.46b) — the
+       read-only half of this screen is the same form, inert — so what has to
+       be gated is the SEND and the INPUTS, not the mount.
+       ⚠️ `inert` is the real guard (§5.39c2): measured in Chrome 141 a real
+       click is not hittable and focus cannot enter, so none of the form's
+       event handlers can fire. The no-op writer is belt and braces. */
+    expect(view, "the Send bar renders without the ability").toMatch(
+      /canEdit \? \(\s*<div className=\{`sub-bar/,
+    );
+    expect(view, "the read-only form is not inert").toMatch(/inert: ""/);
+    expect(view, "a form nobody can edit still holds a writer").toMatch(
+      /onFieldChange=\{canEdit \? onFieldChange : noop\}/,
+    );
   });
 
   it("⚠️ somebody WITHOUT the ability is told why, rather than shown nothing", () => {

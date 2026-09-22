@@ -1,32 +1,32 @@
 /**
  * One row per PATIENT in the global search, not one per board item (§5.42).
  *
- * Josh, 2026-09-21, searching a real patient: *"i searched her in the top
- * profile and all of her profiles poped up when only her name should pop up …
- * her active profile is welcome call, so that should be what pops up / that
- * stuck profile should also be accessable"*.
+ * Josh, 2026-09-21: *"i searched her in the top profile and all of her profiles
+ * poped up when only her name should pop up … her active profile is welcome
+ * call, so that should be what pops up / that stuck profile should also be
+ * accessable"*. And again, 2026-09-22, still seeing several: *"when you search
+ * for a patient, it's still showing up multiple profiles for a specific
+ * patient. It should only be one profile"* · *"Shouldn't show the +4 more
+ * records"*.
  *
  * ⚠️ **A patient is one item PER BOARD (§6), so a name legitimately returns
  * three to six rows** — the finished Profile Send Off record, the finished
  * Medical Evaluation record, the live Insurance one, and a duplicate or two
- * where a stage ran twice. The measured case had **six**: two completed Profile
- * Send Off items, a completed and an escalated Medical Evaluation item, a
- * completed Insurance item and one live Welcome Call item. In a flat list a rep
- * clicks the first row carrying the name, which is why §7 foldered the System
- * Management search in the first place. The header's drop-down has eight rows
- * total, so six of them being one person is worse than a folder: it crowds out
- * everybody else who matched.
+ * where a stage ran twice. In a flat list a rep clicks the first row carrying
+ * the name, and the header's drop-down has eight rows in total, so six of them
+ * being one person crowds out everybody else who matched.
  *
- * ⚠️ **Nothing is dropped — it is FOLDED.** Every row stays on the hit as
+ * ⚠️ **Nothing is dropped — it is FOLDED.** Every record stays on the hit as
  * `rows`, and the one click opens the patient screen, whose stepper carries
  * every record the patient has on each stage with a tab per record (§5.39b).
- * So the completed snapshots and the stuck record are all one click further in
- * rather than one click away. That is the whole reason this is safe to do here
- * and would NOT be safe in a list that opened a stage page.
+ * The completed snapshots and the stuck record are one click further IN rather
+ * than one click away, which is what makes folding safe here and would not make
+ * it safe in a list that opened a stage page.
  */
-import { personKey } from "@/lib/commsHub/dossier";
+import { dobKey, personKey } from "@/lib/commsHub/dossier";
 import { pipelineIndex } from "@/lib/commsHub/pipelineOrder";
 import { searchBucket, type SearchBucket } from "@/lib/systemMgmt/searchBuckets";
+import { SUBSCRIPTION_BOARD } from "@/lib/patient/patientScreen";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 
 export interface PersonHit {
@@ -50,26 +50,46 @@ export function last10(phone: string): string {
 }
 
 /**
- * ⚠️⚠️ **A NAME IS NOT AN IDENTITY, so a row with no phone stands alone.**
- * `commsHub/dossier.nameMatchAccepted` requires a second signal before two
- * records may be called one person — the phone agrees, or the phone is blank
- * and the DOB agrees — and `SystemPatient` carries **no DOB**, so the second
- * branch is simply not available here. Two patients called Maria Garcia is
- * ordinary at this size; folding them would show ONE row and make the other
- * unreachable from the search, which is strictly worse than showing two.
- * Over-splitting costs a duplicate-looking row a rep can tell apart from the
- * stage beside it. Fail closed.
+ * The coarse bucket a record can possibly fold into: its NAME.
  *
  * ⚠️ **Orders never fold.** A New Order Board row is not a patient record — it
  * opens `/orders`, one item per reorder (§5.35) — so each keeps its own key and
- * the Orders folder behaves exactly as it did.
+ * the Orders folder behaves exactly as it did. A record with no usable name
+ * stands alone for the same reason, since there is nothing to compare.
  */
 export function groupKeyFor(row: SystemPatient): string {
   if (searchBucket(row) === "orders") return `order:${row.id}`;
-  const digits = last10(row.phone);
   const name = personKey(row.name);
-  if (!digits || !name) return `alone:${row.id}`;
-  return `p:${name}|${digits}`;
+  if (!name) return `alone:${row.id}`;
+  return `p:${name}`;
+}
+
+/**
+ * ⚠️⚠️ **MAY THESE TWO RECORDS BE CALLED ONE PATIENT?** — `nameMatchAccepted`'s
+ * rule (§5.28), applied between two search rows rather than between a record
+ * and an anchor. The caller has already established they share a name.
+ *
+ * ⚠️⚠️ **THE DOB BRANCH IS WHY JOSH STILL SAW FIVE ROWS.** §5.42 keyed on
+ * `name|phone10`, so every record with a BLANK phone fell to `alone:<id>` — and
+ * a completed record routinely carries a blank or differently-typed phone,
+ * which is the entire reason `fetchDossierItems` runs a second, name-keyed pass
+ * at all. A patient whose live record had a number and whose finished records
+ * did not came back as one row per record, exactly as before the folding was
+ * written. `SystemPatient` carries no DOB then; it does now (§5.46b).
+ *
+ * ⚠️ **Two NON-BLANK phones that differ stay apart.** They are the same person
+ * with an old number far more often than they are two people — but this cannot
+ * tell which, and over-splitting costs a duplicate-looking row a rep can read,
+ * where over-merging puts one patient's history under another's name. Fail
+ * closed, the direction every identity rule in this codebase takes.
+ */
+export function sameHuman(a: SystemPatient, b: SystemPatient): boolean {
+  const pa = last10(a.phone);
+  const pb = last10(b.phone);
+  if (pa && pb) return pa === pb;
+  const da = dobKey(a.dob);
+  const db = dobKey(b.dob);
+  return da.length > 0 && da === db;
 }
 
 /** Bucket order for picking the lead: a live record beats a stuck one, which
@@ -79,11 +99,19 @@ const BUCKET_RANK: Record<SearchBucket, number> = { active: 3, stuck: 2, complet
 /**
  * Which of a person's records the row opens.
  *
- * ⚠️ **The ACTIVE one, furthest along** — Josh: *"her active profile is welcome
- * call, so that should be what pops up"*. A patient with no live record opens
- * on the stuck one if there is one (a manager decision is the actionable
- * thing), and otherwise on the furthest-along completed record, which is where
- * their history ends.
+ * ⚠️⚠️ **THE SUBSCRIPTION RECORD WINS OUTRIGHT** (Josh, 2026-09-22: *"it should
+ * open up to their subscription page if they're on it, and the onboarding tab
+ * if subscription profile does not exist"*). A patient who has reached
+ * Subscription is being SERVED — the onboarding trail behind them is history —
+ * so opening their Welcome Call record and making them press a toggle is
+ * opening the wrong half of their record. The patient screen's view default
+ * reads the same fact (`patientScreen.defaultView`), so the row and the screen
+ * it opens cannot disagree.
+ *
+ * ⚠️ Below that it is the ACTIVE record, furthest along. A patient with no live
+ * record opens on the stuck one if there is one (a manager decision is the
+ * actionable thing), and otherwise on the furthest-along completed record,
+ * which is where their history ends.
  */
 export function pickLead(rows: readonly SystemPatient[]): SystemPatient {
   let best = rows[0];
@@ -91,7 +119,9 @@ export function pickLead(rows: readonly SystemPatient[]): SystemPatient {
   for (const r of rows) {
     // Rank dominates the pipeline position, so a live Insurance record beats a
     // completed Welcome Call one: being worked outranks having been finished.
-    const score = BUCKET_RANK[searchBucket(r)] * 100 + (pipelineIndex(r.boardId) + 1);
+    // The Subscription board sits above both — it is not a pipeline stage.
+    const sub = r.boardId === SUBSCRIPTION_BOARD ? 1000 : 0;
+    const score = sub + BUCKET_RANK[searchBucket(r)] * 100 + (pipelineIndex(r.boardId) + 1);
     if (score > bestScore) {
       best = r;
       bestScore = score;
@@ -106,41 +136,73 @@ export function pickLead(rows: readonly SystemPatient[]): SystemPatient {
  *
  * ⚠️ That order is `rankLiveResults`' (§7), so the best-matching person still
  * leads. Re-sorting here would throw away the ranking the search just did.
+ *
+ * ⚠️ **Name first, then `sameHuman` WITHIN the name** — and transitively, so a
+ * live record carrying a phone, a completed record carrying only a DOB and a
+ * second completed record carrying both end up in one group however they are
+ * ordered. Grouping on a single composite key cannot express "phone OR DOB";
+ * this is the smallest thing that can.
  */
 export function groupSearchHits(rows: readonly SystemPatient[]): PersonHit[] {
   const order: string[] = [];
-  const byKey = new Map<string, SystemPatient[]>();
+  const byName = new Map<string, SystemPatient[][]>();
+
   for (const row of rows) {
     const key = groupKeyFor(row);
-    const list = byKey.get(key);
-    if (list) list.push(row);
-    else {
-      byKey.set(key, [row]);
+    let clusters = byName.get(key);
+    if (!clusters) {
+      clusters = [];
+      byName.set(key, clusters);
       order.push(key);
     }
+    // A name that cannot fold (an order row, or no name at all) is its own
+    // cluster every time — `groupKeyFor` already made the key unique.
+    const matches = key.startsWith("p:")
+      ? clusters.filter((c) => c.some((other) => sameHuman(other, row)))
+      : [];
+    if (!matches.length) {
+      clusters.push([row]);
+      continue;
+    }
+    // ⚠️ MERGE every cluster this row bridges, rather than joining the first.
+    // Two clusters can be the same person and not know it until a record
+    // arrives carrying both their phone and their DOB.
+    const merged = matches.flat();
+    merged.push(row);
+    for (const c of matches) clusters.splice(clusters.indexOf(c), 1);
+    clusters.push(merged);
   }
-  return order.map((key) => {
-    const group = byKey.get(key)!;
-    const lead = pickLead(group);
-    return {
-      key,
-      lead,
-      // Lead first, then the rest in the order they arrived — the caption reads
-      // "and N more", so which N is stable between polls.
-      rows: [lead, ...group.filter((r) => r !== lead)],
-      name: lead.name || group.find((r) => r.name)?.name || "",
-      phone: lead.phone || group.find((r) => r.phone)?.phone || "",
-      bucket: searchBucket(lead),
-    };
-  });
+
+  const hits: PersonHit[] = [];
+  for (const key of order) {
+    for (const group of byName.get(key)!) {
+      const lead = pickLead(group);
+      hits.push({
+        // ⚠️ Keyed on the LEAD's item id, not on the name: two clusters under
+        // one name would otherwise collide as React keys and the second row
+        // would not render.
+        key: `${key}#${lead.id}`,
+        lead,
+        rows: [lead, ...group.filter((r) => r !== lead)],
+        name: lead.name || group.find((r) => r.name)?.name || "",
+        phone: lead.phone || group.find((r) => r.phone)?.phone || "",
+        bucket: searchBucket(lead),
+      });
+    }
+  }
+  return hits;
 }
 
-/** The line under the name. Says what the patient is DOING, then how much
- *  history folded in — a bare "6 records" without the stage is a number with no
- *  meaning, and the stage without the count hides that there is more to see. */
+/**
+ * The line under the name — what the patient is DOING.
+ *
+ * ⚠️ **No record count** (Josh, 2026-09-22: *"Shouldn't show the +4 more
+ * records"*). §5.42 put one there so a folded row would not read like a patient
+ * with a single record; from the floor it reads as clutter about our own data
+ * model, on a line whose job is to tell a rep which patient this is. The extra
+ * records are still all on the hit and still all reachable — they are the
+ * stepper's per-record tabs, one click in.
+ */
 export function hitCaption(hit: PersonHit): string {
-  const stage = hit.lead.pipelineStage || hit.lead.groupTitle || hit.lead.boardName;
-  const extra = hit.rows.length - 1;
-  if (extra <= 0) return stage;
-  return `${stage} · +${extra} more record${extra === 1 ? "" : "s"}`;
+  return hit.lead.pipelineStage || hit.lead.groupTitle || hit.lead.boardName;
 }

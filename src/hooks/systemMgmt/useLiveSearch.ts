@@ -69,7 +69,22 @@ export function useLiveSearch(query: string): LiveSearchState {
       setError(null);
     }
     try {
-      const rows = await searchPatientsLive(q, controller.signal);
+      /* ⚠️ The NAME pass paints as soon as it lands, before the loose and
+         same-number passes have run (§5.46b). Those two exist to catch a
+         misspelling and a second spelling of a surname; waiting on them left
+         the dropdown reading "Searching…" through up to three sequential round
+         trips for the great majority of searches, which answer completely on
+         the first. The merged set replaces this a moment later.
+         ⚠️ Guarded by the SAME generation check as the final answer — a partial
+         answer to a query the rep has typed past must not paint either. */
+      const rows = await searchPatientsLive(q, controller.signal, (partial) => {
+        if (gen !== generation.current) return;
+        setResults(rankLiveResults(partial, q));
+        setSearchedQuery(q);
+        /* ⚠️ `searching` stays TRUE: rows are on screen and more may still
+           arrive, and the spinner is the only thing saying so. Turning it off
+           here would report a partial answer as the whole one. */
+      });
       if (gen !== generation.current) return; // superseded
       setResults(rankLiveResults(rows, q));
       setSearchedQuery(q);

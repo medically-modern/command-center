@@ -180,6 +180,12 @@ export function GlobalSearch() {
               "still looking" and "the search failed" are three different
               answers, and collapsing them is how a rep concludes a patient is
               not in the system when Monday simply 503'd (§9). */}
+          {/* ⚠️ Rows can be on screen WHILE the search is still running — the
+              name pass paints first and the loose and same-number passes land
+              after it (§5.46b). So "still looking" is a footer here, not the
+              empty state: without it a rep reads a partial answer as the whole
+              one and concludes a record is missing. */}
+          {!!rows.length && searching && <div className="gs-note">Still looking…</div>}
           {!rows.length && searching && <div className="gs-note">Searching…</div>}
           {!rows.length && !searching && tooShort && (
             <div className="gs-note">Keep typing — two characters at least.</div>

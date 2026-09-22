@@ -14,7 +14,7 @@ import { useLiveSearch, LIVE_SEARCH_DEBOUNCE_MS, LIVE_SEARCH_REFRESH_MS } from "
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 
 const row = (name: string): SystemPatient => ({
-  id: name, name, phone: "", boardId: 1, boardName: "B", groupId: "g", groupTitle: "G",
+  id: name, name, phone: "", dob: "", boardId: 1, boardName: "B", groupId: "g", groupTitle: "G",
   roleRoute: "", pipelineStage: "", escalated: false, escalationText: "", escalationLevel: null,
   escalationNotes: "", hasPage: false, isCompleted: false, daysSinceStage: "", notes: "",
   stageAdvancerText: "", nextActionDate: "",

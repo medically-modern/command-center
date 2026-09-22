@@ -303,6 +303,30 @@ describe("splitByPerson — a phone match is not a person", () => {
   });
 });
 
+describe("⚠️ dobKey pads a M/D/YYYY value — both shapes are live in one column", () => {
+  it("an unpadded date equals its padded twin", () => {
+    // §5.44 measured `12/5/1960` and `02/24/1981` in the SAME column, so digits
+    // alone made one patient two. Silent, because nameMatchAccepted fails
+    // closed: their completed records just never joined the trail.
+    expect(dobKey("3/14/1958")).toBe(dobKey("03/14/1958"));
+    expect(dobKey("12/5/1960")).toBe(dobKey("12/05/1960"));
+    expect(dobKey("1-2-1970")).toBe(dobKey("01/02/1970"));
+  });
+
+  it("⚠️ two genuinely different dates still differ", () => {
+    expect(dobKey("1/11/1958")).not.toBe(dobKey("11/1/1958"));
+  });
+
+  it("⚠️ an ISO value is left alone rather than rearranged", () => {
+    expect(dobKey("1958-03-14")).toBe("19580314");
+  });
+
+  it("blank stays blank, so it can never corroborate anything", () => {
+    expect(dobKey("")).toBe("");
+    expect(dobKey("  ")).toBe("");
+  });
+});
+
 describe("personKey", () => {
   it("strips the annotations reps actually add", () => {
     expect(personKey("Julius Montenegro (IP)")).toBe(personKey("Julius Montenegro (cgm)"));

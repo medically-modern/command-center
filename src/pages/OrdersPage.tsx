@@ -95,7 +95,20 @@ const OrdersPage = () => {
 
   return (
     <SidebarProvider>
-      <PageLoadingOverlay show={initialLoading} label="Loading orders…" />
+      {/* ⚠️⚠️ **SCOPED TO THE ORDERS VIEW — on Inventory it blocked the whole
+          page for a read that view barely uses** (Josh, 2026-09-22: *"i'll
+          accidentally press it, and then i'm stuck and have to wait 15 seconds
+          before i can do anything or click anywhere else"*). This overlay is
+          `fixed inset-0` and captures pointer events, and `initialLoading` is
+          the ORDER BOARD's first read — ~1,500 rows over three sequential
+          pages. Inventory reads the SKU tracker, which has its own loading
+          state inside the table; all it wants from the orders list is the
+          open-order count per SKU, which fills in when it lands (the column
+          says "—" until then rather than a false 0).
+          ⚠️ The orders view keeps it: there the stale previous list IS on
+          screen behind it, which is what the overlay exists to stop a rep
+          clicking. */}
+      <PageLoadingOverlay show={view === "orders" && initialLoading} label="Loading orders…" />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         {/* ⚠️ The order sidebar is the ORDERS view's search, and on Inventory
             it is a list of things this screen cannot open — Brandon's
@@ -181,6 +194,7 @@ const OrdersPage = () => {
                   error={sku.error}
                   lastRun={skuLastRun}
                   orders={orders}
+                  ordersLoading={initialLoading}
                   onRefresh={() => void refreshSkuTracker(true)}
                 />
                 </AbilityGate>

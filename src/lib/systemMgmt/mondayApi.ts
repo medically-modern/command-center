@@ -379,6 +379,18 @@ export interface SystemPatient {
   name: string;
   phone: string;
   /**
+   * Date of birth as the board renders it, read from `BoardDef.dobColId`.
+   *
+   * ⚠️ **It exists so the header search can FOLD a patient's records into one
+   * row** (§5.42 → §5.46b). A completed record routinely carries a blank or
+   * differently-typed phone (§5.28), and a name alone is not an identity — so
+   * without a second signal every blank-phone record stood alone and a patient
+   * with six items still filled six rows. `nameMatchAccepted`'s rule is the
+   * phone agrees, OR a phone is blank and the DOB agrees; this is the half
+   * that was missing. Blank on the New Order Board, which has no DOB column.
+   */
+  dob: string;
+  /**
    * How this row reached the results — absent means the ordinary way, by the
    * name the rep typed. `"phone"` marks a row found by the same-number pass
    * (`sameNumberNeedles`): it is a REAL record for a patient whose board name
@@ -466,6 +478,10 @@ export function phoneColIdsFor(board: BoardDef): string[] {
 
 export function searchColumnIds(board: BoardDef): string[] {
   const colIds = [...phoneColIdsFor(board)];
+  /* ⚠️ The DOB is a SEARCH-SIDE read, not a display one: it is the second
+     signal the header's folding needs when a record's phone is blank (§5.46b).
+     One more column on a query that already runs — never a second read. */
+  if (board.dobColId) colIds.push(board.dobColId);
   if (board.escalationColId) colIds.push(board.escalationColId);
   if (board.escalationNotesColId) colIds.push(board.escalationNotesColId);
   if (board.stageAdvancerColId) colIds.push(board.stageAdvancerColId);
@@ -589,6 +605,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   };
 
   const phone = colVal(board.phoneColId);
+  const dob = board.dobColId ? colVal(board.dobColId) : "";
   const daysSinceStage = board.daysSinceStageColId
     ? colVal(board.daysSinceStageColId)
     : "";
@@ -643,6 +660,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     id: item.id,
     name: item.name,
     phone,
+    dob,
     subtitle: order?.subtitle,
     boardId: board.boardId,
     boardName: board.boardName,
@@ -1116,11 +1134,33 @@ export function mergeSameNumberRows(
 export async function searchPatientsLive(
   query: string,
   signal?: AbortSignal,
+  /**
+   * Called with the NAME pass's rows the moment they land, before the loose and
+   * same-number passes below have run.
+   *
+   * ⚠️ **It is why the box stops feeling slow** (Josh, 2026-09-22: *"Search bar
+   * takes a while to load"*). A name query is up to THREE sequential round
+   * trips — the name pass, then the loose pass when it found nothing, then the
+   * same-number pass — and until now the dropdown showed "Searching…" for all
+   * of them, even though the first pass answers the overwhelming majority of
+   * searches completely. Nothing here got faster; the rep stops waiting on
+   * passes that exist to catch a misspelling and a second spelling of a
+   * surname.
+   *
+   * ⚠️ **Optional, and painting it is the CALLER's business.** The hook holds
+   * the latest-wins generation counter, so only it can tell a partial answer to
+   * the current query from a partial answer to one the rep has typed past.
+   */
+  onPartial?: (rows: SystemPatient[]) => void,
 ): Promise<SystemPatient[]> {
   const rules = liveSearchRules(query);
   if (!rules || !hasToken()) return [];
 
   let named = await fetchLiveRows((b) => rulesLiteral(b, rules), signal);
+  /* ⚠️ Only when there IS something to show. An empty first pass is exactly
+     the case the loose pass exists for, so painting "No patient matches" here
+     would flash the one answer this search must not give prematurely. */
+  if (named.length) onPartial?.(named);
 
   /* ── The loose pass (§5.44) ──────────────────────────────────────────
      ⚠️ ONE MISSPELLED LETTER RETURNED "No patient matches" FOR A PATIENT WHO

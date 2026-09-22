@@ -22,6 +22,7 @@ import {
 function patient(over: Partial<SystemPatient> & { id: string; name: string }): SystemPatient {
   return {
     phone: "",
+    dob: "",
     boardId: 18406352652,
     boardName: "Profile Send Off",
     groupId: "group_mm1xf2jb",

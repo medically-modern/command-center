@@ -364,6 +364,17 @@
 .cc-pt .sub-bar .grow { flex: 1; min-width: 200px; }
 .cc-pt .sub-bar .ico { width: 15px; height: 15px; flex: none; }
 
+/* The same form, read-only. ⚠️ The guard is `inert` on this element (§5.39c2);
+   what this rule adds is the LOOK, so a rep can tell at a glance that the
+   controls are not theirs to press rather than discovering it by clicking. */
+.cc-pt .sub-ro { opacity: 0.72; }
+.cc-pt .sub-ro, .cc-pt .sub-ro * { cursor: default; }
+
+/* A next order that has already passed — the one thing on the overview strip
+   that is ever anything but neutral. Token-based, so it follows dark mode
+   (§5.40) rather than hardcoding a colour the theme cannot move. */
+.cc-pt .warn { color: var(--warn-fg); }
+
 
 /* ── Right column: Texts | Calls ──────────────────────────────────────────── */
 .cc-pt .pt-side .hd { padding: 10px 12px; border-bottom: 1px solid var(--bd); }

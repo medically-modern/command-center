@@ -58,7 +58,7 @@ import {
   defaultStepIndex,
   onboardingCaption,
   parseSide,
-  parseView,
+  viewFor,
   subscriptionCaption,
   subscriptionItem,
   topBarFacts,
@@ -73,7 +73,6 @@ export default function PatientPage() {
   const [params, setParams] = useSearchParams();
 
   const boardId = Number(params.get(BOARD_PARAM) || 0);
-  const view = parseView(params.get(VIEW_PARAM));
   const side = parseSide(params.get(SIDE_PARAM));
 
   /** ⚠️ Rebuilt each render, which is why `usePatientRecord` depends on a KEY
@@ -133,6 +132,10 @@ export default function PatientPage() {
     ? Math.max(0, Math.min(steps.length - 1, Number(rawStep)))
     : defaultStepIndex(steps);
 
+  /** ⚠️ Resolved from the RECORD when the URL names no view (§5.46b): a patient
+   *  on the Subscription board opens on it. An explicit `?view=` still wins, so
+   *  the toggle, a shared link and Back all behave as they did. */
+  const view = viewFor(params.get(VIEW_PARAM), dossier);
   const active = dossier?.active ?? null;
   const phone = dossier?.phone || active?.phone || "";
   const subItem = subscriptionItem(dossier);

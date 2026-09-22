@@ -6319,6 +6319,174 @@ that are not there. Profile Send Off has no Diagnosis column at all, so the
 Profile → ME hop cannot carry one.
 
 
+### 5.46b Josh's 2026-09-22 pass over the redesign
+Seven notes on the patient screen, the search box and two header tabs. **No board change; app
+only.** The standing rule from Brandon's own note still governs — *"we shouldn't lose any data
+doing this … trying to be as least destructive as possible"* — so nothing below removes a tool;
+one of them ADDS a door back that a removal would otherwise have closed.
+
+**1. ⚠️⚠️ THE SEARCH STILL RETURNED ONE ROW PER BOARD RECORD, AND §5.42's FOLDING IS WHY IT
+LOOKED FIXED.** *"when you search for a patient, it's still showing up multiple profiles for a
+specific patient. It should only be one profile"*. That build keyed each row on
+`personKey(name) + last10(phone)` and dropped anything else to `alone:<id>` — so every record with
+a **BLANK phone stood alone**. A completed record routinely carries a blank or differently-typed
+phone; it is the entire reason `fetchDossierItems` runs a second, name-keyed pass (§5.28). A
+patient whose live record had a number and whose finished records did not therefore came back as
+one row per record, exactly as before the folding was written, and the folding's own tests passed
+because every fixture carried a phone.
+- `SystemPatient` now carries **`dob`**, read from the `dobColId` §5.44 already declared per board
+  and added to `searchColumnIds` — one more column on a query that already runs, never a second read.
+- `searchPeople.sameHuman` is `nameMatchAccepted`'s rule (§5.28) between two search rows: the
+  phones agree, **or** one is blank and the DOBs agree. Two NON-blank phones that differ stay
+  apart — almost always one patient with an old number, but this cannot tell which, and
+  over-merging puts one history under another's name. Fail closed.
+- `groupSearchHits` buckets by NAME and then unions within it, **merging every cluster a row
+  bridges** rather than joining the first: a phone-only record, a DOB-only record and one carrying
+  both are one patient whatever order they arrive in. A single composite key cannot express
+  "phone OR DOB"; this is the smallest thing that can.
+- ⚠️⚠️ **`dobKey` NOW PADS `M/D/YYYY`, and that is a latent bug fixed at the source, not a local
+  workaround.** §5.44 measured `12/5/1960` and `02/24/1981` in the SAME column, and digits alone
+  make `3/14/1958` (`3141958`) and `03/14/1958` (`03141958`) two different people — so
+  `nameMatchAccepted` was silently failing closed on the Comms Hub dossier too, dropping a
+  patient's completed records off their trail. Padding can only ever make a TRUE match; two
+  genuinely different dates still differ (`1/11/1958` vs `11/1/1958`), and an ISO value is left
+  alone rather than rearranged.
+- **The "+N more records" caption is gone** (*"Shouldn't show the +4 more records"*). §5.42 put it
+  there so a folded row would not read like a single-record patient; from the floor it is clutter
+  about our own data model on a line whose job is to say which patient this is. Every record is
+  still on the hit and still reachable — they are the stepper's per-record tabs, one click in.
+
+**2. The row opens the SUBSCRIPTION record, and the screen opens on that view.** *"it should open
+up to their subscription page if they're on it, and the onboarding tab if subscription profile does
+not exist"* — Brandon's own default (`patientMain`: `q.view || (j.mode==='subscription' ? …)`).
+`pickLead` scores the Subscription board above every pipeline bucket, and
+`patientScreen.defaultView`/`viewFor` reads the same fact, so the row and the screen it opens
+cannot disagree. ⚠️ Keyed on the **ROW'S EXISTENCE, never a status** — the row is created at Final
+Profile Confirmation, so a patient stuck in Insurance with an early row still lands on it, which is
+the same rule the toggle itself follows. An explicit `?view=` always wins, or a shared link would
+not open what it names.
+
+**3. The box stops waiting on passes most searches do not need.** *"Search bar takes a while to
+load"*. A name query is up to THREE sequential round trips — the name pass, the loose pass when it
+found nothing (§5.44), then the same-number pass (§7) — and the dropdown read "Searching…" through
+all of them. `searchPatientsLive` now takes an **`onPartial`** callback and `useLiveSearch` paints
+the name pass the moment it lands. Nothing got faster; the rep stops waiting on passes that exist
+to catch a misspelling and a second spelling of a surname.
+⚠️ **Guarded by the SAME generation counter as the final answer** — a partial answer to a query
+the rep has typed past must not paint either. ⚠️ `searching` stays TRUE, and the dropdown says
+*"Still looking…"* under the rows: without it a rep reads a partial answer as the whole one and
+concludes a record is missing. ⚠️ Only fired when the first pass found SOMETHING — an empty first
+pass is exactly the case the loose pass exists for, so painting "No patient matches" there would
+flash the one answer this search must not give prematurely.
+
+**4. The Subscription profile is Brandon's four facts, and the profile is ON the page.**
+- **The overview strip** is `lib/patient/subscriptionOverview.ts` (+ tests): **Status · Next order
+  · Subscription · First order**, his `profilePage` strip exactly. *"Delete Days to order: 70 Days
+  in profile - not on redesign - same with cycle - doesn't have first order"*.
+  ⚠️ **Built HERE rather than by trimming `stageDetail`'s SUBSCRIPTION map**, which is also what
+  the Comms Hub dossier pane renders (§5.28) — a rep on a call wants the cycle and the days-to-order
+  status there. Editing the shared map to fix this screen would quietly change that one: the §5.7
+  hazard with two readers instead of two repos. A test pins that the map still has all six.
+  ⚠️ "Days to order" is not lost on the floor: it is the board's own STATUS column, and the strip
+  computes the same thing from the DATE, which is the more precise answer and the one Brandon shows.
+  ⚠️ `daysUntil` compares **calendar days in ET on the `YYYY-MM-DD` parts**, never a `Date` built
+  from a naive board value (§5.15's standing trap), so it cannot drift across a month or a DST edge.
+  ⚠️ First order is the **EARLIEST** order date, blanks sorted out; unread orders give a blank,
+  never a date borrowed from the board's created stamp.
+- **The order-details form renders for EVERYBODY, inert without `editProfile`** (*"Delete the open
+  read-only button in the profile view and just use that view it takes you to display in the bottom
+  section"*). Those buttons were the screen admitting it was a summary: a rep read four cards and
+  then left for `/subscription` to see the rest. Brandon's `profilePage` has no such link — it
+  draws the grid inline and `disabled`s it for somebody who cannot edit.
+  ⚠️ **`inert` is the mechanism**, the one `StagePanelEmbed` already uses for this job (§5.39c2):
+  measured in Chrome 141 a real click is not hittable and focus cannot enter, and every write in
+  `SubscriptionForm` is in an event handler. The no-op writer is belt and braces.
+  ⚠️ Which is why `FORM_SECTIONS` is filtered **unconditionally** now: a `canEdit ?` there would
+  double-render those fields for exactly the people who cannot correct them.
+- **The bottom link card is gone** (*"there shouldn't be a button at the bottom taking you to open
+  the profile and update clinicals"*). ⚠️ Update Clinicals keeps its own page and its own role bar
+  — what went is a button, not a route — and the visit date is still only writable there, because
+  that save also writes the MR rung (§5.36). The footer line says so rather than leaving a rep to
+  discover it.
+
+**5. The Orders tab leads with the two orders a rep is asked about.** *"Should show the upcoming
+order and latest order information on top"*, which is Brandon's `ordersPage`.
+⚠️ **They are DIFFERENT orders and the cards say which.** The upcoming one is the Subscription
+board's next-order date — a box that does not exist yet — and the latest is the most recent row on
+the New Order Board. Merging them into one "current order" card is how a rep tells a patient their
+next delivery has shipped.
+⚠️ The upcoming card renders on **every** branch, the failures included: it is read from the
+Subscription board, so "we could not reach the order board" must not also take away the one fact
+that did not come from it (§9).
+⚠️ `orderHeadline` · `orderStage` · `orderLines` · `StagePill` are the orders page's own rules,
+never a second reading of the status columns — the group is not the stage on that board and the API
+status is (§5.35), so a local rule would disagree with the page the card's own button opens. The
+card is a SUMMARY: everything that acts on an order stays on `/orders`, because each of those
+writes.
+⚠️ The orders read moved up to `SubscriptionView` and runs for the whole view rather than per tab,
+so the strip has a First order and the tab badge carries the count before a rep presses it (as
+Brandon draws it). That is still "on open, never on render" — the view is mounted only when
+somebody is looking at it, and `fetchOrdersForPatient` is ONE filtered query, module-cached per
+number, touching RingCentral not at all.
+
+**6. ⚠️⚠️ INVENTORY WAS HELD BEHIND A FULL-SCREEN OVERLAY FOR A READ IT BARELY USES.** *"Inventory
+- takes too long to load, and even worse i'll accidentally press it, and then i'm stuck and have to
+wait 15 second before i can do anything or click anywhere else"*. `PageLoadingOverlay` is `fixed
+inset-0` and captures pointer events, and `initialLoading` is the ORDER BOARD's first read — ~1,500
+rows over three sequential pages — so it fired on BOTH views of `/orders`. Pressing Inventory by
+mistake locked the window. It is scoped to the orders view now.
+⚠️ **The orders view KEEPS it**, which is the whole reason it exists: there the previous list is on
+screen behind it and the overlay is what stops a rep clicking a stale row.
+⚠️ **The open-order column says "—", never 0, until that read lands** (`ordersLoading`). "Not
+counted yet" is now the common case on this page, and a 0 would tell a rep nothing is on order for
+a SKU that has forty — the one direction this column must not be wrong in. Nothing got faster; what
+changed is that the rest of the page is usable while it loads. Pinned by
+`components/orders/inventoryBlocking.test.ts`, because the failure is a *working* page you cannot
+click: nothing errors and the only symptom is a wait.
+
+**7. Reports & Metrics is honestly empty — and Operations got its door back.** *"just say No
+reports available yet - and have a blank screen"*. `/operations` rendered `OperationsTab` under a
+borrowed name, which is §5.39b's own recorded compromise (*"a tab opening a real page under a
+borrowed name beats one opening an empty shell"*); it reads as a finished feature, so nobody asks
+for the real one, and a rep looking for operations finds it under a name it does not have.
+⚠️⚠️ **CHECKING THE DOOR WAS THE WHOLE RISK IN THIS ONE.** §5.44 took System Management off the
+settings menu (*"the full top bar now handles that"*), so that tab was Operations' **only** route:
+blanking the page alone would have taken "today's baseline vs live" out of the product exactly as
+§5.39f records happening to Stage Manager, and silently, because the route keeps answering.
+**Daily operations** is back on the header's settings menu pointing at
+`/system-mgmt?tab=operations`, and `lossless.test.ts` pins it.
+⚠️ **What the real page is is WRITTEN DOWN** — §5.39b has the board id, the app feature and the
+list of numbers, and every one of them is a §5.8 counting-contract number that must mirror
+`useRoleCounts` AND both baseline generators. Read the handoff before building it.
+
+**⚠️ Still open, deliberately: STAGE MANAGER.** *"Delete stage manager - i want to better
+understand what that was used for, and anything that it was needed, we should be able to implement
+that feature into the profile view"* — a request for the facts first, so nothing was deleted. What
+it is: a search over non-completed items on **Medical Evaluation and Insurance only**
+(`MOVABLE_BOARD_IDS`), a target-stage picker from `STAGE_OPTIONS`, and `writeStageAdvancer` — a
+**bare, unverified write of the Stage Advancer**, the column every board automation fires on. It is
+the manual override for a patient in the wrong stage, plus a days-in-stage `PipelineChart` over
+that population. It is **opt-in** (`OPT_IN_ABILITIES`, §5.41), granted to josh@ and brandon@ only.
+⚠️ Folding it into the patient screen means giving that screen a Stage Advancer write, which
+reverses §5.39's founding "writes nothing" promise a second time and needs its own ability gate,
+its own §9 advancer-no-op guard (`expectedText`) and its own tests. That is a decision, not a
+tidy-up — so the tool stays until somebody makes it.
+
+**Keep-in-agreement:** `searchPeople.sameHuman` ⇄ `commsHub/dossier.nameMatchAccepted` (one rule,
+one direction of failure) · `SystemPatient.dob` ⇄ `BoardDef.dobColId` ⇄ `searchColumnIds` — a board
+that stops fetching it folds nothing, silently · `pickLead`'s Subscription score ⇄
+`patientScreen.defaultView`, which must answer the same question · `subscriptionOverview` ⇄
+`stageDetail`'s SUBSCRIPTION map, which must keep all six facts for the Comms Hub ·
+`FORM_SECTIONS` ⇄ that map's TITLES ⇄ `ProfileTab`'s unconditional filter ·
+`OrdersPage`'s `view === "orders" && initialLoading` ⇄ `SkuTrackerView`'s `ordersLoading` ·
+`GlobalHeader`'s "Daily operations" entry ⇄ `SystemMgmtPage`'s Operations tab ⇄
+`lossless.test.ts`.
+Files: `lib/shell/searchPeople.ts` · `lib/patient/{subscriptionOverview,patientScreen}.ts` ·
+`lib/commsHub/dossier.ts` (`dobKey`) · `lib/systemMgmt/mondayApi.ts` (`dob`, `onPartial`) ·
+`hooks/systemMgmt/useLiveSearch.ts` · `components/patient/SubscriptionView.tsx` ·
+`components/orders/SkuTrackerView.tsx` · `components/shell/{GlobalSearch,GlobalHeader}.tsx` ·
+`pages/{OrdersPage,OperationsPage,PatientPage,patient/redesign.css}.tsx` (+ tests).
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
 ⚠️⚠️ **TWO DIFFERENT SCREENS SHOW WELCOME CALL DATA, AND A NOTE ABOUT ONE IS NOT A NOTE ABOUT THE
@@ -9589,6 +9757,13 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A voicemail won't stay heard / unheard, or a call doesn't open the message it left | §5.28 — read state is RingCentral's `readStatus` (`applyMessageReadOverrides`, the same rule the fax list uses); the panel must render `voicemailList`, not `voicemails.data`. A call opens its message through `lib/commsHub/callVoicemail.ts`, a number-and-time match gated on the call log saying it reached voicemail — it fails closed, so "no voicemail shown" means no match in the window, and that window is **reasoned, not measured** (no token reaches RingCentral from here). `voicemailWiring.test.ts` scans both |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
+| A patient's search row still shows several times / "+N more records" is back | §5.46b — the fold is `searchPeople.sameHuman` (phone agrees, OR a phone is blank and the DOB agrees) inside a NAME bucket. Several rows for one patient means `SystemPatient.dob` came back blank for that board — check `BoardDef.dobColId` is still in `searchColumnIds`. ⚠️ Two rows with two DIFFERENT non-blank numbers are correct and deliberate (fail closed); so is a row with neither a phone nor a DOB |
+| A search hit opens the wrong half of the record | §5.46b — `pickLead` scores the **Subscription** board above every pipeline bucket and `patientScreen.defaultView` reads the same fact, so the row and the screen agree. Keyed on the row EXISTING, never a status. An explicit `?view=` always wins |
+| The search dropdown shows rows and then changes them | §5.46b — correct: the NAME pass paints first and the loose + same-number passes land after it, which is why "Still looking…" sits under the rows. A row that only ever appears late is the same-number pass (§7), and it says so |
+| The Subscription profile shows the wrong facts, or a fact twice | §5.46b — the strip is `lib/patient/subscriptionOverview.ts` (Status · Next order · Subscription · First order) and is deliberately NOT `stageDetail`'s SUBSCRIPTION map, which keeps all six for the Comms Hub. A fact rendered twice means `FORM_SECTIONS` stopped matching that map's TITLES |
+| A rep without `editProfile` can change the subscription form | §5.46b — the guard is `inert` on the wrapper plus a no-op writer, and the Send bar is not rendered at all. `patientScreen.test.ts` pins all three |
+| Inventory locks the page for ~15s | §5.46b — `PageLoadingOverlay` must be `view === "orders" && initialLoading`; it is the ORDER BOARD's read, which Inventory only needs for the open-order column (and that says "—" until it lands, never 0) |
+| "Where did Daily Operations go?" | §5.46b — Reports & Metrics is deliberately blank now, so Operations is on the header's **settings** menu (`/system-mgmt?tab=operations`) and on System Management's own tab. `lossless.test.ts` fails if that door closes |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
 | A patient's ORDERS aren't in System Search, or an order turns up in another folder | §5.35 — `lib/systemMgmt/ordersSearch.ts`. The board rides `LIVE_SEARCH_BOARDS` (what the search box asks) and is deliberately absent from `BOARDS` (the patient registry — inbound-call lookup, the dossier, the gateway's mirrored directory, the snapshot); `searchBucket` returns `orders` FIRST, or every order files under Active with nothing erroring. An empty Orders folder under a chart pick or a stage filter is correct — those rows come from the snapshot |
 | A CAH / PO / tracking number finds nothing in System Search | §5.35 — `rulesLiteral`'s order branch + `ORDER_IDENTIFIER_COLS`. It is on BOTH paths because CAH (10 digits) and tracking (12) arrive as PHONE queries while a PO (`MM-<itemId>-<date>`) arrives as a one-word NAME query; a multi-word query keeps its AND and deliberately does not match identifiers. The results are in the **Orders** folder, so an empty Active tab with "Found in: Orders" is the expected landing. ⚠️ Never move the rule into `phoneRulesLiteral` — that is the same-number pass, and a 10-digit CAH number would pull a stranger's order onto a patient |
