@@ -146,6 +146,77 @@ a missing column (positions read off the live boards, 2026-09-22):
 ⚠️ Welcome Call has **158** columns and Profile Send Off **161**, so scrolling
 for a title is slow. Both boards' mapping pickers search — type the title.
 
+### The working checklist, in Welcome Call board order
+
+Ordered by where the TARGET sits on Welcome Call, so you work down the board
+once instead of hunting a 158-row picker 38 times. All 38 target and source ids
+were re-verified against both live boards on 2026-09-22.
+
+**pick col** = the field gives you a dropdown of the trigger item's columns;
+choose the source column.
+**TEXT BOX** = the field is a text box; click in and insert the source column as
+a **variable**, and leave nothing else in the box — no literal text, no spaces
+around it.
+
+| # | Welcome Call (target) | how | Profile Send Off (source) |
+|---:|---|---|---|
+| | **TIME IN PIPELINE -->** | | |
+| 3 | Date of Intake | pick col | Date of Intake |
+| | **REFERRAL DETAILS -->** | | |
+| 10 | Referral Type | pick col | Referral Type |
+| 11 | Referral Source | pick col | Referral Source |
+| 12 | Referral Subclass | pick col | Referral Subclass |
+| 13 | Pump Type | pick col | Pump Type |
+| 14 | CGM Type | pick col | CGM Type |
+| 15 | Request Type | pick col | Request Type |
+| 16 | Serving | pick col | Serving |
+| | **MEDICAL NECESSITY WORKFLOW -->** | | |
+| 19 | CGM Coverage Path | pick col | CGM Coverage Path |
+| 20 | Insulin Pump Coverage Path | pick col | Insulin Pump Coverage Path |
+| | **DEMOGRAPHICS -->** | | |
+| 74 | DOB | TEXT BOX | DOB |
+| 75 | Primary Phone | TEXT BOX | **Pt. Phone** ← renamed |
+| 76 | Address | pick col | Address |
+| 77 | Email | TEXT BOX | Email |
+| 78 | Gender | pick col | Gender |
+| | **INSURANCE -->** | | |
+| 80 | Primary Insurance | pick col | Primary Insurance |
+| 81 | Member ID 1 | TEXT BOX | Member ID 1 |
+| 82 | Secondary Insurance | pick col | Secondary Insurance |
+| 83 | Member ID 2 | TEXT BOX | Member ID 2 |
+| 84 | Plan Name | pick col | **Insurance Plan** ← renamed |
+| 86 | Stedi QMB | TEXT BOX | **Stedi QMB?** ← renamed |
+| 87 | Deductible | TEXT BOX | Deductible *(numbers → text)* |
+| 88 | Deductible Remaining | TEXT BOX | Deductible Remaining *(numbers → text)* |
+| 89 | OOP Max | TEXT BOX | OOP Max *(numbers → text)* |
+| 90 | OOP Max Remaining | TEXT BOX | OOP Max Remaining *(numbers → text)* |
+| 91 | Stedi Coinsurance % | TEXT BOX | Stedi Coinsurance % |
+| 92 | Stedi Plan Begin Date | TEXT BOX | Stedi Plan Begin Date |
+| | **DOCTOR -->** | | |
+| 94 | Doctor Name | TEXT BOX | Doctor Name |
+| 95 | Doctor Phone | TEXT BOX | Doctor Phone |
+| 96 | Doctor NPI | TEXT BOX | Doctor NPI |
+| 97 | Clinicals Method | pick col | Clinicals Method |
+| 98 | Doctor Email | TEXT BOX | Doctor Email |
+| 99 | Doctor Fax (@rcfax) | TEXT BOX | Doctor Fax (@rcfax) |
+| 100 | Clinic Name | pick col | Clinic Name |
+| 101 | Clinic Address | pick col | Clinic Address |
+| | **OTHER -->** | | |
+| 125 | Referral? | pick col | Referral? |
+| 142 | Stedi Home Plan | pick col | Stedi Home Plan |
+| 149 | Profile Send-Off Notes | TEXT BOX | Profile Send Off Notes ← renamed |
+
+⚠️ **Row 149 is the trap.** Welcome Call has FOUR look-alikes near it —
+`Profile Send-Off Notes (retired)` at 143, `MN Workflow Notes (retired)` at 144,
+`MN Workflow Notes` at 148 and `Profile Send-Off Notes` at 149. Only **149**
+(`text_mm6vvsjy`, type `text`) is the live one. The retired one at 143 is
+`long_text` and nothing reads it (§10).
+
+⚠️ The four **numbers → text** rows are not a mistake to correct — the existing
+chain does exactly this, and §5.31g records the plain text pair as the one that
+travels.
+
+
 ⚠️ Matching titles do not mean matching ids: **16 of the 38 have a different id
 on the far side**, and row 26 is the reverse case (**Pt. Phone** and **Primary
 Phone** are the same id, `phone_mm1x44yk`, under two titles). Titles are the
