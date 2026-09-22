@@ -34,6 +34,7 @@ import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { OrdersSidebar } from "@/components/orders/OrdersSidebar";
 import { OrderHeaderCard } from "@/components/orders/OrderHeaderCard";
 import { OrderLinesCard } from "@/components/orders/OrderLinesCard";
+import { CashPayCard } from "@/components/orders/CashPayCard";
 import { SubstitutionCard } from "@/components/orders/SubstitutionCard";
 import { NotesCard } from "@/components/orders/PatientCoverageCard";
 import { OrderDetails } from "@/components/orders/OrderDetails";
@@ -210,6 +211,14 @@ const OrdersPage = () => {
                 <>
                   <OrderHeaderCard order={open} allOrders={orders} onSelect={select} onPlaced={() => void refetch(true)} />
                   <OrderLinesCard order={open} skuRows={sku.rows} />
+                  {/* ⚠️ Renders for CASH PAY orders only (it returns null
+                      otherwise), and is deliberately NOT ability-gated — Josh,
+                      2026-09-21: "No gate — any rep". Reading a patient their
+                      total is the job; the manager-only control inside it is
+                      the release, which is a different question. It sits under
+                      "What was ordered" so the products are named once and
+                      priced immediately below (§5.35's say-it-once rule). */}
+                  <CashPayCard key={open.id} order={open} skuRows={sku.rows} onChanged={() => void refetch(true)} />
                   {/* ⚠️ The substitution pick IS the send — it emails Cardinal
                       (§5.35) — so `adjustOrders` gates the card rather than
                       greying the button: a Send that refuses after the press

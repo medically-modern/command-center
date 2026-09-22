@@ -19,3 +19,29 @@
  * — §9's advancer class — or, worse, re-order a copied item).
  */
 export const ORDERING_FROM_COMMAND_CENTER = false;
+
+/**
+ * The cash pay link switch.
+ *
+ * The card's two presses — **Generate Cash Pay Link** and **Send to patient**
+ * — reach outside this repo, and neither destination exists yet:
+ *
+ * 1. Generate calls `coins-form-payment`'s `POST /api/cash-pay/create-link`,
+ *    which mints the Stripe Checkout session and writes Cash Pay Link + Cash
+ *    Pay Amount back onto the order. That route is not built.
+ * 2. Send fires the order board's texting trigger, which needs a column and an
+ *    automation the board does not have.
+ *
+ * ⚠️ So the buttons render INERT with the reason on screen rather than being
+ * hidden — §5.39g's rule, and the one this codebase keeps having to reverse
+ * (§5.10 · §5.20 · §5.31c · §5.31f · §5.39d): a control whose passing move is
+ * invisible is worse than a control that says what it is waiting for. What
+ * does NOT wait is the quote: the card prices the order today, so a rep on the
+ * phone can read the patient their number and take payment another way.
+ *
+ * `cashPayCard.test.ts` pins this at false. Flip it only once BOTH halves are
+ * live, and re-read CLAUDE.md §5.48 first — the Generate press spends money's
+ * worth of trust: it mints a session for an amount a patient is then charged,
+ * and the quote is honoured from that moment (`cashPayPricing.ts`).
+ */
+export const CASH_PAY_LINK_FROM_COMMAND_CENTER = false;

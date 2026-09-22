@@ -6,6 +6,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { OrderHeaderCard } from "./OrderHeaderCard";
 import { OrderLinesCard } from "./OrderLinesCard";
 import { SubstitutionCard } from "./SubstitutionCard";
+import { CashPayCard } from "./CashPayCard";
 import { NotesCard } from "./PatientCoverageCard";
 import { OrderDetails } from "./OrderDetails";
 import { OrdersOverview } from "./OrdersOverview";
@@ -27,6 +28,21 @@ vi.mock("@/components/masheke/mmKit", () => ({
   PatientContact: ({ phone }: { phone?: string }) => <span data-testid="contact">{phone}</span>,
 }));
 vi.mock("@/components/shared/ContactStateMarks", () => ({ ContactStateMarks: () => null }));
+/* The cash pay card asks who is signed in — the RELEASE is manager-only. The
+   ref is hoisted so a test can flip it before mounting. */
+const who = vi.hoisted(() => ({ type: "manager" as "manager" | "processor" }));
+vi.mock("@/components/AccessProvider", async () => {
+  const actual = await vi.importActual<typeof import("@/components/AccessProvider")>("@/components/AccessProvider");
+  return {
+    ...actual,
+    useAccessContext: () => ({
+      ...({} as Record<string, unknown>),
+      access: { type: who.type },
+      email: "rep@medicallymodern.com",
+      config: { managers: [], processors: {} },
+    }),
+  };
+});
 // The substitution pick reads the board's live label set; nothing here touches
 // a network, and `ready: false` would (correctly) disable the control.
 vi.mock("@/hooks/useStatusOptions", () => ({
@@ -239,5 +255,89 @@ describe("the Orders page renders every card", () => {
     );
     expect(screen.getByText("1 of 4 orders")).toBeInTheDocument();
     expect(screen.queryByText(/To place/)).toBeNull();
+  });
+});
+
+describe("the cash pay card", () => {
+  /* Debbie Hinze's real order, priced against the tracker costs read
+     2026-09-21: 3 x 30.95 + 3 x 71.94 + 9 x 57.32, x1.25 per line. The total
+     is the figure Janelle quoted her (§5.48 / cashPayPricing). */
+  const cashRows: SkuTrackerRow[] = [
+    ...rows,
+    { id: "c1", name: "t:slim", groupId: SKU_GROUPS.cartridges, sku: "TN1004017", description: "", uom: "BX", unitCost: 30.95, qtyAvail: 900, status: "Available", lastChanged: "2026-09-21 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
+    { id: "c2", name: 'AutoSoft XC 9 mm 43"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002823I", description: "", uom: "BX", unitCost: 71.94, qtyAvail: 400, status: "Available", lastChanged: "2026-09-21 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
+    { id: "c3", name: "Dexcom G7", groupId: SKU_GROUPS.cgmSensors, sku: "EDSTKAT013", description: "", uom: "EA", unitCost: 57.32, qtyAvail: 1200, status: "Available", lastChanged: "2026-09-21 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
+  ];
+  const debbie = mkOrder({
+    id: "cp", name: "Debbie Hinze", phone: "5555550109", primaryInsurance: "Cash Pay",
+    cartridgeType: "t:slim", qtyCartridge: "3",
+    infusionSet1: 'AutoSoft XC 9 mm 43"', qtyInfusionSet1: "3",
+    cgmType: "Dexcom G7", qtySensors: "9",
+  });
+
+  it("renders nothing at all for an insured order", () => {
+    const { container } = wrap(<CashPayCard order={done} skuRows={cashRows} />);
+    expect(container.textContent).toBe("");
+  });
+
+  it("prices the order to the cent and folds the itemisation away", () => {
+    wrap(<CashPayCard order={debbie} skuRows={cashRows} />);
+    expect(screen.getByText("$1,030.69")).toBeInTheDocument();
+    expect(screen.getByText("No payment link yet.")).toBeInTheDocument();
+    // ⚠️ Said ONCE: the per-line prices live under the fold, because
+    // OrderLinesCard above already names every product (§5.35).
+    expect(screen.getByText("How that's worked out")).toBeInTheDocument();
+    expect(screen.queryByText("$116.06")).toBeInTheDocument(); // in the DOM, folded
+  });
+
+  it("⚠️ refuses to quote rather than quote short when a line has no cost", () => {
+    // The tracker is loaded, and the sensors row is simply missing from it.
+    wrap(<CashPayCard order={debbie} skuRows={cashRows.filter((r) => r.id !== "c3")} />);
+    expect(screen.getByText("This order can't be priced")).toBeInTheDocument();
+    expect(screen.queryByText(/^\$/)).toBeNull();
+  });
+
+  it("the two presses are inert while the flow is dark, and say why", () => {
+    wrap(<CashPayCard order={debbie} skuRows={cashRows} />);
+    const gen = screen.getByRole("button", { name: /Generate cash pay link/ });
+    expect(gen).toBeDisabled();
+    expect(screen.getByText(/aren't switched on yet/)).toBeInTheDocument();
+  });
+
+  it("a paid order says so and offers neither press", () => {
+    wrap(<CashPayCard order={mkOrder({ ...debbie, stripeChargeId: "pi_3abc" })} skuRows={cashRows} />);
+    expect(screen.getByText("Paid — this order can go to Cardinal.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Generate cash pay link/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Send to patient/ })).toBeNull();
+    expect(screen.queryByText(/Release this order/)).toBeNull();
+  });
+
+  it("a sent link is shown with the amount it was minted for", () => {
+    wrap(<CashPayCard order={mkOrder({ ...debbie, cashPayLink: "https://checkout.stripe.com/c/pay/cs_1", cashPayAmount: "1030.69", cashPayLinkSent: "2026-09-22" })} skuRows={cashRows} />);
+    expect(screen.getByText(/Waiting on the patient/)).toBeInTheDocument();
+    expect(screen.getByText(/Minted for \$1,030.69/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Re-send to patient/ })).toBeInTheDocument();
+  });
+
+  it("⚠️ a rep cannot open the release — it is manager-only", () => {
+    who.type = "processor";
+    try {
+      wrap(<CashPayCard order={debbie} skuRows={cashRows} />);
+      const rel = screen.getByRole("button", { name: /Release this order for Cardinal/ });
+      expect(rel).toBeDisabled();
+      expect(rel.textContent).toMatch(/manager only/);
+    } finally {
+      who.type = "manager";
+    }
+  });
+
+  it("a manager's release asks for a reason before it will save", () => {
+    wrap(<CashPayCard order={debbie} skuRows={cashRows} />);
+    fireEvent.click(screen.getByRole("button", { name: /Release this order for Cardinal/ }));
+    const save = screen.getByRole("button", { name: /Release for ordering/ });
+    expect(save).toBeDisabled();
+    expect(screen.getByText(/only record of why it shipped unpaid/)).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/How was it paid/), { target: { value: "cheque cleared 9/21" } });
+    expect(screen.getByRole("button", { name: /Release for ordering/ })).toBeEnabled();
   });
 });

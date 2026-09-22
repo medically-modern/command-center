@@ -15,9 +15,17 @@
  * place it AGAIN. The rule refuses anything not sitting at "Order".
  */
 import { ORDERING_FROM_COMMAND_CENTER } from "./config";
-import { clearStatus, COL, ORDER_STATUS_INDEX, readColumnText, writeStatusIndex } from "./mondayApi";
-import { cashPayOrderingRefusal } from "./cashPayGate";
+import { appendStampedNote } from "@/lib/shared/noteStamp";
+import { userInitials } from "@/lib/shared/auth";
+import { assertTextLikeFits } from "@/lib/shared/longText";
+import {
+  BOARD_ID, clearStatus, COL, ORDER_STATUS_INDEX, readColumnText, writeStatusIndex, writeTextLike,
+} from "./mondayApi";
+import { cashPayOrderingRefusal, cashPayReleaseNote, cashPayReleaseRefusal } from "./cashPayGate";
 import { substitutionSendKind } from "./substitution";
+
+/** The stage label every cash pay line on an order carries (§9). */
+export const CASH_PAY_NOTE_STAGE = "Cash Pay";
 
 export class OrderNotPlaceableError extends Error {
   constructor(public readonly currentStatus: string, reason?: string) {
@@ -155,4 +163,53 @@ export async function requestSubstitution(
   if (kind === "resend") await clearStatus(itemId, COL.substituteInfusionSet);
   await writeStatusIndex(itemId, COL.substituteInfusionSet, index);
   return { kind };
+}
+
+/**
+ * A manager releases an unpaid cash pay order for ordering.
+ *
+ * Janelle on Debbie Hinze: *"she is older and does not have Venmo."* Patients
+ * pay by cheque and over the phone, so a Stripe-only gate would leave those
+ * orders unplaceable for ever — the dead end §5.10 · §5.20 · §5.31c · §5.31f ·
+ * §5.39d each record reversing. This is the way through, and the stamped note
+ * is the only record anywhere of why goods went out against no Stripe payment.
+ *
+ * ⚠️ **The refusals are re-checked HERE, against columns read fresh.** The
+ * disabled button is what a manager sees; this is what stops a release landing
+ * on an order that was paid, or already released, while the card sat open. The
+ * same reasoning as `markOrdered`'s pre-write read.
+ *
+ * ⚠️ **The notes column is RE-READ immediately before appending.** Monday has
+ * no compare-and-set — `change_multiple_column_values` REPLACES the value — so
+ * appending onto the 60-second board poll's copy would silently delete whatever
+ * the substitution service or another rep wrote in between (§5.28's rule, and
+ * the one `dossierApi.appendNoteToRecord` exists to keep).
+ */
+export async function releaseCashPayOrder(
+  itemId: string,
+  opts: { isManager: boolean; reason: string },
+): Promise<string> {
+  const reason = opts.reason.trim();
+  const [payer, chargeId, paidDate, notes] = await Promise.all([
+    readColumnText(itemId, COL.primaryInsurance),
+    readColumnText(itemId, COL.stripeChargeId),
+    readColumnText(itemId, COL.cashPayPaidDate),
+    readColumnText(itemId, COL.notes),
+  ]);
+  const refusal = cashPayReleaseRefusal(
+    { primaryInsurance: payer, stripeChargeId: chargeId, cashPayPaidDate: paidDate, notes },
+    { isManager: opts.isManager, reason },
+  );
+  if (refusal) throw new Error(refusal);
+
+  const next = appendStampedNote(notes, cashPayReleaseNote(reason), CASH_PAY_NOTE_STAGE, {
+    initials: userInitials(),
+  });
+  /* The 2,000-char cap is asked of the BOARD, never inferred from the id's
+     prefix: the notes columns have been converted long_text → text once
+     already, sometimes keeping their ids (§10). Refusing loudly is the point —
+     a release whose reason Monday truncated away is a release with no reason. */
+  await assertTextLikeFits(BOARD_ID, COL.notes, next, "Order notes");
+  await writeTextLike(itemId, COL.notes, next);
+  return next;
 }

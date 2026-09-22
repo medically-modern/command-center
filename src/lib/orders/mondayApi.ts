@@ -170,7 +170,7 @@ export const COL = {
   cashPayAmount: "numeric_mm7devxs",     // Cash Pay Amount
   cashPayLinkSent: "date_mm7d7wxe",      // Cash Pay Link Sent
   cashPayPaidDate: "date_mm7dejzt",      // Cash Pay Paid Date
-  stripeChargeId: "text_mm7dkma5",       // Stripe Charge ID       // CAH Order Number
+  stripeChargeId: "text_mm7dkma5",       // Stripe Charge ID
   poNumber: "text_mm3zf5ev",             // PO Number (MM-<item>-<yyyymmdd>)
   lastCardinalSync: "text_mm481jys",     // Last Cardinal Sync (ET stamp)
   apiMessage: "text_mm3zcde7",           // API Message (Cardinal's sentence)
@@ -518,5 +518,25 @@ export async function writeStatusIndex(itemId: string, columnId: string, index: 
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }`,
     { boardId: String(BOARD_ID), itemId, columnId, value: JSON.stringify({ index }) },
+  );
+}
+
+/**
+ * Write a text-like column as a BARE string through
+ * `change_multiple_column_values`.
+ *
+ * ⚠️ The shape is not interchangeable with `change_column_value`, which rejects
+ * a bare string for `long_text` AND a `{text}` object for `text` (§10,
+ * sandbox-verified 2026-09-03). A bare string through THIS mutation is accepted
+ * for both types, which is what makes a writer safe on either side of a
+ * long_text → text conversion — and the order board's Notes column is still
+ * `long_text_mm60y0ap`, so the distinction is live here.
+ */
+export async function writeTextLike(itemId: string, columnId: string, value: string): Promise<void> {
+  await gql(
+    `mutation ($item: ID!, $board: ID!, $vals: JSON!) {
+       change_multiple_column_values(item_id: $item, board_id: $board, column_values: $vals) { id }
+     }`,
+    { item: itemId, board: String(BOARD_ID), vals: JSON.stringify({ [columnId]: value }) },
   );
 }
