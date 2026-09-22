@@ -43,6 +43,42 @@ perfectly fine dont mess it up"*).
 
 ---
 
+## ✅ Steps 1 and 2 are DONE — verified end to end, 2026-09-22
+
+`CASH_PAY_WEBHOOK_SECRET` is set on `coins-form-payment`, and the mint webhook is
+**monday webhook `641121194`** on the New Order Board, firing on **Cash Pay Action →
+Generate link (index 0)** only. Proved against a throwaway order: the flip minted a real
+Stripe Payment Link, wrote it to **Cash Pay Link**, and cleared the trigger. Test row deleted.
+
+⚠️ **It is a monday API webhook (`create_webhook`), not an automation.** monday's automation
+builder has no "send a webhook" ACTION — the only webhook block is the *"When a webhook is
+received"* TRIGGER — so the recipe below cannot be built that way. Every other integration on
+this board (Cardinal poller, pre-check, backorder substitution) is an API webhook too; this
+matches them.
+
+⚠️⚠️ **THE SECRET GOES IN THE PATH, NOT THE QUERY STRING — and the reason is not the one you
+would guess.** monday signs every delivery with a JWT in the **`Authorization` header**. The
+service used to read `header || query || path`, so that chain always resolved to monday's JWT
+and the real key was never compared: a correctly-configured webhook was refused **401**, which
+reads exactly like a wrong secret. Fixed in `c678aa2` — every candidate is compared now, so the
+query form works too. The path form is kept because it is the one channel nothing can shadow.
+
+⚠️ **The save-time challenge proves nothing about the key.** The handshake is answered *before*
+the auth check, so monday will happily save a URL with a typo'd secret and every real event will
+then 401. Test with a real flip, never with the save.
+
+⚠️ **monday stops delivering to an endpoint that keeps failing**, and the webhook still appears in
+`webhooks(board_id:)` while suspended — there is no status field to read. After fixing a 401,
+**delete and recreate the webhook**; a fixed endpoint alone does not resume it. That cost a
+confusing ten minutes here.
+
+⚠️ `webhooks(board_id:)` does not expose `url`, so there is no way to read back what monday
+stored. The only evidence about a webhook's URL is how its deliveries behave.
+
+**What is still outstanding: step 3 (the text automation) and the app switch.**
+
+---
+
 ## Step 1 — the secret (Railway, ~1 minute)
 
 On the **`coins-form-payment`** service, add:
