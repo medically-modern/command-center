@@ -97,6 +97,17 @@
 .cc-pt .strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 @media (max-width: 1100px) { .cc-pt .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
+/* The Upcoming order strip — Brandon's own widths, so Expected items and the
+   reorder form get the room the two dates do not need (§5.46d). It rides the
+   same 2-column break above, which is why the override is scoped to the wide
+   layout only. */
+@media (min-width: 1101px) {
+  .cc-pt .strip.upstrip { grid-template-columns: 1fr 1fr 1.2fr 1.6fr; }
+}
+/* Expected items is a stack of lines rather than one value, so it gets the
+   breathing room a single line does not need. */
+.cc-pt .fact .v.exp { line-height: 1.5; }
+
 .cc-pt .notice { border-radius: 10px; padding: 10px 14px; font-size: 12px; display: flex; gap: 8px; align-items: flex-start; }
 .cc-pt .notice.amber { background: var(--warn-bg); border: 1px solid var(--warn-bd); color: var(--warn-fg); }
 .cc-pt .notice.blue { background: var(--blue-bg); border: 1px solid var(--p20); color: var(--tfg); }

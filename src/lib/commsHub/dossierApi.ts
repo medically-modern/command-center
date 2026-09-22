@@ -25,6 +25,7 @@ import { faxDigits, type DoctorDbRow, type FaxMatchRow } from "./faxDirectory";
 import { DOCTOR_DB_BOARD, DOCTOR_DB_COLS } from "../shared/doctorDb";
 import { stageDetailColumns } from "./stageDetail";
 import { reorderFormColumns } from "../patient/reorderForm";
+import { expectedItemsColumns } from "../patient/expectedItems";
 import { escalationLevelFrom, type EscalationLevel } from "../systemMgmt/escalationDetail";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -217,7 +218,16 @@ function dossierCols(board: BoardDef): string[] {
     // only widen the `column_values(ids:)` list and change nothing on screen.
     // Empty for every other board.
     ...reorderFormColumns(board.boardId),
-  ].filter((c): c is string => !!c);
+    // The Subscription board's Expected items (§5.46d) — the sets, cartridges
+    // and sensors the next order is set up to carry. Also additive and
+    // invisible in the Comms Hub, for the same reason. Empty elsewhere.
+    ...expectedItemsColumns(board.boardId),
+  ].filter((c): c is string => !!c)
+    // ⚠️ De-duplicated because the lists above overlap on purpose: three of
+    // the expected-items ids are also in `stageDetail`'s SUBSCRIPTION map, and
+    // each module declares what it needs rather than trusting another to fetch
+    // it. Monday makes no promise about a repeated id in `column_values(ids:)`.
+    .filter((c, i, all) => all.indexOf(c) === i);
 }
 
 async function boardSearch(board: BoardDef, colId: string, needle: string, limit = 25): Promise<RawItem[]> {

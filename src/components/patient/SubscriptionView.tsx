@@ -66,6 +66,7 @@ import { orderHeadline } from "@/lib/orders/headline";
 import { orderLines } from "@/lib/orders/skuJoin";
 import { StagePill } from "@/components/orders/pills";
 import { buildReorderForm, responseTone, type ReorderForm } from "@/lib/patient/reorderForm";
+import { expectedItems } from "@/lib/patient/expectedItems";
 import { usePatientOrders } from "@/hooks/patient/usePatientOrders";
 import { useSubscriptionRecord } from "@/hooks/patient/useSubscriptionRecord";
 import { SubscriptionForm } from "@/components/subscription/SubscriptionForm";
@@ -151,6 +152,12 @@ export function SubscriptionView({
     () => buildReorderForm(item.boardId, item.cols),
     [item.boardId, item.cols],
   );
+  /* Brandon's third column on the Upcoming order strip (§5.46d) — what the
+     next order is set up to carry, from the profile's own product columns. */
+  const expected = useMemo(
+    () => expectedItems(item.boardId, item.cols),
+    [item.boardId, item.cols],
+  );
 
   return (
     <>
@@ -180,6 +187,7 @@ export function SubscriptionView({
           hasPhone={!!phone}
           overview={overview}
           reorder={reorder}
+          expected={expected}
         />
       )}
     </>
@@ -445,6 +453,7 @@ function OrdersTab({
   hasPhone,
   overview,
   reorder,
+  expected,
 }: {
   orders: Order[] | null;
   loading: boolean;
@@ -452,6 +461,8 @@ function OrdersTab({
   hasPhone: boolean;
   /** The Subscription board's own next-order facts, for the upcoming card. */
   overview: OverviewFact[];
+  /** The lines the next order is expected to carry (§5.46d). */
+  expected: string[];
   /** The reorder form, also the Subscription board's own (§5.46c). */
   reorder: ReorderForm | null;
 }) {
@@ -463,7 +474,9 @@ function OrdersTab({
      hand, so "we could not reach the order board" must not also take away the
      one fact that did not come from it (§9 — a failed read is not an empty
      answer, and it is not an excuse to blank what did load). */
-  const upcoming = <UpcomingOrder facts={overview} reorder={reorder} />;
+  const upcoming = (
+    <UpcomingOrder facts={overview} reorder={reorder} expected={expected} />
+  );
 
   // ⚠️ A patient with no number on file gets an honest sentence, never an
   // unfiltered board read — that would hand one patient's screen every order in
@@ -563,9 +576,11 @@ function OrdersTab({
 function UpcomingOrder({
   facts,
   reorder,
+  expected,
 }: {
   facts: OverviewFact[];
   reorder: ReorderForm | null;
+  expected: string[];
 }) {
   const next = facts.find((f) => f.label === "Next order");
   return (
@@ -576,9 +591,15 @@ function UpcomingOrder({
           <span className={`chip${next.warn ? " amber" : ""}`}>{next.note}</span>
         )}
       </div>
-      <div className="strip">
+      <div className="strip upstrip">
         {facts
-          .filter((f) => f.label !== "First order")
+          /* ⚠️ Brandon's strip is Next order · Subscription · Expected items ·
+             Reorder form — his `upcomingOrder` carries neither First order nor
+             **Status**, and Status is not lost by dropping it: it is the first
+             fact on the Profile tab's own overview strip, one click away. The
+             "3 days overdue" chip in the header above already answers the
+             question Status is read for here. */
+          .filter((f) => f.label !== "First order" && f.label !== "Status")
           .map((f) => (
             <div className="fact" key={f.label}>
               <div className="k">{f.label}</div>
@@ -592,6 +613,17 @@ function UpcomingOrder({
               </div>
             </div>
           ))}
+        {/* Brandon's third column (§5.46d). ⚠️ One line per product, and a
+            line with no quantity is a product whose quantity nobody has filled
+            in — 82% of the CGM-serving rows measured — never a zero. */}
+        <div className="fact">
+          <div className="k">Expected items</div>
+          <div className="v exp">
+            {expected.length
+              ? expected.map((l) => <div key={l}>{l}</div>)
+              : "\u2014"}
+          </div>
+        </div>
         {/* Brandon's fourth column. ⚠️ Rendered as a FACT in the same grid,
             not as a card of its own: he draws it level with Next order and
             Subscription, and the three facts beside it already leave exactly

@@ -195,3 +195,47 @@ describe("⚠️ the reorder form is WIRED — the whole point of §5.46c", () =
     expect(text).not.toMatch(/change_column_value/);
   });
 });
+
+/**
+ * ⚠️ Expected items is WIRED (§5.46d) — a module nobody calls does not fail,
+ * it is absent, and its green tests say otherwise (§5.31b).
+ */
+describe("⚠️ Expected items is WIRED", () => {
+  const view = () => src("src/components/patient/SubscriptionView.tsx");
+
+  it("the dossier read fetches the Subscription board's product columns", () => {
+    // Without this every line reads blank on every patient, with nothing
+    // erroring — §5.11's trap.
+    expect(src("src/lib/commsHub/dossierApi.ts")).toContain(
+      "...expectedItemsColumns(board.boardId),",
+    );
+  });
+
+  it("⚠️ and that list is de-duplicated, because it overlaps stageDetail's", () => {
+    /* Three expected-items ids are also in stageDetail's SUBSCRIPTION map.
+       Each module declares what it needs; Monday makes no promise about a
+       repeated id in `column_values(ids:)`. */
+    expect(src("src/lib/commsHub/dossierApi.ts")).toMatch(
+      /all\.indexOf\(c\) === i/,
+    );
+  });
+
+  it("the view builds the lines and hands them to the Upcoming order strip", () => {
+    const text = view();
+    expect(text).toMatch(/expectedItems\(item\.boardId, item\.cols\)/);
+    expect(text).toMatch(/expected=\{expected\}/);
+    expect(text).toMatch(/<div className="k">Expected items<\/div>/);
+  });
+
+  it("⚠️ Status leaves this strip — Brandon's four columns, not five", () => {
+    /* His `upcomingOrder` is Next order · Subscription · Expected items ·
+       Reorder form. Status is not lost: it is the first fact on the Profile
+       tab's own overview strip, which `subscriptionOverview` still returns. */
+    expect(view()).toMatch(
+      /f\.label !== "First order" && f\.label !== "Status"/,
+    );
+    expect(src("src/lib/patient/subscriptionOverview.ts")).toMatch(
+      /label: "Status"/,
+    );
+  });
+});

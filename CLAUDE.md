@@ -5337,7 +5337,7 @@ a person would notice first:
    ID, doctor name/phone/clinic and insurance name are unmatched, and no row says WHICH field hit
    ("Phone (607) …", "Order # 1119726084"). The old System Management search had the same limits,
    so it is unbuilt spec, not a regression.
-8. ✅ **The Orders tab's REORDER FORM column landed 2026-09-22 — §5.46c.** ⚠️ **The Subscription profile is missing Financials, Demographics/Contacts and the MN card's
+8. ✅ **The Orders tab's Upcoming order strip is complete — REORDER FORM §5.46c and EXPECTED ITEMS §5.46d, both 2026-09-22.** ⚠️ **The Subscription profile is missing Financials, Demographics/Contacts and the MN card's
    own visit-date + MN-docs controls** — §5.45 · §5.45b have the argument for each (the first two
    widen the Comms Hub's shared `stageDetail` map; the third carries side effects, §5.36).
 9. ⚠️ **Auth Denied is still unclickable** (§4 · §7), where the handoff makes `/stage/authDenied`
@@ -6582,6 +6582,72 @@ line and every field reads blank on every patient with nothing erroring (§5.11'
 `responseTone` ⇄ the live label sets of `color_mm3kjykc` and `color_mm3k4z79` ·
 `buildReorderForm`'s state rule ⇄ `ReorderFact`'s `submitted`/`last answered` ternary.
 Files: `lib/patient/reorderForm.ts` (+ `reorderForm.test.ts`), `lib/commsHub/dossierApi.ts`,
+`components/patient/SubscriptionView.tsx` (+ `subscriptionView.test.ts`),
+`pages/patient/redesign.css`.
+
+### 5.46d Expected items — what the next order is set up to carry (Sep 2026)
+Josh, 2026-09-22: *"keep going, do the expected items next"*. The other half of the Upcoming
+order strip, and the last MISSING item on that row of the diff. **No board change; app only.**
+Rule: **`lib/patient/expectedItems.ts`** (+ tests).
+
+Brandon's handoff: *"Expected items (sets, cartridges, sensors with quantities from the
+profile)"*, built in his `upcomingOrder` from four lines — infusion set 1, infusion set 2,
+cartridges, sensors.
+
+⚠️ **It is NOT `lib/orders/skuJoin.orderLines`, and reusing that would be wrong twice over.**
+That one reads the **New Order Board's** own columns, which this board does not have, and it
+answers a different question: what a PLACED order carries. This answers what the profile says we
+are set up to ship, on an order that does not exist yet — so a named product whose quantity nobody
+has filled in is still an expected item, where on a placed order it is not a line at all. That one
+difference is the whole reason there are two readings and not one.
+
+⚠️⚠️ **THE QUANTITIES ARE MOSTLY ABSENT, AND THAT IS WHAT SHAPED THE RULE.** Measured over 60 live
+Subscription rows on 2026-09-22: of the **22 serving a CGM, 18 carry a blank CGM Qty — 82%**.
+Brandon's `${qty||'—'} × ${product}` would therefore print *"— × Dexcom G7 sensors"* on four
+patients in five, which reads as a data problem a rep cannot fix on a board whose orders go out
+regardless. A blank quantity renders the **PRODUCT ALONE**: the fact we hold is what ships, and
+showing nothing is not showing a wrong number (§5.31f · §5.31g — missing and empty are different
+facts). The slot's own em dash, Brandon's, is kept for a profile that names nothing at all.
+⚠️ **A quantity of exactly 0 IS a statement and DROPS the line.** Inf. Qty 2 reads `"0"` on
+essentially every live row, paired with a blank or "Not Serving" second set — so a zero means "none
+of this ships", never "nobody has said". Blank and 0 must not be collapsed in either direction.
+
+⚠️ **"Not Serving" is the common value, not an edge case** — 37 of those 60 rows read it on Sensors
+Type alone, and every CGM-only patient reads it on both infusion sets. Without the filter the strip
+would list *Not Serving* as an item on most patients.
+⚠️ **Cartridges have NO product column on this board.** Supplies Type `color_mkxmnheg` is the
+**PUMP** (t:slim · Mobi · iLet), which the profile card already names, so the line is the bare word
+Brandon writes. A cartridge quantity with nothing to count is not a line.
+
+⚠️ **The module declares all SEVEN ids, three of which `stageDetail`'s SUBSCRIPTION map already
+fetches** (`color_mkxmdscr` · `color_mkxm50f9` · `numeric_mkw839ks`) — and `dossierCols`
+de-duplicates. Keying this module on what another map happens to fetch is a coupling that fails
+silently: trim that section and every line here goes blank with nothing erroring (§5.11's trap).
+The four it adds are **CGM Qty `numeric_mm3sr332` · Infusion Set 2 `color_mkxmx5wk` · Inf. Qty 2
+`numeric_mkwac234` · Cartridge Qty `numeric_mm3sfe56`**. Additive and **invisible in the Comms
+Hub**, like the reorder form beside it: that pane renders from `buildStageDetail`'s map, so extra
+ids in `item.cols` only widen a `column_values(ids:)` list that already runs.
+
+⚠️⚠️ **STATUS LEAVES THE UPCOMING STRIP, and that is Brandon's layout, not a trim.** His
+`upcomingOrder` is **Next order · Subscription · Expected items · Reorder form** at widths
+`1fr 1fr 1.2fr 1.6fr` (`.strip.upstrip`), and carries neither First order nor **Status**. Nothing is
+lost: Status is the FIRST fact on the Profile tab's own overview strip (§5.46b), one click away, and
+the *"3 days overdue"* chip in this card's own header already answers the question a rep reads
+Status for here. `subscriptionOverview` still returns all four facts — only this strip filters.
+
+**Rendered in a browser before shipping** (§5.30d's rule) at 1600 · 1440 · 1100 · 900: the grid
+resolves to Brandon's exact ratios (308 · 308 · 370 · 493 at 1600), no horizontal overflow at any
+width, the three lines stack, and ≤1100 it drops to two columns with the reorder form below Next
+order. ⚠️ **Dark mode is not a question here**: the whole CSS change is `grid-template-columns` and
+a `line-height` — it contains no colour at all (§5.40).
+
+**Keep-in-agreement:** `lib/patient/expectedItems.ts` `EXPECTED_COL` ⇄ the live Subscription board ⇄
+`expectedItemsColumns` ⇄ `dossierApi.dossierCols`, which is what puts them in `item.cols` — drop
+that line and every line reads blank on every patient with nothing erroring · `served()`'s
+"Not Serving" test ⇄ `skuJoin`'s own, which is the same rule on another board · `.strip.upstrip`'s
+four tracks ⇄ `UpcomingOrder`'s `filter` (three facts + the reorder fact); a fifth cell there
+silently reflows the row.
+Files: `lib/patient/expectedItems.ts` (+ `expectedItems.test.ts`), `lib/commsHub/dossierApi.ts`,
 `components/patient/SubscriptionView.tsx` (+ `subscriptionView.test.ts`),
 `pages/patient/redesign.css`.
 
@@ -9771,6 +9837,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A stage panel on the patient screen is blank, greyed out, or opens the wrong tool | §5.39c2 — `lib/patient/stagePanels.ts` decides which sub-stages a record has and which it reached; `StagePanelEmbed`'s `panelFor` decides which have a real panel, and `OnboardingView`'s `PANELLED` set must agree with it (a pair in one and not the other renders an empty panel with no fallback cards). A greyed tab means the item's Stage Advancer puts the patient before it; an UNRECOGNISED advancer greys out nothing, by design. ⚠️ Three tools have no panel on purpose — DVS and the two Intake tools live inline in their pages, Auth Denied has no tool — and fall back to the snapshot cards |
 | Something on an embedded stage panel is clickable, or it is fetching | §5.39c2 — the guard is `inert` on `.stage-embed` (verified in Chrome 141: a real click is not hittable and focus cannot enter), plus no-op callbacks, plus mounting the PANEL and never the page's hook. If it fetches, read the panel's own hooks: `useFaxStatus` is switched off by the `embedded` prop, `useMondayFiles` polls only during a Generate, the rest are module-cached. A new hook on a panel needs the same audit |
 | "Did the patient answer the reorder text?" / the Reorder form column is blank or says the wrong thing | §5.46c — `lib/patient/reorderForm.ts`. **"No Response" is a RESET, not an answer**, and the timestamp does not reset with it, so a stamp reading *last answered* beside *No response yet* is correct. **"Not sent yet" keys on the LINK**, never on Reorder Text Sent (blank on 195 of 300 live rows that were plainly texted). Every field blank on EVERY patient ⇒ `reorderFormColumns` dropped out of `dossierApi.dossierCols`. ⚠️ There is no Resend and no Send now — the board has no trigger column for the reorder text, so Copy link is the move |
+| "What's supposed to be in this order?" / Expected items is empty or lists "Not Serving" | §5.46d — `lib/patient/expectedItems.ts`. A line with **no quantity** is a product whose quantity nobody filled in (82% of CGM-serving rows), never a zero; a quantity of **0** correctly drops the line. Empty on EVERY patient ⇒ `expectedItemsColumns` dropped out of `dossierApi.dossierCols`. ⚠️ Cartridges have no product column here — Supplies Type is the PUMP — so "3 × cartridges" is all the board can say |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
 | The Subscription profile won't save, or says "Read-only" | §5.45b — `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). MN documents and the visit date are still `/subscription` and `/update-clinicals` alone — each carries side effects this card does not (§5.36) |
 | A fact shows TWICE on the Subscription profile — once editable, once as a card | §5.45b — `FORM_SECTIONS` matches `stageDetail.ts`'s SUBSCRIPTION section TITLES, so a rename there makes the filter match nothing with nothing erroring. `subscriptionView.test.ts` pins both strings. ⚠️ The teal overview strip restating Next order / Cycle / Order type is NOT that bug — it is this screen's `PatientInfoCard`, and `/subscription` shows the same six facts above its own form |
