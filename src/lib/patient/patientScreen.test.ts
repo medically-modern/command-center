@@ -16,7 +16,6 @@ import {
   MACRO_STAGES,
   buildStages,
   defaultStepIndex,
-  infoFacts,
   itemOpenHref,
   onboardingCaption,
   parseSide,
@@ -58,6 +57,7 @@ function item(over: Partial<DossierItem> = {}): DossierItem {
     notesColId: "",
     notesColType: null,
     nextActionDate: "2026-09-20",
+    createdAt: "",
     daysSinceStage: "12",
     cols: {},
     ...over,
@@ -181,19 +181,9 @@ describe("subscription toggle", () => {
 });
 
 describe("facts", () => {
-  it("⚠️ renders a blank as an em dash and MARKS it missing — never as a zero", () => {
-    const live = item({ nextActionDate: "", daysSinceStage: "" });
-    const facts = infoFacts(dossier([live], live));
-    const nad = facts.find((f) => f.label === "Next action")!;
-    expect(nad.value).toBe("—");
-    expect(nad.missing).toBe(true);
-    expect(facts.find((f) => f.label === "Stage")!.missing).toBe(false);
-  });
-
-  it("returns nothing when there is no live record, rather than inventing one", () => {
-    expect(infoFacts(dossier([item()]))).toEqual([]);
-  });
-
+  /* ⚠️ The info strip moved to `lib/patient/infoStrip.ts` (§5.46f) and
+     `infoFacts` is gone — its own tests live beside it. What stays here is the
+     top bar, which is still this module's. */
   it("leads the top bar with the patient's name", () => {
     const live = item();
     expect(topBarFacts(dossier([live], live))[0].label).toBe("Patient name");

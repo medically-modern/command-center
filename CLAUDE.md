@@ -5326,13 +5326,13 @@ a person would notice first:
    (INCIDENT_2026-08-20's shape). Building it means solving that first, not just moving markup.
 5. ✅ **Recent notes — BUILT 2026-09-21 (§5.39c3).** The live board's notes under both rail tabs,
    newest first, an All-notes expander and a composer calling the Comms Hub's own writer.
-6. ⚠️ **The onboarding info strip is six facts, not his eight.** Built: Stage · Board · Days in
-   stage · Next action · DOB · Phone. Specified: Intake date `date_mm1wf43j` + days since · stage
-   start `date_mm1w6jeq` + days in stage **red over 14** · Request type · Primary insurance · Pump
-   path · CGM path · Referral source · Stage with a Stuck chip / "Web-form lead" / "Onboarding
-   complete \<date\>". ⚠️ `topBarFacts`' own comment says *"four facts — name · DOB · email ·
-   phone"* and it returns THREE: **Email and its edit pencil are missing**, which is the field
-   §5.31h just made editable one stage over.
+6. ✅ **The onboarding info strip is Brandon's eight — BUILT 2026-09-22 (§5.46f).** Intake date +
+   days since · stage start + days in stage, amber over 14 · Request type · Primary insurance ·
+   Pump path · CGM path · Referral source · Stage with the Stuck chip, "Web-form lead" and
+   "Onboarding complete". ⚠️ Still open on the SAME card: `topBarFacts`' own comment says *"four
+   facts — name · DOB · email · phone"* and it returns THREE — **Email and its edit pencil are
+   missing**, which is the field §5.31h just made editable one stage over — and **Next action**
+   left the strip with the three other facts that were not his (§5.46f says why).
 7. ⚠️ **The global search's placeholder is now honest but narrower than the spec** (§5.44): member
    ID, doctor name/phone/clinic and insurance name are unmatched, and no row says WHICH field hit
    ("Phone (607) …", "Order # 1119726084"). The old System Management search had the same limits,
@@ -6776,6 +6776,116 @@ Call boards ⇄ `contactsColumns` ⇄ `dossierApi.dossierCols`, which is what pu
 Files: `lib/patient/contacts.ts` (+ `contacts.test.ts`), `lib/commsHub/dossierApi.ts`,
 `components/patient/{PatientCommsColumn,SubscriptionView}.tsx` (+ `contactsWiring.test.ts`),
 `components/assignedPatients/ConversationThread.tsx`, `pages/{PatientPage.tsx,patient/redesign.css}`.
+
+### 5.46f The info strip — Brandon's eight facts (Sep 2026)
+Josh, 2026-09-22: *"keep going, do the info strip next / check everything again to brandons mockup
+/ its been throughly thought out"*. Short-list item 3 on the diff, under the standing rule for that
+list — *"he built this thinking everything he was adding was already available in the command
+center, he just wanted to change the ui"*. **No board change; app only.** Rule:
+**`lib/patient/infoStrip.ts`** (+ tests).
+
+His handoff names them exactly: *"Intake date `date_mm1wf43j` with the days since, calculated ·
+Stage start date — the active board's stage start `date_mm1w6jeq` (Send Off: the item's creation
+date) with the days in stage, calculated (red when over 14) · Request type `color_mm1w1978` ·
+Primary insurance · Pump path `color_mm1w5xn1` · CGM path `color_mm1w7e5q` · Referral source
+`color_mm1w5wxr` · Stage — the macro stage and current sub-step, a Stuck chip when the board group
+is Stuck, "Web-form lead" for leads, and "Onboarding complete \<date\>" once the patient is
+subscribed."* Eight, in a `repeat(4, 1fr)` grid, i.e. two full rows.
+
+⚠️⚠️ **THE IDS HE NAMES ARE PROFILE SEND OFF'S AND MEDICAL EVALUATION'S, AND TWO OF THEM DO NOT
+EXIST ON THE OTHER BOARDS.** Read live 2026-09-22: **CGM Coverage Path** is `color_mm1w7e5q` on
+Send Off and ME, **`color_mm2w8q` on Insurance** and **`color_mm2wsam4` on Welcome Call**;
+**Insulin Pump Coverage Path** is `color_mm1w5xn1` everywhere except **Welcome Call, which is
+`color_mm2xtn41`**. Using his board-wide would read BLANK on Insurance and Welcome Call —
+silently, with nothing erroring (§5.11's trap) — for exactly the two stages where those columns
+are most filled in (196/200 and 171/200 on Insurance; 155/200 and 161/200 on Welcome Call). §5.30
+already records the same divergence one screen over; this is the second time it has bitten.
+
+⚠️ **Owned HERE rather than by widening `stageDetail`'s maps**, which are also what the
+Communications hub's dossier pane renders (§5.28) — the §5.46b two-readers hazard. Same call as
+§5.46c · §5.46d · §5.46e, and the fourth module to ride `dossierApi.dossierCols`, which dedupes.
+
+**Measured before building (2026-09-22, 200 rows per board), and the numbers shaped three rules:**
+
+| | Send Off | ME | Insurance | Welcome Call |
+|---|---|---|---|---|
+| Date of Intake | **40** | 200 | 198 | 195 |
+| Date of Stage Start | **no such column** | 200 | 200 | 200 |
+| Request Type | 47 | 107 | 193 | 191 |
+| Primary Insurance | 152 (**General 194**) | 197 | 197 | 199 |
+| Pump path / CGM path | 37 / 30 | 199 / 197 | 196 / 171 | 155 / 161 |
+| Referral Source | 200 | 200 | 198 | 200 |
+
+⚠️ **Primary insurance falls back to GENERAL Insurance on Profile Send Off** — the column the
+intake FORM writes and the one Stedi reads (§5.11 · §5.20). Reading Primary alone shows an em dash
+for 48 rows in 200 whose carrier is on the same row one column over, and it is also what puts
+**Cash Pay** (§5.48) on the strip.
+⚠️ **Profile Send Off's stage start is the ITEM'S CREATION DATE**, which is Brandon's own note and
+the reason `DossierItem` grew **`createdAt`** (and both dossier queries grew `created_at` — a
+top-level field, so no complexity cost). Without it the largest population on this screen — every
+patient still at intake — has a blank Stage start and no days-in-stage at all.
+⚠️ **`created_at` is a real UTC INSTANT and is the one date here that may go through a `Date`**
+(`etDateOf`). Monday's date COLUMNS are naive Eastern wall clock and must never be parsed (§5.15);
+this is the same inversion §5.31e records for a Calendly `start_time`.
+
+⚠️ **Every other fact is read ACROSS the patient's records, furthest-along board first** — not off
+the active one. That is Brandon's shape rather than a widening: his strip reads a merged patient
+object, so a **subscribed** patient, whose active record is the Subscription board and which
+carries none of these columns, still shows their request type and coverage paths from the Welcome
+Call record. Furthest-first means a value corrected on a later board wins over the one it was
+copied from. Stage start is the exception and comes from the ANCHOR record alone, because the
+whole point of the fact is how long the patient has been where they are NOW.
+⚠️ **The anchor falls back for a STUCK patient.** `pickActive` skips stuck records by design, so
+`dossier.active` is null for a patient whose only live record is in a Stuck group — without
+`anchorItem`'s fallback the whole strip would be em dashes for exactly the patient a manager
+opened it to read.
+
+⚠️ **`STAGE_DAYS_WARN` is strictly GREATER than 14** — his own `j.daysInStage>14?'warn':''`.
+Fourteen days is not yet late, and a threshold set one day early is what teaches people to read
+past an amber field.
+
+⚠️⚠️ **A NEW FORM GROUP IS NOT EVIDENCE OF A WEB-FORM LEAD ON ITS OWN.** The 8/25 SNJ bulk import
+put ~1,697 rows into *New Form — Partial Leads* that never touched the form (§5.30); they are
+worked as referrals, not leads. `isWebFormLead` therefore needs the group AND a non-blank
+**Drop-off Step `color_mm5zv7q8`**, which is the column that carries it (§5.24 · §5.30f's
+`isFormLead`) — and Brandon makes the same distinction (`webForm = !!so.dropOff || …`). A
+completed record is never a lead whatever group it sits in.
+⚠️ The Stuck chip names the two states **differently**, per §5.43: a Stuck GROUP is red *"Stuck"*
+(out of the pipeline), a **proposal** is amber *"Stuck proposed"* (a manager decision nobody has
+made). One word for both tells a rep a patient has left when they are sitting in somebody's queue.
+⚠️ **Two separators, and they are his**: a bracketed note — *"9/18/2026 (4 days ago)"* — reads as
+an aside about the value, while the Stage fact's dot-led `sub` — *"Medical Necessity · Chase
+Clinicals"* — reads as the next part of it. `note` and `sub` are separate fields so the view
+cannot pick the wrong one.
+
+**Four facts left the strip, and none is lost.** `patientScreen.infoFacts` is **DELETED** — it
+returned Stage · Board · Days in stage · Next action · DOB · Phone, of which one was Brandon's and
+two (**DOB** and **Phone**) restated the top bar one row above (§5.39c3's say-it-once rule).
+**Board** is subsumed by the Stage fact, which names the macro stage. ⚠️ **Next action is the one
+real loss**: nothing else on this screen shows it, though the embedded stage panel below does, and
+a ninth fact would leave a single cell alone on a third row of his four-column grid. Worth putting
+to Brandon rather than re-adding quietly.
+⚠️ **DTC Intake maps only what its titles name UNAMBIGUOUSLY** — it has no Request Type at all and
+THREE candidate primary-insurance columns (`color_mm164qr0` · `color_mm1gdfjy` "Final" ·
+`color_mkxkpx71` "(Payer Name)"), so both stay null rather than being guessed, which is §5.28's
+rule for that board. Both fall through to a later record for any patient who has one.
+
+**Rendered in a browser before shipping** (§5.30d's rule) at 1440 · 1100 · 1440 dark: two rows of
+four at 1440 with every cell registered (x at 44 · 290 · 537 · 783, 232px each), four rows of two
+at 1100, no horizontal overflow at either width, and the amber `warn` flipping from
+`rgb(161,89,18)` to `rgb(247,197,110)` in dark mode because it is a token (§5.40).
+
+**Keep-in-agreement:** `lib/patient/infoStrip.ts` `INFO_COL` ⇄ the live boards (re-read
+`settings_str`/the column list before trusting a shared id — **the coverage paths are renumbered
+twice**) ⇄ `infoStripColumns` ⇄ `dossierApi.dossierCols`, which is what puts them in `item.cols` —
+drop that line and every fact reads blank on every patient with nothing erroring · `created_at` ⇄
+**BOTH** dossier queries (the patient screen reaches a record by id as often as by phone) ⇄
+`DossierItem.createdAt` · `isWebFormLead`'s two halves ⇄ `careCoordinator/workflow.isFormLead`,
+which is the same fact one screen over · `StripFact.note` (brackets) vs `.sub` (dot-led) ⇄
+`OnboardingView`'s two spans · `patientScreen.ts` must carry **no second strip builder**.
+Files: `lib/patient/infoStrip.ts` (+ `infoStrip.test.ts`), `lib/commsHub/{dossier,dossierApi}.ts`,
+`lib/patient/patientScreen.ts`, `components/patient/OnboardingView.tsx`
+(+ `infoStripWiring.test.ts`), `pages/patient/redesign.css`.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 

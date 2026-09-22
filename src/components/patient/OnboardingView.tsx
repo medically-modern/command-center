@@ -35,7 +35,8 @@ import { ArrowUpRight, Check, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
-import { infoFacts, itemOpenHref, snapStateLabel, snapTabLabel, stepCaption, subStageOpenHref, type StageStep } from "@/lib/patient/patientScreen";
+import { itemOpenHref, snapStateLabel, snapTabLabel, stepCaption, subStageOpenHref, type StageStep } from "@/lib/patient/patientScreen";
+import { infoStripFacts } from "@/lib/patient/infoStrip";
 import { defaultSubStage, subStagesFor, type SubStageStep } from "@/lib/patient/stagePanels";
 import { StagePanelEmbed, StagePanelUnavailable } from "@/components/patient/StagePanelEmbed";
 
@@ -52,7 +53,7 @@ interface Props {
 }
 
 export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap, toolKey, onTool }: Props) {
-  const facts = infoFacts(dossier);
+  const facts = infoStripFacts(dossier);
   const step = steps[stepIdx];
   const snap = step?.items.find((i) => i.itemId === snapId) ?? step?.lead ?? null;
 
@@ -67,14 +68,36 @@ export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap
 
   return (
     <>
+      {/* Brandon's eight facts, four to a row (§5.46f). ⚠️ The `note` is his
+          `<span class="xs muted">`, and a fact that has a VALUE wears it in
+          brackets — "9/18/2026 (4 days ago)" — while a fact whose value IS the
+          note (the Stage sub-step) does not. */}
       {facts.length > 0 && (
         <section className="card pad left-teal">
           <div className="strip">
             {facts.map((f) => (
               <div className="fact" key={f.label}>
                 <div className="k">{f.label}</div>
-                <div className={`v${f.missing ? " gone" : ""}`} title={f.value}>
+                <div
+                  className={`v${f.missing ? " gone" : ""}${f.tone ? ` ${f.tone}` : ""}`}
+                  title={[f.value, f.note, f.sub].filter(Boolean).join(" · ")}
+                >
                   {f.value}
+                  {f.note && (
+                    <span className="xs muted" style={{ marginLeft: 6 }}>
+                      {f.missing ? f.note : `(${f.note})`}
+                    </span>
+                  )}
+                  {f.sub && (
+                    <span className="xs muted" style={{ marginLeft: 6 }}>
+                      · {f.sub}
+                    </span>
+                  )}
+                  {f.chip && (
+                    <span className={`chip ${f.chip.tone} stuckchip`} title={f.chip.title}>
+                      {f.chip.text}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

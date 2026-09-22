@@ -108,6 +108,19 @@
    breathing room a single line does not need. */
 .cc-pt .fact .v.exp { line-height: 1.5; }
 
+/* ── The Onboarding info strip (§5.46f) ───────────────────────────────────── */
+/* ⚠️ Eight facts in Brandon's four-column `.strip`, i.e. two full rows — his
+   `.onbstrip .strip{row-gap:14px}`, which our `gap: 14px` already gives. The
+   only thing it needs of its own is room for the Stage fact's chip to sit
+   beside the value rather than pushing the row taller. */
+.cc-pt .fact .v .chip.stuckchip {
+  margin-left: 6px; font-size: 10px; padding: 0 5px; vertical-align: 1px;
+}
+/* A stage the patient has been sitting in for over a fortnight — Brandon's
+   own `j.daysInStage>14?'warn':''`, on the VALUE so the date reads as the
+   thing that is late, not just the count beside it. */
+.cc-pt .fact .v.warn { color: var(--warn-fg); }
+
 .cc-pt .notice { border-radius: 10px; padding: 10px 14px; font-size: 12px; display: flex; gap: 8px; align-items: flex-start; }
 .cc-pt .notice.amber { background: var(--warn-bg); border: 1px solid var(--warn-bd); color: var(--warn-fg); }
 .cc-pt .notice.blue { background: var(--blue-bg); border: 1px solid var(--p20); color: var(--tfg); }

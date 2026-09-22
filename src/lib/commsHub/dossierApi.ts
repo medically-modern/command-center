@@ -27,6 +27,7 @@ import { stageDetailColumns } from "./stageDetail";
 import { reorderFormColumns } from "../patient/reorderForm";
 import { expectedItemsColumns } from "../patient/expectedItems";
 import { contactsColumns } from "../patient/contacts";
+import { infoStripColumns } from "../patient/infoStrip";
 import { escalationLevelFrom, type EscalationLevel } from "../systemMgmt/escalationDetail";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -71,6 +72,10 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
 interface RawItem {
   id: string;
   name: string;
+  /** Monday's own item-creation instant (ISO UTC). ⚠️ A top-level field, not a
+   *  column, so it costs no complexity — and it is the only stage start
+   *  Profile Send Off has (§5.46f). */
+  created_at?: string | null;
   group?: { id: string; title: string } | null;
   /** ⚠️ `value` is read for ONE reason: a status column's label INDEX lives
    *  there and nowhere else, and `escalationLevelFrom` needs it as the guard
@@ -157,6 +162,7 @@ function toDossierItem(board: BoardDef, it: RawItem): DossierItem {
     notesColType: board.notesColType,
     nextActionDate: textOf(it, board.nextActionDateColId).trim(),
     daysSinceStage: textOf(it, board.daysSinceStageColId).trim(),
+    createdAt: (it.created_at ?? "").trim(),
     cols: Object.fromEntries(
       (it.column_values ?? []).map((c) => [c.id, (c.text ?? "").trim()]),
     ),
@@ -187,7 +193,7 @@ const DOSSIER_QUERY = `
         limit: $limit,
         query_params: { rules: [{ column_id: $col, compare_value: $q, operator: contains_text }] }
       ) {
-        items { id name group { id title } column_values (ids: $cols) { id text value } }
+        items { id name created_at group { id title } column_values (ids: $cols) { id text value } }
       }
     }
   }`;
@@ -228,6 +234,12 @@ function dossierCols(board: BoardDef): string[] {
     // right column can name a caregiver for a patient who has no Subscription
     // row yet. Additive and invisible in the Comms Hub, same as the two above.
     ...contactsColumns(board.boardId),
+    // The Onboarding info strip (§5.46f) — Brandon's eight facts. ⚠️ Per board,
+    // because two of the ids he names do not exist on the other boards: the
+    // coverage paths are renumbered on Insurance and Welcome Call, and using
+    // his board-wide would read blank there with nothing erroring. Additive
+    // and invisible in the Comms Hub, same as the three above.
+    ...infoStripColumns(board.boardId),
   ].filter((c): c is string => !!c)
     // ⚠️ De-duplicated because the lists above overlap on purpose: three of
     // the expected-items ids are also in `stageDetail`'s SUBSCRIPTION map, and
@@ -282,7 +294,7 @@ async function fetchDossierItemById(boardId: number, itemId: string): Promise<Do
     const data = await gql<{ items?: Array<RawItem & { board?: { id: string } }> }>(
       `query ($ids: [ID!], $cols: [String!]) {
          items (ids: $ids) {
-           id name board { id } group { id title } column_values (ids: $cols) { id text value }
+           id name created_at board { id } group { id title } column_values (ids: $cols) { id text value }
          }
        }`,
       { ids: [String(itemId)], cols: dossierCols(board) },

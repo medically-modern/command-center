@@ -38,6 +38,7 @@ function item(boardId: number, over: Partial<DossierItem> = {}): DossierItem {
     notes: "",
     nextActionDate: "",
     daysSinceStage: "",
+    createdAt: "",
     ...over,
   };
 }

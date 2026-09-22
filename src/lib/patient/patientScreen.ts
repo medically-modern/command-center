@@ -304,27 +304,14 @@ const fact = (label: string, raw: string): InfoFact => ({
   missing: !raw.trim(),
 });
 
-/**
- * The onboarding strip, read off the ACTIVE record.
- *
- * ⚠️ **A blank renders as an em dash and is MARKED missing, never as a zero or
- * an invented default.** Missing and empty are different facts everywhere else
- * in this app (§5.31f · §5.31g) and they are different here: a rep reading this
- * strip on a call must be able to tell "nobody has answered that" from "the
- * answer is none".
+/*
+ * ⚠️ **`infoFacts` lived here and is GONE (§5.46f).** It returned Stage · Board
+ * · Days in stage · Next action · DOB · Phone — six facts, of which only one
+ * was Brandon's, and two of them (DOB and Phone) restated the top bar one row
+ * above. The strip is now `lib/patient/infoStrip.ts`' eight, read across the
+ * patient's records rather than off the active one. Do not re-add a second
+ * strip builder here: the whole point is that one module owns those ids.
  */
-export function infoFacts(dossier: PatientDossier | null): InfoFact[] {
-  const a = dossier?.active ?? null;
-  if (!a) return [];
-  return [
-    fact("Stage", a.stageAdvancerText || a.groupTitle),
-    fact("Board", a.boardName),
-    fact("Days in stage", a.daysSinceStage),
-    fact("Next action", a.nextActionDate),
-    fact("DOB", a.dob),
-    fact("Phone", a.phone),
-  ];
-}
 
 /** The top bar's four facts — name · DOB · email · phone, as the mockup has it. */
 export function topBarFacts(dossier: PatientDossier | null): InfoFact[] {

@@ -67,6 +67,16 @@ export interface DossierItem {
   notesColType: "text" | "long_text" | null;
   nextActionDate: string;
   daysSinceStage: string;
+  /**
+   * Monday's own `created_at` for the item, as an ISO UTC instant.
+   *
+   * ⚠️ Read because it is the ONLY stage-start Profile Send Off has — that
+   * board carries no `date_mm1w6jeq`, and Brandon's info strip names the item's
+   * creation date as its stand-in (§5.46f). It is a real instant, unlike the
+   * naive wall-clock strings in Monday's date COLUMNS, so it is the one value
+   * on that strip that may be converted with a `Date` (§5.15).
+   */
+  createdAt: string;
   /** Raw text of every stage-detail column for this board, keyed by column id.
    *  Read once with the rest of the record so the detail pane needs no second
    *  round trip — see `stageDetail.buildStageDetail`. */
