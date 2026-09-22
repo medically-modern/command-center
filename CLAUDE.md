@@ -6049,16 +6049,43 @@ AND scans `src/` for any surviving retired id — a re-pointed `COL` map does no
 a component hardcodes the old one, which `masheke/mondayMapping` did before this.
 Scripts + the evening runbook: `scripts/diagnosis-migration/README.md`.
 
-⚠️⚠️ **THE HOP AUTOMATIONS ARE NOT RE-POINTED YET.** They still copy the retired status
-columns, so between the app cutover and that edit a hop delivers an EMPTY dropdown
-downstream — the identical window the notes conversion hit (§10), and
-`migrateDiagnosis.mjs --apply` is re-runnable precisely to close it. Board automations
-of this vintage cannot be edited through the workflow API (it answers "General error"),
-so it is a person in monday's UI. **Unmeasured and worth measuring that evening:
-whether a hop CREATES a missing label on the destination dropdown.** If it does not, a
-brand-new code entered at Evaluate will not carry to Insurance on the hop — both sends
-write with `create_labels_if_missing`, so the next send self-heals, but measure it the
-way `hopTest.mjs` measured the notes hop rather than assuming.
+✅ **THE TEN ACTIVE HOPS WERE RE-POINTED BY JOSH IN MONDAY'S UI ON 2026-09-22, AND
+VERIFIED FROM A FRESH `list_automations` PULL OF ALL THREE SOURCE BOARDS.** Every one
+now carries the dropdown pair reading the trigger item — e.g. ME→Insurance
+`dropdown_mm7dkdq8 ← item.dropdown_mm7daf4m.labels`. Board automations of this vintage
+cannot be edited through the workflow API (it answers "General error"), so it was a
+person in the UI. `migrateDiagnosis.mjs --apply` then closed the cutover window in which
+hops copied the now-frozen retired column: **45 items filled (ME 1 · Insurance 1 ·
+Welcome Call 2 · Subscription 5 · New Order 36), 3,949 done, 0 diverged, 0 mismatched**,
+re-run clean. It stays re-runnable; re-run it after any future hop edit.
+
+⚠️⚠️ **A RE-POINTED ROW READS `sourceKind: "user_config"` AND IS NOT A LITERAL — FOLLOW
+`config.dependencies`.** monday's editor writes the dropdown row as a
+**`multi-dynamic-text`** wrapper variable whose `config.value` is a Lexical document
+referencing ANOTHER variable, and only that one carries
+`sourceMetadata.outboundFieldKey`. A one-level read of the row therefore reports a
+hardcoded value on a mapping that is perfectly correct — which is exactly what the first
+verification pass concluded, reporting all eleven hops broken. Resolve the chain before
+believing anything about these rows. Two consequences: the value that crosses the hop is
+the label **TEXT**, not label ids; and `sourceKind` alone tells you nothing.
+
+⚠️ **The OLD row was ADDED TO, not replaced — all eleven still copy the retired status
+column as well.** Harmless (nothing reads it) and it is what keeps rollback honest, but
+it means "retired" is a TITLE and not a frozen state: those columns go on filling. Do not
+treat a non-empty retired column as evidence a hop was missed. Clear those rows when the
+columns are hidden, as §10 records doing for the notes mirrors.
+
+⚠️ **7921725444 was NOT edited, and that is correct** — it is the inactive "monitor = 0"
+branch §5.22b says must stay inactive (enabling it would double every pump-only order).
+Its Diagnosis row still names the retired pair, so **anyone who ever enables it must
+re-point that row first**.
+
+⚠️ **STILL UNMEASURED: whether a hop CREATES a missing label on the destination
+dropdown.** Now that the row is a dynamic-text write of a label STRING, the question is
+whether monday matches-or-creates on the destination. If it does not, a brand-new code
+entered at Evaluate will not carry to Insurance on the hop — both sends write with
+`create_labels_if_missing`, so the next send self-heals, but measure it the way
+`hopTest.mjs` measured the notes hop rather than assuming.
 
 ⚠️ **The five retired status columns were retitled "… (retired)" on 2026-09-22
 (`retireColumns.mjs`), and that had to happen BEFORE the re-point rather than

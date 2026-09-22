@@ -151,7 +151,27 @@ hunting for rows that are not there.
    the eleven hops kept working off the old column, and the app reads the
    dropdowns by id.
 
-2. **Re-point the eleven automations** in the table above. One row each.
+2. ✅ **Re-point the automations — DONE 2026-09-22 (Josh, in the UI).** All TEN
+   active hops verified from a fresh `list_automations` pull of Medical
+   Evaluation, Insurance and Welcome Call: each now carries the dropdown pair
+   reading the trigger item. `7921725444` was left alone and that is right — it
+   is the inactive "monitor = 0" branch CLAUDE.md §5.22b says must stay
+   inactive; **whoever ever enables it must re-point its Diagnosis row first.**
+
+   ⚠️⚠️ **Verifying this from the API is a trap.** monday writes the new row as
+   a **`multi-dynamic-text`** wrapper variable, so the row's own variable reads
+   `sourceKind: "user_config"` with a Lexical document in `config.value` that
+   references ANOTHER variable — and only that one carries
+   `sourceMetadata.outboundFieldKey`. Read one level deep and a perfectly
+   correct mapping looks like a hardcoded literal; the first verification pass
+   did exactly that and reported all eleven hops broken. **Follow
+   `config.dependencies`.** It also means the value crossing the hop is the
+   label TEXT, not label ids.
+
+   ⚠️ The old row was ADDED TO, not replaced: all eleven still copy the retired
+   status column too. Harmless, but "retired" is a title, not a frozen state —
+   those columns keep filling, so a non-empty one is not evidence a hop was
+   missed. Clear those rows when the columns are hidden (step 5).
 
 3. **Test whether a hop CREATES a missing label on the destination dropdown.**
    Unknown, and it matters: if it does not, a brand-new code entered at Evaluate
@@ -161,10 +181,14 @@ hunting for rows that are not there.
    assuming. Since `backfillLabels.mjs` ran, every HISTORIC code exists on every
    board, so this question now only bites a code nobody has used before.
 
-4. **Re-run `node migrateDiagnosis.mjs --apply`** to close the cutover window (a
-   hop that fired between the app deploy and the re-point delivered an empty
-   dropdown). It reports `diverged` rather than overwriting anything a rep has
-   since set.
+4. ✅ **Cutover window closed — `migrateDiagnosis.mjs --apply`, 2026-09-22.**
+   **45 items filled** (Medical Evaluation 1 · Insurance 1 · Welcome Call 2 ·
+   Subscription 5 · New Order 36), `already done 3904 | diverged 0 |
+   mismatched 0`, every batch read back; a re-run came back `copied 0 | already
+   done 3949`. Those 45 are exactly what the hops delivered with an empty
+   dropdown between the app deploy and the re-point. Re-run this after any
+   future hop edit — it reports `diverged` rather than overwriting anything a
+   rep has since set.
 
 5. **Then** hide the five retired columns from the views. Never delete: 4,004
    items still reference them, and they are the rollback.
