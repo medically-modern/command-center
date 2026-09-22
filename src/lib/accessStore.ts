@@ -31,7 +31,32 @@ const POLL_INTERVAL = 10_000;
  *  "nonEscalated" = today's processor view (escalated hidden);
  *  "escalated"    = only escalated (today's manager view);
  *  "all"          = both. */
-export type RoleFilter = "all" | "nonEscalated" | "escalated";
+export type EscalationFilter = "all" | "nonEscalated" | "escalated";
+
+/**
+ * Per-role CROSS-SELL scope — Welcome Call only (Katie + Brandon, 2026-09-21:
+ * Corey takes the cross-sell calls, somebody else takes the rest).
+ *
+ * ⚠️ This is a FILTER over the one queue, never an assignment. Per-patient
+ * ownership was built once and removed in Aug 2026 (§5.13), and §5.30 records
+ * the standing rule for a second person on a queue: "a FILTER over these same
+ * lists — never routing". Concretely: a cross-sell patient is still sitting in
+ * the ordinary Welcome Call queue for anyone else holding the role, so Corey
+ * being out does not strand them in a bucket nobody looks at — and the role
+ * count, the burndown, Oversight and both baseline generators stay whole, so
+ * there is no §5.8 counting-contract change.
+ *
+ * ⚠️ These COMPOSE WITH the escalation scope rather than replacing it.
+ * `viewFilterFromParams` recognises only the three escalation values, so both
+ * of these fall through to "nonEscalated" there — which means an escalated
+ * cross-sell patient is the manager's, exactly as any other escalated patient
+ * is (§5.34), and every slice that does not know about cross-sell is untouched
+ * by construction.
+ */
+export type CrossSellScope = "crossSell" | "nonCrossSell";
+
+/** What `/access` stores per (person, role). */
+export type RoleFilter = EscalationFilter | CrossSellScope;
 
 export interface ProcessorProfile {
   name: string;

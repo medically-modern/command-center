@@ -5,7 +5,7 @@
  * first patient the rep can actually see — so the two can never drift apart.
  */
 import type { Patient } from "@/lib/samantha/workflow";
-import type { RoleFilter } from "@/lib/accessStore";
+import type { EscalationFilter } from "@/lib/accessStore";
 import type { SidebarGroup } from "@/hooks/samantha/useMondayPatients";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { isSnoozedAuthOutstanding } from "@/lib/samantha/authOutstandingReview";
@@ -81,7 +81,7 @@ export interface SidebarSections {
  */
 export function sidebarSections(
   patients: Patient[],
-  viewFilter: RoleFilter,
+  viewFilter: EscalationFilter,
   activeGroup: SidebarGroup,
   todayYmd: string = etTodayYmd(),
   managerOrigin: ManagerOrigin | null = null,
@@ -131,7 +131,7 @@ export function sidebarSections(
  *  - "all": active, follow-ups, escalated, then escalated + follow-up. */
 export function sidebarVisibleList(
   patients: Patient[],
-  viewFilter: RoleFilter,
+  viewFilter: EscalationFilter,
   activeGroup: SidebarGroup,
   todayYmd: string = etTodayYmd(),
   managerOrigin: ManagerOrigin | null = null,

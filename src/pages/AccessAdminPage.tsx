@@ -4,19 +4,33 @@ import { useAccessContext } from "@/components/AccessProvider";
 import { ROLES } from "@/lib/config";
 import { MAX_CALL_ANSWERERS, type RoleFilter } from "@/lib/accessStore";
 import { AbilitiesEditor } from "@/components/shell/AbilitiesEditor";
-import { roleFilterFor, roleOrderNumber } from "@/lib/roleView";
+import { CROSS_SELL_FILTER_ROLES, roleFilterFor, roleOrderNumber } from "@/lib/roleView";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ArrowLeft, Headphones, Shield, UserCog, X, Plus } from "lucide-react";
 
 /** Managers-only UI. Every person can be a Manager (full access), a Processor
  *  (only their checked bars), or BOTH. Each assigned role carries a filter
- *  (All / Non-escalated / Escalated) and an optional SOP order number. */
+ *  (All / Non-escalated / Escalated, plus the two cross-sell scopes on Welcome
+ *  Call) and an optional SOP order number. */
 const FILTER_OPTS: { value: RoleFilter; label: string }[] = [
   { value: "nonEscalated", label: "Non-escalated" },
   { value: "all", label: "All" },
   { value: "escalated", label: "Escalated" },
 ];
+
+/** Welcome Call only — Katie + Brandon, 2026-09-21: Corey takes the cross-sell
+ *  calls, somebody else takes the rest. Two scopes that SPLIT the one queue, so
+ *  assigning them to two people covers it exactly once with nobody orphaned.
+ *  ⚠️ Offered only for CROSS_SELL_FILTER_ROLES: `isCrossSell` is a Welcome Call
+ *  rule, so on any other role this would store a filter nothing reads. */
+const CROSS_SELL_OPTS: { value: RoleFilter; label: string }[] = [
+  { value: "crossSell", label: "Cross-sells only" },
+  { value: "nonCrossSell", label: "Everything but cross-sells" },
+];
+
+const filterOptsFor = (roleId: string) =>
+  CROSS_SELL_FILTER_ROLES.has(roleId) ? [...FILTER_OPTS, ...CROSS_SELL_OPTS] : FILTER_OPTS;
 
 export default function AccessAdminPage() {
   const navigate = useNavigate();
@@ -306,7 +320,7 @@ export default function AccessAdminPage() {
                                   className="rounded border border-border bg-background px-1 py-0.5 text-[11px]"
                                   title="Which patients this rep sees for this role"
                                 >
-                                  {FILTER_OPTS.map((o) => (
+                                  {filterOptsFor(role.id).map((o) => (
                                     <option key={o.value} value={o.value}>{o.label}</option>
                                   ))}
                                 </select>

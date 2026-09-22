@@ -40,6 +40,7 @@ import { GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/m
 import { MONDAY_API_URL, mondayIdentityHeaders } from "@/lib/shared/mondayEndpoint";
 import { etToday } from "@/lib/masheke/etDate";
 import { isParachuteRoleMethod } from "@/lib/masheke/chaseMethods";
+import { isCrossSell } from "@/lib/welcomeCall/workflow";
 
 const MASHEKE_BOARD_ID = 18406060017;
 
@@ -124,6 +125,11 @@ const WC_FOLLOWUP_COL = "color_mm38w2tk";  // Follow Up
 // welcomeCall/mondayApi ESCALATION_INDEX + both baseline generators.
 const WC_ESCALATED_INDEX = 0;
 const WC_PROPOSED_STUCK_INDEX = 2;
+// Cross-sell split (Katie + Brandon, 2026-09-21). Read so Corey's role bar can
+// show HIS number rather than the whole Welcome Call queue — a bar reading 14
+// over a sidebar holding 3 is the sidebar-vs-burndown drift §5.8 exists to stop.
+const WC_SERVING_COL = "color_mm1w1cm9";       // Serving
+const WC_REQUEST_TYPE_COL = "color_mm1w1978";  // Request Type
 // Profile
 const PROF_FOLLOWUP_COL = "color_mm3822qq"; // Follow Up
 const PROF_REFERRAL_TYPE_COL = "color_mm1wm4n4";   // Referral Type (role split)
@@ -389,6 +395,7 @@ export interface RolePatientIds {
 
 const LS_COUNTS_KEY = "role-counts-cache";
 const LS_ESC_KEY = "role-esc-counts-cache";
+const LS_CROSS_KEY = "role-crosssell-counts-cache";
 
 function loadCache(key: string): RoleCounts {
   try {
@@ -423,8 +430,10 @@ let fetchedThisSession = false;
 export function useRoleCounts(opts?: { roleIds?: string[] }) {
   const cachedRef = useRef(loadCache(LS_COUNTS_KEY));
   const escCachedRef = useRef(loadCache(LS_ESC_KEY));
+  const crossCachedRef = useRef(loadCache(LS_CROSS_KEY));
   const [counts, setCounts] = useState<RoleCounts>(cachedRef.current);
   const [escalatedCounts, setEscalatedCounts] = useState<RoleCounts>(escCachedRef.current);
+  const [crossSellCounts, setCrossSellCounts] = useState<RoleCounts>(crossCachedRef.current);
   const [patientIds, setPatientIds] = useState<RolePatientIds>({});
   const [loading, setLoading] = useState(!fetchedThisSession);
   const mountedRef = useRef(true);
@@ -443,11 +452,13 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
     const needAny = (...ids: string[]) => ids.some(need);
 
     // Merge one board's results as it resolves — non-escalated counts,
-    // escalated counts, and patient ids.
-    const merge = (pc: RoleCounts, pe: RoleCounts, pi: RolePatientIds) => {
+    // escalated counts, patient ids, and (Welcome Call only) the cross-sell
+    // subset. `px` is optional so every existing caller is untouched.
+    const merge = (pc: RoleCounts, pe: RoleCounts, pi: RolePatientIds, px?: RoleCounts) => {
       if (!mountedRef.current) return;
       setCounts((prev) => { const next = { ...prev, ...pc }; persistCache(LS_COUNTS_KEY, next); return next; });
       setEscalatedCounts((prev) => { const next = { ...prev, ...pe }; persistCache(LS_ESC_KEY, next); return next; });
+      if (px) setCrossSellCounts((prev) => { const next = { ...prev, ...px }; persistCache(LS_CROSS_KEY, next); return next; });
       if (Object.keys(pi).length) setPatientIds((prev) => ({ ...prev, ...pi }));
     };
 
@@ -576,14 +587,35 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
     if (need("welcomeCall")) {
       boardTasks.push(
         (async () => {
-          const items = await fetchBoardGroupItemsLight(WC_BOARD_ID, WC_GROUP_ID, [WC_ESC_COL, WC_FOLLOWUP_COL]);
+          const items = await fetchBoardGroupItemsLight(WC_BOARD_ID, WC_GROUP_ID, [
+            WC_ESC_COL, WC_FOLLOWUP_COL, WC_SERVING_COL, WC_REQUEST_TYPE_COL,
+          ]);
           // Index 0 is the escalated count; index 2 (a stuck proposal) is in
           // NEITHER count, exactly as the ME counts treat the same column.
           const escN = items.filter(isWcEscalated).length;
           const active = items.filter(
             (i) => !isWcEscalated(i) && !isWcProposedStuck(i) && i.cols[WC_FOLLOWUP_COL] !== "Done",
           );
-          merge({ welcomeCall: active.length }, { welcomeCall: escN }, { welcomeCall: active.map((i) => i.id) });
+          // The cross-sell subset of `active`, for the crossSell/nonCrossSell
+          // role filters. ⚠️ A SUBSET, not a disjoint third bucket: it is the
+          // active count Corey's bar shows, and nonCrossSell is active minus
+          // this — never added to anything (unlike `escN`, which useFilteredRole
+          // Counts sums with active for the "all" filter).
+          // ⚠️ The SAME `isCrossSell` the chip, the card flag and the sidebar
+          // filter read — a second copy of the rule here is how the bar and the
+          // list start disagreeing about who Corey is meant to call.
+          const crossN = active.filter((i) =>
+            isCrossSell({
+              serving: i.cols[WC_SERVING_COL] ?? "",
+              requestType: i.cols[WC_REQUEST_TYPE_COL] ?? "",
+            }),
+          ).length;
+          merge(
+            { welcomeCall: active.length },
+            { welcomeCall: escN },
+            { welcomeCall: active.map((i) => i.id) },
+            { welcomeCall: crossN },
+          );
         })(),
       );
     }
@@ -834,5 +866,5 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
     };
   }, [fetchCounts, roleKey]);
 
-  return { counts, escalatedCounts, patientIds, loading, refetch: fetchCounts };
+  return { counts, escalatedCounts, crossSellCounts, patientIds, loading, refetch: fetchCounts };
 }

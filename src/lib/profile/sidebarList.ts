@@ -5,7 +5,7 @@
  * see — so the two can never drift apart.
  */
 import type { Patient } from "@/lib/profile/workflow";
-import type { RoleFilter } from "@/lib/accessStore";
+import type { EscalationFilter } from "@/lib/accessStore";
 
 /** Stable ordering for referral source groups */
 const SOURCE_ORDER = [
@@ -156,7 +156,7 @@ export function sidebarSections(
  *  shared role-page signature. */
 export function sidebarVisibleList(
   patients: Patient[],
-  _viewFilter: RoleFilter,
+  _viewFilter: EscalationFilter,
   options?: SidebarOptions,
 ): Patient[] {
   const { sourceGroups, followUpPatients } = sidebarSections(patients, options);

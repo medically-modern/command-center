@@ -7,7 +7,7 @@ import { useMondayPatients } from "@/hooks/welcomeCall/useMondayPatients";
 import { emptyIntake } from "@/lib/welcomeCall/callIntake";
 import type { CallIntake } from "@/lib/welcomeCall/callIntake";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { sidebarVisibleList } from "@/lib/welcomeCall/sidebarList";
+import { sidebarVisibleList, applyCrossSellScope } from "@/lib/welcomeCall/sidebarList";
 import { PatientInfoCard, NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
 import { WelcomeCallForm } from "@/components/welcomeCall/WelcomeCallForm";
 /* ⚠️ Review & Send is COMMENTED OUT, not deleted (Brandon's note, actioned by
@@ -51,7 +51,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
-import { viewFilterFromParams } from "@/lib/roleView";
+import { crossSellScopeFromParams, viewFilterFromParams } from "@/lib/roleView";
 import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 const WelcomeCallPage = () => {
@@ -83,10 +83,27 @@ const WelcomeCallPage = () => {
   const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
 
   const viewFilter = viewFilterFromParams(searchParams);
-  const visiblePatients = useMemo(
-    () => sidebarVisibleList(patients, viewFilter, { origin: managerOrigin }),
-    [patients, viewFilter, managerOrigin],
+  /* Corey takes the cross-sell calls, somebody else takes the rest (Katie +
+     Brandon, 2026-09-21). A FILTER over the one queue, never an assignment
+     (§5.13/§5.30) — the patients are still in everyone else's Welcome Call
+     queue, so nobody is stranded in a bucket if the person holding the filter
+     is out. `crossSellScopeFromParams` is null for every other filter and
+     every other role, so this is a no-op for everybody today. */
+  const crossSellScope = crossSellScopeFromParams(searchParams);
+  const scopedPatients = useMemo(
+    () => applyCrossSellScope(patients, crossSellScope),
+    [patients, crossSellScope],
   );
+  const visiblePatients = useMemo(
+    () => sidebarVisibleList(scopedPatients, viewFilter, { origin: managerOrigin }),
+    [scopedPatients, viewFilter, managerOrigin],
+  );
+  /* ⚠️ `patients` (UNSCOPED) stays the second argument, exactly as it does for
+     the escalation filter. That list is what keeps an already-open patient
+     selected when the sidebar's filter hides them, and it is what lets a
+     deep-linked ?patientId= survive — deep links are deliberately exempt from
+     every role split (§5.10). Passing the scoped list here would slam the page
+     shut on a manager who opened a non-cross-sell patient from Oversight. */
   useAutoSelectPatient(
     initialLoading, patients, visiblePatients, selectedId, setSelectedId,
     searchParams.get("patientId"),
@@ -339,7 +356,7 @@ const WelcomeCallPage = () => {
       <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
-          patients={patients}
+          patients={scopedPatients}
           selectedId={selectedId}
           onSelect={setSelectedId}
           loading={loading}

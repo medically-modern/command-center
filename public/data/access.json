@@ -133,6 +133,15 @@
       "homeView": [
         "coordinator"
       ]
+    },
+    "corey@medicallymodern.com": {
+      "name": "Corey",
+      "roles": [
+        "welcomeCall"
+      ],
+      "roleFilters": {
+        "welcomeCall": "crossSell"
+      }
     }
   },
   "callAnswerers": [

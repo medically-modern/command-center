@@ -5,7 +5,7 @@
  * see — so the two can never drift apart.
  */
 import type { Patient } from "@/lib/subscription/workflow";
-import type { RoleFilter } from "@/lib/accessStore";
+import type { EscalationFilter } from "@/lib/accessStore";
 
 export interface SidebarSections {
   /** Non-escalated patients with status "Active". */
@@ -37,7 +37,7 @@ export function sidebarSections(patients: Patient[]): SidebarSections {
  *  section. The Subscription sidebar always shows every group (no escalation
  *  view split), so the view filter never changes the list — it's accepted
  *  only to match the shared role-page signature. */
-export function sidebarVisibleList(patients: Patient[], _viewFilter: RoleFilter): Patient[] {
+export function sidebarVisibleList(patients: Patient[], _viewFilter: EscalationFilter): Patient[] {
   const { active, paused, dead, other, escalatedPatients } = sidebarSections(patients);
   return [...active, ...paused, ...dead, ...other, ...escalatedPatients];
 }

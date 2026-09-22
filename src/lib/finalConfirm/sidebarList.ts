@@ -13,7 +13,7 @@
  * false); `escalated` is index 0, `proposedStuck` index 2, and a proposal
  * leaves the rep's lists as it does on Medical Evaluation.
  */
-import type { RoleFilter } from "@/lib/accessStore";
+import type { EscalationFilter } from "@/lib/accessStore";
 import type { ManagerOrigin } from "@/lib/shared/managerOrigin";
 import type { Patient } from "@/lib/finalConfirm/workflow";
 
@@ -37,7 +37,7 @@ const isEsc = (p: Patient) => !!p.escalated && !p.proposedStuck;
 /** The sidebar's sections for a view filter, each in input (board) order. */
 export function sidebarSections(
   patients: Patient[],
-  viewFilter: RoleFilter,
+  viewFilter: EscalationFilter,
   opts: SidebarOptions = {},
 ): SidebarSections {
   const escalatedOnly = viewFilter === "escalated";
@@ -59,7 +59,7 @@ export function sidebarSections(
  *  order: Active (main) → Escalated → Proposed Stuck. */
 export function sidebarVisibleList(
   patients: Patient[],
-  viewFilter: RoleFilter,
+  viewFilter: EscalationFilter,
   opts: SidebarOptions = {},
 ): Patient[] {
   const s = sidebarSections(patients, viewFilter, opts);

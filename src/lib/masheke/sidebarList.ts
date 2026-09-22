@@ -5,7 +5,7 @@
  * first patient the rep can actually see — so the two can never drift apart.
  */
 import type { Patient } from "@/lib/masheke/workflow";
-import type { RoleFilter } from "@/lib/accessStore";
+import type { EscalationFilter } from "@/lib/accessStore";
 import { etToday } from "@/lib/masheke/etDate";
 import { isEscalatedIndex } from "@/lib/masheke/mondayMapping";
 
@@ -163,7 +163,7 @@ export function apptSidebarVisibleList(
  *  disabled (hideScheduledFolder) and default-closed. */
 export function sidebarVisibleList(
   patients: Patient[],
-  viewFilter: RoleFilter,
+  viewFilter: EscalationFilter,
   todayStr: string = etToday(),
 ): Patient[] {
   const { nonEscNow, escalatedList } = sidebarSections(patients, todayStr);
