@@ -297,11 +297,16 @@ describe("the cash pay card", () => {
     expect(screen.queryByText(/^\$/)).toBeNull();
   });
 
-  it("the two presses are inert while the flow is dark, and say why", () => {
+  /* ✅ The flow went live 2026-09-22 (monday webhooks 641115241 mint /
+     641125712 text, both verified end to end), so Generate is a real press on
+     an order that can be priced. If it is ever switched back off the button
+     goes inert with the reason on screen — a safe state, and the §5.39g rule
+     this codebase keeps having to reverse: a control whose passing move is
+     invisible is worse than one that says what it is waiting for. */
+  it("Generate is live, and the dark-mode explanation is gone", () => {
     wrap(<CashPayCard order={debbie} skuRows={cashRows} />);
-    const gen = screen.getByRole("button", { name: /Generate cash pay link/ });
-    expect(gen).toBeDisabled();
-    expect(screen.getByText(/aren't switched on yet/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Generate cash pay link/ })).toBeEnabled();
+    expect(screen.queryByText(/aren't switched on yet/)).toBeNull();
   });
 
   it("a paid order says so and offers neither press", () => {
