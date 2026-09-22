@@ -6080,12 +6080,36 @@ branch §5.22b says must stay inactive (enabling it would double every pump-only
 Its Diagnosis row still names the retired pair, so **anyone who ever enables it must
 re-point that row first**.
 
-⚠️ **STILL UNMEASURED: whether a hop CREATES a missing label on the destination
-dropdown.** Now that the row is a dynamic-text write of a label STRING, the question is
-whether monday matches-or-creates on the destination. If it does not, a brand-new code
-entered at Evaluate will not carry to Insurance on the hop — both sends write with
-`create_labels_if_missing`, so the next send self-heals, but measure it the way
-`hopTest.mjs` measured the notes hop rather than assuming.
+✅ **A HOP DOES CREATE A MISSING LABEL ON THE DESTINATION DROPDOWN — settled
+2026-09-22 from production, not from the docs.** So a brand-new ICD-10 code entered at
+Evaluate carries all the way down the chain on its own.
+⚠️ **The web does not answer this and one widely-repeated claim about it is FALSE here.**
+Two searches turned up only that `create_labels_if_missing` is an *API* parameter, plus a
+blog/community claim that monday copies status and dropdown values across boards *by
+internal label id*, so they "often transfer incorrectly". That is contradicted by our own
+boards (§5.33): Medicare A&B is id 2 on Profile Send Off, 8 on ME/Insurance/Welcome Call
+and 106 on Secondary Claims, and has always carried. These hops copy the label **TEXT**.
+⚠️ **The measurement is a natural experiment, and the column that provides it is
+`dropdown_mm5ex8wx` "Stedi Home Plan" on the Insurance board.** The SPA READS it
+(`samantha/mondayApi` `COL.homePlan` → `mondayMapping` → `submitAuthRules`) and **never
+writes it** — `samantha/mondayWrite` names neither `homePlan` nor `planName` — and the
+Railway stedi service does not reach this board (§7). The ME→Insurance hop 7918295320 is
+therefore the ONLY writer, mapping `item.dropdown_mm5ex8wx.labels ←
+item.dropdown_mm5es2yz.labels`. It holds **22 labels, in its own arrival order**, and all
+22 are a strict SUBSET of ME's 28 — ME's six extras (`Blue Cross and Blue Shield of
+Illinois`, `UMR`, `Blue Cross and Blue Shield of Massachusetts`, `Health Plans Inc`,
+`Anthem Blue Cross and Blue Shield Missouri`, `Blue Cross and Blue Shield of South
+Carolina`) sit on seven ME items, **none of which has hopped yet**. A column nobody edits,
+carrying exactly the labels that have crossed and none that have not, in crossing order,
+was filled by the hop.
+⚠️ Scope of the claim: it is measured for a **`.labels` (name) mapping**, which is what
+every re-pointed Diagnosis row uses. Do **not** assume it of an `.ids` mapping — an id the
+destination has never issued cannot resolve, and `create_automation` generates `.ids` by
+default (a throwaway sandbox built that day came out `item.<dst>.ids ← item.<src>.ids`,
+i.e. the wrong shape to answer this, and was deleted). Check the key before reasoning about
+any other hop.
+⚠️ It remains belt and braces that both sends write with `create_labels_if_missing`, so a
+hop that ever stopped creating would self-heal on the next send rather than lose the code.
 
 ⚠️ **The five retired status columns were retitled "… (retired)" on 2026-09-22
 (`retireColumns.mjs`), and that had to happen BEFORE the re-point rather than

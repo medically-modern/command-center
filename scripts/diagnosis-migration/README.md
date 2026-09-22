@@ -173,13 +173,22 @@ hunting for rows that are not there.
    those columns keep filling, so a non-empty one is not evidence a hop was
    missed. Clear those rows when the columns are hidden (step 5).
 
-3. **Test whether a hop CREATES a missing label on the destination dropdown.**
-   Unknown, and it matters: if it does not, a brand-new code entered at Evaluate
-   will not carry to Insurance on the hop. Both sends write with
-   `create_labels_if_missing`, so the next send self-heals either way — but
-   measure it, the way `hopTest.mjs` measured the notes hop, rather than
-   assuming. Since `backfillLabels.mjs` ran, every HISTORIC code exists on every
-   board, so this question now only bites a code nobody has used before.
+3. ✅ **A hop DOES create a missing label on the destination dropdown — settled
+   2026-09-22.** So a brand-new ICD-10 code entered at Evaluate carries down the
+   chain on its own. Measured from production, because the web does not answer it
+   (two searches returned only that `create_labels_if_missing` is an *API*
+   parameter, plus a third-party claim that cross-board copies go by internal
+   label id — which our own boards disprove, §5.33). The natural experiment:
+   Insurance's **Stedi Home Plan `dropdown_mm5ex8wx`** is read by the SPA and
+   written by nothing in it (`samantha/mondayWrite` names neither `homePlan` nor
+   `planName`), and the Railway stedi service does not reach that board — so hop
+   7918295320 (`item.dropdown_mm5ex8wx.labels ← item.dropdown_mm5es2yz.labels`)
+   is its only writer. It holds 22 labels in arrival order, a strict subset of
+   ME's 28; ME's six extras sit on seven items that have not hopped yet.
+   ⚠️ True of a **`.labels`** mapping, which every Diagnosis row uses — not of an
+   `.ids` one, and `create_automation` emits `.ids` by default. Check the key.
+   Since `backfillLabels.mjs` ran, every HISTORIC code exists on every board
+   anyway, so this only ever bit a code nobody had used before.
 
 4. ✅ **Cutover window closed — `migrateDiagnosis.mjs --apply`, 2026-09-22.**
    **45 items filled** (Medical Evaluation 1 · Insurance 1 · Welcome Call 2 ·
@@ -192,6 +201,22 @@ hunting for rows that are not there.
 
 5. **Then** hide the five retired columns from the views. Never delete: 4,004
    items still reference them, and they are the rollback.
+   ⚠️ **This is a monday UI action — the API cannot do it.** Checked 2026-09-22:
+   there is no `hide`/`archive` mutation for a column (`archive_*` covers items,
+   groups, boards and objects only), `change_column_metadata` takes title and
+   description alone, `update_column` exposes title/description/width/settings
+   and a `capabilities` input that is only about calculated columns, and a
+   TableBoardView's `settings_str` comes back `{}`. `Column.archived` is
+   readable and not settable. So: Josh hides them from each board's views.
+   ⚠️ **Safe for prod, which still reads these columns by id.** View visibility
+   is not in the data model the API exposes, so it cannot gate a `column_values`
+   read — and prod's app is still pointed at `color_mm1wf7rv` / `color_mkxrxv9w`
+   / `color_mm189t0b` until the sync.
+   ⚠️ **Clear the retired-column rows from the 11 hops at the same time.** Josh's
+   re-point ADDED the dropdown row rather than replacing the status one, so all
+   eleven still copy the retired column and it goes on filling (§5.46). Harmless
+   while it exists, and the same tidy-up §10 records for the notes mirrors. Also
+   a UI job: these automations cannot be edited through the workflow API.
 
 ## Original scope note
 
