@@ -107,17 +107,57 @@ export function memberIdRequired(p: Patient | null | undefined): boolean {
 /**
  * Filter a readiness checklist down to what a cash pay patient can actually
  * satisfy. Takes the rows a page has already built so each page keeps its own
- * list — this only ever REMOVES rows, and only insurance ones.
+ * list — this only ever REMOVES rows.
  *
- * ⚠️ Matched on the row LABELS the two pages use. That is a string coupling,
- * so it is scanned by a test rather than trusted; the alternative (a flag per
- * row) would mean editing every row on both pages and is how one of them gets
- * missed.
+ * ⚠️ **Matched on the row LABELS the two pages use**, which is a string
+ * coupling, so `cashPayReadinessRows.test.ts` scans both pages for labels this
+ * list does not know about rather than trusting it. The alternative — a flag on
+ * every row — means editing every row on both pages, which is how one of them
+ * gets missed.
+ *
+ * Two kinds of row are dropped, and the difference is worth keeping straight:
+ *
+ * **Rows a cash pay patient can NEVER satisfy.** Primary and Secondary
+ * Insurance, both Member IDs, and *Benefits verified active* — the last reads
+ * the Stedi eligibility answer, and Stedi never runs for a patient with no
+ * payer, so it is false forever. These are the dead ends §5.10 · §5.20 · §5.31c
+ * · §5.31f each record reversing: a gate with no passing move.
+ *
+ * **Rows about insurance that simply do not apply.** The CGM and Insulin Pump
+ * *Coverage Paths* are how a PAYER covers a product. Josh, 2026-09-22:
+ * *"we dont need any of that data, the patient doesn have insruance or need a
+ * coverage path they pay oop for everytrhing"*.
+ *
+ * ⚠️⚠️ **SERVING IS NEITHER OF THOSE, AND IS DROPPED ON JOSH'S EXPLICIT
+ * INSTRUCTION** (2026-09-22, pointing at the three rows blocking a cash pay
+ * patient: *"all of these shoul;d be disabled if i select cash pay as general
+ * insurance"*). It is product data, not insurance data — a rep CAN pick it —
+ * and it is what the order is priced and placed from (§5.22 records a $3,787
+ * pump shipping because Serving and the product columns disagreed). Dropping it
+ * means a cash pay patient can reach Welcome Call with no product mix named,
+ * and the Welcome Call rep sets it there instead. That is recoverable, because
+ * Welcome Call is where the order is confirmed anyway — but it is a decision,
+ * not a tidy-up, and reversing it is deleting one line below.
+ *
+ * ⚠️ **CGM Type and Pump Type are deliberately NOT dropped.** They are the
+ * products themselves rather than how somebody pays for them, so they are
+ * exactly as relevant to a cash pay patient as to anyone else. They only appear
+ * once Serving is set, so in practice they follow it.
  */
-const INSURANCE_ROW_LABELS = [
+const CASH_PAY_DROPPED_ROW_LABELS = [
+  // Impossible for a patient with no insurance.
   "Primary Insurance",
   "Member ID 1",
-  "Member ID 2 (required for NY Medicaid)",
+  "Member ID 2 (required for NY Medicaid)", // UnverifiedReferralsPage's wording
+  "Member ID 2 (NY Medicaid)",              // ProfilePage's wording
+  "Secondary Insurance",
+  "Benefits verified active",
+  // Insurance data that does not apply.
+  "CGM Coverage Path",
+  "Insulin Pump Coverage Path", // UnverifiedReferralsPage's wording
+  "IP Coverage Path",           // ProfilePage's wording
+  // Product data, dropped on Josh's instruction — see the header above.
+  "Serving",
 ];
 
 export function applyCashPayReadiness<T extends { label: string }>(
@@ -125,7 +165,7 @@ export function applyCashPayReadiness<T extends { label: string }>(
   p: Patient | null | undefined,
 ): T[] {
   if (benefitCheckApplies(p)) return [...rows];
-  return rows.filter((r) => !INSURANCE_ROW_LABELS.includes(r.label));
+  return rows.filter((r) => !CASH_PAY_DROPPED_ROW_LABELS.includes(r.label));
 }
 
 /**

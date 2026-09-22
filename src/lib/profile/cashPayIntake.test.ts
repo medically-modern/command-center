@@ -139,16 +139,21 @@ describe("what the right pane asks for", () => {
     expect(memberIdRequired(stuck)).toBe(true);
   });
 
-  it("drops only the insurance rows from a checklist", () => {
+  it("drops the rows a cash pay patient cannot satisfy", () => {
+    // ⚠️ Serving and the coverage paths go too, from 2026-09-22 — a coverage
+    // path is how a PAYER covers a product, and Serving is dropped on Josh's
+    // instruction. cashPayReadinessRows.test.ts has the full list and scans
+    // both pages for rows it has never heard of.
     const rows = [
       { label: "Primary Insurance", ok: true },
       { label: "Member ID 1", ok: false },
       { label: "Serving", ok: true },
       { label: "CGM Coverage Path", ok: true },
+      { label: "CGM Type", ok: true },
       { label: "Doctor selected", ok: false },
     ];
     expect(applyCashPayReadiness(rows, debbie).map((r) => r.label))
-      .toEqual(["Serving", "CGM Coverage Path", "Doctor selected"]);
+      .toEqual(["CGM Type", "Doctor selected"]);
   });
 
   it("⚠️ keeps the DOCTOR row — Cardinal's order payload requires it", () => {
