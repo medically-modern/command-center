@@ -129,7 +129,11 @@
     },
     "masani@medicallymodern.com": {
       "name": "Masani",
-      "roles": []
+      "roles": [],
+      "homeView": [
+        "coordinator",
+        "bars"
+      ]
     }
   },
   "callAnswerers": [
