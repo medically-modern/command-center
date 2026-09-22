@@ -6060,6 +6060,27 @@ brand-new code entered at Evaluate will not carry to Insurance on the hop — bo
 write with `create_labels_if_missing`, so the next send self-heals, but measure it the
 way `hopTest.mjs` measured the notes hop rather than assuming.
 
+⚠️ **The five retired status columns were retitled "… (retired)" on 2026-09-22
+(`retireColumns.mjs`), and that had to happen BEFORE the re-point rather than
+after.** Every board carried two columns with the SAME TITLE — the retired status
+and the new dropdown — and monday's automation editor picks a column by title, so
+the pair is indistinguishable there and choosing the wrong one looks exactly like
+a finished re-point while the hop goes on copying a frozen column. Safe to do
+first because a rename changes the TITLE only, never the id (§3): the hops kept
+working off the old column, and the app reads the dropdowns by id. **Hiding them
+is still last, and they are never deleted** — 4,004 items reference them and they
+are the rollback.
+
+⚠️ **There are ELEVEN hops, each with exactly ONE live Diagnosis row** (re-verified
+live 2026-09-22; the list is in `scripts/diagnosis-migration/README.md`). The four
+order-creation branches create into **New Order only** — their configs also carry
+keys for `color_mm1wf7rv` and `color_mkxrxv9w`, which do not exist on that board:
+**dead keys**, invisible in the editor, copied nowhere. Intersect a create block's
+`inboundFieldsSourceConfig` keys with the DESTINATION board's real column set
+before believing a mapping is live, or the raw config sends you hunting for rows
+that are not there. Profile Send Off has no Diagnosis column at all, so the
+Profile → ME hop cannot carry one.
+
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 

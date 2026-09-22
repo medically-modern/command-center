@@ -46,6 +46,7 @@ app's write path and neither is a destination of these hops. Flagged, not touche
 | `createColumns.mjs [--apply]` | creates the five dropdowns beside the status originals; idempotent, matched on title + type; writes `columns.json` | only with `--apply` |
 | `migrateDiagnosis.mjs [--apply] [--board ID] [--source-wins]` | copies old status text → new dropdown per item, batched, read back and verified | only with `--apply` |
 | `backfillLabels.mjs [--apply]` | tops every dropdown up to the full historic vocabulary — the 43 real ICD-10 codes the ten columns knew between them | only with `--apply` |
+| `retireColumns.mjs [--apply]` | retitles the five OLD status columns to "… (retired)" so the automation editor can tell them from the dropdowns; title only, ids unchanged | only with `--apply` |
 
 ### migrateDiagnosis rules
 
@@ -93,48 +94,80 @@ back exactly. That is the same mutation shape the gateway's `writeMultiple` send
   answers "General error"; see the notes-migration README). Until then the hops
   still copy the retired status columns.
 
-## The evening list — the 10 automations that still copy a retired column
+## The evening list — the 11 automations that still copy a retired column
 
-Found by scanning every workflow on the three source boards for the retired ids
-(32 + 45 + 41 workflows, 54 legacy recipes). **No legacy recipe touches Diagnosis**,
-so all ten are editable workflows — but board automations of this vintage cannot be
-changed through the workflow API (it answers "General error", see the notes-migration
-README), so this is a person in monday's automation editor.
+Re-verified live 2026-09-22 against all three source boards (32 + 45 + 41
+workflows, 54 legacy recipes). **No legacy recipe touches Diagnosis**, so all
+eleven are editable workflows — but board automations of this vintage cannot be
+changed through the workflow API (it answers "General error", see the
+notes-migration README), so this is a person in monday's automation editor.
 
-| Board | Workflow | Active | Re-point the Diagnosis pair |
-|---|---|---|---|
-| Medical Evaluation → Insurance | `7918295320` | yes | `dropdown_mm7daf4m` → `dropdown_mm7dkdq8` |
-| Insurance → Welcome Call | `7918324247` | yes | `dropdown_mm7dkdq8` → `dropdown_mm7dvqts` |
-| Welcome Call → Subscription | `7918317925` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
-| Welcome Call → Subscription | `7918340632` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
-| Welcome Call → Subscription | `7918343137` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
-| Welcome Call → Subscription | `7918601476` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
-| Welcome Call → Subscription | `7919753399` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
-| Welcome Call → Subscription **and** New Order | `7918340959` | yes | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` **and** `dropdown_mm7dds6y` |
-| Welcome Call → Subscription **and** New Order | `7918341001` | yes | same pair |
-| Welcome Call → Subscription **and** New Order | `7918341011` | yes | same pair |
-| Welcome Call → Subscription **and** New Order | `7921725444` | **no** | same pair — inactive (§5.22b says keep it inactive), but re-point it so it is not a trap if it is ever enabled |
+**Each one has exactly ONE create-item block and exactly ONE live Diagnosis row.**
 
-⚠️ The last four reference all three retired ids because they create into BOTH
-Subscription and New Order; check every Diagnosis row inside each, not just the first.
+| Board it lives on | Workflow | Active | Creates in | The one row to change |
+|---|---|---|---|---|
+| Medical Evaluation | `7918295320` | yes | Insurance | `dropdown_mm7daf4m` → `dropdown_mm7dkdq8` |
+| Insurance | `7918324247` | yes | Welcome Call | `dropdown_mm7dkdq8` → `dropdown_mm7dvqts` |
+| Welcome Call | `7918317925` | yes | Subscription | `dropdown_mm7dvqts` → `dropdown_mm7d2p2h` |
+| Welcome Call | `7918340632` | yes | Subscription | same |
+| Welcome Call | `7918343137` | yes | Subscription | same |
+| Welcome Call | `7918601476` | yes | Subscription | same |
+| Welcome Call | `7919753399` | yes | Subscription | same |
+| Welcome Call | `7918340959` | yes | **New Order** | `dropdown_mm7dvqts` → `dropdown_mm7dds6y` |
+| Welcome Call | `7918341001` | yes | **New Order** | same |
+| Welcome Call | `7918341011` | yes | **New Order** | same |
+| Welcome Call | `7921725444` | **no** | **New Order** | same — stays inactive (§5.22b), re-pointed so it is not a trap |
+
+⚠️ **An earlier draft of this table said the last four create into "Subscription
+AND New Order" and carry several Diagnosis rows each. Both were wrong**, and the
+mistake is worth recording because it is easy to repeat. A create-item block's
+`inboundFieldsSourceConfig` keys are DESTINATION columns, and these four carry
+keys for `color_mm1wf7rv` and `color_mkxrxv9w` — neither of which exists on New
+Order. They are **dead keys** for columns the destination board does not have,
+invisible in the editor and copied nowhere. Resolve each block's destination
+board from its `boardId` variable and intersect the keys with that board's real
+column set before believing a mapping is live; the raw config alone will send you
+hunting for rows that are not there.
+
+⚠️ **Profile Send Off has NO Diagnosis column**, so the Profile → ME hop
+(`7917676280`) cannot carry one. Nothing is missing upstream — checked, not assumed.
 
 ## Then, in this order
 
-0. **Already done — don't redo:** the values are migrated (3,903 of 3,903, 0 diverged,
-   verified twice) and every dropdown carries all 43 codes. Nothing below needs a
-   re-migration first.
-1. **Test whether a hop CREATES a missing label on the destination dropdown.**
-   Unknown, and it matters: if it does not, a brand-new code entered at Evaluate will
-   not carry to Insurance on the hop. Both sends write with
-   `create_labels_if_missing`, so the next send self-heals either way — but measure
-   it, the way `hopTest.mjs` measured the notes hop, rather than assuming. Since
-   `backfillLabels.mjs` ran, every HISTORIC code exists on every board, so this
-   question now only bites a code nobody has used before.
-2. **Re-run `node migrateDiagnosis.mjs --apply`** to close the cutover window (a hop
-   that fired between the app deploy and the re-point delivered an empty dropdown).
-   It reports `diverged` rather than overwriting anything a rep has since set.
-3. **Then** retitle the five status columns "(retired)" and hide them from the views.
-   Never delete: 4,004 items still reference them, and they are the rollback.
+0. **Already done — don't redo:** values migrated (3,903 of 3,903, 0 diverged,
+   verified twice); every dropdown carries all 43 codes; and the five status
+   columns are retitled (below). Nothing needs a re-migration first.
+
+1. ✅ **Retitle the old status columns — DONE 2026-09-22** via
+   `retireColumns.mjs --apply`: "Diagnosis (retired)" on four boards,
+   "Diagnosis Code (retired)" on New Order, read back on all five.
+
+   **This had to come BEFORE the re-point, not after.** Every board carried two
+   columns with the SAME TITLE — the retired status and the new dropdown — and
+   monday's automation editor picks a column by title, so the two were
+   indistinguishable there and choosing the wrong one looks exactly like a
+   finished re-point while the hop goes on copying a frozen column. Safe to do
+   first because a rename changes the title only, never the id (CLAUDE.md §3):
+   the eleven hops kept working off the old column, and the app reads the
+   dropdowns by id.
+
+2. **Re-point the eleven automations** in the table above. One row each.
+
+3. **Test whether a hop CREATES a missing label on the destination dropdown.**
+   Unknown, and it matters: if it does not, a brand-new code entered at Evaluate
+   will not carry to Insurance on the hop. Both sends write with
+   `create_labels_if_missing`, so the next send self-heals either way — but
+   measure it, the way `hopTest.mjs` measured the notes hop, rather than
+   assuming. Since `backfillLabels.mjs` ran, every HISTORIC code exists on every
+   board, so this question now only bites a code nobody has used before.
+
+4. **Re-run `node migrateDiagnosis.mjs --apply`** to close the cutover window (a
+   hop that fired between the app deploy and the re-point delivered an empty
+   dropdown). It reports `diverged` rather than overwriting anything a rep has
+   since set.
+
+5. **Then** hide the five retired columns from the views. Never delete: 4,004
+   items still reference them, and they are the rollback.
 
 ## Original scope note
 
