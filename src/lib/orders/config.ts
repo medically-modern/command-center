@@ -27,8 +27,21 @@ export const ORDERING_FROM_COMMAND_CENTER = false;
  * — reach outside this repo, and neither destination exists yet:
  *
  * 1. Generate calls `coins-form-payment`'s `POST /api/cash-pay/create-link`,
- *    which mints the Stripe Checkout session and writes Cash Pay Link + Cash
- *    Pay Amount back onto the order. That route is not built.
+ *    which mints a **Stripe PAYMENT LINK** and writes Cash Pay Link + Cash Pay
+ *    Amount back onto the order. That route is not built.
+ *
+ *    ⚠️⚠️ **A PAYMENT LINK, NOT A CHECKOUT SESSION — verified against Stripe's
+ *    API reference, 2026-09-22.** A Checkout Session's `expires_at` "can be
+ *    anywhere from 30 minutes to 24 hours after Checkout Session creation. By
+ *    default, this value is 24 hours" — so a session URL texted to a patient is
+ *    dead by the next morning, and the 15-day reminder loop the handoff asks
+ *    for would be chasing a link that cannot be paid. A Payment Link has no
+ *    expiry at all (it has `active` + `inactive_message` instead), takes
+ *    inline `line_items[].price_data`, and **copies its `metadata` onto every
+ *    Checkout Session it creates** — which is what carries `itemId` and
+ *    `service: "cash-pay"` through to `checkout.session.completed`.
+ *    The existing pay-secondary flow uses a Checkout Session correctly: there
+ *    the patient is already on the page when it is minted.
  * 2. Send fires the order board's texting trigger, which needs a column and an
  *    automation the board does not have.
  *

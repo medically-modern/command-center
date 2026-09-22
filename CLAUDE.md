@@ -8101,9 +8101,9 @@ total is the job; the manager-only RELEASE inside it is a different question.
 needs mid-call is the total; "what's that made of?" is one click down.
 ⚠️⚠️ **THE TWO PRESSES ARE DARK — `CASH_PAY_LINK_FROM_COMMAND_CENTER = false`** — because both reach
 outside this repo and neither destination exists: **Generate** needs `coins-form-payment`'s
-`POST /api/cash-pay/create-link` (mint the Stripe Checkout session, write Cash Pay Link
-`text_mm7dzgzd` + Cash Pay Amount `numeric_mm7devxs` back), **Send** needs the order board's texting
-trigger column and automation. They render **INERT with the reason on screen, never hidden**
+`POST /api/cash-pay/create-link` (mint the Stripe **Payment Link** — see the ⚠️⚠️ below on why not a
+Checkout Session — and write Cash Pay Link `text_mm7dzgzd` + Cash Pay Amount `numeric_mm7devxs`
+back), **Send** needs the order board's texting trigger column and automation. They render **INERT with the reason on screen, never hidden**
 (§5.39g). A `notBuilt` toast is wired to both anyway, so flipping the flag before the endpoint
 exists refuses loudly instead of being a button that does nothing.
 ⚠️ **What does NOT wait is the QUOTE** — the card prices the order today, so a rep on the phone can
@@ -8135,6 +8135,21 @@ on the Order board.
   Paid Cash), the link-text webhook, the 15-day reminder loop, and the branded cash-pay mode on the
   payment page. Same Stripe account and the same itemized flow as pay-secondary, so HSA/FSA, the
   descriptor and the emailed receipt come free (handoff item 5).
+  ⚠️⚠️ **IT MUST MINT A STRIPE *PAYMENT LINK*, NOT A CHECKOUT SESSION — verified against Stripe's
+  API reference, 2026-09-22, and the distinction is the difference between a working feature and
+  one nobody can pay.** A Checkout Session's `expires_at` *"can be anywhere from 30 minutes to 24
+  hours after Checkout Session creation. By default, this value is 24 hours from creation"*, and it
+  cannot be set longer — so a session URL texted to a patient is dead by the next morning, and the
+  15-day reminder loop would be chasing a link that cannot be paid. A **Payment Link has no expiry
+  at all** (`active` + `inactive_message` instead, and `restrictions.completed_sessions` to make it
+  single-use), accepts inline `line_items[].price_data` so `cashPayLineItems()` maps straight onto
+  it, and **copies its `metadata` onto every Checkout Session it creates** — which is exactly what
+  carries `itemId` and `service: "cash-pay"` through to `checkout.session.completed`, the event the
+  existing webhook already listens for.
+  ⚠️ The existing **pay-secondary** flow uses a Checkout Session and is CORRECT: there the patient
+  is already on the page when it is minted, so 24 hours is ample. Do not "align" the two.
+  ⚠️ Deactivating the link once paid is `active: false`, not a delete — a dead link that explains
+  itself (`inactive_message`) beats a 404 for a patient who taps an old text.
 - **Cash Pay labels on Medical Evaluation and Insurance** — a cash pay patient is meant to skip both
   boards, so a label there would only be reachable by the route this build exists to avoid.
 - **The reconciliation stamp** (handoff item 8) rides on the charge id already being written, so it

@@ -25,7 +25,7 @@
  * the rule has drifted from the one price a human actually agreed to pay.
  *
  * ⚠️ The quote is **honoured once sent** (Josh, 2026-09-21). Tracker costs move
- * daily and Stripe fixes the amount when the Checkout session is created, so an
+ * daily and Stripe fixes the amount when the payment link is minted, so an
  * order priced on Monday ships at Monday's price even if Cardinal's cost rises
  * before the patient pays. The margin absorbs it. Nothing here re-prices.
  */
