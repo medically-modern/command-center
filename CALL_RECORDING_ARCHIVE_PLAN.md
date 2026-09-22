@@ -73,8 +73,8 @@ attempt**, which would otherwise have let one busy afternoon park good recording
   archive that was visibly working).
 - ✅ **Retention is 90 days** — settled empirically, see §1.
 - **Phase 5, voicemail audio** (§7) — a ~30-day clock, tighter than recordings, still unarchived.
-- Two answers wanted from a human: Railway's BAA coverage of **Tigris**, and a retention policy
-  (§8). The default is keep-forever.
+- ✅ **Retention is KEEP-FOREVER** — decided 2026-09-22 (§8). No prune job, no config var.
+- One answer still wanted from a human: Railway's BAA coverage of **Tigris** (§8).
 
 ---
 
@@ -402,9 +402,14 @@ Three things that need your explicit call before this ships, not after:
    buckets run on **Tigris**, a subcontractor. Whether the existing coverage extends is a
    question for Railway, and it is worth asking before 20 GB of patient voice is sitting there.
    ⚠️ Not a blocker I should decide — a question I should not answer by assuming.
-3. **Retention.** The default in this plan is keep-forever, because the bill does not argue
-   otherwise. If a records policy says seven years, that is a prune job and a config var; if it
-   says something shorter, the archive is still worth building, it just has a floor.
+3. ✅ **Retention — ANSWERED 2026-09-22: keep forever, no retention policy** (Josh, asked
+   directly). So the prune job and the config var this item contemplated are **deliberately not
+   built**, and their absence is the decision rather than an omission. Sizing, now **measured**
+   rather than bracketed: ~880 KB a recording (≈ 24 kbps) ⇒ ~15 GB/year, ~$0.25/month in year
+   one and ~$1.60/month at seven years. If that policy is ever reversed, a prune is a dated
+   `DELETE` over `call_archive` plus the matching bucket keys — and ⚠️ the row must go with the
+   object, or the index keeps promising audio that is gone, which is the exact failure
+   (§5.16) this archive was built to end.
 
 Also worth noting plainly: an archive makes recordings **more** discoverable than RingCentral's
 90 days ever did. That is the point, and it is also a fact a compliance conversation should know.

@@ -7812,10 +7812,16 @@ make this route prettier would undo the one property bounding every PHI table on
 unlike a text cannot be redacted or truncated. The same two bounds as §5.27 and §5.29 apply and are
 not optional: the **messaging pool** (`ASSIGNMENTS_DATABASE_URL`), never the audit pool — **do not
 move this table** — and HMAC + last4, with object keys carrying call ids and never a number or a
-name. **Two things still want an answer from a human:** whether Railway's BAA covers **Tigris**
-(what buckets run on) before ~20 GB of patient voice sits there, and a retention policy — the
-default is keep-forever because the bill does not argue otherwise (~$1–5/month at any plausible
-bitrate; ⚠️ the bitrate is bracketed, not measured, and the first stored object settles it).
+name. ✅ **RETENTION IS KEEP-FOREVER, DECIDED 2026-09-22** (Josh, asked directly: *"keep it
+forever, no retention policy"*). So there is **no prune job and no retention config var**, and
+that is the decision rather than the absence of one — do not add one, and do not read the
+missing prune as an oversight the way `request_log`'s (§8) would be. The bill does not argue
+otherwise: **measured** at ~880 KB a recording (≈ 24 kbps), that is ~15 GB/year, about
+$0.25/month in year one and ~$1.60/month at seven years.
+⚠️ **One thing still wants an answer from a human:** whether Railway's BAA covers
+**Tigris** (what buckets run on). Keep-forever makes that question bigger, not smaller — the
+volume only ever grows — so it is worth asking before another year of patient voice lands
+there. It is not a reason to hold the archive: RingCentral was deleting this audio outright.
 
 ⚠️⚠️ **`presignOk` — SAVING AND SERVING ARE DIFFERENT SIGNING CHAINS.** An upload proves the
 header-signed path; a presigned URL is query-string SigV4 against Tigris, so the archive can fill
