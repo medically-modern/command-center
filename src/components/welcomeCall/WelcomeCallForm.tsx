@@ -54,6 +54,7 @@ import { phoneSlotsFor, welcomeCallTextBlock } from "@/lib/welcomeCall/phoneSlot
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import { ConfirmCheck } from "./CallIntakeFields";
 import { PhoneSlotsSection } from "./PhoneSlotsSection";
+import { CallAttemptsCounter } from "./CallAttemptsCounter";
 import { toast } from "sonner";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { Card } from "@/components/ui/card";
@@ -125,6 +126,18 @@ interface Props {
    * never trapped behind a confirmation nobody could get.
    */
   onProposeStuck?: () => void;
+  /**
+   * Optimistic patch of the Call Attempts column, so the count moves on screen
+   * before Monday confirms. Optional: without it the counter still writes and
+   * the `onLoggedAttempt` refetch brings the new value back.
+   */
+  onCallAttemptsChange?: (count: string) => void;
+  /**
+   * Re-read the board after an attempt lands. The attempt also pushes Follow
+   * Up Date to tomorrow, and the Welcome Call queue is a pure date bucket
+   * (§5.31i), so this is what takes the patient off today's list.
+   */
+  onLoggedAttempt?: () => void;
 }
 
 /**
@@ -385,7 +398,7 @@ function CapNote({ qty, cap, payerLabel }: { qty: number; cap: number; payerLabe
   );
 }
 
-export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSendWelcomeCallText, onResetWelcomeCallText, onSaveEmail, onProposeStuck }: Props) {
+export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSendWelcomeCallText, onResetWelcomeCallText, onSaveEmail, onProposeStuck, onCallAttemptsChange, onLoggedAttempt }: Props) {
   // The no-column payload. Falls back to a blank one so a patient mapped before
   // this field existed (or a test fixture) still renders.
   const intake = patient.callIntake ?? emptyIntake();
@@ -1689,6 +1702,30 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               </div>
             </Button>
           )}
+        </div>
+
+        {/* ⚠️ THE ATTEMPT LOGGER LIVES HERE, not in the navy header (Josh,
+            2026-09-22: *"log attempts should be at bottom - press when
+            attempted, and then move next action date"*). The header is where a
+            rep lands; the foot of End of Call is where they ARE when a call
+            ends, and the two outcomes a call has — it happened (Advance /
+            Propose Stuck above) or it did not (this) — now sit together.
+            ⚠️ Keyed on the patient, like every other stateful control on this
+            page: the form stays mounted across a sidebar click, and a saving
+            spinner that outlived the patient would report the PREVIOUS one's
+            write against the open one (§9's notes-box rule).
+            ⚠️ Rendered whatever `onLoggedAttempt` is — the counter writes to
+            Monday itself, so a preview environment that cannot refetch still
+            gets a working button, and the optimistic patch is what shows the
+            new count. */}
+        <div className="mx-auto w-full max-w-2xl">
+          <CallAttemptsCounter
+            key={patient.id}
+            itemId={patient.id}
+            callAttempts={patient.callAttempts}
+            onUpdate={onCallAttemptsChange}
+            onFollowUp={onLoggedAttempt}
+          />
         </div>
       </FormSection>
     </div>

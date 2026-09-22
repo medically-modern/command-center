@@ -83,6 +83,7 @@ import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { AlertTriangle, Check, CheckCircle2, ChevronRight, ExternalLink, FileText, Loader2, Phone, Send } from "lucide-react";
 import { CalendarClock } from "lucide-react";
 import { isParachuteRoleMethod } from "@/lib/masheke/chaseMethods";
+import { GenerateScriptsControl } from "@/components/masheke/GenerateScriptButtons";
 import { DISTRICT_ENDOCRINE_DASHBOARD_URL } from "@/lib/shared/partnerDashboard";
 import { FileList, LoadingRow, MmStep } from "@/components/masheke/mmKit";
 import { MissingChecklist } from "@/components/masheke/MissingChecklist";
@@ -125,7 +126,17 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
   // Re-send drawer (view files + message) + editable message body.
   const [showResendDrawer, setShowResendDrawer] = useState(false);
   const [messageDraft, setMessageDraft] = useState<string | null>(null);
-  const mondayFiles = useMondayFiles(patient.id);
+  // The Email/Parachute/Dashboard role's FAX drawer (§5.9c) — a second,
+  // independent disclosure. ⚠️ DEFAULT HIDDEN, which is the ask itself (Josh,
+  // 2026-09-22: *"via a drawer that is default hidden"*): faxing is not how
+  // these patients are chased, so the control must not read as the next step.
+  const [showFaxDrawer, setShowFaxDrawer] = useState(false);
+  // DocExport is slow enough that a resting poll would leave the chip up for
+  // half a minute after the script landed; it costs nothing while idle.
+  const [generating, setGenerating] = useState(false);
+  const mondayFiles = useMondayFiles(patient.id, {
+    pollingIntervalMs: generating ? 2000 : 0,
+  });
 
   // "What we're still missing" — same eval output Send Request / Confirm
   // Receipt use, so all three stages show an identical picture.
@@ -153,6 +164,12 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
     setAttemptNote("");
     setResentNow(false);
     setShowResendDrawer(false);
+    // ⚠️ Collapses on a sidebar click, deliberately. Carrying it open would
+    // put a Send Fax button and the PREVIOUS patient's message draft in front
+    // of a rep who has just opened somebody else (§9's notes-box rule) — and
+    // "default hidden" has to mean per patient, not once per session.
+    setShowFaxDrawer(false);
+    setGenerating(false);
     setMessageDraft(null);
   }, [patient.id]);
 
@@ -341,10 +358,21 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
   const currentMessage =
     messageDraft ?? patient.requestBody ?? buildRequestTemplate(patient, mnChecklist);
 
-  // Optional re-send (fax role only) — same writes as Send Request's Send:
-  // persist the (possibly edited) recipient + message, flip the trigger column
-  // so Monday re-dispatches via Supermail, and stamp Request Sent At.
-  async function handleResend() {
+  /**
+   * Send a copy of the request while chasing — same writes as Send Request's
+   * Send: persist the (possibly edited) message and stamp Request Sent At.
+   *
+   * ⚠️ `channel` is what the FAX DRAWER needs (§5.9c). The Email, Parachute &
+   * Dashboards role holds three clinicals methods, and Josh's 2026-09-22 ask is
+   * a FAX for all of them — including an Email-method patient, whose
+   * `recipient` would otherwise resolve to their doctor's email address. So the
+   * drawer passes `"fax"` explicitly rather than letting the patient's own
+   * method choose: the whole point of that control is to reach an office the
+   * usual channel has not.
+   */
+  async function handleResend(channel: "auto" | "fax" = "auto") {
+    const asFax = channel === "fax" || !isEmail;
+    const target = channel === "fax" ? patient.doctorFax : recipient;
     if (!hasToken()) {
       toast.error("Monday token not configured");
       return;
@@ -354,8 +382,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
       toast.error("Sign in with your medicallymodern.com account to send.");
       return;
     }
-    if (!recipient) {
-      toast.error(`No doctor ${isEmail ? "email" : "fax"} on file.`);
+    if (!target) {
+      toast.error(`No doctor ${asFax ? "fax" : "email"} on file.`);
       return;
     }
     setResending(true);
@@ -363,7 +391,10 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
       // Send the SAME way Send Request does: POST recipient + subject + message
       // + the Monday request files to the worker /send-message (RingCentral),
       // not the dormant trigger column.
-      const to = recipient.includes("@") ? recipient : `${recipient.replace(/\D/g, "")}@rcfax.com`;
+      // ⚠️ `<digits>@rcfax.com` is what makes RingCentral treat it as a fax
+      // (§5.5) — the one shape that must survive, so an address the rep typed
+      // with an @ in it is passed through untouched.
+      const to = target.includes("@") ? target : `${target.replace(/\D/g, "")}@rcfax.com`;
       const files: File[] = [];
       for (const { file: f } of resendFiles) {
         const url = f.public_url || f.url;
@@ -407,7 +438,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
       });
       onUpdate({ requestBody: currentMessage, requestSentAt: sentIso });
       setResentNow(true);
-      toast.success(isEmail ? "Email sent via RingCentral" : "Fax sent via RingCentral");
+      toast.success(asFax ? "Fax sent via RingCentral" : "Email sent via RingCentral");
     } catch (e) {
       toast.error("Send failed", { description: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -666,7 +697,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
                       className="h-[42px] bg-background flex-1 min-w-[220px]"
                     />
                     <Button
-                      onClick={handleResend}
+                      onClick={() => void handleResend("auto")}
                       disabled={resending || !recipient}
                       className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
                     >
@@ -736,6 +767,168 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
                       </div>
 
                       {/* Editable message — saved on re-send */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                          Message
+                        </p>
+                        <textarea
+                          value={currentMessage}
+                          onChange={(e) => setMessageDraft(e.target.value)}
+                          rows={9}
+                          className="w-full whitespace-pre-wrap rounded-xl border px-4 py-3 text-sm leading-relaxed font-sans bg-background resize-y focus:outline-none"
+                          style={{ borderColor: "var(--mm-card-border)" }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ─── Send a fax anyway (Email, Parachute & Dashboards) ───
+                  Josh, 2026-09-22: *"Need to add the option (via a drawer that
+                  is default hidden) to send a fax for these patients (and
+                  generate a script too)"*.
+
+                  ⚠️ DEFAULT HIDDEN is the whole specification of the control,
+                  not a styling choice. These patients are chased in a portal or
+                  by email; a fax is the exception a rep reaches for when the
+                  office has gone quiet. Rendered open, it would read as the
+                  step to take and undo the §5.9 split that put these three
+                  methods in one queue.
+
+                  ⚠️ It sends a FAX whatever the patient's own method is —
+                  `handleResend("fax")`, never "auto". An Email-method patient's
+                  `recipient` is their doctor's EMAIL, so "auto" would quietly
+                  send the thing the rep was already able to send.
+
+                  ⚠️ The fax-role box above is untouched. Two controls, two
+                  audiences: that one is the everyday re-send for a Fax patient,
+                  this is the escape hatch for everybody else. Do not merge
+                  them — the fax role would lose its always-visible re-send. */}
+              {effectiveRole === "parachute" && (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowFaxDrawer((o) => !o)}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ChevronRight className={`h-4 w-4 transition-transform ${showFaxDrawer ? "rotate-90" : ""}`} />
+                    {showFaxDrawer ? "Hide fax options" : "Send a fax instead"}
+                  </button>
+
+                  {showFaxDrawer && (
+                    <div
+                      className="mt-3 rounded-xl border px-4 py-3.5 flex flex-col gap-4"
+                      style={{ borderColor: "var(--mm-card-border)" }}
+                    >
+                      <p className="text-xs text-muted-foreground">
+                        {patient.name || "This patient"} is chased by{" "}
+                        <b>{method.toLowerCase()}</b>. Faxing does not change that — it
+                        sends the same request to the office a second way.
+                      </p>
+
+                      {/* Generate a script — the same DocExport trigger Send
+                          Request uses, via the shared control so the two cannot
+                          disagree about what a script needs. */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                          Scripts
+                        </p>
+                        <GenerateScriptsControl
+                          itemId={patient.id}
+                          patient={patient}
+                          hasCgmTemplate={mondayFiles.cgmTemplate.length > 0}
+                          hasIpTemplate={mondayFiles.ipTemplate.length > 0}
+                          cgmStatus={mondayFiles.generateCgmStatus}
+                          ipStatus={mondayFiles.generateIpStatus}
+                          onGeneratingChange={setGenerating}
+                        />
+                      </div>
+
+                      {/* Where it goes. Writes the doctor's fax on the patient,
+                          so a number typed here is on the record rather than
+                          living for one send. */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                          Doctor fax
+                        </p>
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <Input
+                            value={patient.doctorFax ?? ""}
+                            onChange={(e) => onUpdate({ doctorFax: e.target.value })}
+                            placeholder="fax number"
+                            className="h-[42px] bg-background flex-1 min-w-[220px]"
+                          />
+                          <Button
+                            onClick={() => void handleResend("fax")}
+                            disabled={resending || !patient.doctorFax}
+                            className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+                          >
+                            {resending ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" /> Sending…
+                              </>
+                            ) : resentNow ? (
+                              <>
+                                <Check className="h-4 w-4" /> Sent
+                              </>
+                            ) : (
+                              <>
+                                <Send className="h-4 w-4" /> Send Fax
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                        {/* A disabled Send always says why (§5.10's rule). */}
+                        {!patient.doctorFax && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            No doctor fax on file — add one above to send.
+                          </p>
+                        )}
+                        {resentNow && (
+                          <p className="text-xs mt-2 font-semibold" style={{ color: "var(--mm-green)" }}>
+                            Fax sent.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Documents — the same four columns Send Request
+                          attaches, so what goes out here is what went out
+                          then. */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                          Documents being sent
+                        </p>
+                        {mondayFiles.loading && resendFiles.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">Loading…</p>
+                        ) : resendFiles.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No files attached on Monday.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {resendFiles.map(({ file: f, tag }) => {
+                              const url = f.public_url || f.url;
+                              return (
+                                <button
+                                  key={f.assetId}
+                                  type="button"
+                                  disabled={!url}
+                                  onClick={() => url && openFileViewer({ url, name: f.name })}
+                                  title={f.name}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40 disabled:opacity-50"
+                                  style={{ borderColor: "var(--mm-card-border)" }}
+                                >
+                                  <FileText className="h-3.5 w-3.5 shrink-0 text-[color:var(--mm-teal)]" />
+                                  <span className="max-w-[220px] truncate">{f.name}</span>
+                                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{tag}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Editable message — saved to Request Body on send, the
+                          same column Send Request writes. */}
                       <div>
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
                           Message

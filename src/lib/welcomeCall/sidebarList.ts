@@ -4,7 +4,8 @@
  * means the first row the rep can actually see.
  *
  * Split patients into active vs follow-up:
- * - "Done" is the text Monday returns for status index 1 (our follow-up marker)
+ * - Active vs Follow Up is decided by the DATE, not the status label — see
+ *   isWelcomeCallSnoozed below for why, and for the counting contract it binds
  * - Manager view (escalated filter): the main list IS the escalated list;
  *   other sections hide.
  * - Final Decisions view (`?mv=final-decisions`, which Oversight sets alongside
@@ -18,8 +19,51 @@
  * advanced a patient a manager was about to mark Stuck.
  */
 import type { CrossSellScope, EscalationFilter } from "@/lib/accessStore";
+import { etToday } from "@/lib/masheke/etDate";
 import type { ManagerOrigin } from "@/lib/shared/managerOrigin";
 import { isCrossSell, type Patient } from "@/lib/welcomeCall/workflow";
+
+/**
+ * Is this patient snoozed — i.e. parked until a day that has not arrived yet?
+ *
+ * ⚠️ PURE DATE BUCKET: snoozed iff Follow Up Date is in the FUTURE (ET). The
+ * Follow Up STATUS column is deliberately ignored, and a BLANK date counts as
+ * DUE. This is the same rule Auth Outstanding has used since the 2026-07-21
+ * redesign (samantha/authOutstandingReview.isSnoozedAuthOutstanding) — read
+ * that one's reasoning, it is identical: a stage whose whole job is "come back
+ * to this patient on a day" should bucket on the day, not on a label.
+ *
+ * ⚠️ IT REPLACES `followUp !== "Done"`, and that was a ONE-WAY DOOR (Josh,
+ * 2026-09-22: "press when attempted, and then move next action date ... when
+ * patient arrives, should only show up tomorrow"). Every in-app path that sets
+ * Follow Up writes BOTH columns — CallAttemptsCounter's +1 and FollowUpModal,
+ * which refuses to save without a date — and then nothing on this board ever
+ * read the date back. So logging an attempt set the status, the patient left
+ * the sidebar AND the role bar, and the date they were promised back on passed
+ * with nothing to wake them: hidden until a human cleared the column by hand.
+ * The §5.10 Patient-Intake failure, one board over. Measured on the live
+ * Welcome Call group the day this changed: 24 patients, the 5 snoozed ones all
+ * dated tomorrow, so the switch moved NOBODY on the day — it only means those
+ * 5 come back tomorrow instead of never.
+ *
+ * ⚠️ One consequence, accepted: a "Done" set BY HAND on the board with no date
+ * no longer hides anyone. That is the dateless indefinite snooze §5.18 calls
+ * Paused, and it is exactly the stranding above — a patient nothing will ever
+ * bring back. Snoozing now means naming the day.
+ *
+ * ⚠️ THIS IS THE §5.8 COUNTING CONTRACT. The sidebar, `useRoleCounts` and BOTH
+ * baseline generators must apply it identically or the bar and the list
+ * disagree all day. The two TypeScript readers import this function; the two
+ * baseline generators are plain Node and cannot, so they carry the same
+ * comparison as a literal — `welcomeCallSnooze.test.ts` scans them and fails
+ * the build when either drifts.
+ */
+export function isWelcomeCallSnoozed(
+  p: Pick<Patient, "followUpDate">,
+  todayYmd: string = etToday(),
+): boolean {
+  return !!p.followUpDate && p.followUpDate > todayYmd;
+}
 
 export interface SidebarSections {
   /** Main list. Escalated filter: every escalated patient (proposed-stuck only
@@ -52,9 +96,14 @@ export function sidebarSections(
   patients: Patient[],
   viewFilter: EscalationFilter,
   opts: SidebarOptions = {},
+  todayYmd: string = etToday(),
 ): SidebarSections {
   const escalatedOnly = viewFilter === "escalated";
   const includeEscalated = viewFilter !== "nonEscalated";
+  // The one snooze rule (see isWelcomeCallSnoozed) — `active` and `followUp`
+  // are its two sides, so they partition the list by construction and a
+  // patient can never be in both or neither.
+  const snoozed = (p: Patient) => isWelcomeCallSnoozed(p, todayYmd);
   if (escalatedOnly && opts.origin === "final-decisions") {
     return { ...empty(), active: patients.filter(isProposed) };
   }
@@ -62,10 +111,10 @@ export function sidebarSections(
     return { ...empty(), active: patients.filter(isEsc) };
   }
   return {
-    active: patients.filter((p) => isPlain(p) && p.followUp !== "Done"),
-    escalated: includeEscalated ? patients.filter((p) => isEsc(p) && p.followUp !== "Done") : [],
-    followUp: patients.filter((p) => isPlain(p) && p.followUp === "Done"),
-    both: includeEscalated ? patients.filter((p) => isEsc(p) && p.followUp === "Done") : [],
+    active: patients.filter((p) => isPlain(p) && !snoozed(p)),
+    escalated: includeEscalated ? patients.filter((p) => isEsc(p) && !snoozed(p)) : [],
+    followUp: patients.filter((p) => isPlain(p) && snoozed(p)),
+    both: includeEscalated ? patients.filter((p) => isEsc(p) && snoozed(p)) : [],
     proposedStuck: includeEscalated ? patients.filter(isProposed) : [],
   };
 }
@@ -76,8 +125,9 @@ export function sidebarVisibleList(
   patients: Patient[],
   viewFilter: EscalationFilter,
   opts: SidebarOptions = {},
+  todayYmd: string = etToday(),
 ): Patient[] {
-  const s = sidebarSections(patients, viewFilter, opts);
+  const s = sidebarSections(patients, viewFilter, opts, todayYmd);
   return [...s.active, ...s.escalated, ...s.followUp, ...s.both, ...s.proposedStuck];
 }
 

@@ -698,15 +698,26 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
 
   const cgmServed = showCgm && cgmReceivedVal !== "Not Serving";
   const ipServed = showIp && ipReceivedVal !== "Not Serving";
-  // Coverage-path / language / evaluation answers are only *required* when the
-  // corresponding script was actually received ("Yes").
-  const cgmReqReq = cgmReceivedVal === "Yes";
-  const ipReqReq = ipReceivedVal === "Yes";
   // Coverage path + language controls only appear once a script is in hand —
   // received "Yes" or received-but-"Invalid". Hidden for "No"/unset, mirroring
   // how the Clinicals detail only shows once Clinicals are received.
   const cgmScriptInHand = cgmReceivedVal === "Yes" || cgmReceivedVal === "Invalid";
   const ipScriptInHand = ipReceivedVal === "Yes" || ipReceivedVal === "Invalid";
+  // ⚠️ THE REQUIRED MARKER AND THE SEND GATE ARE ONE QUESTION — ask it once.
+  // getMissingRequiredFields keys on `state.ipScriptReceived === "Yes"`, and
+  // setIpReceived("Invalid") writes ipScriptReceived = "Yes" + ipScriptValid =
+  // "Invalid" — so an INVALID script carries every path requirement and the
+  // gate really does disable Send on them. Reading `ipReceivedVal === "Yes"`
+  // here asked a different question of the same state: on the OOW Pump path a
+  // rep who marked the script Invalid got an OOW Date field with no required
+  // marker (and a "Language Requirements" header that dropped "— all
+  // required") above a Send button that was disabled on exactly that field.
+  // Reported 2026-09-22: "if you put invalid, it doesn't say oow date is
+  // required, but ... it won't advance unless you put in a date."
+  // `scriptInHand` IS `scriptReceived === "Yes"`, so these now track the gate
+  // by construction. Never re-derive either from `receivedVal === "Yes"`.
+  const cgmReqReq = cgmScriptInHand;
+  const ipReqReq = ipScriptInHand;
 
   // Applicable IP language requirements for the chosen path.
   const ipCfg =

@@ -22,6 +22,7 @@ import { viewFilterFromParams } from "@/lib/roleView";
 import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 import { sidebarSections } from "@/lib/welcomeCall/sidebarList";
 import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
+import { CallAttemptsCounter } from "./CallAttemptsCounter";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -152,7 +153,15 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                     {!collapsed && (
                       <div className="min-w-0 text-left">
                         <p className="text-sm font-medium truncate">{p.name}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">
+                        {/* ⚠️ `pr-12` keeps this line clear of the attempt
+                            counter pinned to the row's bottom-right. The
+                            subtitle truncates, so without it a long
+                            "Serving · Payer" runs underneath the pill and the
+                            count becomes unreadable. The NAME line above needs
+                            nothing: the counter is at the foot of the row, and
+                            the top-right gutter is bought by
+                            `ContactStateMarks` when it renders. */}
+                        <p className="text-[11px] text-muted-foreground truncate pr-12">
                           {p.serving && p.primaryInsurance
                             ? `${p.serving} · ${p.primaryInsurance}`
                             : p.serving || p.primaryInsurance || "—"}
@@ -161,6 +170,29 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                     )}
                     <ContactStateMarks phone={p.phone} />
                   </SidebarMenuButton>
+                  {/* Log a call attempt WITHOUT opening the patient (Josh,
+                      2026-09-22: *"should be available on the list view too,
+                      not just the profile view"*). A rep working down today's
+                      list rings each name in turn; most calls go unanswered,
+                      and the whole record of that is +1 and a follow-up date.
+                      ⚠️ A SIBLING of the row button, never a child — nested
+                      buttons are invalid HTML (see CallAttemptsCounter).
+                      ⚠️ ACTIVE ROWS ONLY, deliberately. This is the list of who
+                      to call today; Escalated belongs to a manager, and a
+                      Follow Up row is already snoozed past today, so logging an
+                      attempt there would push a date nobody is waiting on.
+                      ⚠️ No `onUpdate`: the sidebar has no per-patient setter, so
+                      the count comes back with `onRefresh` — which the write
+                      needs anyway, because the follow-up it moves is what takes
+                      the patient off this very list. */}
+                  {!collapsed && (
+                    <CallAttemptsCounter
+                      variant="row"
+                      itemId={p.id}
+                      callAttempts={p.callAttempts}
+                      onFollowUp={onRefresh}
+                    />
+                  )}
                 </SidebarMenuItem>
               ))}
               {!loading && activePatients.length === 0 && !error && !collapsed && (

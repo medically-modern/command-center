@@ -293,6 +293,41 @@ routing on submit), a doctor-facing **ask list**, and an **MN checklist**.
 > (mirrors how Clinicals detail shows only on receipt). It's a pure render gate — already-saved
 > coverage/language still writes on send via `buildScriptCoverageWrites`.
 
+### 5.6b Two Evaluate fixes — the OOW marker, and when a new arrival is due (Sep 2026)
+Josh, 2026-09-22. **No board change; app only.**
+
+**1. An INVALID script is a script IN HAND, and only the marker disagreed.**
+*"For oow pumps, if you put invalid, it doesn't say oow date is required, but masheke saying it
+won't advance unless you put in a date"* — both halves true, and the Send gate was the half that
+was right. `setIpReceived("Invalid")` writes **`ipScriptReceived = "Yes"`** alongside
+`ipScriptValid = "Invalid"` (an invalid script is still a script), so
+`getMissingRequiredFields` — which keys on `ipScriptReceived === "Yes"` — correctly disabled Send
+on a blank OOW Date. The required marker beside the field asked `ipReceivedVal === "Yes"` instead,
+which is the DISPLAY value and reads `"Invalid"`: the field rendered unmarked, the "Language
+Requirements" header dropped its *"— all required"*, and Send sat disabled on exactly that field
+with nothing on screen saying so.
+⚠️ **THE FIX IS NOT A NEW GATE.** `cgmReqReq` / `ipReqReq` are now literally `scriptInHand`
+(`"Yes" || "Invalid"`), which IS `scriptReceived === "Yes"` after those setters — so the marker
+tracks the gate by construction rather than by agreement. Adding a second hard stop would have been
+the dead-end class this file records reversing five times (§5.10 · §5.20 · §5.31c · §5.32c ·
+§5.39d). **Never re-derive either flag from `receivedVal === "Yes"`**;
+`oowRequiredMarker.test.ts` scans for exactly that shape and was verified to fail on it.
+
+**2. A new arrival is due the NEXT BUSINESS DAY.** *"Whenever a new patient shows up in this
+bucket, make sure the Action Date is the next day, not today, so it doesn't grow Masheke's evaluate
+bar"*. `hooks/masheke/useMondayPatients` backfills a **blank** Next Action Date on read; it stamped
+`etToday()`, so a patient landing at 4pm joined that day's count and the bar grew by work nobody
+could have done. It stamps `addBusinessDaysIso(todayStr, 1)` now — a Friday arrival is due Monday.
+⚠️⚠️ **THE UPLOAD-CLINICALS CARVE-OUT IS THE OTHER HALF OF THE SAME NOTE**: *"For upload clinicals
+- that should show up same day, it's just ones coming from Katie that should show up next day"*.
+`returnToEvaluateVerified` (Update Clinicals, §5.36's neighbour) writes its own NAD explicitly, and
+the stale-escalation self-heal below it writes today — **neither reaches this branch, because the
+patient already has a date**. The carve-out is preserved BY CONSTRUCTION, not by a condition, and
+`arrivalDate.test.ts` pins that `returnToEvaluateVerified` never starts adding business days. Do
+not "unify" the three.
+⚠️ It fills a BLANK only, stamps each patient once, and deletes its marker when the write fails so
+the next poll retries.
+
 ### 5.7 OOP estimator — `lib/welcomeCall/oopEstimator.ts`
 Estimates patient out-of-pocket for the Welcome Call. **Mirrors backend Python** (`claim_assumptions.py`,
 `financial_estimate_service.py`, `insurance_rules.py`) that lives on Railway, **not in this repo**.
@@ -320,7 +355,12 @@ so any drift shows up as phantom +in/-out chips all day; change all three files 
 **Auth Outstanding is a PURE date bucket** (redesign 2026-07-21): snoozed iff Follow Up Date
 is in the future — the Follow Up STATUS column is ignored for that group and a blank date
 counts as due (`sidebarList.isSnoozedAuthOutstanding`; `samActive`/`countSamGroup` take a
-`dateOnlyBucket` flag). Benefits/Submit Auth keep the status-based rule. **Masheke counts
+`dateOnlyBucket` flag). Benefits/Submit Auth keep the status-based rule.
+**WELCOME CALL joined the pure-date bucket on 2026-09-22** (`sidebarList.isWelcomeCallSnoozed`,
+§5.31i) — same shape, same blank-is-DUE rule, and for the same reason one step worse: the Follow Up
+STATUS was written by the Log-call-attempt button and read by NOTHING, so a logged attempt hid the
+patient for good. The two baseline generators carry it as a literal and `welcomeCallSnooze.test.ts`
+scans them. **Masheke counts
 exclude Proposed Stuck patients** (Escalation `color_mm1x7997` **index 2** = "Final Escalation
 Required" — a stuck PROPOSAL; they await a manager decision in Oversight's Final Decisions.
 Masheke "escalated" for counts/sidebar is now index **0** only — index 2 is proposed-stuck,
@@ -482,6 +522,74 @@ address yields a null lookup that is indistinguishable from "not registered yet"
 The status pill is **`components/shared/FaxStatusChip`** — one component on every surface
 that faxes, extracted from ConfirmReceiptPanel for the reason `SmsDeliveryNote` exists
 (§5.5). Send Request also gained Evaluate's **See Referral Email** side panel.
+
+### 5.9c The Chase Clinicals fax drawer — Email, Parachute & Dashboards (Sep 2026)
+Josh, 2026-09-22: *"Need to add the option (via a drawer that is default hidden) to send a fax
+for these patients (and generate a script too)"*. **No board change; app only.**
+
+**What this role could NOT do until then.** §5.9's split keys the optional re-send box off
+`effectiveRole`, so it renders on `chaseFax` and on nothing else — *"Email patients in this role
+never see the fax re-send path"*, by design. Which is right for the everyday case and leaves no
+escape when the usual channel has gone quiet: a Parachute office that has stopped reading the
+portal, an Email doctor whose address bounces, a Dashboard practice mid-migration. The rep's only
+move was to leave the app.
+
+**So the role gains a SECOND, independent disclosure** — `showFaxDrawer` in
+`ChaseClinicalsPanel`, beside the existing `showResendDrawer` it deliberately does not share.
+⚠️ **DEFAULT HIDDEN is the specification, not the styling** (his words). These patients are chased
+in a portal or by email; a fax is the exception. Rendered open it would read as the step to take
+and would undo the §5.9 split that put the three methods in one queue in the first place.
+⚠️ **It collapses on a patient switch**, not once per session: carrying it open puts a Send Fax
+button and the PREVIOUS patient's message draft in front of a rep who has just opened somebody
+else (§9's notes-box rule), and "default hidden" has to mean per patient to mean anything.
+
+⚠️⚠️ **IT SENDS A FAX WHATEVER THE PATIENT'S OWN METHOD IS.** `handleResend` took no argument and
+resolved its target from `isEmail`; the drawer passes **`"fax"`** explicitly
+(`const target = channel === "fax" ? patient.doctorFax : recipient`). An Email-method patient's
+`recipient` is their doctor's EMAIL, so an "auto" send here would quietly send the thing the rep
+was already able to send — a button that appears to do the new thing and does the old one. The
+fax-role box beside it still passes `"auto"` and is byte-identical.
+⚠️ `<digits>@rcfax.com` is what makes RingCentral treat the send as a fax (§5.5), so a value the
+rep typed WITH an `@` passes through untouched — the same rule `shared/faxAddress` keeps (§5.19b).
+⚠️ **Two controls, two audiences — do not merge them.** The fax role's re-send is always visible
+because it is that role's everyday action; folding it into this drawer would hide it.
+
+**"…and generate a script too"** — the same DocExport trigger Send Request has always had, now
+shared rather than copied: **`lib/masheke/generateScripts.ts`** (`missingForScript` ·
+`showCgmGenerate` / `showIpGenerate` · `triggerGenerateScript`) and
+**`components/masheke/GenerateScriptButtons.tsx`** (`GenBtn` · `GeneratingChip` ·
+`GenerateScriptsControl`). `SendRequestPanel` was re-pointed at both and its local copies deleted.
+⚠️ The §5.7/§5.17/§5.29 hand-synced hazard with a specific cost here: the two ends would be the
+stage that GENERATES a script and the stage that chases the office for what it asks for, so a
+drifted required-field list means one screen refusing to generate what the other generates
+happily — with no error on either.
+⚠️ **Send Request keeps its own state machine and that is deliberate**, which is why
+`GenerateScriptsControl` is not used there: that panel stores generate state inside the PERSISTED
+`EvalState`, so it survives a reload, and the drawer has no such store. One rule, two state
+machines — never two copies of the rule.
+⚠️ **`triggerGenerateScript` CLEARS before it writes**, with a 250ms gap. The automation fires on
+the status CHANGING to "Generate", and Monday takes a write of the value a column already holds at
+HTTP 200 with no activity-log entry and nothing fired (§9's advancer no-op) — so a re-generate on a
+column still reading "Generate" is a green button and no script. Cancelling is a CLEAR, never a
+write of some label the column does not have.
+⚠️ **The control polls Monday at 2s ONLY while a job is running** (`pollingIntervalMs: generating ?
+2000 : 0`). A resting poll would leave the chip up long after the script landed AND would be a read
+per patient every two seconds on a page a rep sits on — INCIDENT_2026-08-20's shape.
+⚠️ A disabled Generate always names what is missing, and a disabled Send Fax says there is no fax
+on file: a greyed-out control with no stated passing move is the dead end §5.10 · §5.20 · §5.31c ·
+§5.32c · §5.39d each record reversing.
+
+⚠️ **Nothing about the QUEUE moved.** No membership rule, no role count, no baseline, no
+keep-in-agreement list (§5.9's six places are untouched) — this is one screen gaining a control.
+The drawer keys on `effectiveRole === "parachute"`, i.e. the whole role, so Email, Parachute and
+Dashboard patients see it identically; the one thing that still keys on a patient's OWN
+`clinicalsMethod` is the Dashboard link above it, exactly as §5.9 requires.
+
+**Keep-in-agreement:** `lib/masheke/generateScripts.ts` is the ONE rule — `SendRequestPanel` and
+`GenerateScriptsControl` both call it and neither may re-derive it. `chaseFaxDrawer.test.ts` scans
+for the default-hidden flag, the explicit `"fax"` channel, the `@rcfax.com` shape, the
+clear-then-write order and the absence of a second copy in Send Request; the first two were
+verified to fail when reverted.
 
 ### 5.10 Profile Send Off split — Verified · Unverified · Already In System (July 2026)
 Same pattern as §5.9: **one Monday stage** (Profile Send Off board `18406352652`, group
@@ -4530,6 +4638,84 @@ never touches the board · `@rcfax.com` still accepted · blank clears) and
 `components/profile/emailOnRecord.test.tsx` (no editor without the prop · the refusal keeps the
 draft · the key · the page wiring · the intake page untouched).
 
+### 5.31i Welcome Call is a DATE bucket, and the attempt logger moved (Sep 2026)
+Josh, 2026-09-22, two notes that turn out to be one fact: *"log attempts should be at bottom -
+press when attempted, and then move next action date (should be available on the list view too,
+not just the profile view)"* and *"when patient arrives, should only show up tomorrow"*.
+**No board change; app only.**
+
+⚠️⚠️ **THE SECOND HALF OF "LOG CALL ATTEMPT" HAD NEVER WORKED, AND THE FAILURE WAS A ONE-WAY
+DOOR.** That button has always written BOTH columns — Call Attempts +1 and **Follow Up Date**
+`date_mm38a7k7` = tomorrow — and the toast has always promised the patient back on that day. But
+the queue bucketed on the **Follow Up STATUS** `color_mm38w2tk` (`followUp === "Done"`), and
+**nothing on this board ever read the date back**: not `sidebarList`, not `useRoleCounts`, not
+either baseline generator, not an automation. So pressing +1 removed the patient from the sidebar
+AND the role bar, the named day passed with nothing to wake them, and they stayed hidden until a
+human cleared the column by hand. §5.10's Patient-Intake failure, one board over — and this one
+was reachable from a button a rep presses on most calls.
+
+**So the queue is a PURE DATE BUCKET now** — `sidebarList.isWelcomeCallSnoozed`, the same shape
+Auth Outstanding has used since 2026-07-21 (§5.8): snoozed **iff** Follow Up Date is in the future
+(ET), and a **blank date counts as DUE**. The status column is read by nothing.
+⚠️ **Blast radius on the day: ZERO.** Measured on the live group before the switch — 24 patients,
+of whom 5 carried `followUp = "Done"`, and **all 5 were dated tomorrow**. Both rules agreed on
+every row that afternoon; what changed is that those 5 come back tomorrow instead of never.
+⚠️ **One consequence, accepted:** a `"Done"` set BY HAND on the board with no date no longer hides
+anybody. That is §5.18's dateless indefinite snooze — the Paused state — and here it was exactly
+the stranding above. Snoozing now means naming the day.
+
+**§5.8 counting contract — FOUR places, and two of them cannot import:**
+1. **Sidebar** — `lib/welcomeCall/sidebarList.ts` owns and exports the rule.
+2. **Role counts** — `useRoleCounts.ts` IMPORTS it, and reads `WC_FOLLOWUP_DATE_COL`.
+3. **Baseline (build)** — `scripts/snapshot-baseline.mjs` `countWelcomeCall`.
+4. **Baseline (cron)** — `services/baseline-cron/index.mjs` `countWelcomeCall`.
+⚠️ Places 3 and 4 are plain Node and carry the comparison as a literal, so
+**`welcomeCallSnooze.test.ts` scans both** and fails the build when either drifts — including if
+the old `WC_FOLLOWUP_COL` reappears. The drift is silent: the bar would keep hiding patients the
+sidebar now shows, and the Operations tab would grow phantom +in/-out chips all day.
+
+**"When patient arrives, should only show up tomorrow"** — `hooks/welcomeCall/useMondayPatients`
+stamps a **blank** Follow Up Date with `addBusinessDaysIso(etToday(), 1)` on read, once per
+patient, retrying only when the write failed. A patient landing at 4pm cannot be called that
+afternoon, and with a blank date reading as DUE they would otherwise join the day's count on
+arrival.
+⚠️ **THE DATE ONLY — never the Follow Up STATUS.** Writing the status would file every arrival
+under Follow Up and read as **Paused** in Profile Status (§5.18), which is the column this stage
+just stopped depending on.
+⚠️ **It only ever fills a BLANK** — overwriting a real date would drag a snoozed patient forward or
+push a due one out.
+
+**The attempt logger moved, and gained a second home.**
+- **Out of the navy header.** The header is where a rep LANDS; the foot of **End of Call** is where
+  they ARE when a call ends, and the two outcomes a call has — it happened (Advance / Propose
+  Stuck) or it did not (this) — now sit together. ⚠️ That row's `flex-wrap` comment measured SEVEN
+  controls at ~1010px against a 1280 scrollbar; it is six now, and anything added back has to be
+  re-measured.
+- **Onto the Active sidebar rows** (`variant="row"`), so a rep working down today's list can log an
+  unanswered call without opening the patient. ⚠️⚠️ **A SIBLING of `SidebarMenuButton`, never a
+  child** — that row is itself a `<button>`, and a nested button is invalid HTML: browsers may
+  re-parent it and a screen reader cannot announce it at all. It positions itself
+  (`absolute bottom-1 right-1`) inside the `relative` `SidebarMenuItem`, and stops its own click
+  from reaching the row.
+  ⚠️ **BOTTOM-right, because the TOP-right is taken**: `ContactStateMarks` sits at `right-1 top-1.5`
+  inside the 32px `pr-8` gutter and renders in the manager `?mv=` view only, so anything else in
+  that corner collides for exactly the people who use both. The subtitle takes `pr-12` so a long
+  "Serving · Payer" cannot run under the pill.
+  ⚠️ **ACTIVE rows only.** This is the list of who to call today; Escalated belongs to a manager,
+  and a Follow Up row is already snoozed past today, so logging there pushes a date nobody is
+  waiting on.
+  ⚠️ No `onUpdate` — the sidebar has no per-patient setter, so the count returns with `onRefresh`,
+  which the write needs anyway: the follow-up it moves is what takes the patient off this very list.
+- Both placements are ONE component, keyed by patient, and both take the date from
+  `careCoordinator/followUp.defaultFollowUpDate` — the next CALENDAR day, no weekend clamp, shared
+  with Patient Intake's logger so the two stages push the same amount (§5.30).
+
+**Keep-in-agreement:** `isWelcomeCallSnoozed` ⇄ the four readers above (`welcomeCallSnooze.test.ts`)
+· `CallAttemptsCounter`'s two variants ⇄ `WelcomeCallForm`'s End of Call mount ⇄
+`PatientsSidebar`'s Active rows ⇄ `WelcomeCallPage`'s two threaded callbacks
+(`callAttemptPlacement.test.ts`, which also pins the sibling-not-child rule) ·
+`defaultFollowUpDate` ⇄ both attempt loggers (`careCoordinator/followUp.test.ts`).
+
 ### 5.39 The patient screen — one record, read-only (Sep 2026)
 Josh, 2026-09-18, on Brandon's *Command Center Redesign* handoff: *"add his ui to the site,
 nothing destructive purely additive and taking our current function and routing it to his new look
@@ -6478,6 +6664,29 @@ deferred the sensors SoS, the fields greyed out, and the date went into the Bene
 Both repaired by hand into the SoS date + units on BOTH boards (the hop fires only at item
 creation, so an Insurance write alone never reaches an existing Welcome Call item). With §5.32c
 live in prod, Send is held until the date + units are entered.
+
+### 5.32a Auth Outstanding arrivals are due the next business day (Sep 2026)
+Josh, 2026-09-22, the same note he wrote for Evaluate (§5.6b): *"Whenever a new patient shows up in
+this bucket, make sure the Action Date is the next day, not today"*.
+
+The **Submit Auth** send stamps the Follow Up Date that decides when the patient first appears in
+Auth Outstanding — a **pure date bucket** (§5.8), where the STATUS column is ignored and a blank
+date counts as DUE, so this one write is the whole of it. It wrote `todayEt`; it now writes
+`addBusinessDaysIso(todayEt, 1)`.
+
+⚠️ **THIS REVERSES "same-day, not +1" (Submit Auth redesign §7)**, which reasoned from payers that
+approve immediately. Submitting an auth and chasing it are different days' work: stamping today put
+the patient into the Auth Outstanding bar the moment the rep pressed Send, so the bar counted work
+nobody could do yet. A payer that does answer same-day is still visible — the stage page lists the
+patient — this only moves which day they are DUE. `authArrivalDate.test.ts` pins it so the §7
+sentence cannot be read back as current.
+⚠️ **The counting contract did not move**: this writes a BOARD value, so `useRoleCounts` and both
+baseline generators read it unchanged.
+⚠️ The declared task `value` and the `fn` must keep writing the same date — the gateway's durable
+fast path sends the DECLARED one (§5.2). An empty `todayEt` degrades to `{}` (a clear), never to a
+date guessed from the container's local clock (§5.15).
+⚠️ The Follow Up **STATUS** is still deliberately left alone: these patients are date-stamped, not
+snoozed-with-no-clock, and writing it would read as Paused in Profile Status (§5.18).
 
 ### 5.32b C30 — a blank doctor phone is flagged at Final Confirm (Sep 2026)
 Brandon, same day: *"blank doctor phone should be flagged in final profile confirmation — right
@@ -9281,6 +9490,12 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Since the 2026-09-03 cutover the six live notes columns are uncapped `text`, so this now means a column still `long_text` (Request Message `long_text_mm4cnw52`, the Escalation Notes, the two Insurance call logs) — `columnType.isCappedColumn` asks the board. Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
+| A required field isn't marked but Send refuses it anyway (OOW Date, IP language) | §5.6b — `EvaluatePanel`'s `cgmReqReq` / `ipReqReq` must BE `scriptInHand`, never `receivedVal === "Yes"`: an **Invalid** script writes `scriptReceived = "Yes"`, so the gate fires on it and only the marker disagreed. `oowRequiredMarker.test.ts` scans for the regression shape |
+| A patient is due TODAY the moment they arrive, growing the bar | §5.6b (Evaluate, `hooks/masheke/useMondayPatients`) · §5.32a (Auth Outstanding, `samantha/mondayWrite`) · §5.31i (Welcome Call, `hooks/welcomeCall/useMondayPatients`) — all three stamp `addBusinessDaysIso(…, 1)` on ARRIVAL. ⚠️ Update Clinicals is deliberately SAME-day and is preserved by writing its own date, never by a condition |
+| An Email/Parachute/Dashboard patient needs a fax sent | §5.9c — the default-hidden drawer on `ChaseClinicalsPanel` (`showFaxDrawer`). It passes `handleResend("fax")` explicitly, because an Email patient's `recipient` is their doctor's EMAIL. Generating a script there is the shared `lib/masheke/generateScripts.ts` — never a second copy |
+| A generate-script button does nothing on a second press | §5.9c — `triggerGenerateScript` CLEARS the column before writing, with a 250ms gap: the automation fires on the status CHANGING, and a write of the value already there is a Monday no-op (§9). A spinner that never ends is the cancel ✕ on `GeneratingChip` |
+| A Welcome Call patient vanished after "Log call attempt" | §5.31i — fixed 2026-09-22. The queue was bucketing on the Follow Up STATUS while the button wrote the DATE, which nothing read. It is `sidebarList.isWelcomeCallSnoozed` now (future date = snoozed, blank = DUE) in all FOUR places; `welcomeCallSnooze.test.ts` scans the two `.mjs` baselines that cannot import it |
+| "Where is Log call attempt?" | §5.31i — the foot of **End of Call** on the profile, and the bottom-right of each **Active** sidebar row. Not in the navy header any more, and deliberately not on Escalated or Follow Up rows. ⚠️ The row variant is a SIBLING of `SidebarMenuButton` — a nested `<button>` is invalid HTML |
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
 | A Fax-method patient advanced with no fax on file | §5.19b — `lib/profile/doctorFaxRequired.ts`, read by BOTH checklists and by `DoctorSection`'s banner. It fires on Clinicals Method **exactly** `Fax`; a BLANK method is deliberately not caught (415 live rows with no fax, 359 of them the 8/25 import, vs 3 in the worked groups — and §5.9 routes a blank to the fax chase queue, so widening it is a decision) |

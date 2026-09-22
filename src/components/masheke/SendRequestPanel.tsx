@@ -31,7 +31,6 @@ import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import { BOARD_ID,
   COL,
   buildDoctorWriteTasks,
-  clearStatusColumn,
   deleteFileFromColumn,
   deleteSingleFileFromColumn,
   hasToken,
@@ -50,7 +49,13 @@ import { useFaxStatus } from "@/hooks/masheke/useFaxStatus";
 import { FaxStatusChip, DeliveredChip } from "@/components/shared/FaxStatusChip";
 import { isSentToday, formatSent } from "@/lib/shared/sentTime";
 import type { WriteTask } from "@/lib/shared/verifiedWrite";
-import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
+import {
+  missingForScript,
+  showCgmGenerate as showCgmGenerateFor,
+  showIpGenerate as showIpGenerateFor,
+  triggerGenerateScript,
+} from "@/lib/masheke/generateScripts";
+import { GenBtn, GeneratingChip } from "@/components/masheke/GenerateScriptButtons";
 import {
   loadEvalStateForPatient,
   saveEvalState,
@@ -153,7 +158,13 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
     pollingIntervalMs: cgmIsGeneratingLocal || ipIsGeneratingLocal ? 2000 : 0,
   });
 
-  // ---- Generate triggers (write to Monday's Generate column) ----
+  // ---- Generate triggers ----
+  // ⚠️ The clear-then-write dance lives in `lib/masheke/generateScripts.ts`,
+  // shared with the Chase Clinicals drawer (§5.9c). This panel keeps its own
+  // `stateKey` optimism because its generate state rides in the PERSISTED
+  // EvalState, which survives a reload; the drawer has no such store and uses
+  // `GenerateScriptsControl` instead. One rule, two state machines — never two
+  // copies of the rule.
   const triggerGenerate = useCallback(
     async (
       stateKey: "generateCgmScript" | "generateIpScript",
@@ -161,15 +172,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
       v: string | undefined,
     ) => {
       update(stateKey, v);
-      if (!hasToken()) return;
       try {
-        if (v === "Generate") {
-          await clearStatusColumn(patient.id, columnId);
-          await new Promise((r) => setTimeout(r, 250));
-          await writeStatusIndex(patient.id, columnId, GEN_SCRIPT_STATUS.generate);
-        } else {
-          await clearStatusColumn(patient.id, columnId);
-        }
+        await triggerGenerateScript(patient.id, columnId, v === "Generate" ? "Generate" : undefined);
       } catch (e) {
         toast.error("Generate request failed", {
           description: e instanceof Error ? e.message : String(e),
@@ -510,22 +514,13 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
   const cgmIsGenerating = cgmIsGeneratingLocal || mondayFiles.generateCgmStatus === "Generate";
   const ipIsGenerating = ipIsGeneratingLocal || mondayFiles.generateIpStatus === "Generate";
 
-  const showCgmGenerate = patient.serving === "CGM" || patient.serving === "Insulin Pump + CGM" || patient.serving === "Supplies + CGM";
-  const showIpGenerate = patient.serving !== "CGM";
+  const showCgmGenerate = showCgmGenerateFor(patient.serving);
+  const showIpGenerate = showIpGenerateFor(patient.serving);
 
-  // Required fields before triggering DocExport.
-  function missingForScript(kind: "cgm" | "ip"): string[] {
-    const out: string[] = [];
-    if (!patient.name) out.push("Name");
-    if (!patient.dob) out.push("DOB");
-    if (kind === "cgm" && !patient.cgmType) out.push("CGM Type");
-    if (kind === "ip" && !patient.pumpType) out.push("Pump Type");
-    if (!patient.doctorName) out.push("Doctor Name");
-    if (!patient.doctorNpi) out.push("Doctor NPI");
-    return out;
-  }
-  const cgmMissing = missingForScript("cgm");
-  const ipMissing = missingForScript("ip");
+  // Required fields before triggering DocExport — the shared rule, so the
+  // Chase drawer cannot end up refusing to generate what this panel generates.
+  const cgmMissing = missingForScript(patient, "cgm");
+  const ipMissing = missingForScript(patient, "ip");
 
   const method = patient.clinicalsMethod ?? "Fax";
   // Portal-delivered: no Generate Scripts step, composer collapsed, and
@@ -1625,51 +1620,6 @@ function StatusChip({ label, ok }: { label: string; ok: boolean }) {
 }
 
 /** Outline-teal generate button (mockup .gen-btn). */
-function GenBtn({
-  label,
-  disabled,
-  spinner,
-  onClick,
-}: {
-  label: string;
-  disabled?: boolean;
-  spinner?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-2 rounded-lg px-[18px] py-2.5 text-sm font-semibold transition-colors text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1.5px_var(--mm-teal)] hover:bg-[oklch(0.36_0.04_200_/_0.06)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-    >
-      {spinner ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-      {label}
-    </button>
-  );
-}
-
-/** Amber "Generating…" chip with a cancel ✕ (preserves the cancel flow). */
-function GeneratingChip({ label, onCancel }: { label: string; onCancel: () => void }) {
-  return (
-    <div className="inline-flex items-center gap-1.5">
-      <span className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-4 py-2.5 text-sm font-semibold">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        {label}
-      </span>
-      <button
-        onClick={onCancel}
-        title="Cancel"
-        className="p-2 rounded-lg border bg-background hover:bg-muted transition-colors"
-        style={{ borderColor: "var(--mm-card-border)" }}
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
-
-
-
 const PARACHUTE_URL = "https://dme.parachutehealth.com/u/r/BGP3-YIEG1-Z8-SL/dashboard";
 
 /** Add N business days (Mon–Fri) to a date. */

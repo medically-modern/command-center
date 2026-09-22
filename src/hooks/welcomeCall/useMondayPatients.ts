@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/welcomeCall/mondayApi";
+import { COL, fetchGroupItems, fetchItemById, hasToken, writeDate } from "@/lib/welcomeCall/mondayApi";
 import { mondayItemToPatient } from "@/lib/welcomeCall/mondayMapping";
 import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
+import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
 
 const POLL_MS = 30_000;
 const LS_KEY = "wc-overlays";
@@ -86,6 +87,10 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   // lib/shared/pendingAdvance. In memory on purpose: a reload is a fresh read.
   const pendingAdvanceRef = useRef<Map<string, number>>(new Map());
 
+  // Patients we've already stamped with an arrival Follow Up Date this session
+  // (see the backfill in refetch) — stops us re-writing the same one each poll.
+  const stampedRef = useRef<Set<string>>(new Set());
+
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
     if (!hasToken()) {
@@ -105,6 +110,37 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
+
+      // ── Follow Up Date backfill: a new arrival is TOMORROW's work ──
+      // Josh, 2026-09-22: "when patient arrives, should only show up tomorrow."
+      // Welcome Call items are created by the Insurance hop (automation
+      // 7918324247), which writes no Follow Up Date — and this queue buckets on
+      // that date (welcomeCall/sidebarList.isWelcomeCallSnoozed), where a blank
+      // counts as DUE. So every patient the Insurance board finished landed in
+      // the rep's list and the role bar the same minute, and the bar grew as
+      // fast as Insurance worked. The first Welcome Call page to see them now
+      // stamps the next business day.
+      //
+      // ⚠️ THE DATE ONLY — the Follow Up STATUS column is deliberately NOT
+      // written. The status means "a rep put this patient off"; an arrival is
+      // nobody's judgement, and writing it would file them under Follow Up in
+      // the sidebar and read as Paused on the profile badge (§5.18). Submit
+      // Auth stamps its Follow Up Date the same way and for the same reason.
+      //
+      // ⚠️ Fires on a BLANK date only, so it can never move a date a rep or
+      // the +1 button chose. On the day this shipped that was the 5 live
+      // patients carrying no date at all; they slide one day, once.
+      const arrivalStr = addBusinessDaysIso(etToday(), 1);
+      for (const p of ps) {
+        if (!p.followUpDate && !stampedRef.current.has(p.id)) {
+          stampedRef.current.add(p.id);
+          p.followUpDate = arrivalStr; // reflect locally right away
+          writeDate(p.id, COL.followUpDate, arrivalStr).catch(() => {
+            stampedRef.current.delete(p.id); // retry on the next poll
+          });
+        }
+      }
+
       for (const p of ps) baseRef.current.set(p.id, p);
       const merged = ps.map((p) => {
         const o = overlayRef.current.get(p.id);

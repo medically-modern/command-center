@@ -22,7 +22,6 @@ import { PatientsSidebar } from "@/components/welcomeCall/PatientsSidebar";
 import { SendToMondayButton } from "@/components/welcomeCall/SendToMondayButton";
 import { NotesPanel } from "@/components/welcomeCall/NotesPanel";
 import { ClinicalsDownloadButton } from "@/components/welcomeCall/ClinicalsDownloadButton";
-import { CallAttemptsCounter } from "@/components/welcomeCall/CallAttemptsCounter";
 import { FollowUpModal } from "@/components/welcomeCall/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -382,21 +381,16 @@ const WelcomeCallPage = () => {
                 </div>
               </div>
               {/* ⚠️ `flex-wrap` is what stops this row running off the screen.
-                  Seven controls come to ~1010px, so with `flex-nowrap` the page
+                  SEVEN controls came to ~1010px, so with `flex-nowrap` the page
                   had a horizontal scrollbar at every width at or below 1280 —
                   measured, not assumed — and on a phone two thirds of the row
                   was simply unreachable. Wrapping is inert from 1366 up, where
                   the row already fits on one line, so the desktop layout is
-                  untouched. Adding an eighth control means re-measuring. */}
+                  untouched. Log call attempt LEFT this row on 2026-09-22 (it is
+                  at the foot of End of Call now, and on the sidebar rows —
+                  §5.31i), so the measured worst case is six; anything added
+                  back here has to be re-measured against 1280. */}
               <div className="flex items-center gap-2 flex-wrap justify-end">
-                {selected && (
-                  <CallAttemptsCounter
-                    itemId={selected.id}
-                    callAttempts={selected.callAttempts}
-                    onUpdate={(v) => update(selected.id, { callAttempts: v })}
-                    onFollowUp={refetch}
-                  />
-                )}
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
                 {/* Propose Stuck / Approve Stuck / Send back to pipeline — which
                     of them renders is decided per (stage × ?mv= origin) in
@@ -467,7 +461,7 @@ const WelcomeCallPage = () => {
                       `InsuranceAuthSection.OopBlock` (Josh, 2026-09-15), beside
                       the confirmed-amount field. Do not re-mount
                       `OopEstimateCard` here: it would render twice. */}
-                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} onResetWelcomeCallText={handleResetWelcomeCallText} onSaveEmail={handleSaveEmail} onProposeStuck={() => setProposeOpen(true)} />
+                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} onResetWelcomeCallText={handleResetWelcomeCallText} onSaveEmail={handleSaveEmail} onProposeStuck={() => setProposeOpen(true)} onCallAttemptsChange={(v) => update(selected.id, { callAttempts: v })} onLoggedAttempt={refetch} />
                   {/* Order dates moved INTO Subscription & Logistics (form
                       section 7) on 2026-09-09 — Brandon: "under the cards, in
                       this section", not at the end of the call. */}

@@ -23,7 +23,8 @@
  *   Send Request, Confirm Receipt, Chase (fax/parachute split by Clinicals
  *   Method). active = not escalated AND nextActionDate blank/past/today
  * Welcome Call board (18410804557): welcomeCall group (active = not
- *   escalated AND followUp !== "Done") + finalConfirm group (not escalated)
+ *   escalated AND Follow Up Date not in the future) + finalConfirm group
+ *   (not escalated)
  * Profile board (18406352652): intake group — active = followUp !== "Done",
  *   split three ways: inSystemReferrals (Already In System "Yes"), then
  *   unverifiedReferrals (Referral Type "Patient" OR Referral Source
@@ -40,6 +41,7 @@ import { GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/m
 import { MONDAY_API_URL, mondayIdentityHeaders } from "@/lib/shared/mondayEndpoint";
 import { etToday } from "@/lib/masheke/etDate";
 import { isParachuteRoleMethod } from "@/lib/masheke/chaseMethods";
+import { isWelcomeCallSnoozed } from "@/lib/welcomeCall/sidebarList";
 import { isCrossSell } from "@/lib/welcomeCall/workflow";
 
 const MASHEKE_BOARD_ID = 18406060017;
@@ -115,7 +117,10 @@ const SAM_STAGE_COL = "color_mm1ws96t";    // Stage Advancer (DVS role count)
 const SAM_DVS_STAGE_INDEX = 1;             // "DVS" label index (verified 2026-07-21)
 // Welcome Call board (shared by welcomeCall + finalConfirm groups)
 const WC_ESC_COL = "color_mm1x7997";       // Escalation
-const WC_FOLLOWUP_COL = "color_mm38w2tk";  // Follow Up
+// ⚠️ The Follow Up DATE, not the status. The Welcome Call queue buckets on the
+// date (welcomeCall/sidebarList.isWelcomeCallSnoozed); the status column is
+// deliberately not read here or by the sidebar. Ids mirror welcomeCall/mondayApi.
+const WC_FOLLOWUP_DATE_COL = "date_mm38a7k7";  // Follow Up Date
 // The Welcome Call board joined the Propose Stuck ladder on 2026-09-14
 // (§5.34) and is read by INDEX from then on, exactly like Medical Evaluation:
 // index 0 = with a manager (the escalated count), index 2 = a stuck PROPOSAL
@@ -588,13 +593,23 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
       boardTasks.push(
         (async () => {
           const items = await fetchBoardGroupItemsLight(WC_BOARD_ID, WC_GROUP_ID, [
-            WC_ESC_COL, WC_FOLLOWUP_COL, WC_SERVING_COL, WC_REQUEST_TYPE_COL,
+            WC_ESC_COL, WC_FOLLOWUP_DATE_COL, WC_SERVING_COL, WC_REQUEST_TYPE_COL,
           ]);
           // Index 0 is the escalated count; index 2 (a stuck proposal) is in
           // NEITHER count, exactly as the ME counts treat the same column.
           const escN = items.filter(isWcEscalated).length;
+          // ⚠️ Snoozed = Follow Up DATE in the future. The one rule, imported
+          // from the sidebar's own module so the bar and the list cannot drift
+          // (§5.8) — this used to read `followUp !== "Done"` while the sidebar
+          // read the same label, and both ignored the date the app had just
+          // written, so a logged attempt hid the patient from here for ever.
+          // See welcomeCall/sidebarList.isWelcomeCallSnoozed.
+          const wcToday = etToday();
           const active = items.filter(
-            (i) => !isWcEscalated(i) && !isWcProposedStuck(i) && i.cols[WC_FOLLOWUP_COL] !== "Done",
+            (i) =>
+              !isWcEscalated(i) &&
+              !isWcProposedStuck(i) &&
+              !isWelcomeCallSnoozed({ followUpDate: i.cols[WC_FOLLOWUP_DATE_COL] ?? "" }, wcToday),
           );
           // The cross-sell subset of `active`, for the crossSell/nonCrossSell
           // role filters. ⚠️ A SUBSET, not a disjoint third bucket: it is the

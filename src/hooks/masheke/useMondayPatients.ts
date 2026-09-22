@@ -4,7 +4,7 @@ import { fetchGroupItems, fetchItemById, writeDate, writeStatusIndex, COL, GROUP
 // Note: GROUPS import kept for GROUPS.medicalNecessity
 import { mondayItemToPatient, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { hasStaleEvaluateEscalation } from "@/lib/masheke/evaluateReentry";
-import { etToday } from "@/lib/masheke/etDate";
+import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
 import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 30_000;
@@ -141,9 +141,27 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       // Every patient in an active stage must have a Next Action Date (the
       // sidebar filters on NAD + sub-stage). New arrivals from Profile Send
       // Off land without one (the Profile board has no NAD column), so the
-      // first masheke page to see them stamps NAD = today on Monday.
+      // first masheke page to see them stamps one on Monday.
       // stampedRef prevents re-writing the same patient every poll.
+      //
+      // ⚠️ THE STAMP IS THE NEXT BUSINESS DAY, NOT TODAY (Josh, 2026-09-22:
+      // "make sure the Action Date is the next day, not today, so it doesn't
+      // grow Masheke's evaluate bar"). A patient handed over by intake lands
+      // mid-afternoon and is nobody's work until tomorrow, but NAD <= today is
+      // the due-now rule — so stamping today put every fresh arrival straight
+      // into the day's bar and the burndown climbed as fast as intake worked.
+      // The board value moves; no queue rule, role count or baseline generator
+      // changes, so the §5.8 counting contract is untouched.
+      //
+      // ⚠️ This is the BLANK-NAD path only, i.e. the hand-off from another
+      // board. Every in-app route that puts a patient back into an active
+      // stage writes its own NAD and is deliberately SAME-DAY: Update
+      // Clinicals' returnToEvaluateVerified (Josh, same note: "for upload
+      // clinicals — that should show up same day") and the stale-escalation
+      // self-heal below both write today, and neither reaches this branch
+      // because the patient already has a date. Do not "unify" them.
       const todayStr = etToday();
+      const arrivalStr = addBusinessDaysIso(todayStr, 1);
       const activeStages = new Set(Object.values(SUB_STAGE_FILTER));
       for (const p of allPatients) {
         if (
@@ -153,8 +171,8 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
           !stampedRef.current.has(p.id)
         ) {
           stampedRef.current.add(p.id);
-          p.nextActionDate = todayStr; // reflect locally right away
-          writeDate(p.id, COL.nextActionDate, todayStr).catch(() => {
+          p.nextActionDate = arrivalStr; // reflect locally right away
+          writeDate(p.id, COL.nextActionDate, arrivalStr).catch(() => {
             stampedRef.current.delete(p.id); // retry on next poll
           });
         }

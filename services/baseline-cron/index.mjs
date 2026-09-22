@@ -20,7 +20,7 @@
  *     anything else (Fax/blank) → chaseFax (CLAUDE.md §5.9 — Email rides
  *     with Parachute). chaseBenefits kept as the combined legacy total.
  *   welcomeCall — Escalation index not 0 (manager) and not 2 (proposed stuck)
- *                 AND Follow Up !== "Done"
+ *                 AND Follow Up Date not in the future (ET); blank = due
  *   finalConfirm — Escalation index not 0 and not 2
  *   profile / unverifiedReferrals — Follow Up !== "Done", split by referral:
  *     Referral Type "Patient" OR Referral Source "CareCentrix" →
@@ -97,7 +97,7 @@ const WC_BOARD    = 18410804557;
 const WC_GROUP    = "group_mm1wvq8p";
 const FC_GROUP    = "group_mm2x8jtj";
 const WC_ESC_COL      = "color_mm1x7997"; // Escalation
-const WC_FOLLOWUP_COL = "color_mm38w2tk"; // Follow Up
+const WC_FOLLOWUP_DATE_COL = "date_mm38a7k7"; // Follow Up Date (the queue buckets on this, not the status)
 // Welcome Call joined the Propose Stuck ladder 2026-09-14 (CLAUDE.md §5.34):
 // matched by INDEX like Medical Evaluation — 0 = with a manager, 2 = a stuck
 // proposal (both leave the active count). Mirrors useRoleCounts.
@@ -334,11 +334,26 @@ async function countMashekeStages(todayStr) {
   return { counts, ids };
 }
 
-/** Welcome Call group: active = Escalation index not 0/2 AND Follow Up !== "Done". */
+/**
+ * Welcome Call group: active = Escalation index not 0/2 AND the Follow Up DATE
+ * is not in the future (ET).
+ *
+ * ⚠️ MIRRORS `src/lib/welcomeCall/sidebarList.ts` `isWelcomeCallSnoozed` — a
+ * pure date bucket, blank date counts as DUE, the Follow Up STATUS column
+ * deliberately unread. This file is plain Node and cannot import that module,
+ * so the comparison is repeated here; `welcomeCallSnooze.test.ts` scans this
+ * file and the cron's copy and fails the build if either drifts (§5.8 — the
+ * bar and the sidebar must apply one rule or the Operations tab shows phantom
+ * +in/-out chips all day).
+ */
 async function countWelcomeCall() {
-  const items = await fetchGroupItems(WC_BOARD, WC_GROUP, [WC_ESC_COL, WC_FOLLOWUP_COL]);
+  const items = await fetchGroupItems(WC_BOARD, WC_GROUP, [WC_ESC_COL, WC_FOLLOWUP_DATE_COL]);
+  const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const active = items.filter(
-    (i) => !isWcEscalated(i) && !isWcProposedStuck(i) && i.cols[WC_FOLLOWUP_COL] !== "Done",
+    (i) =>
+      !isWcEscalated(i) &&
+      !isWcProposedStuck(i) &&
+      !(!!i.cols[WC_FOLLOWUP_DATE_COL] && i.cols[WC_FOLLOWUP_DATE_COL] > todayEt),
   );
   return { count: active.length, ids: active.map((i) => i.id) };
 }

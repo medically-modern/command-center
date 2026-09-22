@@ -43,6 +43,7 @@ import {
   effectiveResult,
   type AuthOutstandingEscalation,
 } from "./authOutstandingReview";
+import { addBusinessDaysIso } from "@/lib/masheke/etDate";
 import { isMedicarePrimary } from "./medicareJurisdiction";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
 import { etNow } from "../masheke/etDate";
@@ -575,18 +576,33 @@ export async function sendPatientToMonday(
     // leaves the column alone entirely — Propose Stuck (→ Manager, stamped) and
     // the manager's own buttons are the only ways it moves at this stage. That
     // is what keeps the two-step review intact across repeat sends.
-    // Follow Up Date → TODAY (ET), same-day not +1 — many auths approve
-    // right away (Submit Auth redesign §7). This is the prerequisite for
-    // the Auth Outstanding daily bucket: reps there will only see patients
-    // whose Follow Up Date is today or earlier, and a "Still Outstanding"
-    // button will push it +1 day. The Follow Up STATUS column is left
-    // alone — the sidebar's Follow Up section keys on the status label,
-    // and these patients aren't snoozed, just date-stamped.
+    // Follow Up Date → the NEXT BUSINESS DAY. This is the date Auth
+    // Outstanding buckets on: that stage is a PURE date bucket (§5.8 /
+    // isSnoozedAuthOutstanding — snoozed iff the date is in the future, the
+    // STATUS column ignored), so this one write decides which day the patient
+    // first appears there, and a "Still Outstanding" press pushes it on again.
+    // The Follow Up STATUS column is deliberately left alone: the sidebar's
+    // Follow Up section keys on the status label, and these patients aren't
+    // snoozed-with-no-clock, just date-stamped.
+    //
+    // ⚠️ THIS REVERSES "same-day not +1" (Submit Auth redesign §7, which
+    // reasoned that many auths approve right away). Josh, 2026-09-22:
+    // "whenever a new patient shows up in this bucket, make sure the Action
+    // Date is the next day, not today, so it doesn't grow the bar." Submitting
+    // an auth and chasing it are different days' work — stamping today put the
+    // patient into the Auth Outstanding bar the moment the rep submitted, so
+    // the bar counted work nobody could do yet. A payer that does answer
+    // same-day is still visible: the stage page lists the patient, this only
+    // moves which day they are DUE.
+    //
+    // ⚠️ Nothing in the counting contract moved — this writes a board value,
+    // so useRoleCounts and both baseline generators read it unchanged (§5.8).
+    const authFollowUpEt = todayEt ? addBusinessDaysIso(todayEt, 1) : todayEt;
     tasks.push({
-      label: "Follow Up Date (today)",
+      label: "Follow Up Date (next business day)",
       columnId: COL.followUpDate,
-      value: todayEt ? { date: todayEt } : {},
-      fn: () => writeDate(p.id, COL.followUpDate, todayEt),
+      value: authFollowUpEt ? { date: authFollowUpEt } : {},
+      fn: () => writeDate(p.id, COL.followUpDate, authFollowUpEt),
     });
   } else if (context === "authOutstanding") {
     // Auth Outstanding outcome rules (priority order):
