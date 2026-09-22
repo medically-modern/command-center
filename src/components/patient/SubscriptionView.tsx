@@ -56,7 +56,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
-import { AlertTriangle, ArrowUpRight, Eye, Package, RotateCcw, User } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Copy, Eye, Package, RotateCcw, User } from "lucide-react";
 import type { DossierItem } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
 import { subscriptionOverview, type OverviewFact } from "@/lib/patient/subscriptionOverview";
@@ -65,6 +65,7 @@ import { fmtDate, orderStage, type Order } from "@/lib/orders/workflow";
 import { orderHeadline } from "@/lib/orders/headline";
 import { orderLines } from "@/lib/orders/skuJoin";
 import { StagePill } from "@/components/orders/pills";
+import { buildReorderForm, responseTone, type ReorderForm } from "@/lib/patient/reorderForm";
 import { usePatientOrders } from "@/hooks/patient/usePatientOrders";
 import { useSubscriptionRecord } from "@/hooks/patient/useSubscriptionRecord";
 import { SubscriptionForm } from "@/components/subscription/SubscriptionForm";
@@ -143,6 +144,13 @@ export function SubscriptionView({
     () => subscriptionOverview(item.cols, orders?.map((o) => o.orderDate) ?? null),
     [item.cols, orders],
   );
+  /* Brandon's fourth column of the Upcoming order strip — the reorder form
+     (§5.46c). It is the SUBSCRIPTION board's own record, so it costs no read:
+     the seven columns ride the dossier fetch this screen already made. */
+  const reorder = useMemo(
+    () => buildReorderForm(item.boardId, item.cols),
+    [item.boardId, item.cols],
+  );
 
   return (
     <>
@@ -171,6 +179,7 @@ export function SubscriptionView({
           error={error}
           hasPhone={!!phone}
           overview={overview}
+          reorder={reorder}
         />
       )}
     </>
@@ -435,6 +444,7 @@ function OrdersTab({
   error,
   hasPhone,
   overview,
+  reorder,
 }: {
   orders: Order[] | null;
   loading: boolean;
@@ -442,6 +452,8 @@ function OrdersTab({
   hasPhone: boolean;
   /** The Subscription board's own next-order facts, for the upcoming card. */
   overview: OverviewFact[];
+  /** The reorder form, also the Subscription board's own (§5.46c). */
+  reorder: ReorderForm | null;
 }) {
   // ⚠️ A patient with no number on file gets an honest sentence, never an
   // unfiltered board read — that would hand one patient's screen every order in
@@ -451,7 +463,7 @@ function OrdersTab({
      hand, so "we could not reach the order board" must not also take away the
      one fact that did not come from it (§9 — a failed read is not an empty
      answer, and it is not an excuse to blank what did load). */
-  const upcoming = <UpcomingOrder facts={overview} />;
+  const upcoming = <UpcomingOrder facts={overview} reorder={reorder} />;
 
   // ⚠️ A patient with no number on file gets an honest sentence, never an
   // unfiltered board read — that would hand one patient's screen every order in
@@ -548,7 +560,13 @@ function OrdersTab({
  * even when the order read failed, and it renders "—" rather than borrowing
  * the latest order's date, which would answer a different question.
  */
-function UpcomingOrder({ facts }: { facts: OverviewFact[] }) {
+function UpcomingOrder({
+  facts,
+  reorder,
+}: {
+  facts: OverviewFact[];
+  reorder: ReorderForm | null;
+}) {
   const next = facts.find((f) => f.label === "Next order");
   return (
     <section className="card pad left-teal">
@@ -574,8 +592,100 @@ function UpcomingOrder({ facts }: { facts: OverviewFact[] }) {
               </div>
             </div>
           ))}
+        {/* Brandon's fourth column. ⚠️ Rendered as a FACT in the same grid,
+            not as a card of its own: he draws it level with Next order and
+            Subscription, and the three facts beside it already leave exactly
+            this slot free in a four-column strip. */}
+        {reorder && <ReorderFact form={reorder} />}
       </div>
     </section>
+  );
+}
+
+/**
+ * The reorder form — what the patient answered on the link we texted
+ * (§5.46c). Rule: `lib/patient/reorderForm.ts`.
+ *
+ * ⚠️ **There is no Resend and no Send now, and Copy link is there in their
+ * place.** Both of Brandon's buttons are writes with nothing behind them — the
+ * Subscription board has no trigger column for the reorder text, so it is sent
+ * by the `reorder-patient-form` service and a button here would be a new
+ * integration with it. The form URL is on the row, so copying it and sending
+ * it from the Communications hub is the move a rep can actually make; a
+ * greyed-out *Resend* would be a control whose only stated move is impossible
+ * (§5.10 · §5.20 · §5.31c · §5.31f · §5.39d).
+ */
+function ReorderFact({ form: f }: { form: ReorderForm }) {
+  const answered = f.state === "responded";
+  const orderTone = responseTone(f.orderResponse);
+  const insTone = responseTone(f.insuranceResponse);
+  return (
+    <div className="fact reorder">
+      <div className="k">Reorder form</div>
+      {f.state === "not-sent" ? (
+        <div className="v gone">Not sent yet</div>
+      ) : (
+        <>
+          <div className="v">
+            <span className={`chip${orderTone ? ` ${orderTone}` : ""}`}>
+              {answered ? f.orderResponse : "No response yet"}
+            </span>
+            {f.insuranceResponse && (
+              <span className={`chip${insTone ? ` ${insTone}` : ""}`}>
+                Ins. {f.insuranceResponse}
+              </span>
+            )}
+          </div>
+          {f.answeredAt && (
+            /* ⚠️ Labelled by the STATE, never on its own: "No Response" is a
+               reset for the next cycle and the stamp does not reset with it,
+               so a patient we are waiting on today can still be carrying
+               June's timestamp. "submitted" is only honest beside a live
+               answer. */
+            <div className="xs muted rl">
+              {answered ? "submitted" : "last answered"} {f.answeredAt}
+            </div>
+          )}
+          {f.latestChange && <div className="xs rl chg">{f.latestChange}</div>}
+          {f.helpMessage && <div className="xs rl help">&ldquo;{f.helpMessage}&rdquo;</div>}
+        </>
+      )}
+      {!!f.link && (
+        <div className="rl rbtns">
+          <a className="btn outline xs" href={f.link} target="_blank" rel="noreferrer">
+            Open form <ArrowUpRight style={{ width: 11, height: 11 }} />
+          </a>
+          <CopyLink url={f.link} />
+        </div>
+      )}
+      {f.textSent && <div className="xs muted rl">texted {f.textSent}</div>}
+    </div>
+  );
+}
+
+/**
+ * ⚠️ A clipboard refusal (an insecure origin, a permissions policy) SAYS so
+ * rather than silently doing nothing — the same rule `CopyPhoneButton` keeps
+ * (§5.31f).
+ */
+function CopyLink({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="btn ghost xs"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(url);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        } catch {
+          toast.error("Couldn't copy the link — your browser blocked the clipboard");
+        }
+      }}
+    >
+      <Copy style={{ width: 11, height: 11 }} /> {copied ? "Copied" : "Copy link"}
+    </button>
   );
 }
 

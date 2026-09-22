@@ -24,6 +24,7 @@ import { userInitials } from "../shared/auth";
 import { faxDigits, type DoctorDbRow, type FaxMatchRow } from "./faxDirectory";
 import { DOCTOR_DB_BOARD, DOCTOR_DB_COLS } from "../shared/doctorDb";
 import { stageDetailColumns } from "./stageDetail";
+import { reorderFormColumns } from "../patient/reorderForm";
 import { escalationLevelFrom, type EscalationLevel } from "../systemMgmt/escalationDetail";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -210,6 +211,12 @@ function dossierCols(board: BoardDef): string[] {
     // (stageDetail.ts) so a new field cannot go silently blank for want of a
     // matching entry in a hand-maintained read set (§5.11).
     ...stageDetailColumns(board.boardId),
+    // The Subscription board's reorder form (§5.46c) — what the patient
+    // answered on the link we texted. ⚠️ Additive and invisible here: the
+    // Comms Hub pane renders from `buildStageDetail`'s map, so these seven ids
+    // only widen the `column_values(ids:)` list and change nothing on screen.
+    // Empty for every other board.
+    ...reorderFormColumns(board.boardId),
   ].filter((c): c is string => !!c);
 }
 

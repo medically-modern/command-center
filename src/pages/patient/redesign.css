@@ -342,6 +342,24 @@
 .cc-pt .ordlink:hover { text-decoration: underline; }
 .cc-pt .chip.latest { font-size: 10px; padding: 0 5px; }
 
+/* ── The reorder form, the strip's fourth column (§5.46c) ─────────────────── */
+/* ⚠️ It is a `.fact` in the SAME four-column grid as Status · Next order ·
+   Subscription, which is where Brandon draws it — not a card of its own. So it
+   inherits the grid's own width and these rules only give it the two or three
+   extra lines the other facts do not have. */
+.cc-pt .fact.reorder .v { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+/* Each line under the chips. Wraps, because a change line is a sentence
+   ("Order date changed from 2026-08-17 to 2026-08-24") where every other fact
+   in this strip is a date or a label. */
+.cc-pt .fact.reorder .rl {
+  margin-top: 4px; white-space: normal; overflow-wrap: anywhere; line-height: 1.4;
+}
+.cc-pt .fact.reorder .rl.chg { color: var(--tfg); }
+/* The patient's own words, so they read as a quote rather than as our copy. */
+.cc-pt .fact.reorder .rl.help { color: var(--mfg); font-style: italic; }
+.cc-pt .fact.reorder .rbtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.cc-pt .fact.reorder .rbtns .btn { text-decoration: none; }
+
 /* ── The editable Order details block (§5.45b) ────────────────────────────── */
 /* ⚠️ `SubscriptionForm` and `SendToMondayButton` are the /subscription page's
    OWN shadcn components, dropped in here unchanged — so these rules give them

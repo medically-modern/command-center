@@ -5337,7 +5337,7 @@ a person would notice first:
    ID, doctor name/phone/clinic and insurance name are unmatched, and no row says WHICH field hit
    ("Phone (607) …", "Order # 1119726084"). The old System Management search had the same limits,
    so it is unbuilt spec, not a regression.
-8. ⚠️ **The Subscription profile is missing Financials, Demographics/Contacts and the MN card's
+8. ✅ **The Orders tab's REORDER FORM column landed 2026-09-22 — §5.46c.** ⚠️ **The Subscription profile is missing Financials, Demographics/Contacts and the MN card's
    own visit-date + MN-docs controls** — §5.45 · §5.45b have the argument for each (the first two
    widen the Comms Hub's shared `stageDetail` map; the third carries side effects, §5.36).
 9. ⚠️ **Auth Denied is still unclickable** (§4 · §7), where the handoff makes `/stage/authDenied`
@@ -6497,6 +6497,93 @@ Files: `lib/shell/searchPeople.ts` · `lib/patient/{subscriptionOverview,patient
 `hooks/systemMgmt/useLiveSearch.ts` · `components/patient/SubscriptionView.tsx` ·
 `components/orders/SkuTrackerView.tsx` · `components/shell/{GlobalSearch,GlobalHeader}.tsx` ·
 `pages/{OrdersPage,OperationsPage,PatientPage,patient/redesign.css}.tsx` (+ tests).
+
+
+### 5.46c The reorder form — seven filled-in columns nothing read (Sep 2026)
+Josh, 2026-09-22, having read the mockup-vs-live diff: *"fix the missing stuff, start with the
+reorder form column"*, with the framing that governs every item on that list — **"note that he
+built this thinking everything he was adding was already available in the command center, he just
+wanted to change the ui"**. So the MISSING items in
+`_reference/brandon-redesign/DIFF_2026-09-22.md` are gaps to close, not proposals to weigh.
+**No board change; app only.** Rule: **`lib/patient/reorderForm.ts`** (+ tests).
+
+⚠️⚠️ **THIS WAS THE CLEAREST CASE OF HIS ASSUMPTION BEING RIGHT: seven populated Subscription
+columns, read by NOTHING in the SPA.** Reorder Confirmation Link `text_mm3khve4` · Reorder Text
+Sent `text_mm3rzqks` · Patient Order Response `color_mm3kjykc` · Patient Insurance Response
+`color_mm3k4z79` · Patient Response Timestamp `text_mm3kt9bs` · Patient Change Summary
+`long_text_mm3k5y3n` · Patient Help Message `long_text_mm3xnb6k`. Only the last four appear
+anywhere in `src/`, and only in `patientQuestions/mondayApi.ts` — which reads the help message to
+build an inbox and never shows the form. So *"did the patient answer the reorder text, and what did
+they change?"* was unanswerable in the Command Center while the answer sat on the row.
+
+**It is the FOURTH column of the Orders tab's Upcoming order strip**, exactly where his handoff
+puts it. The three facts already there (Status · Next order · Subscription) leave that slot free in
+a four-column grid, so it is a `.fact` in the same strip rather than a card of its own.
+
+⚠️⚠️ **"No Response" IS A RESET, NOT AN ANSWER — and the timestamp does not reset with it.**
+Measured over the 300 most recent responders on the live board (2026-09-22): **8** rows read
+`No Response` while still carrying a response timestamp and a full change summary from a PREVIOUS
+cycle, and **88** more carry a timestamp with the status column blank altogether (they predate it).
+So the status column is the state of the CURRENT cycle and the timestamp is the last answer ever —
+reading the stamp as "they answered" prints *submitted 18 Jun* on a patient we are waiting on
+today. A positive label (`Confirmed · Delay · Cancel · Pause`) decides `responded`; `No Response`
+and a blank are both `awaiting`; and the stamp is labelled **by the state it renders in**
+(`submitted` vs `last answered`), never on its own. `subscriptionView.test.ts` scans for that
+ternary.
+
+⚠️ **"Not sent yet" keys on the LINK, never on Reorder Text Sent.** That column is newer than the
+flow and is blank on **195 of the same 300** rows, every one of which plainly did get a text — so
+keying on it would report *Not sent yet* for two thirds of the patients who have already answered.
+Brandon's own words are *"before the link goes out"*, and the link is what the rule reads.
+
+⚠️ **The change summary's newest entry is LAST.** It is an append-only log
+(`[9/18/26, 2:02 PM] Patient CONFIRM:` + its change lines), so reading from the top shows a change
+from months ago on a patient who answered this morning — indefinitely stale while looking live.
+Same trap, opposite handling, as `recentNotes` (§5.39c3), where the whole list is reversed and here
+only the last entry is wanted. ⚠️ A body matching no entry header renders **VERBATIM** rather than
+being dropped (§5.20's `networkLabel` rule): this column has been written by more than one thing
+over its life, and failing to parse must cost the tidying, never the content.
+
+⚠️⚠️ **THERE IS NO RESEND AND NO SEND NOW — and that is the one part of his paragraph that was not
+already available.** Both are WRITES with nothing behind them: the Subscription board has **no
+trigger column for the reorder text** (its full column list was read live on 2026-09-22), so the
+text is sent by the `reorder-patient-form` Railway service on its own schedule and a button here
+would be a new integration with it, not markup. The card offers **Copy link** in their place, which
+is a real passing move — the form URL is on the row and a rep can send it from the Communications
+hub in the next breath. A greyed-out *Resend* would be a control whose only stated move is
+impossible, which is the dead end §5.10 · §5.20 · §5.31c · §5.31f · §5.39d each record reversing.
+`REORDER_SEND_FROM_COMMAND_CENTER` is pinned at false; flipping it is a decision that needs a
+trigger column or a service route first, and the failing test is the reminder to read this.
+
+⚠️ **The read costs NOTHING and is invisible in the Comms Hub.** `reorderFormColumns` rides
+`dossierApi`'s `dossierCols` beside `stageDetailColumns`, so the seven ids only widen a
+`column_values(ids:)` list that already runs for this screen — and `buildStageDetail` renders from
+its own map, so the dossier pane a rep reads on a call is byte-identical. Putting them in
+`stageDetail`'s SUBSCRIPTION map instead would have rendered them there as a flat fact list, which
+is not what Brandon drew and is the two-readers hazard §5.46b records for that map.
+
+⚠️ A chip tone is only given to a label that **states an outcome** (Confirmed green · Delay/Pause/
+Changed amber · Cancel red). `No Response`, a blank, and anything the board grows later get none —
+an unrecognised label must never borrow green by accident.
+
+**Rendered in a browser before shipping** (§5.30d's rule) at 1600 · 1440 · 1100 · 900, in all three
+states: the fourth column at ≥1440 (x aligned with the other facts, 330px wide), the second row's
+second cell on the 2-column grid at ≤1100, no horizontal overflow at any width, and the change line
+wrapping rather than clipping. Every colour in the new CSS is a token (`--tfg` / `--mfg` / the
+`.chip` tones), so dark mode follows for free (§5.40).
+
+**Still missing from his Orders spec, deliberately not built here:** **Expected items** — "sets,
+cartridges, sensors with quantities from the profile" — which is the same strip's third slot in his
+drawing and is the next item on the diff's short list.
+
+**Keep-in-agreement:** `lib/patient/reorderForm.ts` `REORDER_COL` ⇄ the live Subscription board ⇄
+`reorderFormColumns` ⇄ `dossierApi.dossierCols`, which is what puts them in `item.cols` — drop that
+line and every field reads blank on every patient with nothing erroring (§5.11's trap) ·
+`responseTone` ⇄ the live label sets of `color_mm3kjykc` and `color_mm3k4z79` ·
+`buildReorderForm`'s state rule ⇄ `ReorderFact`'s `submitted`/`last answered` ternary.
+Files: `lib/patient/reorderForm.ts` (+ `reorderForm.test.ts`), `lib/commsHub/dossierApi.ts`,
+`components/patient/SubscriptionView.tsx` (+ `subscriptionView.test.ts`),
+`pages/patient/redesign.css`.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -9683,6 +9770,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A note added on the patient screen is missing, mangled, or in the wrong order | §5.39c3 — `lib/patient/recentNotes.ts` parses; `dossierApi.appendNoteToRecord` writes. **Newest first** (the log appends, so the list is reversed) and an unparsed block renders VERBATIM rather than being dropped — a Doctor Appointments attempt line or a bulk-import stamp showing with no author line is correct, not broken. A write failure keeps the draft; the 2,000-char refusal is the one error a rep must read (§10). ⚠️ It reads the LIVE board (`dossier.active`), never the stepper's snapshot — those are two different cards on purpose |
 | A stage panel on the patient screen is blank, greyed out, or opens the wrong tool | §5.39c2 — `lib/patient/stagePanels.ts` decides which sub-stages a record has and which it reached; `StagePanelEmbed`'s `panelFor` decides which have a real panel, and `OnboardingView`'s `PANELLED` set must agree with it (a pair in one and not the other renders an empty panel with no fallback cards). A greyed tab means the item's Stage Advancer puts the patient before it; an UNRECOGNISED advancer greys out nothing, by design. ⚠️ Three tools have no panel on purpose — DVS and the two Intake tools live inline in their pages, Auth Denied has no tool — and fall back to the snapshot cards |
 | Something on an embedded stage panel is clickable, or it is fetching | §5.39c2 — the guard is `inert` on `.stage-embed` (verified in Chrome 141: a real click is not hittable and focus cannot enter), plus no-op callbacks, plus mounting the PANEL and never the page's hook. If it fetches, read the panel's own hooks: `useFaxStatus` is switched off by the `embedded` prop, `useMondayFiles` polls only during a Generate, the rest are module-cached. A new hook on a panel needs the same audit |
+| "Did the patient answer the reorder text?" / the Reorder form column is blank or says the wrong thing | §5.46c — `lib/patient/reorderForm.ts`. **"No Response" is a RESET, not an answer**, and the timestamp does not reset with it, so a stamp reading *last answered* beside *No response yet* is correct. **"Not sent yet" keys on the LINK**, never on Reorder Text Sent (blank on 195 of 300 live rows that were plainly texted). Every field blank on EVERY patient ⇒ `reorderFormColumns` dropped out of `dossierApi.dossierCols`. ⚠️ There is no Resend and no Send now — the board has no trigger column for the reorder text, so Copy link is the move |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
 | The Subscription profile won't save, or says "Read-only" | §5.45b — `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). MN documents and the visit date are still `/subscription` and `/update-clinicals` alone — each carries side effects this card does not (§5.36) |
 | A fact shows TWICE on the Subscription profile — once editable, once as a card | §5.45b — `FORM_SECTIONS` matches `stageDetail.ts`'s SUBSCRIPTION section TITLES, so a rename there makes the filter match nothing with nothing erroring. `subscriptionView.test.ts` pins both strings. ⚠️ The teal overview strip restating Next order / Cycle / Order type is NOT that bug — it is this screen's `PatientInfoCard`, and `/subscription` shows the same six facts above its own form |

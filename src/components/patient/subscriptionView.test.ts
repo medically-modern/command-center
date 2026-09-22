@@ -149,3 +149,49 @@ describe("⚠️ the compact Send is the SAME button, not a second one", () => {
   });
 });
 
+
+describe("⚠️ the reorder form is WIRED — the whole point of §5.46c", () => {
+  /* Josh, 2026-09-22: *"fix the missing stuff, start with the reorder form
+     column"*. Seven populated columns on the Subscription board were read by
+     nothing in the SPA, so the failure being guarded here is exactly the one
+     that hid them: a rule with a test and no caller. §5.31b's own lesson —
+     *"a module nobody calls does not fail; it is absent, and its green tests
+     say otherwise"*. Each of these was verified to fail with its wiring
+     removed. */
+  const view = () => src("src/components/patient/SubscriptionView.tsx");
+
+  it("the columns reach the read, or every field is blank with no error", () => {
+    // Without this line `item.cols` never carries them and the card renders
+    // "Not sent yet" for every patient on the board (§5.11's trap).
+    expect(src("src/lib/commsHub/dossierApi.ts")).toContain(
+      "...reorderFormColumns(board.boardId)",
+    );
+  });
+
+  it("the view builds it and hands it to the Upcoming order strip", () => {
+    const text = view();
+    expect(text).toMatch(/buildReorderForm\(item\.boardId, item\.cols\)/);
+    expect(text).toMatch(/<UpcomingOrder facts=\{overview\} reorder=\{reorder\}/);
+    expect(text).toMatch(/\{reorder && <ReorderFact form=\{reorder\} \/>\}/);
+  });
+
+  it("⚠️ the stamp is labelled by the STATE, never printed on its own", () => {
+    /* "No Response" is a reset for the next cycle and the timestamp does not
+       reset with it, so a bare "submitted <ts>" puts June's answer on a
+       patient we are waiting on today. */
+    expect(view()).toMatch(/answered \? "submitted" : "last answered"/);
+  });
+
+  it("⚠️ there is no Resend and no Send now — they would be writes", () => {
+    /* The Subscription board has no trigger column for the reorder text, so
+       either button here is a new integration with `reorder-patient-form`, not
+       markup. Copy link is the move a rep can actually make; a greyed-out
+       Resend is a control whose only stated move is impossible. */
+    const text = view();
+    expect(text).not.toMatch(/>\s*Resend/);
+    expect(text).not.toMatch(/>\s*Send now/);
+    expect(text).toContain("Copy link");
+    // And the screen's founding promise still holds for this card.
+    expect(text).not.toMatch(/change_column_value/);
+  });
+});
