@@ -165,6 +165,13 @@ export function advanceLabelFor(p: Patient | null | undefined): string {
  * an unpublished draft awaiting a person in monday's UI. Same dark-switch shape
  * as `orders/config.ORDERING_FROM_COMMAND_CENTER` (§5.35).
  *
+ * **The runbook is `scripts/cash-pay/README.md`** — the three steps and all 38
+ * column mappings, derived from the three hops a column must survive today so
+ * the Welcome Call item this creates is shaped exactly like one that came the
+ * long way. Read it before flipping this, and verify the automation against a
+ * real test item first: a create-item step with a missing mapping still creates
+ * the item, so "it appeared" is not the check.
+ *
  * While this is false a cash pay patient still advances — on "Advance to MN",
  * exactly as they do today — so nobody is stranded either way. Flipping it only
  * changes WHICH board they land on.

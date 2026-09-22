@@ -8019,7 +8019,10 @@ Evaluation and Insurance entirely (Corey, 2026-08-14). The board label **"Advanc
 (`color_mm1zmeb3` id 6) exists live; monday workflow **18432110599** carries the trigger and the
 move-to-Completed step correctly and its **create-item mapping is an unpublished draft** — that step
 could not be built through the API (§10 refuses board automations outright) and needs a person in
-monday's UI. Writing the label first is worse than not offering it: the label lands, nothing fires,
+monday's UI. **`scripts/cash-pay/README.md` is that person's runbook** — the three steps and all
+38 column mappings, derived from the three hop automations a column must survive today so the item
+this creates is shaped exactly like one that took the long way round, plus
+`deriveHopChain.mjs` to re-derive the table rather than trust it. Writing the label first is worse than not offering it: the label lands, nothing fires,
 the item never leaves Profile Clean-Up and the rep has pressed a button that silently did nothing
 (§9's advancer class). While the flag is false a cash pay patient still advances, on "Advance to
 MN", exactly as today — so nobody is stranded either way and flipping it only changes WHICH board
