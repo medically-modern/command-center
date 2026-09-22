@@ -136,7 +136,9 @@
     },
     "corey@medicallymodern.com": {
       "name": "Corey",
-      "roles": [],
+      "roles": [
+        "welcomeCall"
+      ],
       "roleFilters": {}
     }
   },
