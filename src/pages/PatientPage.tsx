@@ -2,17 +2,23 @@
  * The patient screen — `/patient/:itemId?board=<boardId>` (§5.39).
  *
  * ONE screen holding a patient's whole record, in Brandon's 2026-09-18 layout:
- * the top bar card (name · DOB · phone + the Onboarding | Subscription toggle),
+ * the top bar card (name · DOB · email · phone + the Onboarding | Subscription
+ * toggle),
  * the four-stage stepper, the read-only snapshot of the step a rep picks, and a
  * fixed right column carrying their texts and calls.
  *
- * ⚠️⚠️ **READ-ONLY, AND THAT IS THE DESIGN, not an omission.** It adds no writer
- * and no mutation: every action deep-links to the stage page whose verified
- * write path already does the work (§5.2). Two writers for one column is how
- * they disagree — the reason `PhoneField` left the Welcome Call banner (§5.31d)
- * and the Secondary Insurance select left `PatientInfoCard` (§5.31c). The one
- * thing on screen that writes is `ConversationThread`'s composer, which is the
- * existing component making the existing write.
+ * ⚠️⚠️ **IT WRITES ONLY THROUGH WRITERS THAT ALREADY EXIST, and mostly not at
+ * all.** The founding promise was "no writer and no mutation"; it has narrowed
+ * three times, each deliberately and each by CALLING an existing writer rather
+ * than adding one — the Subscription Profile tab behind `editProfile` (§5.45b),
+ * Recent notes through the Comms Hub's `appendNoteToRecord` (§5.39c3), and the
+ * top bar's two pencils through its `updatePatientContact` (§5.46g). Two
+ * INDEPENDENT writers for one column is the thing to keep out: it is why
+ * `PhoneField` left the Welcome Call banner (§5.31d) and the Secondary
+ * Insurance select left `PatientInfoCard` (§5.31c). Everything else on this
+ * screen still deep-links to the stage page whose verified write path does the
+ * work (§5.2), and `patientScreen.test.ts` scans the whole screen for a
+ * hand-rolled mutation.
  *
  * ⚠️ **Purely additive.** Nothing was removed to make room for it: every page it
  * links to still works exactly as it did, the role bars are untouched, and no
@@ -66,6 +72,9 @@ import {
 } from "@/lib/patient/patientScreen";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { contactsFor } from "@/lib/patient/contacts";
+import { contactTarget, patientEmail } from "@/lib/patient/contactEdit";
+import { TopBarContact } from "@/components/patient/TopBarContact";
+import { useAbility } from "@/components/shell/AbilityLock";
 import { SubscriptionView, parseSubTab } from "@/components/patient/SubscriptionView";
 import "./patient/redesign.css";
 
@@ -141,7 +150,13 @@ export default function PatientPage() {
   const phone = dossier?.phone || active?.phone || "";
   const subItem = subscriptionItem(dossier);
   const subTab = parseSubTab(params.get(SUB_PARAM));
-  const facts = topBarFacts(dossier);
+  /** Brandon's fourth top-bar fact, and what the two pencils write (§5.46g).
+   *  Read across the records for the same reason the info strip is — the live
+   *  record's board may not carry the column at all. */
+  const email = useMemo(() => patientEmail(dossier), [dossier]);
+  const target = useMemo(() => contactTarget(dossier), [dossier]);
+  const canEditProfile = useAbility("editProfile");
+  const facts = topBarFacts(dossier, email);
 
   /** Who we reach and on which number (§5.46e) — the live record's block, or
    *  any record that carries one. Costs no read: the columns ride the dossier
@@ -215,14 +230,38 @@ export default function PatientPage() {
             {/* ── the top bar card, on BOTH views ─────────────────────────── */}
             <section className="card tb-card">
               <div className="tb">
-                {facts.map((f, i) => (
-                  <div className="fact" key={f.label}>
-                    <div className="k">{f.label}</div>
-                    <div className={`v${i === 0 ? " nm" : ""}${f.missing ? " gone" : ""}`}>
-                      {f.value}
+                {/* ⚠️ The four facts wrap AMONG THEMSELVES, in their own group.
+                    Flat in `.tb` the fourth fact drops below the view toggle at
+                    ~1100 — measured — because `.vtoggle` takes `margin-left:
+                    auto` on whatever line it lands on, so the card reads as the
+                    toggle and one stray field. */}
+                <div className="tbfacts">
+                {facts.map((f, i) =>
+                  f.field ? (
+                    /* ⚠️ Keyed on the RECORD, not just the label: the draft
+                       inside must not survive a patient switch and be saved
+                       onto whoever is open now (§9's notes-box rule). */
+                    <TopBarContact
+                      key={`${f.label}-${active?.itemId ?? itemId}`}
+                      label={f.label}
+                      value={f.value}
+                      missing={f.missing}
+                      field={f.field}
+                      target={target}
+                      lookupPhone={phone}
+                      canEdit={canEditProfile}
+                      onSaved={reload}
+                    />
+                  ) : (
+                    <div className="fact" key={f.label}>
+                      <div className="k">{f.label}</div>
+                      <div className={`v${i === 0 ? " nm" : ""}${f.missing ? " gone" : ""}`}>
+                        {f.value}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ),
+                )}
+                </div>
 
                 <div className="vtoggle">
                   <button

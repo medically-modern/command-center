@@ -125,6 +125,35 @@
 .cc-pt .notice.amber { background: var(--warn-bg); border: 1px solid var(--warn-bd); color: var(--warn-fg); }
 .cc-pt .notice.blue { background: var(--blue-bg); border: 1px solid var(--p20); color: var(--tfg); }
 
+/* ── The top bar's two editable facts (§5.46g) ────────────────────────────── */
+/* ⚠️ `.tb .fact .v` is `white-space: nowrap`, so the pencil, the input and the
+   two confirm buttons all have to sit on that one line without widening the
+   flex row past the view toggle. */
+.cc-pt .tb .fact .v.tbc { display: inline-flex; align-items: center; gap: 6px; }
+.cc-pt .tb .fact .v.tbc a { color: var(--p); text-decoration: none; }
+.cc-pt .tb .fact .v.tbc a:hover { text-decoration: underline; }
+.cc-pt .tb .fact .v.tbc > b { color: var(--p); font-size: 15px; }
+.cc-pt .btn.ghost.tbpen {
+  padding: 2px; border-radius: 6px; color: var(--mfg); line-height: 0; border: 0; background: none;
+}
+.cc-pt .btn.ghost.tbpen:hover { background: var(--mut); color: var(--tfg); }
+/* ⚠️ `aria-disabled`, never `disabled`: a disabled button shows no tooltip in
+   most browsers, and the tooltip is the whole explanation of why it is inert
+   (§5.39b's rule for the softphone badge). */
+.cc-pt .btn.ghost.tbpen[aria-disabled="true"],
+.cc-pt .btn.ghost.tbpen:disabled { opacity: 0.4; cursor: default; }
+.cc-pt .btn.ghost.tbpen[aria-disabled="true"]:hover { background: none; color: var(--mfg); }
+.cc-pt .tb .fact .tbinput {
+  font: inherit; font-size: 13px; padding: 3px 8px; min-width: 190px;
+  border: 1px solid var(--bd); border-radius: 7px;
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+.cc-pt .tb .fact .tbinput:focus { outline: 2px solid var(--p20); outline-offset: 0; }
+/* The refusal, and the join-key note under the email box. Both wrap, unlike
+   the value above them. */
+.cc-pt .tb .fact .tbwhy { margin-top: 4px; max-width: 280px; white-space: normal; color: var(--bad-fg); }
+.cc-pt .tb .fact .tbwhy.muted { color: var(--mfg); }
+
 /* ── Pills, chips ─────────────────────────────────────────────────────────── */
 .cc-pt .pill {
   display: inline-flex; align-items: center; gap: 5px; border-radius: 999px;
@@ -147,6 +176,14 @@
 /* ── Top bar card — name · DOB · email · phone + the view toggle ──────────── */
 .cc-pt .tb-card { padding: 14px 18px; }
 .cc-pt .tb { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; }
+/* ⚠️ The facts wrap among THEMSELVES rather than in `.tb` directly: `.vtoggle`
+   takes `margin-left: auto` on whatever line it lands on, so a flat row drops
+   the fourth fact below the toggle at ~1100 and the card reads as the toggle
+   and one stray field (measured, §5.46g). */
+.cc-pt .tbfacts {
+  display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center;
+  flex: 1 1 auto; min-width: 0;
+}
 .cc-pt .tb .fact .v { font-size: 14px; white-space: nowrap; }
 .cc-pt .tb .fact .k { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; }
 .cc-pt .tb .fact .v.nm {

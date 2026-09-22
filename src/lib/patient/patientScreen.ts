@@ -296,6 +296,10 @@ export interface InfoFact {
   value: string;
   /** Rendered muted when the board simply has no answer. */
   missing?: boolean;
+  /** This fact carries an edit pencil (§5.46g). The control and the write live
+   *  in `components/patient/TopBarContact` and `lib/patient/contactEdit`; this
+   *  is only which of the two it is. */
+  field?: "phone" | "email";
 }
 
 const fact = (label: string, raw: string): InfoFact => ({
@@ -313,13 +317,25 @@ const fact = (label: string, raw: string): InfoFact => ({
  * strip builder here: the whole point is that one module owns those ids.
  */
 
-/** The top bar's four facts — name · DOB · email · phone, as the mockup has it. */
-export function topBarFacts(dossier: PatientDossier | null): InfoFact[] {
+/**
+ * The top bar's four facts — name · DOB · email · phone, as the mockup has it.
+ *
+ * ⚠️ **The email is passed IN rather than read here**, because reading it means
+ * `contactEdit`, which reads `infoStrip`, which reads this module — a cycle ES
+ * modules tolerate right up until one side reads the other at init time and
+ * gets `undefined`. The caller holds both and hands over the string.
+ *
+ * ⚠️ It really is four now. The comment said four and the function returned
+ * THREE from the day it shipped until 2026-09-22 (§5.46g), which is how Email
+ * stayed missing from a card whose own doc named it.
+ */
+export function topBarFacts(dossier: PatientDossier | null, email = ""): InfoFact[] {
   const a = dossier?.active ?? null;
   return [
     fact("Patient name", dossier?.name || a?.name || ""),
     fact("DOB", a?.dob || ""),
-    fact("Phone", dossier?.phone || a?.phone || ""),
+    { ...fact("Email", email), field: "email" },
+    { ...fact("Phone", dossier?.phone || a?.phone || ""), field: "phone" },
   ];
 }
 

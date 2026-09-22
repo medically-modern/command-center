@@ -28,6 +28,7 @@ import { reorderFormColumns } from "../patient/reorderForm";
 import { expectedItemsColumns } from "../patient/expectedItems";
 import { contactsColumns } from "../patient/contacts";
 import { infoStripColumns } from "../patient/infoStrip";
+import { emailColumns } from "../patient/contactEdit";
 import { escalationLevelFrom, type EscalationLevel } from "../systemMgmt/escalationDetail";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -240,6 +241,9 @@ function dossierCols(board: BoardDef): string[] {
     // his board-wide would read blank there with nothing erroring. Additive
     // and invisible in the Comms Hub, same as the three above.
     ...infoStripColumns(board.boardId),
+    // The patient's own email (§5.46g) — the top bar's fourth fact and what
+    // the pencil writes. One id per board, in that board's own shape.
+    ...emailColumns(board.boardId),
   ].filter((c): c is string => !!c)
     // ⚠️ De-duplicated because the lists above overlap on purpose: three of
     // the expected-items ids are also in `stageDetail`'s SUBSCRIPTION map, and
@@ -941,4 +945,59 @@ export async function appendNoteToRecord(opts: {
     if (hit) hit.notes = next;
   }
   return next;
+}
+
+/**
+ * Write the patient's phone or email on ONE board record (§5.46g).
+ *
+ * ⚠️ **The one writer for these columns outside the stage tools.** The patient
+ * screen's top bar is its only caller today; the Comms Hub's dossier pane shows
+ * the same two facts and can reuse it rather than growing a second. Two
+ * independent writers for one column is what §5.31c and §5.31d record going
+ * wrong — §5.31d deleted the Welcome Call banner's phone editor for exactly it.
+ *
+ * ⚠️ **The caller checks `phoneRefusal` / `emailRefusal` FIRST.** `planPhoneWrite`
+ * and `planEmailWrite` deliberately SKIP a value they cannot parse rather than
+ * throwing, because they ride inside 50-column verified sends where one rejected
+ * column aborts a stage advance — so an unchecked save here would come back
+ * green having written nothing (§5.32d's recorded trap). `contactWrites` builds
+ * the value; this only sends it.
+ *
+ * ⚠️ Monday answers a rejected column value with **HTTP 200 and a GraphQL
+ * `errors[]`**, so `gql` must be the thing that raises — it does, and this must
+ * not swallow it: a silent failure here reads as "the address didn't save".
+ */
+export async function updatePatientContact(opts: {
+  boardId: number;
+  itemId: string;
+  /** From `contactEdit.contactWrites` — already in this board's own shape. */
+  values: Record<string, unknown>;
+  /** The number this dossier was looked up by, so the cache can be updated. */
+  phone: string;
+  /** The new phone, when that is what changed, so the cached record agrees. */
+  nextPhone?: string;
+}): Promise<void> {
+  const ids = Object.keys(opts.values);
+  if (!ids.length) throw new Error("There is nothing to save.");
+
+  await gql(
+    `mutation ($item: ID!, $board: ID!, $vals: JSON!) {
+       change_multiple_column_values(item_id: $item, board_id: $board, column_values: $vals) { id }
+     }`,
+    { item: opts.itemId, board: String(opts.boardId), vals: JSON.stringify(opts.values) },
+  );
+
+  // Keep the memoised trail in step, or re-opening the patient shows the old
+  // value until the cache expires — which it never does in a session.
+  const cached = dossierCache.get(toE164(opts.phone));
+  const hit = cached?.find((i) => i.itemId === opts.itemId && i.boardId === opts.boardId);
+  if (hit) {
+    for (const [id, v] of Object.entries(opts.values)) {
+      // ⚠️ The cache holds RENDERED text, so an object value (a phone, an email
+      // column, a clear) cannot be written into it verbatim. Phone has its own
+      // field; everything else is refreshed by the caller's reload.
+      hit.cols = { ...hit.cols, [id]: typeof v === "string" ? v : "" };
+    }
+    if (opts.nextPhone !== undefined) hit.phone = toE164(opts.nextPhone);
+  }
 }

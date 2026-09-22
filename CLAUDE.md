@@ -5329,10 +5329,9 @@ a person would notice first:
 6. ✅ **The onboarding info strip is Brandon's eight — BUILT 2026-09-22 (§5.46f).** Intake date +
    days since · stage start + days in stage, amber over 14 · Request type · Primary insurance ·
    Pump path · CGM path · Referral source · Stage with the Stuck chip, "Web-form lead" and
-   "Onboarding complete". ⚠️ Still open on the SAME card: `topBarFacts`' own comment says *"four
-   facts — name · DOB · email · phone"* and it returns THREE — **Email and its edit pencil are
-   missing**, which is the field §5.31h just made editable one stage over — and **Next action**
-   left the strip with the three other facts that were not his (§5.46f says why).
+   "Onboarding complete". ✅ The top bar's **Email and both edit pencils** landed the same day
+   (§5.46g). ⚠️ **Next action** left the strip with the three other facts that were not his
+   (§5.46f says why) and is the one real loss on this card.
 7. ⚠️ **The global search's placeholder is now honest but narrower than the spec** (§5.44): member
    ID, doctor name/phone/clinic and insurance name are unmatched, and no row says WHICH field hit
    ("Phone (607) …", "Order # 1119726084"). The old System Management search had the same limits,
@@ -6886,6 +6885,104 @@ which is the same fact one screen over · `StripFact.note` (brackets) vs `.sub` 
 Files: `lib/patient/infoStrip.ts` (+ `infoStrip.test.ts`), `lib/commsHub/{dossier,dossierApi}.ts`,
 `lib/patient/patientScreen.ts`, `components/patient/OnboardingView.tsx`
 (+ `infoStripWiring.test.ts`), `pages/patient/redesign.css`.
+
+### 5.46g The top bar's email and its two pencils (Sep 2026)
+Josh, 2026-09-22: *"keep going, add email and the edit pencils to the top bar"*. Section 3 of the
+mockup diff. Brandon's card is *Patient name · DOB · **Email** · Phone with the edit pencil*; live
+rendered name · DOB · phone, read-only, and the email was not on the screen at all. **No board
+change; app only.** Rule: **`lib/patient/contactEdit.ts`** (+ tests); the control is
+**`components/patient/TopBarContact.tsx`**; the write is `dossierApi.updatePatientContact`.
+
+⚠️ **`topBarFacts`' own comment said "four facts — name · DOB · email · phone" and it returned
+THREE**, from the day it shipped until now. A doc naming the missing field is how it stayed missing.
+
+⚠️⚠️ **ONE WRITER, AND IT IS THE COMMS HUB'S.** The mutation lives beside `appendNoteToRecord` in
+`lib/commsHub/dossierApi.ts`, which is the shape `patientScreen.test.ts`' no-writer scan blesses
+(§5.45b · §5.39c3): `lib/patient/contactEdit.ts` owns the RULE — which column, which shape, and
+what else has to move with it — and the screen owns neither. Two INDEPENDENT writers for one
+column is §5.31c/§5.31d's failure, and §5.31d is the sharper precedent here, because the Welcome
+Call banner's phone editor was DELETED for exactly that.
+
+⚠️⚠️ **CHANGING THE PRIMARY NUMBER CLEARS CAN TEXT**, on every board that carries the column
+(`CONTACT_COL[boardId].canText`, reused from §5.46e rather than re-declared). That is §5.31d's
+`setSlotNumber` rule, not an extra: Can Text is the **starred slot's** answer, i.e. this very
+number's, so a Yes about the old line would ride onto a new one and the Day-20 reorder text would
+go to a line nobody can receive it on. It is also the thing that stops this pencil being the
+second, worse copy of the editor §5.31d deleted. ⚠️ Compared on **digits**, so reformatting
+`(555) 555-0100` is not a change and does not cost the rep an answer they already gave.
+
+⚠️⚠️ **THE EMAIL COLUMN HAS TWO SHAPES AND MONDAY REFUSES THE WRONG ONE AT HTTP 200.** Read live
+2026-09-22: the four pipeline boards carry **`text_mm1xc140`**, a plain TEXT column taking a bare
+string; **Subscription carries `email_mkp01rrw`** and **DTC Intake `email_mkwrdzzw`**, which take
+`{email, text}`. A bare string sent to an email column — or an object to a text column — comes back
+200 with a GraphQL `errors[]` and nothing written (§5.28 · §10's most common silent failure), which
+here reads as *"the address didn't save"* with nothing erroring. `EMAIL_COL` declares the TYPE so
+the writer cannot infer it from an id prefix.
+⚠️ **Secondary Claims is deliberately ABSENT.** Its only address column is `email_mm425p3n`
+*"Patient Stripe Email"* — where a receipt goes, not how we reach the patient — and rendering it
+under "Email" would be a plausible wrong answer rather than an honest blank (§5.28's rule).
+⚠️ The read goes through **`shared/emailCell.readEmailCell`**, never the raw text: an email column
+renders a drifted label as `"Dr. Smith - a@b.com"`, and handing THAT to a `mailto:` — or back to
+Monday as an address — is the 2026-08-03 Benefits incident.
+
+⚠️ **The email is read ACROSS the patient's records, furthest-along board first**, the §5.46f rule
+and for the same reason: reading the active record alone shows an em dash for anyone whose live
+record is on a board that does not carry the column, and a later board's value is the corrected
+one. ⚠️ It is **passed INTO `topBarFacts`** rather than read there, because reading it means
+`contactEdit` → `infoStrip` → `patientScreen`, a cycle ES modules tolerate right up until one side
+reads the other at init time and gets `undefined`.
+
+⚠️ **A pencil writes to the ANCHOR record** (`infoStrip.anchorItem` — the live record, falling back
+for a stuck patient). A screen spanning six boards has to name one, and the live record is the one
+every other writer in the app would have used. ⚠️ **A COMPLETED record is REFUSED**, with the
+reason on the pencil: `anchorItem` only reaches one when every record is finished, and §5.38's rule
+is that a completed item is read-only in new code — its columns ARE the snapshot the stepper
+renders, so editing one rewrites history.
+
+⚠️ **The refusal is checked BEFORE the write.** `planPhoneWrite` and `planEmailWrite` deliberately
+**skip** a value they cannot parse rather than throwing, because they ride inside 50-column
+verified sends where one rejected column aborts a stage advance — so an unchecked save here comes
+back green having written nothing (§5.32d's recorded trap). The shape tests are the shared
+`phoneRejectionReason` and `isEmailAddress`, never a second regex; the second stays permissive
+because it must keep accepting `<digits>@rcfax.com` (§5.5). Sharper for the email than the phone: a
+typo does not fail, it reads as *"not booked"* on the Calendly chip (§5.31e) and *"no previous
+emails"* in the Messages tab **for ever**, because all three join on the EXACT string — which is
+why the box says so while a rep is changing it.
+⚠️ A **blank is a deliberate clear** and is written as `{}`, never `null` (§5.31c). A **failed save
+keeps the box open holding what they typed**, so they fix it rather than retype an address they
+just read off a call (§5.31h).
+
+⚠️ **Gated TWICE on `editProfile`** — the control and the handler (§5.39h): the button is what a
+rep sees, the handler is what stops a write when a stale tab or a revoked ability reaches it.
+Brandon's own definition of that ability names *"address and phone"*. ⚠️ The pencil is **SHOWN and
+inert** with the reason in its `title`, never hidden, and on **`aria-disabled`** rather than
+`disabled`, because a disabled button shows no tooltip in most browsers and the tooltip is the
+whole explanation (§5.39b's rule for the softphone badge).
+⚠️ Each editable fact is **keyed on the RECORD**, so a draft cannot survive a patient switch and be
+saved onto whoever is open now — §9's notes-box rule with a phone number in it.
+
+⚠️ **The four facts wrap among THEMSELVES, in a `.tbfacts` group.** Flat in `.tb` the fourth fact
+dropped below the view toggle at ~1100 — measured, not reasoned — because `.vtoggle` takes
+`margin-left: auto` on whatever line it lands on, so the card read as the toggle and one stray
+field.
+
+**Rendered in a browser before shipping** (§5.30d's rule) at 1440 · 1100 · 1440 dark, in all three
+states (read-only, editing with a refused address, and an inert pencil): one line at 1440, no
+horizontal overflow at either width, and the input, the link and the refusal all flipping in dark
+mode because every colour is a token (§5.40) — the first measurement showed a white input in dark
+mode and that was a FIXTURE artifact, `index.css`'s `.dark` block redefines `--background`.
+
+**Keep-in-agreement:** `contactEdit.EMAIL_COL` ⇄ the live boards (the TYPE as much as the id) ⇄
+`emailColumns` ⇄ `dossierApi.dossierCols`, which is what puts it in `item.cols` — drop that line and
+Email reads blank on every patient with nothing erroring · `contactWrites`' Can Text clear ⇄
+`welcomeCall/phoneSlots.setSlotNumber`, which is the same rule one screen over ⇄
+`contacts.CONTACT_COL[…].canText`, which is where the column id lives · `phoneRefusal` /
+`emailRefusal` ⇄ `shared/phoneCell` / `shared/emailCell` — never a second shape test ·
+`TopBarContact` ⇄ `dossierApi.updatePatientContact` (never a second mutation) ⇄
+`patientScreen.test.ts`' `EDIT_PATH`, which now names it.
+Files: `lib/patient/contactEdit.ts` (+ `contactEdit.test.ts`), `lib/commsHub/dossierApi.ts`,
+`lib/patient/patientScreen.ts`, `components/patient/TopBarContact.tsx` (+ `topBarWiring.test.ts`),
+`pages/PatientPage.tsx`, `pages/patient/redesign.css`.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -10060,6 +10157,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | **"I switched to the old view and can't get back"** | §5.39d — open the app with **`?layout=redesign`** appended; it applies and strips itself. That is the route for a page with no settings menu (the patient screen, every stage page). From the home page or `ProcessorView` the settings gear's popover carries the toggle in both layouts. Nuclear option: clear `mm-shell-layout` in localStorage |
 | A redesign control appears over the OLD layout (a stray "Viewing" strip) | §5.39d — `HomeViewHost` is mounted at the ROUTE, outside `AppShell`, so it must gate on the layout itself. Anything else mounted outside the shell has the same trap; `layoutEscape.test.tsx` pins this one |
 | A button in the bottom-left corner won't take a click (sign-out, Manage Access, the layout toggle) | §5.39d — `IncomingCallHost`'s call-status stack is there at `z-[60]` and covered them. It is `pointer-events-none` now, so it cannot intercept whatever it covers; if it recurs, something put `pointer-events-auto` back on the stack rather than on the one control that needs it |
+| The info strip is all em dashes, or a coverage path is blank on a filled-in board | §5.46f — `lib/patient/infoStrip.ts` `INFO_COL` is PER BOARD: the coverage paths are renumbered on Insurance (`color_mm2w8q`) and Welcome Call (`color_mm2xtn41` / `color_mm2wsam4`). All eight blank ⇒ `infoStripColumns` dropped out of `dossierApi.dossierCols`. A blank Stage start on an intake patient means `created_at` left one of the two dossier queries |
 | The patient screen has no way out | §5.39d — it renders no header of its own by design (§5.39b), so it carries its own `<BackRow />` on `useBackNavigation` in every `cc-pt` branch, error branch included |
 | Somebody lost a button, or a tab vanished for them | §5.39c/h — abilities are on `access.json` under the person's `perms`, edited on `/access`. ⚠️ **Absent means ON**, so a missing button means somebody explicitly turned it off, never that the field is unset — and that now holds for MANAGERS too: the blanket covers absence only, so an explicit `false` takes a manager's tab away (§5.39h, Josh's own ask). ⚠️ A tab gate is not a page gate: `AbilityGate` is the wall, `AbilityLock` the inert-control note |
 | A tab is missing / a page says "<X> is assigned." | §5.39h — that ability is explicitly `false` on their row in `/access`, managers included. The wall names the switch and links an admin to Users; it reads the SIGNED-IN person, never a borrowed one |
@@ -10077,6 +10175,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | "Who's the caregiver?" / the Contacts block is all em dashes | §5.46e — `lib/patient/contacts.ts`. Mostly blank is CORRECT today: measured 2026-09-22 over 875 Subscription rows, only 16 carry a Primary Contact and **2** an alternate phone. Blank on EVERY patient ⇒ `contactsColumns` dropped out of `dossierApi.dossierCols`. ⚠️ Caregiver authorized shows **Yes or an em dash, never No** — a Monday checkbox has two states, so unticked means nobody recorded an authorisation. ⚠️ A ticked box reads `"v"`, not `"Yes"` |
 | No "alt" line in the right column, or Text alt / Call alt are missing | §5.46e — the segment renders only when the record HAS an alternate phone, which is 2 patients board-wide. It reads the LIVE record and falls back to any record carrying a block, so a Welcome Call caregiver still shows for a patient sitting in Insurance. ⚠️ **"Call alt" shows that number's call HISTORY rather than dialling** — deliberate: the softphone is the Comms Hub's and caps at five (§5.13b) |
 | The text composer is blocked and the patient never replied STOP | §5.46e — their **Can Text** column reads **No**; the banner says so and names where to change it. ⚠️ It blocks on an EXPLICIT No only — a blank is unknown (§5.31d) and blocks nobody. A STOP reply outranks the column and shows its own message |
+| The patient screen's Email is blank, or a pencil won't save | §5.46g — `lib/patient/contactEdit.ts`. Blank on EVERY patient ⇒ `emailColumns` dropped out of `dossierApi.dossierCols`. A greyed pencil says why in its tooltip: no `editProfile`, a **completed** record (refused by design, §5.38), or a board with no such column. A refusal under the box is the shape test — the email one is permissive because it must accept `<digits>@rcfax.com`. ⚠️ Saving a NUMBER also clears Can Text on Welcome Call and Subscription; that is §5.31d's rule, not a bug |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
 | The Subscription profile won't save, or says "Read-only" | §5.45b — `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). MN documents and the visit date are still `/subscription` and `/update-clinicals` alone — each carries side effects this card does not (§5.36) |
 | A fact shows TWICE on the Subscription profile — once editable, once as a card | §5.45b — `FORM_SECTIONS` matches `stageDetail.ts`'s SUBSCRIPTION section TITLES, so a rename there makes the filter match nothing with nothing erroring. `subscriptionView.test.ts` pins both strings. ⚠️ The teal overview strip restating Next order / Cycle / Order type is NOT that bug — it is this screen's `PatientInfoCard`, and `/subscription` shows the same six facts above its own form |

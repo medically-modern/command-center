@@ -232,6 +232,10 @@ describe("the patient screen is READ-ONLY", () => {
     "src/components/patient/SubscriptionView.tsx",
     "src/hooks/patient/useSubscriptionRecord.ts",
     "src/components/patient/RecentNotes.tsx",
+    // 3. **The top bar's two pencils** (§5.46g; Josh, 2026-09-22: *"add email
+    //    and the edit pencils to the top bar"*) — Brandon's own card. They call
+    //    the Comms Hub's OWN `updatePatientContact`, behind `editProfile`.
+    "src/components/patient/TopBarContact.tsx",
   ];
   const files = all.filter((f) => !EDIT_PATH.includes(f));
 
