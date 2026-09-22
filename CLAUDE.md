@@ -6444,7 +6444,7 @@ changed is that the rest of the page is usable while it loads. Pinned by
 `components/orders/inventoryBlocking.test.ts`, because the failure is a *working* page you cannot
 click: nothing errors and the only symptom is a wait.
 
-**7. Reports & Metrics is honestly empty — and Operations got its door back.** *"just say No
+**7. Reports & Metrics is honestly empty, and Operations has NO door in the chrome.** *"just say No
 reports available yet - and have a blank screen"*. `/operations` rendered `OperationsTab` under a
 borrowed name, which is §5.39b's own recorded compromise (*"a tab opening a real page under a
 borrowed name beats one opening an empty shell"*); it reads as a finished feature, so nobody asks
@@ -6452,9 +6452,16 @@ for the real one, and a rep looking for operations finds it under a name it does
 ⚠️⚠️ **CHECKING THE DOOR WAS THE WHOLE RISK IN THIS ONE.** §5.44 took System Management off the
 settings menu (*"the full top bar now handles that"*), so that tab was Operations' **only** route:
 blanking the page alone would have taken "today's baseline vs live" out of the product exactly as
-§5.39f records happening to Stage Manager, and silently, because the route keeps answering.
-**Daily operations** is back on the header's settings menu pointing at
-`/system-mgmt?tab=operations`, and `lossless.test.ts` pins it.
+§5.39f records happening to Stage Manager, and silently, because the route keeps answering. So a
+**Daily operations** entry went onto the settings menu — and Josh withdrew it an hour later
+(*"daily op[erations doesnt need to be in ui, just comment it out"*).
+⚠️⚠️ **SO ITS ONLY ROUTES ARE `/system-mgmt?tab=operations` (a bookmark) AND System Management's
+own Operations tab**, which is itself only reachable by typing `/system-mgmt`. That is a deliberate
+narrowing rather than §5.39f's failure — the tool is intact, the tab is live, and the button is
+COMMENTED OUT in `GlobalHeader` rather than deleted, so putting the door back is uncommenting it.
+`lossless.test.ts` records the narrowing in place of a door, the way §5.44 does for Oversight, and
+fails if the entry quietly returns. ⚠️ The `doors` list lost its Operations row with it: `/operations`
+is the blank Reports page now, so asserting it is reachable there asserts the wrong thing.
 ⚠️ **What the real page is is WRITTEN DOWN** — §5.39b has the board id, the app feature and the
 list of numbers, and every one of them is a §5.8 counting-contract number that must mirror
 `useRoleCounts` AND both baseline generators. Read the handoff before building it.
@@ -6479,8 +6486,8 @@ that stops fetching it folds nothing, silently · `pickLead`'s Subscription scor
 `stageDetail`'s SUBSCRIPTION map, which must keep all six facts for the Comms Hub ·
 `FORM_SECTIONS` ⇄ that map's TITLES ⇄ `ProfileTab`'s unconditional filter ·
 `OrdersPage`'s `view === "orders" && initialLoading` ⇄ `SkuTrackerView`'s `ordersLoading` ·
-`GlobalHeader`'s "Daily operations" entry ⇄ `SystemMgmtPage`'s Operations tab ⇄
-`lossless.test.ts`.
+`GlobalHeader`'s commented-out "Daily operations" entry ⇄ `SystemMgmtPage`'s Operations tab ⇄
+`lossless.test.ts`, which asserts the ABSENCE.
 Files: `lib/shell/searchPeople.ts` · `lib/patient/{subscriptionOverview,patientScreen}.ts` ·
 `lib/commsHub/dossier.ts` (`dobKey`) · `lib/systemMgmt/mondayApi.ts` (`dob`, `onPartial`) ·
 `hooks/systemMgmt/useLiveSearch.ts` · `components/patient/SubscriptionView.tsx` ·
@@ -9763,7 +9770,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The Subscription profile shows the wrong facts, or a fact twice | §5.46b — the strip is `lib/patient/subscriptionOverview.ts` (Status · Next order · Subscription · First order) and is deliberately NOT `stageDetail`'s SUBSCRIPTION map, which keeps all six for the Comms Hub. A fact rendered twice means `FORM_SECTIONS` stopped matching that map's TITLES |
 | A rep without `editProfile` can change the subscription form | §5.46b — the guard is `inert` on the wrapper plus a no-op writer, and the Send bar is not rendered at all. `patientScreen.test.ts` pins all three |
 | Inventory locks the page for ~15s | §5.46b — `PageLoadingOverlay` must be `view === "orders" && initialLoading`; it is the ORDER BOARD's read, which Inventory only needs for the open-order column (and that says "—" until it lands, never 0) |
-| "Where did Daily Operations go?" | §5.46b — Reports & Metrics is deliberately blank now, so Operations is on the header's **settings** menu (`/system-mgmt?tab=operations`) and on System Management's own tab. `lossless.test.ts` fails if that door closes |
+| "Where did Daily Operations go?" | §5.46b — Reports & Metrics is deliberately blank now and Operations has **no door in the chrome**: go to `/system-mgmt?tab=operations`, or `/system-mgmt` and press the Operations tab. The settings-menu entry is COMMENTED OUT in `GlobalHeader` on Josh's word — uncomment it to put the door back, and `lossless.test.ts` fails if it returns quietly |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
 | A patient's ORDERS aren't in System Search, or an order turns up in another folder | §5.35 — `lib/systemMgmt/ordersSearch.ts`. The board rides `LIVE_SEARCH_BOARDS` (what the search box asks) and is deliberately absent from `BOARDS` (the patient registry — inbound-call lookup, the dossier, the gateway's mirrored directory, the snapshot); `searchBucket` returns `orders` FIRST, or every order files under Active with nothing erroring. An empty Orders folder under a chart pick or a stage filter is correct — those rows come from the snapshot |
 | A CAH / PO / tracking number finds nothing in System Search | §5.35 — `rulesLiteral`'s order branch + `ORDER_IDENTIFIER_COLS`. It is on BOTH paths because CAH (10 digits) and tracking (12) arrive as PHONE queries while a PO (`MM-<itemId>-<date>`) arrives as a one-word NAME query; a multi-word query keeps its AND and deliberately does not match identifiers. The results are in the **Orders** folder, so an empty Active tab with "Found in: Orders" is the expected landing. ⚠️ Never move the rule into `phoneRulesLiteral` — that is the same-number pass, and a 10-digit CAH number would pull a stranger's order onto a patient |

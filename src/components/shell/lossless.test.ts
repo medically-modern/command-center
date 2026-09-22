@@ -44,7 +44,6 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
    * its own test is below, because its door is no longer a link.
    */
   const doors: Array<[string, string, () => string]> = [
-    ["Operations — the Reports & Metrics tab", "/operations", header],
     ["Stage Manager — its own tab", "/stage-manager", header],
     ["System Management", "/system-mgmt", header],
     ["Access & permissions", "/access", header],
@@ -135,24 +134,33 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     expect(live(read("hooks/commsHub/useHubData.ts")), "the hub lost its fax list").toContain("fax");
   });
 
-  it("⚠️⚠️ Operations kept a door when Reports & Metrics stopped opening it", () => {
-    /* Josh, 2026-09-22: "Reports and metrics - just say No reports available
-       yet - and have a blank screen". That tab was Operations' ONLY route:
-       §5.44 took System Management off the settings menu, so blanking
-       `/operations` alone would have taken "today's baseline vs live" out of
-       the product — §5.39f's failure for the third time, and silently, because
-       the route keeps answering. */
+  it("⚠️⚠️ Operations has NO door in the chrome, and this is where that is recorded", () => {
+    /* Two decisions on 2026-09-22, an hour apart, and the second one is why
+       this reads as a narrowing rather than a door:
+         · "Reports and metrics - just say No reports available yet - and have
+           a blank screen" — so `/operations` no longer opens Operations, and
+           that tab had been its only route since §5.44 took System Management
+           off the settings menu.
+         · "daily op[erations doesnt need to be in ui, just comment it out" —
+           the settings-menu entry added in between, withdrawn.
+       What is left is the `/system-mgmt?tab=operations` URL and System
+       Management's own Operations tab, itself only reachable by typing
+       `/system-mgmt`. The TOOL is intact — this is not §5.39f's failure, where
+       a tool left the product because nobody noticed; it is Josh's call, and
+       the way back is to uncomment the button in GlobalHeader. */
     const h = header();
-    expect(h, "Daily operations left the settings menu").toContain(
+    expect(h, "Daily operations is back on the settings menu").not.toContain(
       'navigate("/system-mgmt?tab=operations")',
     );
-    // And the tab really is blank now, so this door is the only one.
+    // And /operations really is the blank page, so the tab is not a door either.
     const page = live(read("pages/OperationsPage.tsx"));
     expect(page).toContain("No reports available yet");
     expect(page, "the Reports tab is borrowing Operations again").not.toContain("<OperationsTab");
-    // The tool itself is untouched and still wired into System Management.
+    // The tool itself is untouched and still wired into System Management —
+    // which is the whole of what makes the narrowing acceptable.
     expect(sysMgmt()).toContain('label="Operations"');
     expect(sysMgmt()).toContain("<OperationsTab");
+    expect(live(read("App.tsx"))).toContain('path="/system-mgmt"');
   });
 
   it("⚠️ Access is on the settings menu AND the Users button, which is admin-only", () => {

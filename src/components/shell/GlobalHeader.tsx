@@ -318,18 +318,22 @@ export function GlobalHeader() {
               {managerish && (
                 <>
                   <div className="eyebrow">Manager</div>
-                  {/* ⚠️⚠️ **DAILY OPERATIONS IS BACK ON THIS MENU BECAUSE THE
-                      REPORTS TAB STOPPED OPENING IT** (Josh, 2026-09-22:
-                      *"Reports and metrics - just say No reports available yet
-                      - and have a blank screen"*). That tab was Operations'
-                      ONLY door: §5.44 took System Management off this menu
-                      ("the full top bar now handles that"), so blanking
-                      `/operations` without this would have taken "today's
-                      baseline vs live" out of the product — the §5.39f failure
-                      for the third time, and it is invisible, because the route
-                      keeps answering.
+                  {/* ⚠️⚠️ **DAILY OPERATIONS IS COMMENTED OUT OF THIS MENU, NOT
+                      DELETED** (Josh, 2026-09-22: *"daily op[erations doesnt
+                      need to be in ui, just comment it out"*), the same day it
+                      was added here to keep Operations reachable after the
+                      Reports tab stopped opening it.
+                      ⚠️⚠️ **SO OPERATIONS HAS NO DOOR IN THE CHROME AT ALL** —
+                      its only routes are the `/system-mgmt?tab=operations` URL
+                      (a bookmark) and System Management's own Operations tab,
+                      which is itself only reachable by typing `/system-mgmt`
+                      since §5.44 took that off this menu. That is a deliberate
+                      narrowing on Josh's word, not the §5.39f failure: the tool
+                      is intact and the tab is live. Uncomment the button to put
+                      the door back; `lossless.test.ts` records the narrowing in
+                      place of a door, the way §5.44 does for Oversight.
                       ⚠️ It is `/system-mgmt?tab=operations`, not `/operations`:
-                      that route is the blank Reports page now. */}
+                      that route is the blank Reports page now.
                   <button
                     className="opt"
                     role="menuitem"
@@ -338,6 +342,7 @@ export function GlobalHeader() {
                     <BarChart3 style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
                     Daily operations
                   </button>
+                  */}
                   <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/access"); }}>
                     <KeyRound style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
                     Access &amp; permissions
