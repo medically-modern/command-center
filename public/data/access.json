@@ -131,8 +131,8 @@
       "name": "Masani",
       "roles": [],
       "homeView": [
-        "coordinator",
-        "bars"
+        "bars",
+        "coordinator"
       ]
     }
   },
