@@ -30,9 +30,27 @@ interface Props {
   /** Start the call (in-browser softphone). */
   onCall: () => void;
   calling: boolean;
+  /**
+   * The patient's **Can Text** column (§5.46e), when the caller holds it.
+   *
+   * ⚠️ **OPT-IN: absent means `"unknown"`, which is today's behaviour exactly**
+   * — the three call sites that pass nothing are byte-identical. Only the
+   * patient screen reads that column, and only the Subscription and Welcome
+   * Call boards carry it.
+   *
+   * ⚠️ **A blank column is UNKNOWN, never a No** (§5.31d) — the composer is
+   * blocked only on an explicit No, because blank means nobody has asked and
+   * blocking on it would silence texting for the whole board.
+   *
+   * ⚠️ It BLOCKS rather than warning, which is §5.31d's call for the same
+   * column one screen over: RingCentral accepts a text to a landline and only
+   * flips it to `SendingFailed` seconds later (§5.5), so a click-through
+   * warning buys a green toast and a patient who heard nothing.
+   */
+  canText?: "yes" | "no" | "unknown";
 }
 
-export default function ConversationThread({ phone, patient, onCall, calling }: Props) {
+export default function ConversationThread({ phone, patient, onCall, calling, canText }: Props) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   // Whether we saw the WHOLE thread. Consent can't be inferred from a partial
   // one, so this gates the composer alongside the messages themselves.
@@ -49,6 +67,9 @@ export default function ConversationThread({ phone, patient, onCall, calling }: 
   const bottomRef = useRef<HTMLDivElement>(null);
   // A delivery failure lands seconds AFTER the send resolves — see the hook.
   const recheck = useDeliveryRecheck();
+
+  /** ⚠️ Explicit No only — see the prop's note. */
+  const textingOff = canText === "no";
 
   const load = async (showSpinner: boolean) => {
     if (showSpinner) setLoading(true);
@@ -90,7 +111,7 @@ export default function ConversationThread({ phone, patient, onCall, calling }: 
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || sending || consent.optedOut) return;
+    if (!text || sending || consent.optedOut || textingOff) return;
     setSending(true);
     try {
       await sendMessage({ to: phone, text, mondayItemId: patient?.itemId || undefined });
@@ -193,23 +214,32 @@ export default function ConversationThread({ phone, patient, onCall, calling }: 
         <div ref={bottomRef} />
       </div>
 
-      {consent.optedOut ? (
+      {consent.optedOut || textingOff ? (
         <div
           className={cn(
             "shrink-0 border-t border-border px-4 py-3 flex items-start gap-2 text-sm",
             // A pending check is not an accusation — only style it as a block
-            // once we actually know something.
-            consent.unknown && loading
+            // once we actually know something. ⚠️ `Can Text = No` IS something
+            // we know, so it never wears the pending look, however the STOP
+            // check is going.
+            consent.unknown && loading && !textingOff
               ? "bg-muted/40 text-muted-foreground"
               : "bg-destructive/10 text-destructive",
           )}
         >
-          {consent.unknown && loading ? (
+          {consent.unknown && loading && !textingOff ? (
             <Loader2 className="h-4 w-4 shrink-0 mt-0.5 animate-spin" />
           ) : (
             <ShieldOff className="h-4 w-4 shrink-0 mt-0.5" />
           )}
-          {!consent.unknown ? (
+          {/* ⚠️ A STOP reply outranks the column: it is the patient's own
+              words, where Can Text is a rep's note about the line. */}
+          {textingOff && !consent.optedOut ? (
+            <span>
+              This patient&apos;s <b>Can Text</b> is set to <b>No</b> on their board record, so
+              texting is blocked here. Call them instead, or change it on the stage page.
+            </span>
+          ) : !consent.unknown ? (
             <span>
               This patient replied <b>{(consent.keyword || "stop").toUpperCase()}</b>
               {consent.since ? ` on ${new Date(consent.since).toLocaleDateString("en-US")}` : ""} and is opted out of

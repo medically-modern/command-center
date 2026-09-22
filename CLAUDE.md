@@ -5337,9 +5337,11 @@ a person would notice first:
    ID, doctor name/phone/clinic and insurance name are unmatched, and no row says WHICH field hit
    ("Phone (607) …", "Order # 1119726084"). The old System Management search had the same limits,
    so it is unbuilt spec, not a regression.
-8. ✅ **The Orders tab's Upcoming order strip is complete — REORDER FORM §5.46c and EXPECTED ITEMS §5.46d, both 2026-09-22.** ⚠️ **The Subscription profile is missing Financials, Demographics/Contacts and the MN card's
-   own visit-date + MN-docs controls** — §5.45 · §5.45b have the argument for each (the first two
-   widen the Comms Hub's shared `stageDetail` map; the third carries side effects, §5.36).
+8. ✅ **The Orders tab's Upcoming order strip is complete — REORDER FORM §5.46c and EXPECTED ITEMS §5.46d, both 2026-09-22 — and the CONTACTS block §5.46e the same day**, on the profile AND as the
+   right column's alternate-number line. ⚠️ **The Subscription profile is still missing Financials
+   and Demographics, and the MN card's own visit-date + MN-docs controls** — §5.45 · §5.45b have
+   the argument for each (the first two widen the Comms Hub's shared `stageDetail` map; the third
+   carries side effects, §5.36).
 9. ⚠️ **Auth Denied is still unclickable** (§4 · §7), where the handoff makes `/stage/authDenied`
    render the Auth Outstanding steps — *"Brandon's call 'for now'"*. A real difference of opinion
    about an unbuilt stage, not an oversight.
@@ -6650,6 +6652,130 @@ silently reflows the row.
 Files: `lib/patient/expectedItems.ts` (+ `expectedItems.test.ts`), `lib/commsHub/dossierApi.ts`,
 `components/patient/SubscriptionView.tsx` (+ `subscriptionView.test.ts`),
 `pages/patient/redesign.css`.
+
+### 5.46e Contacts — who we reach, and on which number (Sep 2026)
+Josh, 2026-09-22: *"keep going, do the contacts block next / do everything"*, and mid-build the
+rule that governs the whole of this list — *"it should just be re-routing info for reads and
+writes (where applicable) … his mockup as our guide and to get as close as possible without
+causing holes or issues"*. **No board change; app only.** Rule: **`lib/patient/contacts.ts`**
+(+ tests).
+
+Brandon puts the same family of columns in TWO places and live had it in neither — the diff's
+short-list item 2. On the profile:
+
+> "a **Contacts block** for patient-vs-caregiver, the columns just added to the Subscription
+> board and mostly empty today: Primary contact `color_mm72vm7p` (Patient / Caregiver),
+> Alternate contact `color_mm723hfk`, Caregiver name `text_mm72mdzk`, Caregiver authorized
+> `boolean_mm72nt75`, Alternate phone `phone_mm72r19q`, Last patient contact `text_mm5frhe9`."
+
+and in the right column: *"when the board has an alternate phone it is shown next to it with the
+caregiver's name and two small actions, Text alt and Call alt … Back to primary returns."*
+
+⚠️⚠️ **PER BOARD, BECAUSE THE RIGHT COLUMN SERVES A PATIENT WITH NO SUBSCRIPTION ROW.** §5.31d
+created the same six columns on **Welcome Call** — which is where a rep actually fills them in,
+on the call — so a patient still in onboarding has a caregiver on that record and nowhere else.
+Brandon names only the Subscription ids because his block is on the Subscription profile; the
+column beside it is about the PATIENT, not the board. `CONTACT_COL` carries one id map per board
+and `contactsFor(items, activeItemId)` prefers the live record, then falls back to any record
+that carries a filled-in block — contacts are a fact about the human, not about the cycle, so an
+older Welcome Call record is still right.
+⚠️ **Last Patient Contact is SUBSCRIPTION-ONLY** — Welcome Call's full column list was read the
+same day and has none, so that fact is `null` there rather than guessed at. Asking Monday for an
+id a board does not have is not an error; it is a field that reads blank for ever (§5.11).
+
+⚠️ **Nothing here writes, so no label INDEX is declared** — and that is the point: ids differ per
+board on every other status column in this app and a write is where that bites (§5.12 · §5.20 ·
+§5.31c · §5.31d · §5.33 · §5.36, six times). Reading `text` sidesteps it. These columns are
+written on the **Welcome Call stage page**, which has the rules that go with them — clearing Can
+Text when a number changes, the consent audit line on the off→on transition — so a second editor
+here would be two writers for one column (§5.31c · §5.31d).
+
+**Measured on the live boards before building (2026-09-22), and the numbers shaped the design.**
+Of **875** Subscription rows: Primary Contact **16**, Can Text **16** (14 Yes · 2 No), Caregiver
+Name **7**, Alternate Contact **2**, Alternate Phone **2**. The handoff says so itself — *"the
+contact columns are populated for under ten"*. So:
+- the **profile block renders unconditionally**, em dashes and all, like the overview strip above
+  it: a card that disappears when empty teaches a rep the block does not exist rather than that
+  nobody has answered;
+- the **numline's alt segment renders only when there IS an alternate number**, falling back to a
+  bare `· caregiver <name>` and otherwise to nothing — Brandon's own conditional, and what keeps
+  a line reading `alt —` off 873 patients.
+
+⚠️⚠️ **A TICKED MONDAY CHECKBOX READS `"v"`, NOT `"Yes"`.** Measured live. Anything non-blank is
+ticked and the glyph is not depended on. ⚠️ **An unticked box renders as an EM DASH, never "No"**
+— a checkbox has two states, not three, so unticked means nobody recorded a HIPAA authorisation,
+not that one was refused. Brandon's own `yn()` renders a blank the same way, and it is the safe
+direction: nothing here can claim an authorisation that was never given.
+
+⚠️ **A blank Can Text is UNKNOWN, never a No** (§5.31d, and §5.20's rule for an unrecognised
+label). It is the one field here that could do harm read the other way: No blocks the composer.
+
+⚠️ **Last Patient Contact is a MACHINE STRING** — `2026-09-17T19:59 in call`, written by
+something outside this repo — so `formatLastContact` renders it and **never through `new Date()`**:
+the value is naive Eastern wall clock with no zone (§5.15), and parsing it as an instant moves it
+by the container's offset, which is a different DAY either side of midnight. The parts are
+reassembled arithmetically, and a value matching no shape is returned **VERBATIM** (§5.20).
+
+⚠️ **A phantom status index reads as blank, and Monday agrees.** Live rows carry `{"index":5}` on
+Alternate Contact — a label id that column does not have (its labels are 4 Caregiver · 7 Patient)
+— and Monday answers `text: null` for it AND excludes it from its own `is_not_empty` rule. Reading
+`text` is what makes that a blank rather than a number rendered at a rep. Do not go looking for the
+label.
+
+**The right column is a SWITCH, not a second pane.** `PatientCommsColumn` already feeds both tabs
+from one `phone`, so **Text alt** points the column at the alternate number and opens Texts, and
+**Back to primary** returns. An amber note says the thread is the alternate's own, not the
+patient's — which is more honest than the mockup, whose thread stayed on the primary because its
+sample data is fake.
+⚠️⚠️ **"Call alt" shows the alternate number's call HISTORY rather than dialling, and that is the
+one deliberate departure from the mockup.** His `callalt` handler is a toast standing in for
+placing a call; placing one from this screen is deliberately not done — the softphone registration
+is the Communications Hub's and RingCentral caps the shared extension at five (§5.13b), so a
+dialer here would spend a slot (`onCall` is a documented no-op for the same reason). Switching the
+Calls tab is a real move his sample data could not offer, and it costs nothing.
+⚠️ **The selection falls back BY CONSTRUCTION** (`useAlt && !!alt`), so it can never outlive the
+number it named, and `PatientPage` keys the whole column on the record — §9's notes-box rule, one
+level up: a switch surviving a patient change would point the composer at the PREVIOUS patient's
+caregiver.
+⚠️ **Recent notes keeps the PRIMARY number always**: a note is about the patient, and the audit
+line its writer stamps must not name a caregiver's number because the thread happened to be
+switched.
+⚠️ The thread is **keyed on the number**, so a switch cannot carry a half-typed message into a
+different conversation.
+
+**Can Text = No blocks the composer** (Brandon: *"If the patient's Can text column is No, the
+composer is replaced by an opt-out banner"*) — `ConversationThread` gained an **opt-in `canText`
+prop**, so the three call sites that pass nothing are byte-identical.
+⚠️ **It blocks rather than warning**, which is §5.31d's call for the same column one screen over:
+RingCentral accepts a text to a landline and only flips it to `SendingFailed` seconds later (§5.5),
+so a click-through warning buys a green toast and a patient who heard nothing.
+⚠️⚠️ **On an EXPLICIT `"no"` only, never on truthiness** — the prop is `undefined` on every other
+surface and blank is unknown, so a truthiness test would silence texting for the whole app.
+⚠️ **A STOP reply outranks the column** (the patient's own words beat a rep's note about the
+line), and Can Text never wears the pending look: it is something we know, however the STOP check
+is going.
+
+⚠️ **Can Text is stated on the profile card even though Brandon puts it in Demographics** — that
+card is not built (gap item 6 / §5.45), and the fact governs whether the composer in the column
+beside it works at all, so it is said here rather than nowhere. Move it when Demographics lands.
+
+**Rendered in a browser before shipping** (§5.30d's rule) at the REAL frame — the right column is
+a fixed 380px — at 1600 · 1440 · 1100 and 1440 dark: the card's three columns register exactly
+(371/318/205px, rows at the same y, identical x per row), no horizontal overflow and no page
+scroll at any width, the numline wraps to three lines at 380px with both buttons together, the
+amber note is 46px and `flex: none` so it sits above the thread rather than stealing its height,
+and every colour flips in dark mode (card `rgb(14,26,42)`, value text `rgb(241,245,248)`, note
+`rgb(247,197,110)`) because every one is a token.
+
+**Keep-in-agreement:** `lib/patient/contacts.ts` `CONTACT_COL` ⇄ the live Subscription and Welcome
+Call boards ⇄ `contactsColumns` ⇄ `dossierApi.dossierCols`, which is what puts them in `item.cols`
+— drop that line and every field reads blank on every patient with nothing erroring ·
+`readCanText` ⇄ `ConversationThread`'s `canText === "no"` (explicit No on both ends) ·
+`ContactsCard`'s six rows ⇄ Brandon's six, in his order · `contactsFor`'s fallback ⇄
+`PatientCommsColumn`'s `useAlt && !!alt` ⇄ `PatientPage`'s `key`.
+Files: `lib/patient/contacts.ts` (+ `contacts.test.ts`), `lib/commsHub/dossierApi.ts`,
+`components/patient/{PatientCommsColumn,SubscriptionView}.tsx` (+ `contactsWiring.test.ts`),
+`components/assignedPatients/ConversationThread.tsx`, `pages/{PatientPage.tsx,patient/redesign.css}`.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -9838,6 +9964,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Something on an embedded stage panel is clickable, or it is fetching | §5.39c2 — the guard is `inert` on `.stage-embed` (verified in Chrome 141: a real click is not hittable and focus cannot enter), plus no-op callbacks, plus mounting the PANEL and never the page's hook. If it fetches, read the panel's own hooks: `useFaxStatus` is switched off by the `embedded` prop, `useMondayFiles` polls only during a Generate, the rest are module-cached. A new hook on a panel needs the same audit |
 | "Did the patient answer the reorder text?" / the Reorder form column is blank or says the wrong thing | §5.46c — `lib/patient/reorderForm.ts`. **"No Response" is a RESET, not an answer**, and the timestamp does not reset with it, so a stamp reading *last answered* beside *No response yet* is correct. **"Not sent yet" keys on the LINK**, never on Reorder Text Sent (blank on 195 of 300 live rows that were plainly texted). Every field blank on EVERY patient ⇒ `reorderFormColumns` dropped out of `dossierApi.dossierCols`. ⚠️ There is no Resend and no Send now — the board has no trigger column for the reorder text, so Copy link is the move |
 | "What's supposed to be in this order?" / Expected items is empty or lists "Not Serving" | §5.46d — `lib/patient/expectedItems.ts`. A line with **no quantity** is a product whose quantity nobody filled in (82% of CGM-serving rows), never a zero; a quantity of **0** correctly drops the line. Empty on EVERY patient ⇒ `expectedItemsColumns` dropped out of `dossierApi.dossierCols`. ⚠️ Cartridges have no product column here — Supplies Type is the PUMP — so "3 × cartridges" is all the board can say |
+| "Who's the caregiver?" / the Contacts block is all em dashes | §5.46e — `lib/patient/contacts.ts`. Mostly blank is CORRECT today: measured 2026-09-22 over 875 Subscription rows, only 16 carry a Primary Contact and **2** an alternate phone. Blank on EVERY patient ⇒ `contactsColumns` dropped out of `dossierApi.dossierCols`. ⚠️ Caregiver authorized shows **Yes or an em dash, never No** — a Monday checkbox has two states, so unticked means nobody recorded an authorisation. ⚠️ A ticked box reads `"v"`, not `"Yes"` |
+| No "alt" line in the right column, or Text alt / Call alt are missing | §5.46e — the segment renders only when the record HAS an alternate phone, which is 2 patients board-wide. It reads the LIVE record and falls back to any record carrying a block, so a Welcome Call caregiver still shows for a patient sitting in Insurance. ⚠️ **"Call alt" shows that number's call HISTORY rather than dialling** — deliberate: the softphone is the Comms Hub's and caps at five (§5.13b) |
+| The text composer is blocked and the patient never replied STOP | §5.46e — their **Can Text** column reads **No**; the banner says so and names where to change it. ⚠️ It blocks on an EXPLICIT No only — a blank is unknown (§5.31d) and blocks nobody. A STOP reply outranks the column and shows its own message |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
 | The Subscription profile won't save, or says "Read-only" | §5.45b — `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). MN documents and the visit date are still `/subscription` and `/update-clinicals` alone — each carries side effects this card does not (§5.36) |
 | A fact shows TWICE on the Subscription profile — once editable, once as a card | §5.45b — `FORM_SECTIONS` matches `stageDetail.ts`'s SUBSCRIPTION section TITLES, so a rename there makes the filter match nothing with nothing erroring. `subscriptionView.test.ts` pins both strings. ⚠️ The teal overview strip restating Next order / Cycle / Order type is NOT that bug — it is this screen's `PatientInfoCard`, and `/subscription` shows the same six facts above its own form |

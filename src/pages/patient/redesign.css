@@ -423,6 +423,24 @@
   flex-wrap: wrap; font-size: 11px; color: var(--mfg);
 }
 .cc-pt .numline .on { color: var(--tfg); font-weight: 600; }
+/* Brandon's `chip-btn` — Text alt / Call alt / Back to primary (§5.46e).
+   ⚠️ Every colour is a token, so dark mode follows without a second rule. */
+.cc-pt .numbtn {
+  border: 1px solid var(--bd); border-radius: 999px; padding: 1px 8px;
+  font-size: 11px; color: var(--mfg); background: var(--cd);
+  display: inline-flex; align-items: center; gap: 4px;
+  cursor: pointer; font-family: inherit; line-height: 1.6;
+}
+.cc-pt .numbtn:hover { border-color: var(--p); color: var(--p); }
+.cc-pt .numbtn.on { background: var(--p); color: hsl(var(--primary-foreground)); border-color: var(--p); }
+/* ⚠️ `flex: none` for the same reason the notes strip has it: `.side-body` is a
+   column whose thread takes `flex: 1`, so without it the note grows by stealing
+   the thread's height rather than sitting above it. */
+.cc-pt .altnote {
+  flex: none; margin: 8px 12px 0; padding: 6px 9px; border-radius: 6px;
+  font-size: 11px; line-height: 1.45;
+  background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-bd);
+}
 .cc-pt .side-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .cc-pt .empty-pane {
   flex: 1; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--mfg);

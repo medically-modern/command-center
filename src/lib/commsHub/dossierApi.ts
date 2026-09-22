@@ -26,6 +26,7 @@ import { DOCTOR_DB_BOARD, DOCTOR_DB_COLS } from "../shared/doctorDb";
 import { stageDetailColumns } from "./stageDetail";
 import { reorderFormColumns } from "../patient/reorderForm";
 import { expectedItemsColumns } from "../patient/expectedItems";
+import { contactsColumns } from "../patient/contacts";
 import { escalationLevelFrom, type EscalationLevel } from "../systemMgmt/escalationDetail";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -222,6 +223,11 @@ function dossierCols(board: BoardDef): string[] {
     // and sensors the next order is set up to carry. Also additive and
     // invisible in the Comms Hub, for the same reason. Empty elsewhere.
     ...expectedItemsColumns(board.boardId),
+    // Who we reach and on which number (§5.46e) — the phone-slot family, on
+    // the TWO boards that carry it (Subscription and Welcome Call), so the
+    // right column can name a caregiver for a patient who has no Subscription
+    // row yet. Additive and invisible in the Comms Hub, same as the two above.
+    ...contactsColumns(board.boardId),
   ].filter((c): c is string => !!c)
     // ⚠️ De-duplicated because the lists above overlap on purpose: three of
     // the expected-items ids are also in `stageDetail`'s SUBSCRIPTION map, and

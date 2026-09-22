@@ -60,6 +60,7 @@ import { AlertTriangle, ArrowUpRight, Copy, Eye, Package, RotateCcw, User } from
 import type { DossierItem } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
 import { subscriptionOverview, type OverviewFact } from "@/lib/patient/subscriptionOverview";
+import { buildContacts, type Contacts } from "@/lib/patient/contacts";
 import { mondayItemToOrder } from "@/lib/orders/mondayMapping";
 import { fmtDate, orderStage, type Order } from "@/lib/orders/workflow";
 import { orderHeadline } from "@/lib/orders/headline";
@@ -211,6 +212,7 @@ function ProfileTab({
      against the live SUBSCRIPTION map: renamed there, the filter matches
      nothing and the facts double-render with nothing erroring. */
   const cards = sections.filter((sc) => !FORM_SECTIONS.includes(sc.title));
+  const contacts = useMemo(() => buildContacts(item.boardId, item.cols), [item]);
 
   return (
     <>
@@ -250,6 +252,8 @@ function ProfileTab({
 
       <SubscriptionEditor itemId={item.itemId} canEdit={canEdit} />
 
+      <ContactsCard contacts={contacts} />
+
       {cards.map((sc) => (
         <section className="card snapcard" key={sc.title}>
           <div className="snap-ct">{sc.title}</div>
@@ -286,6 +290,65 @@ function ProfileTab({
         on Update Clinicals, which writes the Medical Records status with them.
       </p>
     </>
+  );
+}
+
+/**
+ * Brandon's **Contacts** block — patient vs caregiver, and the number we last
+ * reached them on (§5.46e). Six facts, his six, in his order.
+ *
+ * ⚠️ **Rendered whether or not anything is filled in**, like the overview strip
+ * above it: these columns are new and populated for a handful of patients
+ * today (2 alternate phones and 7 caregiver names across 875 rows, measured
+ * 2026-09-22), and a card that disappears when empty teaches a rep the block
+ * does not exist rather than that nobody has answered. A blank is an em dash.
+ *
+ * ⚠️ **Caregiver authorized shows "Yes" or an em dash, never "No".** It is a
+ * Monday checkbox, which has two states and not three, so an unticked box means
+ * nobody has recorded a HIPAA authorisation — not that one was refused.
+ * Brandon's own `yn()` renders a blank the same way, and it is the safe
+ * direction: nothing here can claim an authorisation that was never given.
+ *
+ * ⚠️ Read-only, like every other card on this tab. These columns are written on
+ * the Welcome Call stage page (§5.31d), which has the rules that go with them —
+ * clearing Can Text when a number changes, the consent audit line on the
+ * off→on transition. A second editor here would be two writers for one column.
+ */
+function ContactsCard({ contacts }: { contacts: Contacts | null }) {
+  if (!contacts) return null;
+  const rows: { k: string; v: string }[] = [
+    { k: "Primary contact", v: contacts.primaryContact },
+    { k: "Alternate contact", v: contacts.alternateContact },
+    { k: "Caregiver name", v: contacts.caregiverName },
+    { k: "Caregiver authorized", v: contacts.caregiverAuthorized ? "Yes" : "" },
+    { k: "Alternate phone", v: contacts.alternatePhone },
+    { k: "Last patient contact", v: contacts.lastPatientContact },
+  ];
+  return (
+    <section className="card snapcard">
+      <div className="snap-ct">Contacts</div>
+      <div className="rogrid">
+        {rows.map((r) => (
+          <div className="rof" key={r.k}>
+            <div className="k">{r.k}</div>
+            <div className="v">{r.v || "\u2014"}</div>
+          </div>
+        ))}
+      </div>
+      {/* ⚠️ Can Text lives in Brandon's Demographics block, not this one — but
+          that card is not built yet, and the fact governs whether the composer
+          in the right column works at all, so it is stated here rather than
+          nowhere. Move it when Demographics lands. */}
+      <p className="xs muted" style={{ margin: "8px 12px 12px" }}>
+        Can text:{" "}
+        {contacts.canText === "yes"
+          ? "Yes"
+          : contacts.canText === "no"
+            ? "No — texting is blocked in the column on the right"
+            : "not answered"}
+        . Edited on the Welcome Call stage page.
+      </p>
+    </section>
   );
 }
 

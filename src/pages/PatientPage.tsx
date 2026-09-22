@@ -65,6 +65,7 @@ import {
   type PatientSide,
 } from "@/lib/patient/patientScreen";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
+import { contactsFor } from "@/lib/patient/contacts";
 import { SubscriptionView, parseSubTab } from "@/components/patient/SubscriptionView";
 import "./patient/redesign.css";
 
@@ -141,6 +142,14 @@ export default function PatientPage() {
   const subItem = subscriptionItem(dossier);
   const subTab = parseSubTab(params.get(SUB_PARAM));
   const facts = topBarFacts(dossier);
+
+  /** Who we reach and on which number (§5.46e) — the live record's block, or
+   *  any record that carries one. Costs no read: the columns ride the dossier
+   *  the screen already holds. */
+  const contacts = useMemo(
+    () => (dossier ? contactsFor(dossier.items, dossier.active?.itemId) : null),
+    [dossier],
+  );
 
   /** What an outbound text is attributed to. Null when there is no live record —
    *  deliberately, because a text filed against a finished item is a note in the
@@ -271,12 +280,17 @@ export default function PatientPage() {
             )}
           </div>
 
+          {/* ⚠️ Keyed on the record, so the alternate-number switch inside it
+              cannot follow a patient change and point the composer at the
+              PREVIOUS patient's caregiver — §9's notes-box rule. */}
           <PatientCommsColumn
+            key={active?.itemId ?? itemId}
             phone={phone}
             patient={threadPatient}
             side={side}
             onSide={(s: PatientSide) => setParam({ [SIDE_PARAM]: s })}
             active={active}
+            contacts={contacts}
             onNoteAppended={(notes) => active && setNoteEdit({ itemId: active.itemId, notes })}
           />
         </div>
