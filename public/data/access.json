@@ -139,7 +139,9 @@
       "roles": [
         "welcomeCall"
       ],
-      "roleFilters": {}
+      "roleFilters": {
+        "welcomeCall": "crossSell"
+      }
     }
   },
   "callAnswerers": [
