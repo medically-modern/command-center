@@ -30,35 +30,51 @@ which board they land on.
 
 Host board: **Profile Send Off `18406352652`**.
 
-✅ **THE DRAFT EXISTS AND ITS THREE STEPS ARE BUILT — workflow object
-`18432285040`, draft `16231685`**, created 2026-09-22 through the workflow
-expert. Open it at
-`https://medicallymodern-force.monday.com/custom_objects/18432285040`.
-`validate_workflow` returns **zero issues**.
+✅ **BUILT BY JOSH IN THE UI AS AUTOMATION `7923595946` ("Cash Pay"), AND IT IS
+ACTIVE.** Audited 2026-09-22. Structure is correct on every point: trigger on
+Move to Onboarding `color_mm1zmeb3` label **6**, create item on Welcome Call
+`18410804557` group `group_mm1wvq8p` with the name from the trigger item, then
+move the trigger item to Profile Send Off `group_mm1y57sz` (Completed).
+**31 of the 38 required column mappings are correct and live.**
 
-⚠️⚠️ **DO NOT PUBLISH IT YET, AND THE CLEAN VALIDATION IS EXACTLY WHY.** The
-three steps are right; **not one of the 38 column mappings is set**, and monday
-does not count a missing mapping as a validation issue. Published as it stands
-it would create a Welcome Call item carrying **only the patient's name** — no
-phone, no insurance, no doctor — and move the Profile Send Off item to
-Completed, i.e. a patient out of the pipeline and into a stage with nothing to
-work. That is the "a partial automation is worse than none" hazard, arriving
-with a green tick on it. Fill the mapping grid first (below), then publish.
+⚠️⚠️ **IT WAS DUPLICATED FROM 7917676280, AND 23 OF ITS 54 MAPPINGS STILL POINT
+AT *MEDICAL EVALUATION* COLUMN IDS.** Changing the create-item block's board
+does not repoint the mappings — they are keyed by the destination board's
+column ids — and monday flags none of this. Seven of the 38 required fields are
+therefore mapped to a column that does not exist on Welcome Call, so they land
+**blank** while the row looks filled in:
 
-⚠️ **The mappings are the one part no API can do**, so they are a UI job and
-always will be until monday changes something. Checked every route on
-2026-09-22:
-- `create_automation` times out on the 60-second MCP ceiling — on the full
-  38-column payload AND on a bare three-block skeleton with no mappings at all.
-  Each attempt left the board verifiably unchanged.
-- `invoke_workflow_expert` **can** create and configure the steps (it built this
-  draft) but its "Create item in board" block exposes only four fields —
-  `boardId`, `groupId`, `itemName` and an `item` field whose cross-board
-  behaviour is undocumented and which validates as a type mismatch when bound.
-  There are no per-column `item.<columnId>` fields for it to set.
-- monday's public GraphQL API has **no automation-authoring mutation of any
-  kind** — the only one in the whole write schema is `delete_board_automation`.
-  So a raw API call cannot do it either, with any token.
+| Missing on Welcome Call | Its dead twin points at (a Medical Evaluation id) |
+|---|---|
+| CGM Coverage Path `color_mm2wsam4` | `color_mm1w7e5q` |
+| Insulin Pump Coverage Path `color_mm2xtn41` | `color_mm1w5xn1` |
+| Referral? `color_mm521sez` | `color_mm52pa3r` |
+| Stedi Home Plan `dropdown_mm5ett1r` | `dropdown_mm5es2yz` |
+| Stedi Coinsurance % `text_mm391jq8` | `text_mm1xssyw` |
+| Stedi Plan Begin Date `text_mm3gdksx` | `text_mm1xsa9` |
+| Profile Send-Off Notes `text_mm6vvsjy` | `text_mm3xdze1` |
+
+The other 16 dead rows are columns that do not reach Welcome Call by any route
+anyway (the Stedi readouts, Clinical Files, Run Stedi Eligibility, Prescriber
+Requirements) — see *Deliberately NOT mapped*. Nothing is lost by deleting them.
+
+⚠️ **Delete all 23 dead rows, not just the seven.** They cannot write anything,
+but a create-item mutation carrying column ids the destination board does not
+have may be refused outright, which would fail the whole step and create no item
+at all — a silent total failure rather than seven blank fields. Deleting them
+costs nothing either way.
+
+⚠️ **It is ACTIVE while incomplete.** Nothing writes label 6 today
+(`CASH_PAY_SKIPS_TO_WELCOME_CALL` is false), so only a human setting "Advance to
+Welcome Call" by hand can fire it — but that is one click away on a live board.
+
+⚠️ **My own draft `18432285040` is redundant and should be deleted** — it was
+the three empty steps, built before 7923595946 was found.
+
+⚠️ **Do not "simplify" this by routing cash pay through Medical Evaluation and
+Insurance on auto-advance.** It would need no mappings at all and it is the
+wrong answer: Corey's handoff is that a cash pay patient touches neither board
+(no MN to document, no auth to chase), and Josh reaffirmed it 2026-09-22.
 
 All three verified against the live boards, 2026-09-22.
 
