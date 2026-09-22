@@ -22,7 +22,7 @@
  * argument). The quote above them is live regardless, which is the half that
  * actually unblocked Debbie Hinze.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, Banknote, Check, Copy, ExternalLink, Link2, Loader2, Receipt, Send, ShieldCheck,
@@ -40,8 +40,19 @@ import {
   cashPayHeadline, cashPayLinkStep, generateRefusal, money, NOT_WIRED, quoteDrift, sendRefusal,
 } from "@/lib/orders/cashPayLink";
 import { cashPayReleaseRefusal, isCashPayOrder } from "@/lib/orders/cashPayGate";
-import { releaseCashPayOrder } from "@/lib/orders/mondayWrite";
+import { generateCashPayLink, releaseCashPayOrder, sendCashPayLink } from "@/lib/orders/mondayWrite";
+import { readCashPayState } from "@/lib/orders/mondayApi";
 import { SectionTitle } from "./Field";
+
+/** How long to watch for the payment service's answer, and how often.
+ *  ⚠️ The mint happens in another service, so the card would otherwise sit
+ *  unchanged until the 60-second board poll — which reads as the button not
+ *  working and invites a second press. */
+const WATCH_EVERY_MS = 3000;
+const WATCH_TRIES = 15;
+
+/** Where a press has got to. `quiet` is "no answer yet", never "it failed". */
+type Phase = "idle" | "working" | "waiting" | "quiet";
 
 export function CashPayCard({
   order, skuRows, onChanged,
@@ -57,6 +68,10 @@ export function CashPayCard({
   const [releasing, setReleasing] = useState(false);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+  /* What the watcher last read, which is fresher than the 60s board poll. */
+  const [live, setLive] = useState<{ link: string; action: string } | null>(null);
+  const watch = useRef<{ cancelled: boolean } | null>(null);
 
   /* A typed reason must never survive a change of order (§9's notes-box rule):
      it is stamped into THAT order's notes, and this card is keyed on the id by
@@ -65,9 +80,22 @@ export function CashPayCard({
   const forId = useRef(order.id);
   if (forId.current !== order.id) {
     forId.current = order.id;
+    /* ⚠️ The watcher is bound to the order that was open when the press was
+       made, so one surviving a switch would paint the PREVIOUS order's link
+       onto this card — §5.5's `useDeliveryRecheck` rule, with a payment on it. */
+    if (watch.current) watch.current.cancelled = true;
     setReason("");
     setReleasing(false);
+    setPhase("idle");
+    setLive(null);
   }
+
+  useEffect(() => () => { if (watch.current) watch.current.cancelled = true; }, []);
+
+  /* Derived above the handlers because they read them. The tracker not having
+     loaded yet is a real state: say so rather than pricing at nothing. */
+  const quote = skuRows ? cashPayQuote(order, skuRows) : null;
+  const wired = CASH_PAY_LINK_FROM_COMMAND_CENTER;
 
   /* ⚠️ Attached to BOTH presses even though they are disabled while the flow
      is dark. Flipping `CASH_PAY_LINK_FROM_COMMAND_CENTER` before the endpoint
@@ -77,6 +105,62 @@ export function CashPayCard({
   const notBuilt = useCallback(() => {
     toast.error("Payment links aren't built yet", { description: NOT_WIRED });
   }, []);
+
+  /** Poll for the payment service's answer: a link, or "Link failed". */
+  const watchForLink = useCallback(async () => {
+    const token = { cancelled: false };
+    if (watch.current) watch.current.cancelled = true;
+    watch.current = token;
+    setPhase("waiting");
+
+    for (let i = 0; i < WATCH_TRIES; i++) {
+      await new Promise((r) => setTimeout(r, WATCH_EVERY_MS));
+      if (token.cancelled) return;
+      try {
+        const now = await readCashPayState(order.id);
+        if (token.cancelled) return;
+        if (now.link.trim() || now.action.trim() === "Link failed") {
+          setLive(now);
+          setPhase("idle");
+          onChanged?.();
+          return;
+        }
+      } catch {
+        /* A failed read is not an answer — keep watching. */
+      }
+    }
+    /* ⚠️ Running out is NOT a failure. The mint may still be in flight, and
+       telling a rep it failed would have them press again and risk a second
+       link — §5.35's rule for the substitution watcher, for the same reason. */
+    if (!token.cancelled) setPhase("quiet");
+  }, [order.id, onChanged]);
+
+  const generate = useCallback(async () => {
+    if (!wired) return notBuilt();
+    if (!quote || quote.refusal) return;
+    setPhase("working");
+    try {
+      await generateCashPayLink(order.id, quote.total);
+      void watchForLink();
+    } catch (e) {
+      setPhase("idle");
+      toast.error(e instanceof Error ? e.message : "Could not generate the link");
+    }
+  }, [order.id, wired, quote, notBuilt, watchForLink]);
+
+  const send = useCallback(async () => {
+    if (!wired) return notBuilt();
+    setPhase("working");
+    try {
+      await sendCashPayLink(order.id);
+      toast.success("Sending the link", { description: "The board texts it from the MM number." });
+      onChanged?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not send the link");
+    } finally {
+      setPhase("idle");
+    }
+  }, [order.id, wired, notBuilt, onChanged]);
 
   const release = useCallback(async () => {
     setSaving(true);
@@ -95,14 +179,19 @@ export function CashPayCard({
 
   if (!isCashPayOrder(order)) return null;
 
-  // The tracker has not loaded yet: say so rather than pricing at nothing.
-  const quote = skuRows ? cashPayQuote(order, skuRows) : null;
-  const step = cashPayLinkStep(order);
-  const wired = CASH_PAY_LINK_FROM_COMMAND_CENTER;
-  const genRefusal = generateRefusal(order, { quoteRefusal: quote?.refusal ?? "", wired });
-  const sndRefusal = sendRefusal(order, { wired });
-  const drift = quote && !quote.refusal ? quoteDrift(order, quote.total) : "";
+  /* ⚠️ What the watcher read wins over the 60-second poll's copy, so a minted
+     link appears the moment the payment service writes it. Everything below
+     reads `shown`, not `order`: the heading, the buttons and the refusals must
+     not disagree about whether a link exists. */
+  const shown = live ? { ...order, cashPayLink: live.link } : order;
+  const failed = (live?.action ?? "").trim() === "Link failed";
+
+  const step = cashPayLinkStep(shown);
+  const genRefusal = generateRefusal(shown, { quoteRefusal: quote?.refusal ?? "", wired });
+  const sndRefusal = sendRefusal(shown, { wired });
+  const drift = quote && !quote.refusal ? quoteDrift(shown, quote.total) : "";
   const releaseRefusal = cashPayReleaseRefusal(order, { isManager, reason });
+  const busy = phase === "working" || phase === "waiting";
 
   const tone =
     step === "paid" ? "emerald"
@@ -133,7 +222,7 @@ export function CashPayCard({
       >
         <span className="inline-flex items-center gap-1.5">
           {step === "paid" ? <Check className="h-4 w-4" /> : step === "released" ? <ShieldCheck className="h-4 w-4" /> : null}
-          {cashPayHeadline(order)}
+          {cashPayHeadline(shown)}
         </span>
       </div>
 
@@ -207,17 +296,17 @@ export function CashPayCard({
       )}
 
       {/* ── The link ──────────────────────────────────────────────────── */}
-      {order.cashPayLink && (
+      {shown.cashPayLink && (
         <div className="mt-3 rounded-lg border bg-muted/30 px-3 py-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Payment link</p>
           <div className="mt-0.5 flex items-center gap-2">
             <a
-              href={order.cashPayLink}
+              href={shown.cashPayLink}
               target="_blank"
               rel="noreferrer"
               className="text-xs font-mono text-primary hover:underline break-all min-w-0"
             >
-              {order.cashPayLink}
+              {shown.cashPayLink}
             </a>
             <Button
               size="icon"
@@ -227,14 +316,14 @@ export function CashPayCard({
               onClick={() => {
                 // A clipboard refusal (insecure origin, permissions policy) must
                 // SAY so — §5.31f's rule; silently doing nothing reads as broken.
-                navigator.clipboard?.writeText(order.cashPayLink)
+                navigator.clipboard?.writeText(shown.cashPayLink)
                   .then(() => toast.success("Payment link copied"))
                   .catch(() => toast.error("Couldn't copy — select the link and copy it by hand"));
               }}
             >
               <Copy className="h-3.5 w-3.5" />
             </Button>
-            <a href={order.cashPayLink} target="_blank" rel="noreferrer" className="shrink-0" title="Open the payment page">
+            <a href={shown.cashPayLink} target="_blank" rel="noreferrer" className="shrink-0" title="Open the payment page">
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
             </a>
           </div>
@@ -251,19 +340,28 @@ export function CashPayCard({
       {step !== "paid" && step !== "released" && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {step === "generate" ? (
-            <Button disabled={!!genRefusal} className="gap-2" onClick={notBuilt}>
-              <Link2 className="h-4 w-4" /> Generate cash pay link
+            <Button disabled={!!genRefusal || busy} className="gap-2" onClick={() => void generate()}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+              Generate cash pay link
             </Button>
           ) : (
-            <Button disabled={!!sndRefusal} className="gap-2" onClick={notBuilt}>
-              <Send className="h-4 w-4" />
+            <Button disabled={!!sndRefusal || busy} className="gap-2" onClick={() => void send()}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {step === "awaitingPayment" ? "Re-send to patient" : "Send to patient"}
             </Button>
           )}
           <p className="text-xs text-muted-foreground min-w-0 flex-1">
-            {step === "generate"
-              ? genRefusal || `Mints a Stripe checkout for ${quote ? money(quote.total) : "this order"}. Nothing is sent to the patient yet.`
-              : sndRefusal || `Texts the link to ${fmtPhone(order.phone)}.`}
+            {/* ⚠️ The phase outranks the refusal while a press is in flight: a
+                rep watching "Mints a Stripe checkout…" under a spinner cannot
+                tell whether anything is happening, and that is the press they
+                make twice. */}
+            {phase === "working" ? "Writing it to the board…"
+              : phase === "waiting" ? "Waiting for the payment service to mint the link…"
+                : phase === "quiet" ? "No answer yet — the link will appear here when the payment service writes it. Don't press again."
+                  : failed ? "The payment service couldn't mint the link — the board says \u201cLink failed\u201d. Check the order's amount and try again."
+                    : step === "generate"
+                      ? genRefusal || `Mints a Stripe payment link for ${quote ? money(quote.total) : "this order"}. Nothing is sent to the patient yet.`
+                      : sndRefusal || `Texts the link to ${fmtPhone(order.phone)}.`}
           </p>
         </div>
       )}

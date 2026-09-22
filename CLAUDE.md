@@ -8507,13 +8507,46 @@ total is the job; the manager-only RELEASE inside it is a different question.
 ⚠️ **ONE number, itemisation folded away** — §5.35's say-it-once rule bites hard here, because
 `OrderLinesCard` directly above already names every product, family, SKU and quantity. What a rep
 needs mid-call is the total; "what's that made of?" is one click down.
-⚠️⚠️ **THE TWO PRESSES ARE DARK — `CASH_PAY_LINK_FROM_COMMAND_CENTER = false`** — because both reach
-outside this repo and neither destination exists: **Generate** needs `coins-form-payment`'s
-`POST /api/cash-pay/create-link` (mint the Stripe **Payment Link** — see the ⚠️⚠️ below on why not a
-Checkout Session — and write Cash Pay Link `text_mm7dzgzd` + Cash Pay Amount `numeric_mm7devxs`
-back), **Send** needs the order board's texting trigger column and automation. They render **INERT with the reason on screen, never hidden**
-(§5.39g). A `notBuilt` toast is wired to both anyway, so flipping the flag before the endpoint
-exists refuses loudly instead of being a button that does nothing.
+⚠️⚠️ **THE PRESSES GO THROUGH THE BOARD, NOT THROUGH AN API CALL** (Josh, 2026-09-21: *"do that
+route, it works perfectly fine dont mess it up"*) — coins' own mechanism, the one the coinsurance
+flow has used for a year, so **no browser ever holds a token**. Generate writes **Cash Pay Amount**
+`numeric_mm7devxs` and then flips **Cash Pay Action** `color_mm7e3rxj` → *Generate link*; a board
+automation turns that into a webhook to `coins-form-payment`, which mints the Stripe **Payment
+Link** (see the ⚠️⚠️ below on why not a Checkout Session) and writes **Cash Pay Link**
+`text_mm7dzgzd` back. Send flips the same column → *Send to patient*, and a second board automation
+texts it and stamps **Cash Pay Link Sent**.
+⚠️ **Cash Pay Action's label ids are 0 (`Generate link`) · 3 (`Send to patient`) · 2 (`Link
+failed`)** — read back from the live `settings_str` the day the column was created, because monday
+derives a new label's id from its COLOUR, never from the index asked for. Seventh column this
+applies to (§5.12 · §5.20 · §5.31c · §5.31d · §5.33 · §5.36).
+⚠️ **Generate is a VERIFIED write with the action as `stageColumnId`** (§5.2): monday returns 200 on
+the amount before it is indexed, and the webhook reads that very cell the instant the automation
+fires, so an unverified pair mints for the PREVIOUS amount or for a blank.
+⚠️ **Both presses CLEAR the trigger first when it already holds a value**, the §5.35 rule: a status
+write onto its own value is taken at 200, fires nothing and records no activity, so a chase — or a
+retry after a *Link failed* — would be a silent no-op under a green toast.
+⚠️ **Generate refuses an order that already has a link rather than re-pricing it.** Once a link
+exists its amount IS the price; writing a new amount beside an unchanged link would leave the board
+stating a figure Stripe will not charge. Replacing one is deliberate and visible — clear the Cash
+Pay Link cell on the board — and the refusal says so.
+⚠️ **The card WATCHES for the answer** (3s × 15) rather than waiting on the 60-second board poll:
+the mint happens in another service, so an unchanged card reads as the button not working and
+invites a second press. Running out is reported as *no answer yet*, **never** as a failure —
+§5.35's rule for the substitution watcher, for the same reason. The watcher is cancelled on a
+change of order, or it paints the previous order's link onto this card.
+⚠️⚠️ **THE STRIPE PAGE SHOWS ONE LINE, and that is the whole cost of this route.** A monday webhook
+carries an item id and a status label — no line items — so the only price the service can see is the
+one number on the row. Rebuilding the products into lines over there would be a second copy of the
+pricing rule in a second repo, whose drift is a patient charged an amount no screen ever showed. The
+total is identical; the itemisation lives on the card the rep reads from. A departure from handoff
+item 5, **Josh's to accept or reject**: `POST /api/cash-pay/create-link` still exists, is tested and
+takes the itemised lines, but needs the SPA to call it with a service token — the shape he declined.
+⚠️⚠️ **STILL DARK — `CASH_PAY_LINK_FROM_COMMAND_CENTER = false`**, because the two board automations
+do not exist yet and `CASH_PAY_WEBHOOK_SECRET` is not set on the coins service (unset disables the
+route, 503). The presses render **INERT with the reason on screen, never hidden** (§5.39g), and both
+handlers open with `if (!wired) return notBuilt()`, so flipping the flag early refuses loudly rather
+than writing a status nothing listens to. **`scripts/cash-pay/PAYMENT_LINK.md` is the four-step
+runbook** — one Railway variable and two automations, then I flip it.
 ⚠️ **What does NOT wait is the QUOTE** — the card prices the order today, so a rep on the phone can
 read the patient their number and take payment the way they do now. That is the half that actually
 unblocked Debbie, and it is why the flag gates the presses rather than the card.
@@ -8568,15 +8601,23 @@ free (handoff item 5).
   ⚠️ Deactivating the link once paid is `active: false`, not a delete — a dead link that explains
   itself (`inactive_message`) beats a 404 for a patient who taps an old text.
 
+✅ **The webhook half landed 2026-09-22** — `POST /webhook/monday/cash-pay` on the coins service
+(that repo's CLAUDE.md §8), plus `generateCashPayLink` / `sendCashPayLink` in
+`lib/orders/mondayWrite.ts` and the two presses wired. Everything above describes what is built.
+
 **Still outstanding, each for its own reason:**
-- **The SPA calling the route.** The route exists (above); `CashPayCard`'s two presses are still
-  the `notBuilt` toast and nothing in this repo calls it. Wiring it is: POST
+- **The two board automations and the secret** — `scripts/cash-pay/PAYMENT_LINK.md`. Josh's, because
+  monday's automation builder is a UI and the secret is his to generate. ⚠️ The text automation must
+  also stamp **Cash Pay Link Sent** `date_mm7d7wxe`, or the card sits on *Link ready* for ever and a
+  rep keeps re-sending. The wording is `cashPayText()` in `coins-form-payment`, exported unused so it
+  has one home.
+- **The 15-day reminder loop** — the order board's job, deliberately (a date-arrival automation, the
+  shape §5.36's MR ladder uses).
+- **The itemised route.** `POST /api/cash-pay/create-link` is correct, tested, and takes the three
+  product lines; nothing in this repo calls it. Wiring it would be POST
   `{ itemId, lines: cashPayLineItems(quote), totalCents: cashPayTotalCents(quote) }` with a
   `Bearer CASH_PAY_SERVICE_TOKEN`. ⚠️ **`cashPayTotalCents`, never `Math.round(quote.total * 100)`**
   — the service refuses a total its lines do not add up to, and those two can differ by a cent.
-- **The board's texting automation** for the second press, and the **15-day reminder loop** — both
-  the order board's job, deliberately (a date-arrival automation, the shape §5.36's MR ladder
-  uses). The wording is `cashPayText()` in `coins-form-payment`, exported unused so it has one home.
 - **A branded cash-pay page.** The patient lands on Stripe's own hosted confirmation today, which
   is why `after_completion` sets a custom message rather than redirecting to a page that does not
   exist.
@@ -9703,7 +9744,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A cash pay patient can't be advanced from Intake / is asked for insurance they don't have | §5.48 — `lib/profile/cashPayIntake.ts`. Picking **General Insurance = Cash Pay** hides section 1 and drops the insurance readiness rows; **section 3 (the doctor) is still required** on Josh's call, because Cardinal's payload needs it. Still blocked ⇒ check the mirror actually ran: Primary Insurance is what travels, and on the intake page it also has to reach the `verified` state, which is what Advance writes |
 | A cash pay patient reads as insured on Welcome Call or the Order board | §5.48 — those boards have **no General Insurance column**, so Primary Insurance is the only marker there and the intake mirror (`cashPayMirrorEdit`) is what puts it on the row. A patient whose Primary was never mirrored is indistinguishable from an insured one, with nothing erroring |
 | "What does this cash pay patient owe?" / the total looks wrong by a cent | §5.48 — `lib/orders/cashPayPricing.ts`: tracker cost x qty, x1.25 **rounded per line**, plus a $10 shipping line under $10 of markup. The Debbie Hinze test ($1,030.69) is the anchor — if it stops matching, the rule has drifted from a price a patient agreed to. ⚠️ `round2` goes through `toPrecision(12)`; a naive `Math.round(n*100)` loses a cent on her infusion-set line. A REFUSAL rather than a total means a line has no tracker cost, and quoting short is the one thing it must not do |
-| The cash pay Generate / Send buttons do nothing | §5.48 — they are inert behind `orders/config.CASH_PAY_LINK_FROM_COMMAND_CENTER`, with the reason on screen: both halves live in `coins-form-payment` and neither is built. The QUOTE above them is live regardless. Flipping the flag before the endpoint exists gets a loud refusal, not a silent no-op |
+| The cash pay Generate / Send buttons do nothing | §5.48 — they are inert behind `orders/config.CASH_PAY_LINK_FROM_COMMAND_CENTER`, with the reason on screen. The code on both sides is built; what is missing is the two board automations and `CASH_PAY_WEBHOOK_SECRET` (`scripts/cash-pay/PAYMENT_LINK.md`). The QUOTE above them is live regardless |
+| Generate was pressed and no link appeared | §5.48 — read **Cash Pay Action** on the row. *Link failed* means the payment service refused (its reason is in `coins-form-payment`'s Railway log); still reading *Generate link* means the automation never fired or the webhook was refused — check Railway's HTTP log for `/webhook/monday/cash-pay`, where a **401** is the secret and a **503** is the variable being unset. Cleared, with a link, is success. ⚠️ The card says *no answer yet* rather than *failed* when its 45-second watch runs out — the mint may still be in flight, and pressing again risks a second link |
 | An unpaid cash pay order won't go to Cardinal / a paid one is refused | §5.48 — `lib/orders/cashPayGate.ts` reads the **payment columns**, never the `Paid Cash` label (Debbie's delivered order sits at that label). A finished order is refused by its **CAH Order Number**, which is positive evidence. The way through is a **manager** release with a typed reason, stamped into the order's notes |
 | A new ICD-10 code won't save / an Evaluate send times out on verify | §5.46 — Diagnosis is a **dropdown** since 2026-09-21 (`lib/shared/diagnosisCell.ts`). monday status columns cap at **39 labels / id 160** and all three Diagnosis columns were full, so `create_labels_if_missing` was dropped at HTTP 200 with no error. If it recurs, check the write shape is `{labels:[code]}` and the COL map points at the `dropdown_` id — `diagnosisColumnIds.test.ts` scans `src/` for retired ids. ⚠️ A blank Diagnosis downstream usually means the **hop automation** still copies the retired status column: re-run `scripts/diagnosis-migration/migrateDiagnosis.mjs --apply` |
 | A payer is $0 on one screen and charged on another | §5.37 — `src/lib/shared/payerPolicy.json` is canonical; `node scripts/check-payer-policy.mjs` names every copy that disagrees. A DECLARED deviation is a difference somebody has signed off; profile's CGM-monitor exclusion is the only one. A drift line right after a push to another repo may be the raw CDN being ~5 min stale — re-run with `GITHUB_TOKEN` set. The **Python** copy is in another org and is checked by nobody |

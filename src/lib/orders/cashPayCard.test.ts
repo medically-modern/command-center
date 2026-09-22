@@ -145,7 +145,83 @@ describe("the cash pay link switch, and how the card is mounted", () => {
   });
 
   it("⚠️ a press enabled with no endpoint refuses LOUDLY, never silently", () => {
+    /* The presses call real handlers now, so the guard moved INSIDE them:
+       every one opens by checking the switch and falling back to the loud
+       refusal. Flipping the flag before the board automation exists would
+       otherwise enable a button that does nothing at all — the silent no-op
+       class §9 records costing five days of a rep re-pressing Advance. */
     expect(card).toMatch(/notBuilt/);
-    expect(card).toMatch(/onClick=\{notBuilt\}/);
+    const guards = card.match(/if \(!wired\) return notBuilt\(\);/g) ?? [];
+    expect(guards.length).toBe(2);
+  });
+
+  it("⚠️ both presses are wired to a handler, not to a toast", () => {
+    expect(card).toMatch(/onClick=\{\(\) => void generate\(\)\}/);
+    expect(card).toMatch(/onClick=\{\(\) => void send\(\)\}/);
+  });
+
+  it("⚠️ the watcher is cancelled when the order changes", () => {
+    /* It is bound to the order that was open when the press was made, so one
+       surviving a sidebar click paints the PREVIOUS order's link onto this
+       card — §5.5's `useDeliveryRecheck` rule, with a payment on it. */
+    const at = card.indexOf("if (forId.current !== order.id)");
+    expect(at).toBeGreaterThan(-1);
+    expect(card.slice(at, at + 500)).toMatch(/watch\.current\.cancelled = true/);
+  });
+});
+
+/**
+ * The two writers. Source scans again: every one of these fails silently on a
+ * board that answers 200 to a write it then discards.
+ */
+describe("⚠️ the board is the trigger, and what that costs", () => {
+  const write = readFileSync("src/lib/orders/mondayWrite.ts", "utf8");
+  const api = readFileSync("src/lib/orders/mondayApi.ts", "utf8");
+
+  it("Generate is a VERIFIED write with the action column held back", () => {
+    /* Monday returns 200 on the amount before it is indexed, and the webhook
+       reads that very cell the instant the automation fires (§5.2). */
+    const at = write.indexOf("export async function generateCashPayLink");
+    expect(at).toBeGreaterThan(-1);
+    const body = write.slice(at, write.indexOf("export async function sendCashPayLink"));
+    expect(body).toMatch(/executeWritesWithVerification/);
+    expect(body).toMatch(/stageColumnId: COL\.cashPayAction/);
+    expect(body).toMatch(/expectedText: amount/);
+  });
+
+  it("⚠️ it refuses an order that already has a link, rather than re-pricing it", () => {
+    /* Once a link exists its amount IS the price: writing a new amount beside
+       an unchanged link leaves the board stating a figure Stripe will not
+       charge. Replacing one is a deliberate, visible act. */
+    const at = write.indexOf("export async function generateCashPayLink");
+    const body = write.slice(at, write.indexOf("export async function sendCashPayLink"));
+    expect(body).toMatch(/readColumnText\(itemId, COL\.cashPayLink\)/);
+    expect(body).toMatch(/already has a payment link/);
+  });
+
+  it("⚠️ both presses CLEAR the trigger when it already holds a value", () => {
+    /* Monday takes a status write onto its own value at 200, fires nothing and
+       records no activity (§9) — so a chase, or a retry after a failure, would
+       be a silent no-op with a green toast on top. */
+    const clears = write.match(/if \(action\.trim\(\)\) await clearStatus\(itemId, COL\.cashPayAction\);/g) ?? [];
+    expect(clears.length).toBe(2);
+  });
+
+  it("⚠️ the label ids are the ones monday assigned, not the ones asked for", () => {
+    /* Read back from the live `settings_str` on 2026-09-22 — monday derives a
+       new label's id from its COLOUR, which is why these are 0 / 3 / 2. A
+       write to an id the column does not have is dropped at 200. */
+    expect(api).toMatch(/cashPayAction: "color_mm7e3rxj"/);
+    const at = api.indexOf("export const CASH_PAY_ACTION_INDEX");
+    const body = api.slice(at, at + 200);
+    expect(body).toMatch(/generate: 0/);
+    expect(body).toMatch(/send: 3/);
+    expect(body).toMatch(/failed: 2/);
+  });
+
+  it("⚠️ nothing in the app writes “Link failed” — that is the service's word", () => {
+    /* It is how a refused mint reaches a rep at all; the app writing it would
+       be the app reporting on a service it never heard from. */
+    expect(write).not.toMatch(/CASH_PAY_ACTION_INDEX\.failed/);
   });
 });

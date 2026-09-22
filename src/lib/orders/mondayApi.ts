@@ -71,6 +71,25 @@ export const GROUP_TITLES: Record<string, string> = {
  * Index, never text, for the one write this slice can make: a write to a label
  * id the column does not have is dropped at HTTP 200 (§5.12/§5.20/§5.31c).
  */
+/**
+ * Cash Pay Action's label ids.
+ *
+ * ⚠️ **READ BACK FROM THE LIVE `settings_str` the day the column was created**
+ * (2026-09-22) — monday derives a new label's id from its COLOUR, never from
+ * the index asked for, which is why these are 0 / 3 / 2 and not 0 / 1 / 2. A
+ * write to an id the column does not have is accepted at HTTP 200 and dropped
+ * with nothing in the logs (§5.12 · §5.20 · §5.31c · §5.31d · §5.33 · §5.36),
+ * and here that failure reads as "Generate did nothing".
+ *
+ * ⚠️ `failed` is written by the PAYMENT SERVICE, never by this app — it is how
+ * a refused mint reaches a rep at all.
+ */
+export const CASH_PAY_ACTION_INDEX = {
+  generate: 0,  // "Generate link"
+  send: 3,      // "Send to patient"
+  failed: 2,    // "Link failed"
+} as const;
+
 export const ORDER_STATUS_INDEX = {
   order: 0,
   ordered: 1,
@@ -171,6 +190,12 @@ export const COL = {
   cashPayLinkSent: "date_mm7d7wxe",      // Cash Pay Link Sent
   cashPayPaidDate: "date_mm7dejzt",      // Cash Pay Paid Date
   stripeChargeId: "text_mm7dkma5",       // Stripe Charge ID
+  /* The trigger, created 2026-09-22. The app writes Cash Pay Amount and then
+     flips THIS; a board automation turns it into a webhook to
+     coins-form-payment, which mints the link and writes it back. The board is
+     the trigger, exactly as the coinsurance flow works — no browser ever holds
+     a token (§5.48). */
+  cashPayAction: "color_mm7e3rxj",       // Cash Pay Action
   poNumber: "text_mm3zf5ev",             // PO Number (MM-<item>-<yyyymmdd>)
   lastCardinalSync: "text_mm481jys",     // Last Cardinal Sync (ET stamp)
   apiMessage: "text_mm3zcde7",           // API Message (Cardinal's sentence)
@@ -509,6 +534,64 @@ export async function readSubstitutionState(
     substitute: byId.get(COL.substituteInfusionSet) ?? "",
     status: byId.get(COL.substitutionStatus) ?? "",
     notes: byId.get(COL.notes) ?? "",
+  };
+}
+
+/**
+ * Read several columns' `text` off one order — the adapter
+ * `executeWritesWithVerification` takes as `readColumns` (§5.2).
+ */
+export async function readColumnTexts(
+  itemId: string,
+  columnIds: string[],
+): Promise<{ id: string; text: string | null }[]> {
+  const data = await gql<{ items: { column_values: { id: string; text: string | null }[] }[] }>(
+    `query ($ids: [ID!]!, $cols: [String!]) {
+       items(ids: $ids) { column_values(ids: $cols) { id text } }
+     }`,
+    { ids: [itemId], cols: columnIds },
+  );
+  return data.items?.[0]?.column_values ?? [];
+}
+
+/**
+ * Write a numbers column.
+ *
+ * ⚠️ Takes `number | ""` rather than funnelling through `Number()`, because
+ * `Number("")` is **0** — a real quantity, written and reported as success
+ * (§5.31c). Blank and zero are different facts on these boards.
+ */
+export async function writeNumber(itemId: string, columnId: string, num: number | ""): Promise<void> {
+  await gql(
+    `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }`,
+    {
+      boardId: String(BOARD_ID),
+      itemId,
+      columnId,
+      value: num === "" ? JSON.stringify("") : JSON.stringify(String(num)),
+    },
+  );
+}
+
+/**
+ * The two cells the cash pay card watches after a press.
+ *
+ * ⚠️ Fresher than the 60-second board poll on purpose: the mint happens in
+ * another service, so without this a rep presses Generate and stares at an
+ * unchanged card for up to a minute — which reads as the button not working
+ * and invites a second press. The same job `readSubstitutionState` does one
+ * column over.
+ */
+export async function readCashPayState(
+  itemId: string,
+): Promise<{ link: string; action: string }> {
+  const cols = await readColumnTexts(itemId, [COL.cashPayLink, COL.cashPayAction]);
+  const byId = new Map(cols.map((c) => [c.id, c.text ?? ""]));
+  return {
+    link: byId.get(COL.cashPayLink) ?? "",
+    action: byId.get(COL.cashPayAction) ?? "",
   };
 }
 

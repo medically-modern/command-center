@@ -23,36 +23,37 @@ export const ORDERING_FROM_COMMAND_CENTER = false;
 /**
  * The cash pay link switch.
  *
- * The card's two presses — **Generate Cash Pay Link** and **Send to patient**
- * — reach outside this repo, and neither destination exists yet:
+ * ⚠️⚠️ **THE BOARD IS THE TRIGGER — nothing here calls Stripe or holds a token**
+ * (Josh, 2026-09-21: *"do that route, it works perfectly fine dont mess it
+ * up"*, choosing coins' own mechanism over an API call from the browser):
  *
- * 1. Generate calls `coins-form-payment`'s `POST /api/cash-pay/create-link`,
- *    which mints a **Stripe PAYMENT LINK** and writes Cash Pay Link + Cash Pay
- *    Amount back onto the order. ✅ **BUILT 2026-09-22** (that repo's
- *    `backend/src/cashPay/`, CLAUDE.md §8) — it takes
- *    `{ itemId, lines, totalCents }` where `lines` is `cashPayLineItems(quote)`
- *    verbatim, with a `Bearer CASH_PAY_SERVICE_TOKEN`, and is idempotent:
- *    an order that already has a link gets it back unless `regenerate: true`.
- *    ⚠️ It refuses a total its lines do not add up to, so the SPA must send
- *    `cashPayTotalCents(quote)` — summed from the line items — and never
- *    `Math.round(quote.total * 100)`, which can differ by a cent.
+ *   Generate  ─▶ Cash Pay Amount, verified, then Cash Pay Action "Generate
+ *                link" ─▶ board automation ─▶ webhook to coins-form-payment
+ *                ─▶ it mints a **Stripe PAYMENT LINK** and writes Cash Pay
+ *                Link back.
+ *   Send      ─▶ Cash Pay Action "Send to patient" ─▶ board automation texts
+ *                it from the RC number and stamps Cash Pay Link Sent.
  *
- *    ⚠️⚠️ **A PAYMENT LINK, NOT A CHECKOUT SESSION — verified against Stripe's
- *    API reference, 2026-09-22.** A Checkout Session's `expires_at` "can be
- *    anywhere from 30 minutes to 24 hours after Checkout Session creation. By
- *    default, this value is 24 hours" — so a session URL texted to a patient is
- *    dead by the next morning, and the 15-day reminder loop the handoff asks
- *    for would be chasing a link that cannot be paid. A Payment Link has no
- *    expiry at all (it has `active` + `inactive_message` instead), takes
- *    inline `line_items[].price_data`, and **copies its `metadata` onto every
- *    Checkout Session it creates** — which is what carries `itemId` and
- *    `service: "cash-pay"` through to `checkout.session.completed`.
- *    The existing pay-secondary flow uses a Checkout Session correctly: there
- *    the patient is already on the page when it is minted.
- * 2. Send fires the order board's texting trigger, which needs a column and an
- *    automation the board does not have. Still outstanding, and deliberately
- *    the board's job: the wording is `cashPayText()` in that repo, exported
- *    unused so it has one home.
+ * ⚠️⚠️ **A PAYMENT LINK, NOT A CHECKOUT SESSION — verified against Stripe's API
+ * reference, 2026-09-22.** A Checkout Session's `expires_at` "can be anywhere
+ * from 30 minutes to 24 hours after Checkout Session creation. By default, this
+ * value is 24 hours" — so a session URL texted to a patient is dead by the next
+ * morning, and the 15-day reminder loop the handoff asks for would be chasing a
+ * link that cannot be paid. A Payment Link has no expiry at all (`active` +
+ * `inactive_message` instead), takes inline `line_items[].price_data`, and
+ * **copies its `metadata` onto every Checkout Session it creates** — which is
+ * what carries `itemId` and `service: "cash-pay"` through to
+ * `checkout.session.completed`. The pay-secondary flow uses a Checkout Session
+ * correctly: there the patient is already on the page when it is minted.
+ *
+ * ⚠️ **The cost of the board route is the ITEMISATION.** A monday webhook
+ * carries an item id and a status label, so the only price that service can see
+ * is Cash Pay Amount — one number — and the Stripe page shows one line rather
+ * than the three products quoted. The total is identical; rebuilding the lines
+ * over there would be a second copy of the pricing rule in a second repo, whose
+ * drift is a patient charged an amount no screen ever showed. The itemised
+ * route (`POST /api/cash-pay/create-link`) is built and tested and is simply
+ * not what the board calls.
  *
  * ⚠️ So the buttons render INERT with the reason on screen rather than being
  * hidden — §5.39g's rule, and the one this codebase keeps having to reverse
@@ -61,12 +62,15 @@ export const ORDERING_FROM_COMMAND_CENTER = false;
  * does NOT wait is the quote: the card prices the order today, so a rep on the
  * phone can read the patient their number and take payment another way.
  *
- * `cashPayCard.test.ts` pins this at false. Flipping it needs THREE things,
- * not one: the SPA calling that route (nothing does yet — `CashPayCard`'s two
- * presses are still the `notBuilt` toast), `CASH_PAY_SERVICE_TOKEN` set on
- * both sides, and the board's texting automation for the second press. Flip it
- * only once all three are live, and re-read CLAUDE.md §5.48 first — the Generate press spends money's
- * worth of trust: it mints a session for an amount a patient is then charged,
- * and the quote is honoured from that moment (`cashPayPricing.ts`).
+ * `cashPayCard.test.ts` pins this at false. Flipping it needs THREE things that
+ * live outside this repo, all in `scripts/cash-pay/PAYMENT_LINK.md`:
+ * `CASH_PAY_WEBHOOK_SECRET` on the coins service (unset disables the route with
+ * a 503), the **mint** automation on Cash Pay Action → "Generate link", and the
+ * **text** automation on → "Send to patient" — which must also stamp Cash Pay
+ * Link Sent, or the card sits on "Link ready" for ever and a rep keeps
+ * re-sending. Flip it only once all three are live, and re-read CLAUDE.md §5.48
+ * first — the Generate press spends money's worth of trust: it mints a link for
+ * an amount a patient is then charged, and the quote is honoured from that
+ * moment (`cashPayPricing.ts`).
  */
 export const CASH_PAY_LINK_FROM_COMMAND_CENTER = false;
