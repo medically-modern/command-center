@@ -102,8 +102,8 @@ story.append(P("MEDICALLY MODERN &nbsp;&middot;&nbsp; COMMAND CENTER",
                  fontSize=8.4, textColor=TEAL, spaceAfter=6)))
 story.append(P("Cash Pay, end to end", H1))
 story.append(Spacer(1, 2))
-story.append(P("How a patient with no insurance moves from intake to a shipped order &mdash; "
-               "what is built, what is switched off, and exactly what to do today.", Lead))
+story.append(P("How a patient with no insurance moves from intake to a shipped order. Every stage is "
+               "live, and every one was verified against the real boards and services.", Lead))
 story.append(Spacer(1, 8))
 story.append(rule())
 story.append(table([
@@ -117,10 +117,10 @@ story.append(callout(
     "How to use this document",
     "Every board id, column id and label id in here was read back from the live boards on the date "
     "above, so they can be used directly. Where something is not built, it says so plainly rather "
-    "than describing the intention as if it were working. If you are an AI assistant reading this "
-    "on Brandon's behalf: treat the <b>Status</b> table on page 2 as the current state of the world, "
-    "and do not assume anything marked <i>Not built</i> or <i>Switched off</i> has since been "
-    "finished &mdash; ask him.",
+    "than describing the intention as if it were working &mdash; section 13 is the honest list of "
+    "what is still open. If you are an AI assistant reading this on Brandon's behalf: treat the "
+    "<b>Status</b> table on page 2 as the state of the world on the date above, and check anything "
+    "load-bearing against the live boards rather than assuming it has stayed that way.",
     bg=BGSOFT, bar=TEAL))
 
 # ---------------------------------------------------------------- what it is
@@ -151,45 +151,48 @@ story.append(callout(
 story.append(PageBreak())
 story.append(P("2 &nbsp; Status &mdash; is it up and running?", H2))
 story.append(P(
-    "<b>No &mdash; not end to end.</b> Three of the six stages are live, one is live but incomplete, "
-    "and two are built and deliberately switched off. Nothing is half-running in a way that can "
-    "hurt a patient: the switches are off precisely so that an unfinished stage cannot fire.", Body))
+    "<b>Yes.</b> All six stages are live, and every one of them was verified against the real boards "
+    "and the real services on 22 September 2026 rather than reasoned about &mdash; a throwaway "
+    "patient was advanced, a throwaway order was priced, a real Stripe link was minted and a real "
+    "text was sent. The test rows were deleted afterwards.", Body))
 
 story.append(table([
     ["Stage", "State", "What that means in practice"],
     ["1. Intake marks the patient Cash Pay",
      chip("LIVE", LIVE),
-     "Choosing Cash Pay hides the insurance sections and the benefits check, and drops the insurance "
-     "rows from the readiness checklist so Advance can be satisfied."],
+     "Choosing Cash Pay hides the insurance sections and the benefits check, and drops every row a "
+     "patient with no insurance cannot satisfy from the readiness checklist, so Advance works."],
     ["2. Skip straight to Welcome Call",
-     chip("SWITCHED OFF", DARK),
-     "The app flag is <font face='Courier' size='8'>false</font>, so no button writes the trigger. "
-     "Cash pay patients currently advance on <b>Advance to MN</b> like everyone else, into Medical "
-     "Evaluation. The board automation that would do the skip exists but is incomplete &mdash; see section 6."],
+     chip("LIVE", LIVE),
+     "Advance writes <b>Advance to Welcome Call</b>; monday automation 7923595946 creates the "
+     "Welcome Call item and moves this one to Completed. Medical Evaluation and Insurance are "
+     "skipped entirely."],
     ["3. Welcome Call",
      chip("LIVE", LIVE),
-     "Nothing cash-pay-specific is needed here beyond the out-of-pocket card telling the rep there "
-     "is no benefit to estimate and linking to the Cardinal costs."],
+     "Nothing cash-pay-specific beyond the out-of-pocket card saying there is no benefit to "
+     "estimate and linking to the Cardinal costs."],
     ["4. The order is priced",
      chip("LIVE", LIVE),
-     "The Cash Pay card on the order renders the full quote &mdash; per-line prices and the total &mdash; "
-     "so a rep can read a patient their number today."],
+     "The Cash Pay card renders the full quote &mdash; per-line prices and the total."],
     ["5. Payment link generated and texted",
-     chip("SWITCHED OFF", DARK),
-     "Both buttons render but are inert. The service route exists and is deployed but returns 503 "
-     "because its secret is not set, and the two board automations that drive it do not exist."],
+     chip("LIVE", LIVE),
+     "<b>Generate link</b> mints a Stripe payment link for the quoted amount; <b>Send to patient</b> "
+     "texts it and stamps the date. Both are monday webhooks onto the payment service."],
     ["6. Ordering gate",
      chip("LIVE", LIVE),
-     "An unpaid cash pay order cannot be placed. A manager can release it with a typed reason, which "
-     "is stamped into the order's notes."],
+     "An unpaid cash pay order cannot be placed. A manager can release it with a typed reason, "
+     "which is stamped into the order's notes."],
 ], [1.85*inch, 0.95*inch, 3.75*inch]))
 
 story.append(callout(
-    "What is blocking each switched-off stage",
-    "<b>Stage 2</b> needs seven column mappings corrected on an existing automation, then a test item, "
-    "then one line of app code flipped. <b>Stage 5</b> needs one Railway variable set and two small "
-    "board automations built, then one line of app code flipped. Neither is a large piece of work; "
-    "the exact steps are in sections 6 and 9 respectively."))
+    "What was actually tested, in case you need to repeat it",
+    "<b>The skip:</b> a throwaway Profile Clean-Up item marked Cash Pay was advanced &mdash; the "
+    "source landed in Completed and a Welcome Call item appeared carrying Cash Pay, DOB, phone, "
+    "doctor and serving. <b>The link:</b> a throwaway order at $1.00 was flipped to <i>Generate "
+    "link</i>, which produced a real pay.medicallymodern.com link and cleared the trigger, then to "
+    "<i>Send to patient</i>, which texted it (RingCentral message 3313052761012), stamped Cash Pay "
+    "Link Sent and cleared the trigger again.",
+    bg=BGSOFT, bar=TEAL))
 
 story.append(P("Where the code lives", H3))
 story.append(P(
@@ -295,62 +298,40 @@ story.append(P(
 story.append(PageBreak())
 story.append(P("6 &nbsp; Stage 2 &mdash; the skip to Welcome Call", H2))
 story.append(P(
-    "This is the stage that is live-but-incomplete, and it is the main thing standing between the "
-    "system and working end to end.", Body))
+    "<b>Live.</b> Automation <b>7923595946</b> on Profile Send Off does the whole hop.", Body))
 
-story.append(P("The automation", H3))
 story.append(table([
-    ["Id", "7923595946, described as &ldquo;Cash Pay&rdquo;, on Profile Send Off"],
-    ["State", "Active"],
     ["Trigger", "<b>Move to Onboarding</b> <font face='Courier' size='8'>color_mm1zmeb3</font> changes to "
                 "<b>Advance to Welcome Call</b> (label id 6)"],
-    ["Step 2", "Create an item on <b>Welcome Call</b> (18410804557), group <b>Welcome Call</b> "
-               "<font face='Courier' size='8'>group_mm1wvq8p</font>, named after the trigger item, "
-               "carrying the patient's columns"],
-    ["Step 3", "Move the Profile Send Off item to <b>Completed</b> "
-               "<font face='Courier' size='8'>group_mm1y57sz</font>"],
+    ["Then", "Create an item on <b>Welcome Call</b> (18410804557), group <b>Welcome Call</b> "
+             "<font face='Courier' size='8'>group_mm1wvq8p</font>, named after the trigger item, "
+             "carrying the patient's columns"],
+    ["Then", "Move the Profile Send Off item to <b>Completed</b> "
+             "<font face='Courier' size='8'>group_mm1y57sz</font>"],
 ], [0.75*inch, 5.8*inch], head=False))
 
 story.append(P(
-    "The structure is correct on every point, and it is the exact shape the equivalent insured-patient "
-    "hop uses. <b>31 of the 38 required column mappings are correct.</b>", Body))
+    "Board automation <b>7917676280</b> is untouched. It triggers on <i>Advance to MN</i> "
+    "specifically, so an insured patient's route is byte-identical to what it has always been.", Body))
+
+story.append(P("Six columns are deliberately not carried", H3))
+story.append(P(
+    "Both <b>Coverage Paths</b>, <b>Stedi Home Plan</b>, <b>Stedi Coinsurance %</b>, <b>Stedi Plan "
+    "Begin Date</b> and <b>Referral?</b> arrive blank on the Welcome Call item, and that is the "
+    "decision rather than a gap &mdash; a coverage path is how a payer covers a product, and a cash "
+    "pay patient has no payer. <b>Profile Send-Off Notes</b> IS carried, which is the one that "
+    "mattered: it is the intake case history the Welcome Call rep reads before the call.", Body))
 
 story.append(callout(
-    "The defect: 23 mappings still point at Medical Evaluation columns",
-    "The automation was duplicated from the <i>Advance to MN</i> hop, which creates onto Medical "
-    "Evaluation. Changing the destination board does <b>not</b> repoint the column mappings &mdash; they "
-    "are keyed by the destination board's column ids &mdash; and monday reports no error at all. Seven "
-    "required fields are therefore aimed at a column that does not exist on Welcome Call and will "
-    "arrive blank, while the configuration looks complete."))
+    "23 mappings still point at Medical Evaluation columns &mdash; harmless, but worth tidying",
+    "The automation was duplicated from the <i>Advance to MN</i> hop, and changing the destination "
+    "board does not repoint the column mappings. They write nothing. The reason to delete them "
+    "anyway is that the risk they carried was a silent one: a create-item step holding column ids "
+    "the destination board lacks <i>could</i> have been refused outright, creating no Welcome Call "
+    "item while the source item moved to Completed &mdash; a patient out of the pipeline with "
+    "nothing erroring. Tested: monday ignores them. "
+    "<font face='Courier' size='8'>scripts/cash-pay/README.md</font> lists all 23."))
 
-story.append(table([
-    ["Field", "Needed?", "Why"],
-    ["CGM Coverage Path", "No", "An insurance coverage path. A cash pay patient has none."],
-    ["Insulin Pump Coverage Path", "No", "Same."],
-    ["Stedi Coinsurance %", "No", "Eligibility output. No check is run."],
-    ["Stedi Plan Begin Date", "No", "Eligibility output."],
-    ["Stedi Home Plan", "No", "Eligibility output."],
-    ["Referral?", "Minor", "Not insurance data. Worth carrying, not worth blocking on."],
-    ["Profile Send-Off Notes", "<b>Yes</b>",
-     "The running case history from intake. The Welcome Call rep reads it before the call. This one "
-     "is worth fixing."],
-], [1.75*inch, 0.7*inch, 4.1*inch]))
-
-story.append(callout(
-    "Delete all 23 dead rows, not only the seven",
-    "They cannot write anything, but a create-item step carrying column ids the destination board does "
-    "not have <b>may be refused outright</b> &mdash; which would fail the whole step and create no item "
-    "at all. That is a silent, total failure rather than a few blank fields. Deleting them costs "
-    "nothing either way, so there is no reason to leave them."))
-
-story.append(callout(
-    "It is active while incomplete",
-    "Nothing in the app writes label 6 today, so only a person setting <i>Advance to Welcome Call</i> by "
-    "hand can fire it. That is still one click away on a live board, so finish it or leave the label "
-    "alone until it is finished."))
-
-# ---------------------------------------------------------------- stage 3/4
-story.append(PageBreak())
 story.append(P("7 &nbsp; Stage 3 &mdash; Welcome Call", H2))
 story.append(P(
     "<b>Live, and nothing cash-pay-specific is required.</b> The call runs as it always does: confirm "
@@ -398,10 +379,10 @@ story.append(callout(
 story.append(PageBreak())
 story.append(P("9 &nbsp; Stage 5 &mdash; the payment link", H2))
 story.append(P(
-    "<b>Built and switched off.</b> The two buttons render on the Cash Pay card but do nothing, and "
-    "they say on screen that they are not wired up yet rather than failing silently when pressed.", Body))
+    "<b>Live.</b> Two presses on the Cash Pay card, deliberately: <b>Generate link</b> mints it, "
+    "<b>Send to patient</b> texts it.", Body))
 
-story.append(P("How it is designed to work", H3))
+story.append(P("How it works", H3))
 story.append(P(
     "Deliberately the same mechanism the existing coinsurance payment flow uses, which has run for a "
     "year: <b>the board is the trigger</b>. No browser ever holds a payment token.", Body))
@@ -450,21 +431,29 @@ story.append(P(
     "in a second repository, whose drift would be a patient charged an amount no screen ever showed. "
     "This is Josh's to accept or change; an itemised route exists and is tested but is not wired up.", Body))
 
-story.append(P("What is missing before this can be switched on", H3))
+story.append(P("The two webhooks", H3))
 story.append(table([
-    ["#", "Step", "Who"],
-    ["1", "Generate a secret and set it as <b>CASH_PAY_WEBHOOK_SECRET</b> on the "
-          "<font face='Courier' size='8'>coins-form-payment</font> Railway service. Confirmed not set as "
-          "of 22 September, which is why the route answers 503. It must be a new variable &mdash; reusing "
-          "the existing monday webhook secret would start rejecting the live coinsurance flow.", "Josh"],
-    ["2", "Build the mint automation on the New Order Board: when <b>Cash Pay Action</b> changes to "
-          "<b>Generate link</b>, send a webhook to the service's "
-          "<font face='Courier' size='8'>/webhook/monday/cash-pay</font> route.", "Josh"],
-    ["3", "Build the text automation: when <b>Cash Pay Action</b> changes to <b>Send to patient</b>, "
-          "text the patient the Cash Pay Link <b>and stamp Cash Pay Link Sent</b>. Without that stamp "
-          "the card sits on &ldquo;Link ready&rdquo; forever and reps keep re-sending.", "Josh"],
-    ["4", "Flip the app switch.", "Dev"],
-], [0.3*inch, 5.45*inch, 0.8*inch]))
+    ["Webhook", "Fires on", "Does"],
+    ["641115241", "Cash Pay Action &rarr; <b>Generate link</b>",
+     "Mints the Stripe payment link, writes it to Cash Pay Link, clears the trigger"],
+    ["641125712", "Cash Pay Action &rarr; <b>Send to patient</b>",
+     "Texts the link, stamps Cash Pay Link Sent, clears the trigger"],
+], [1.1*inch, 2.25*inch, 3.2*inch], mono_cols=(0,)))
+
+story.append(callout(
+    "Three things about monday webhooks that cost real time here",
+    "<b>monday's automation builder has no &ldquo;send a webhook&rdquo; action</b> &mdash; only a "
+    "&ldquo;when a webhook is received&rdquo; trigger &mdash; so these are API webhooks, like every "
+    "other integration on that board. <b>The secret rides in the URL path</b>, because monday signs "
+    "every delivery with its own JWT in <font face='Courier' size='8'>Authorization</font>, and a "
+    "service that reads the header first never compares the real key and refuses a correct webhook "
+    "with 401. <b>monday suspends an endpoint that keeps failing and still lists the webhook</b>, "
+    "with no status field to read &mdash; after fixing a 401 you must delete and recreate it."))
+
+story.append(callout(
+    "The save-time challenge proves nothing about the secret",
+    "It is answered before the auth check, so monday will happily save a URL with a typo'd key and "
+    "then refuse every real event. Test with a real flip, never with the save."))
 
 # ---------------------------------------------------------------- stage 6
 story.append(PageBreak())
@@ -488,29 +477,39 @@ story.append(callout(
     "why it is a typed reason and not a confirmation dialog.", bg=BGSOFT, bar=TEAL))
 
 # ---------------------------------------------------------------- today
-story.append(P("11 &nbsp; What to do with a cash pay patient today", H2))
-story.append(P("Given stages 2 and 5 are switched off, here is the working process right now:", Body))
+story.append(P("11 &nbsp; What a rep actually does", H2))
 story.append(table([
     ["#", "Do this", "Note"],
     ["1", "At intake, set <b>General Insurance = Cash Pay</b>.",
-     "The insurance sections disappear and Advance becomes satisfiable. Still fill in the doctor."],
-    ["2", "Advance them with <b>Advance to MN</b>, as normal.",
-     "<b>Do not</b> use <i>Advance to Welcome Call</i> until the automation is finished &mdash; it would "
-     "create a Welcome Call item missing the intake notes, and possibly no item at all."],
-    ["3", "They pass through Medical Evaluation and Insurance.",
-     "Not ideal, and not what the design wants, but it is the only route that works today and nothing "
-     "is lost. There is no MN to document and no auth to chase, so advance them through."],
+     "The insurance sections disappear and Advance becomes satisfiable. The app mirrors it into "
+     "Primary Insurance, which is the value that travels."],
+    ["2", "Fill in the doctor. It is still required.",
+     "Cardinal's order payload needs one. Skipping it fails the order hours later, long after "
+     "anyone is on the phone with the patient."],
+    ["3", "Press <b>Advance</b>.",
+     "They go straight to Welcome Call. No Medical Evaluation, no Insurance."],
     ["4", "Run the Welcome Call as normal.",
-     "The out-of-pocket card will tell the rep there is no benefit to estimate."],
-    ["5", "On the order, read the quote off the <b>Cash Pay</b> card.",
-     "This is live. The total is the number to quote the patient."],
-    ["6", "Take payment the way you do now, outside the app.",
-     "The Generate/Send buttons do nothing yet."],
-    ["7", "A manager releases the order with a typed reason, then places it.",
-     "The reason is stamped into the order notes. This is the intended path for a patient who pays by "
-     "cheque or over the phone, so it is not a workaround &mdash; it is the same control that will be "
-     "there afterwards."],
+     "The out-of-pocket card says there is no benefit to estimate and links to the Cardinal costs."],
+    ["5", "On the order, read the total off the <b>Cash Pay</b> card.",
+     "Cardinal cost &times; 1.25 per line, plus $10 shipping on very small orders."],
+    ["6", "Press <b>Generate link</b>, then <b>Send to patient</b>.",
+     "The first mints the Stripe link, the second texts it. Two presses on purpose &mdash; nothing "
+     "goes to a patient without a rep pressing send."],
+    ["7", "Wait for payment, then place the order.",
+     "Order Status flips to <b>Paid Cash</b> on its own when Stripe reports the payment. Until "
+     "then the order cannot be placed."],
+    ["8", "If they pay another way, a manager releases it with a typed reason.",
+     "Cheque or over the phone. The reason is stamped into the order's notes &mdash; the only "
+     "record of why goods went out against no Stripe payment."],
 ], [0.3*inch, 2.9*inch, 3.35*inch]))
+
+story.append(callout(
+    "Re-pressing Send is a chase, not a mistake",
+    "It re-texts the same link and re-stamps the date, so the date always answers &ldquo;when did "
+    "we last text them&rdquo;. <b>Generate</b> behaves the opposite way on purpose: an order that "
+    "already has a link gets that link back rather than a second one, because two live links means "
+    "the patient holds two and paying the older one charges the older price.",
+    bg=BGSOFT, bar=TEAL))
 
 # ---------------------------------------------------------------- reference
 story.append(PageBreak())
@@ -572,16 +571,18 @@ story.append(table([
      "<font face='Courier' size='8'>coins-form-payment</font>, <font face='Courier' size='8'>backend/src/cashPay/</font>"],
 ], [2.6*inch, 3.95*inch]))
 
-story.append(P("13 &nbsp; Open decisions", H2))
+story.append(P("13 &nbsp; Still open", H2))
 story.append(table([
     ["Question", "Whose call"],
-    ["Accept the one-line Stripe page, or wire up the itemised route (built and tested, not connected)?",
-     "Josh"],
-    ["Carry <b>Referral?</b> and <b>Profile Send-Off Notes</b> across the skip, or let them arrive blank? "
-     "The notes are the intake case history the Welcome Call rep reads.",
-     "Josh / Brandon"],
-    ["Should the doctor block appear on the Care Coordinator card for cash pay patients?",
-     "Katie"],
+    ["<b>Nothing chases an unpaid link.</b> The 15-day reminder the handoff asks for is not built "
+     "&mdash; today somebody has to notice an order with a sent date and no payment. It belongs on "
+     "the order board as a date-arrival automation.", "Josh"],
+    ["The Stripe page shows <b>one line</b> naming the goods rather than the three products quoted. "
+     "The total is identical. An itemised route is built and tested but is not what the board "
+     "calls &mdash; wiring it means a second copy of the pricing rule in another repo.", "Josh"],
+    ["<b>23 dead mappings</b> on the skip automation point at Medical Evaluation columns. They "
+     "write nothing; worth deleting while you are in there.", "Brandon"],
+    ["Should the doctor block appear on the Care Coordinator card for cash pay patients?", "Katie"],
 ], [5.15*inch, 1.4*inch]))
 
 # ---------------------------------------------------------------- page furniture

@@ -62,15 +62,35 @@ export const ORDERING_FROM_COMMAND_CENTER = false;
  * does NOT wait is the quote: the card prices the order today, so a rep on the
  * phone can read the patient their number and take payment another way.
  *
- * `cashPayCard.test.ts` pins this at false. Flipping it needs THREE things that
- * live outside this repo, all in `scripts/cash-pay/PAYMENT_LINK.md`:
- * `CASH_PAY_WEBHOOK_SECRET` on the coins service (unset disables the route with
- * a 503), the **mint** automation on Cash Pay Action → "Generate link", and the
- * **text** automation on → "Send to patient" — which must also stamp Cash Pay
- * Link Sent, or the card sits on "Link ready" for ever and a rep keeps
- * re-sending. Flip it only once all three are live, and re-read CLAUDE.md §5.48
- * first — the Generate press spends money's worth of trust: it mints a link for
- * an amount a patient is then charged, and the quote is honoured from that
- * moment (`cashPayPricing.ts`).
+ * ✅ **LIVE from 2026-09-22**, once all three pieces outside this repo existed:
+ * `CASH_PAY_WEBHOOK_SECRET` on the coins service, monday webhook **641115241**
+ * (Cash Pay Action → "Generate link" → mint) and **641125712** (→ "Send to
+ * patient" → text + stamp).
+ *
+ * **Proved end to end on a throwaway order before flipping**, not reasoned
+ * about: Generate minted a real `pay.medicallymodern.com` link and cleared the
+ * trigger; Send texted it — RingCentral messageId 3313052761012 — stamped Cash
+ * Pay Link Sent and cleared the trigger again. Test row deleted.
+ *
+ * ⚠️ **They are monday API webhooks, not automations.** monday's automation
+ * builder has no "send a webhook" ACTION, only a "when a webhook is received"
+ * TRIGGER, so this could not be built as a recipe. Every other integration on
+ * that board is an API webhook too.
+ *
+ * ⚠️ **The secret rides in the URL PATH**, because monday signs every delivery
+ * with its own JWT in `Authorization` — a service reading the header first
+ * never compares the real key and refuses a correctly-configured webhook with
+ * 401. The coins service compares all three now; the path is the one channel
+ * nothing can shadow.
+ *
+ * ⚠️ **monday suspends an endpoint that keeps failing and still lists the
+ * webhook**, with no status field to read. After fixing a 401, delete and
+ * recreate the webhook — a fixed endpoint alone does not resume delivery.
+ *
+ * Turning it off again is safe: the buttons go inert with the reason on screen
+ * and the quote keeps rendering, so a rep can still price the order and take
+ * payment another way. The Generate press spends money's worth of trust — it
+ * mints a link for an amount the patient is then charged, and the quote is
+ * honoured from that moment (`cashPayPricing.ts`).
  */
-export const CASH_PAY_LINK_FROM_COMMAND_CENTER = false;
+export const CASH_PAY_LINK_FROM_COMMAND_CENTER = true;

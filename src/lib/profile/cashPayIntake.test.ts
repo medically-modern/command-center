@@ -184,14 +184,14 @@ describe("which label Advance writes", () => {
     expect(advanceLabelFor(stuck)).toBe(ADVANCE_TO_MN);
   });
 
-  /* ⚠️ The route is dark until monday workflow 18432110599 is published. Writing
-     the new label before then lands a value nothing acts on: the item never
-     leaves Profile Clean-Up and the rep has pressed a button that did nothing.
-     When this test starts failing, the flag has been flipped — check the
-     automation is live and published first. */
-  it("is DARK for now — the live label is always Advance to MN", () => {
-    expect(CASH_PAY_SKIPS_TO_WELCOME_CALL).toBe(false);
-    expect(advanceLabelForLive(debbie)).toBe(ADVANCE_TO_MN);
+  /* ✅ LIVE since 2026-09-22, behind monday automation 7923595946, which was
+     proved end to end against a throwaway item before the flag was flipped.
+     If this ever needs turning off, set the flag to false — cash pay patients
+     then advance on "Advance to MN" and land on Medical Evaluation, which is
+     what they did before. */
+  it("is LIVE — a cash pay patient routes to Welcome Call, everyone else to MN", () => {
+    expect(CASH_PAY_SKIPS_TO_WELCOME_CALL).toBe(true);
+    expect(advanceLabelForLive(debbie)).toBe(ADVANCE_TO_WELCOME_CALL);
     expect(advanceLabelForLive(stuck)).toBe(ADVANCE_TO_MN);
   });
 

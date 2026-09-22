@@ -111,8 +111,17 @@ describe("the cash pay link switch, and how the card is mounted", () => {
   const page = readFileSync("src/pages/OrdersPage.tsx", "utf8");
   const card = readFileSync("src/components/orders/CashPayCard.tsx", "utf8");
 
-  it("is OFF — flipping it is a decision (config.ts has the checklist)", () => {
-    expect(CASH_PAY_LINK_FROM_COMMAND_CENTER).toBe(false);
+  /* ✅ ON since 2026-09-22, behind monday webhooks 641115241 (mint) and
+     641125712 (text), both proved end to end on a throwaway order: a real
+     pay.medicallymodern.com link, a real SMS (RingCentral messageId
+     3313052761012), the sent date stamped and the trigger cleared each time.
+
+     If this fails, somebody turned it off. That is a SAFE state — the buttons
+     go inert with the reason on screen and the quote keeps rendering, so a rep
+     can still price the order — but confirm it was deliberate, and read
+     config.ts for what has to be live before turning it back on. */
+  it("is ON — both webhooks are live and were verified end to end", () => {
+    expect(CASH_PAY_LINK_FROM_COMMAND_CENTER).toBe(true);
   });
 
   it("the card is mounted on the open order", () => {

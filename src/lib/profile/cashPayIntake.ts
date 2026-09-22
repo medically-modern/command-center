@@ -192,35 +192,42 @@ export function advanceLabelFor(p: Patient | null | undefined): string {
 }
 
 /**
- * ⚠️⚠️ **THE CASH PAY ROUTE IS DARK UNTIL ITS AUTOMATION IS PUBLISHED.**
+ * ✅ **LIVE from 2026-09-22.** A cash pay patient's Advance writes **"Advance to
+ * Welcome Call"** (label id 6 on Move to Onboarding `color_mm1zmeb3`) instead of
+ * "Advance to MN", and monday automation **7923595946** on Profile Send Off
+ * turns that into a Welcome Call item and moves this one to Completed.
  *
- * Writing "Advance to Welcome Call" before monday's automation exists is worse
- * than not offering it: the label lands, nothing fires, the intake item never
- * leaves Profile Clean-Up, and the rep has pressed a button that silently did
- * nothing. The label already exists on the live board (id 6), so this is
- * reachable the moment somebody flips the flag.
+ * **Proved end to end before flipping**, not reasoned about: a throwaway item in
+ * Profile Clean-Up carrying Cash Pay was advanced, the source item landed in
+ * **Completed**, and a Welcome Call item appeared in the **Welcome Call** group
+ * carrying Primary Insurance = Cash Pay, DOB, phone, doctor and Serving. Both
+ * test items deleted.
  *
- * ⚠️ **No draft exists — all three steps are still to be built.** An earlier
- * note here claimed workflow 18432110599 already carried the trigger and the
- * move-to-Completed step; checked against `list_automations` on 2026-09-22 it
- * is on neither list, and nothing on that board names the Welcome Call board at
- * all. It could not be built through the API either: `create_automation` times
- * out on the 38-column payload and `create_workflow` only makes an empty shell.
- * A person in monday's UI, then. Same dark-switch shape as
- * `orders/config.ORDERING_FROM_COMMAND_CENTER` (§5.35).
+ * ⚠️ **That test was the point, because the failure mode here is silent.** The
+ * automation still carries **23 mappings aimed at Medical Evaluation column ids**
+ * — left over from the duplicate it was built from — and a create-item step
+ * carrying column ids the destination board does not have *could* have been
+ * refused outright, creating no item at all while the source item still moved to
+ * Completed. That would have taken cash pay patients out of the pipeline
+ * entirely with nothing erroring. It does not; monday ignores them. Delete them
+ * anyway if you are in there (`scripts/cash-pay/README.md` lists all 23).
  *
- * **The runbook is `scripts/cash-pay/README.md`** — the three steps and all 38
- * column mappings, derived from the three hops a column must survive today so
- * the Welcome Call item this creates is shaped exactly like one that came the
- * long way. Read it before flipping this, and verify the automation against a
- * real test item first: a create-item step with a missing mapping still creates
- * the item, so "it appeared" is not the check.
+ * ⚠️ **Six of the 38 columns are deliberately unmapped and that is not a gap**
+ * (Josh, 2026-09-22): both Coverage Paths, Stedi Home Plan, Stedi Coinsurance %,
+ * Stedi Plan Begin Date and Referral? — *"we dont need any of that data, the
+ * patient doesn have insruance or need a coverage path they pay oop for
+ * everytrhing"*. Profile Send-Off Notes IS mapped, which is the one that
+ * mattered: it is the intake case history the Welcome Call rep reads.
  *
- * While this is false a cash pay patient still advances — on "Advance to MN",
- * exactly as they do today — so nobody is stranded either way. Flipping it only
- * changes WHICH board they land on.
+ * ⚠️ **Board automation 7917676280 is untouched.** It triggers on label id 1
+ * ("Advance to MN"), so an insured patient's route is byte-identical to what it
+ * has always been.
+ *
+ * To turn this back off, set the flag to false: cash pay patients then advance
+ * on "Advance to MN" like everyone else and land on Medical Evaluation. Nobody
+ * is stranded either way — it only changes WHICH board they land on.
  */
-export const CASH_PAY_SKIPS_TO_WELCOME_CALL = false;
+export const CASH_PAY_SKIPS_TO_WELCOME_CALL = true;
 
 export function advanceLabelForLive(p: Patient | null | undefined): string {
   return CASH_PAY_SKIPS_TO_WELCOME_CALL ? advanceLabelFor(p) : ADVANCE_TO_MN;

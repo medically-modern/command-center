@@ -149,19 +149,32 @@ describe("the benefit-check rule is not re-derived anywhere", () => {
   });
 });
 
-describe("the Welcome Call route stays dark until its automation exists", () => {
-  it("nothing writes the new label while the flag is false", () => {
-    /* ⚠️ monday workflow 18432110599 is an unpublished draft — its create-item
-       mapping could not be built through the API (§10) and needs a person in
-       monday's UI. Writing "Advance to Welcome Call" before it is live lands a
-       label nothing acts on: the item never leaves Profile Clean-Up and the rep
-       has pressed a button that silently did nothing.
+describe("the Welcome Call route is live, and only one module decides it", () => {
+  it("✅ the flag is on, behind a verified automation", () => {
+    /* Flipped 2026-09-22 after monday automation 7923595946 was proved end to
+       end: a throwaway Profile Clean-Up item carrying Cash Pay was advanced, the
+       source landed in Completed, and a Welcome Call item appeared in the
+       Welcome Call group with Primary Insurance = Cash Pay, DOB, phone, doctor
+       and Serving.
 
-       When this test fails, someone has flipped the flag — confirm the
-       automation is published FIRST. */
-    const src = read("src/lib/profile/cashPayIntake.ts");
-    expect(src).toMatch(/CASH_PAY_SKIPS_TO_WELCOME_CALL = false/);
+       ⚠️ That test mattered because the failure would have been SILENT: the
+       automation still carries 23 mappings aimed at Medical Evaluation column
+       ids, and a create-item step carrying ids the destination board lacks could
+       have been refused outright — no Welcome Call item, source item moved to
+       Completed anyway, patient out of the pipeline with nothing erroring.
 
+       If this fails, the flag was turned off. That is a safe state — cash pay
+       then advances on "Advance to MN" as it always did — but confirm it was
+       deliberate. */
+    expect(read("src/lib/profile/cashPayIntake.ts"))
+      .toMatch(/CASH_PAY_SKIPS_TO_WELCOME_CALL = true/);
+  });
+
+  it("⚠️ neither page hardcodes the label — advanceLabelForLive is the only decider", () => {
+    /* The pages must keep asking the module which label to write. A literal on
+       a page would write "Advance to Welcome Call" for an INSURED patient too,
+       whose automation (7917676280) triggers on "Advance to MN" — so they would
+       land nowhere, silently. */
     for (const page of PAGES) {
       expect(read(page), page).not.toContain("Advance to Welcome Call");
     }
