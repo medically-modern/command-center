@@ -8129,13 +8129,22 @@ from the second column it reads. That is what makes the intake mirror load-beari
 a patient whose Primary was never mirrored arrives indistinguishable from an insured one, here and
 on the Order board.
 
-**Deliberately NOT built, each for its own reason:**
-- **The Stripe half**, in `coins-form-payment`: `POST /api/cash-pay/create-link`, the
-  `checkout.session.completed` cash branch (writing the charge id, the paid date and Order Status →
-  Paid Cash), the link-text webhook, the 15-day reminder loop, and the branded cash-pay mode on the
-  payment page. Same Stripe account and the same itemized flow as pay-secondary, so HSA/FSA, the
-  descriptor and the emailed receipt come free (handoff item 5).
-  ⚠️⚠️ **IT MUST MINT A STRIPE *PAYMENT LINK*, NOT A CHECKOUT SESSION — verified against Stripe's
+✅ **The Stripe half landed 2026-09-22** — `coins-form-payment` `backend/src/cashPay/` (that repo's
+CLAUDE.md §8): `POST /api/cash-pay/create-link` and the `checkout.session.completed` cash branch,
+which writes the charge id, the paid date and **Order Status → Paid Cash** — the value this repo's
+ordering gate reads. Same Stripe account as pay-secondary, so HSA/FSA and the emailed receipt come
+free (handoff item 5).
+  ⚠️ **Service auth, not the patient JWT**, and an unset `CASH_PAY_SERVICE_TOKEN` disables the
+  route (503) rather than leaving it open — it mints Stripe links.
+  ⚠️ **The CALLER supplies the price**, which is why the rule stays here: a second copy in another
+  repo is the §5.7 hazard on a rule whose drift is a patient charged an amount no screen showed.
+  What the service owes instead is the order's state and a sanity boundary (whole-cent integers,
+  lines that add up, a $2,000 ceiling to catch a misplaced decimal).
+  ⚠️ **Idempotent** — an order that already has a link gets it back; `regenerate: true` replaces
+  one. Two live links means the patient holds two, and paying the older charges last week's price.
+  ⚠️ The link is **single use** (`restrictions.completed_sessions.limit = 1`), or a patient who taps
+  the text twice pays twice.
+  ⚠️⚠️ **IT MINTS A STRIPE *PAYMENT LINK*, NOT A CHECKOUT SESSION — verified against Stripe's
   API reference, 2026-09-22, and the distinction is the difference between a working feature and
   one nobody can pay.** A Checkout Session's `expires_at` *"can be anywhere from 30 minutes to 24
   hours after Checkout Session creation. By default, this value is 24 hours from creation"*, and it
@@ -8150,10 +8159,23 @@ on the Order board.
   is already on the page when it is minted, so 24 hours is ample. Do not "align" the two.
   ⚠️ Deactivating the link once paid is `active: false`, not a delete — a dead link that explains
   itself (`inactive_message`) beats a 404 for a patient who taps an old text.
+
+**Still outstanding, each for its own reason:**
+- **The SPA calling the route.** The route exists (above); `CashPayCard`'s two presses are still
+  the `notBuilt` toast and nothing in this repo calls it. Wiring it is: POST
+  `{ itemId, lines: cashPayLineItems(quote), totalCents: cashPayTotalCents(quote) }` with a
+  `Bearer CASH_PAY_SERVICE_TOKEN`. ⚠️ **`cashPayTotalCents`, never `Math.round(quote.total * 100)`**
+  — the service refuses a total its lines do not add up to, and those two can differ by a cent.
+- **The board's texting automation** for the second press, and the **15-day reminder loop** — both
+  the order board's job, deliberately (a date-arrival automation, the shape §5.36's MR ladder
+  uses). The wording is `cashPayText()` in `coins-form-payment`, exported unused so it has one home.
+- **A branded cash-pay page.** The patient lands on Stripe's own hosted confirmation today, which
+  is why `after_completion` sets a custom message rather than redirecting to a page that does not
+  exist.
+- **The reconciliation stamp** (handoff item 8) rides on the charge id, which is now written, so it
+  is board work from here.
 - **Cash Pay labels on Medical Evaluation and Insurance** — a cash pay patient is meant to skip both
   boards, so a label there would only be reachable by the route this build exists to avoid.
-- **The reconciliation stamp** (handoff item 8) rides on the charge id already being written, so it
-  needs the Stripe half first.
 
 **Keep-in-agreement:**
 1. **The marker** — `lib/shared/cashPay.ts` `isCashPay` / `isCashPayPatient` / `CASH_PAY_LABEL_ID`.
@@ -8166,8 +8188,9 @@ on the Order board.
    renumbered `step=` props**. `cashPayIntakeWiring.test.ts` scans every one of these, each
    verified to fail.
 3. **The price** — `cashPayPricing` `CASH_PAY_MARKUP` / `MIN_ORDER_MARKUP` / `round2` ⇄ the Debbie
-   anchor test ⇄ whatever `coins-form-payment` charges. When the Stripe half lands, the session must
-   be built from `cashPayLineItems`, never re-derived.
+   anchor test ⇄ `coins-form-payment`'s `cashPay/rules.lineRefusal`, which refuses a total its
+   lines do not add up to. The payment link is built from **`cashPayLineItems`** and its total from
+   **`cashPayTotalCents`**, never re-derived and never re-rounded.
 4. **The gate** — `cashPayGate` ⇄ `mondayWrite.orderingRefusal` / `markOrdered`'s pre-write read ⇄
    `CashPayCard`'s disabled states. The button is what a person sees; the write is what stops it.
 5. **The switches** — `orders/config.CASH_PAY_LINK_FROM_COMMAND_CENTER` and

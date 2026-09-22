@@ -28,7 +28,14 @@ export const ORDERING_FROM_COMMAND_CENTER = false;
  *
  * 1. Generate calls `coins-form-payment`'s `POST /api/cash-pay/create-link`,
  *    which mints a **Stripe PAYMENT LINK** and writes Cash Pay Link + Cash Pay
- *    Amount back onto the order. That route is not built.
+ *    Amount back onto the order. ✅ **BUILT 2026-09-22** (that repo's
+ *    `backend/src/cashPay/`, CLAUDE.md §8) — it takes
+ *    `{ itemId, lines, totalCents }` where `lines` is `cashPayLineItems(quote)`
+ *    verbatim, with a `Bearer CASH_PAY_SERVICE_TOKEN`, and is idempotent:
+ *    an order that already has a link gets it back unless `regenerate: true`.
+ *    ⚠️ It refuses a total its lines do not add up to, so the SPA must send
+ *    `cashPayTotalCents(quote)` — summed from the line items — and never
+ *    `Math.round(quote.total * 100)`, which can differ by a cent.
  *
  *    ⚠️⚠️ **A PAYMENT LINK, NOT A CHECKOUT SESSION — verified against Stripe's
  *    API reference, 2026-09-22.** A Checkout Session's `expires_at` "can be
@@ -43,7 +50,9 @@ export const ORDERING_FROM_COMMAND_CENTER = false;
  *    The existing pay-secondary flow uses a Checkout Session correctly: there
  *    the patient is already on the page when it is minted.
  * 2. Send fires the order board's texting trigger, which needs a column and an
- *    automation the board does not have.
+ *    automation the board does not have. Still outstanding, and deliberately
+ *    the board's job: the wording is `cashPayText()` in that repo, exported
+ *    unused so it has one home.
  *
  * ⚠️ So the buttons render INERT with the reason on screen rather than being
  * hidden — §5.39g's rule, and the one this codebase keeps having to reverse
@@ -52,8 +61,11 @@ export const ORDERING_FROM_COMMAND_CENTER = false;
  * does NOT wait is the quote: the card prices the order today, so a rep on the
  * phone can read the patient their number and take payment another way.
  *
- * `cashPayCard.test.ts` pins this at false. Flip it only once BOTH halves are
- * live, and re-read CLAUDE.md §5.48 first — the Generate press spends money's
+ * `cashPayCard.test.ts` pins this at false. Flipping it needs THREE things,
+ * not one: the SPA calling that route (nothing does yet — `CashPayCard`'s two
+ * presses are still the `notBuilt` toast), `CASH_PAY_SERVICE_TOKEN` set on
+ * both sides, and the board's texting automation for the second press. Flip it
+ * only once all three are live, and re-read CLAUDE.md §5.48 first — the Generate press spends money's
  * worth of trust: it mints a session for an amount a patient is then charged,
  * and the quote is honoured from that moment (`cashPayPricing.ts`).
  */
