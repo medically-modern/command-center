@@ -64,7 +64,7 @@ import {
 import {
   evaluateUnlock, coverageActive, inNetwork, networkLabel,
 } from "@/lib/profile/intakeUnlock";
-import { applyCashPayReadiness } from "@/lib/profile/cashPayIntake";
+import { applyCashPayReadiness, cashPayMirrorEdit } from "@/lib/profile/cashPayIntake";
 import { formatBenefitsFailure } from "@/lib/profile/benefitsFailure";
 // The serving suggestion engine — the same derivation the pre-rewrite panel
 // auto-filled with (canCrossSellCgm × requestType → deriveServing).
@@ -1208,9 +1208,29 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     setSelectedId(null);
   }, [searchParams, setSearchParams]);
 
+  /**
+   * Every field edit on the left pane funnels through here, which is why the
+   * Cash Pay mirror lives here rather than on the General Insurance picker: a
+   * mirror wired to one control is one a second control silently skips.
+   * `cashPayMirrorEdit` is a no-op on every other patch.
+   *
+   * ⚠️ **It has to reach `verified` as well, and that is not belt and braces.**
+   * Advance writes Primary Insurance from `buildVerifiedInsuranceTasks(p.id,
+   * opts.verified, …)` — the right pane's state, NOT the patient overlay — and
+   * that state is seeded once per patient, so a later mirror into the overlay
+   * alone would never reach the board. Section 1 is hidden for a cash pay
+   * patient (`verifiedInsuranceStepApplies`), so nobody can put it right by
+   * hand either: the column would simply stay blank all the way to the Order
+   * board, where the cash pay card keys on it.
+   */
   const edit = useCallback((patch: Partial<Patient>) => {
     if (!selected) return;
-    updateLocal(selected.id, patch);
+    const next = cashPayMirrorEdit(patch, selected.primaryInsurance);
+    updateLocal(selected.id, next);
+    if (next.primaryInsurance !== undefined) {
+      const mirrored = next.primaryInsurance;
+      setVerified((v) => (v.primaryInsurance === mirrored ? v : { ...v, primaryInsurance: mirrored }));
+    }
   }, [selected, updateLocal]);
 
   /**

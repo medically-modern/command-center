@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Patient } from "./workflow";
 import { evaluateUnlock } from "./intakeUnlock";
 import {
-  primaryInsuranceForGeneral, benefitCheckApplies, verifiedInsuranceStepApplies,
+  primaryInsuranceForGeneral, cashPayMirrorEdit, benefitCheckApplies, verifiedInsuranceStepApplies,
   memberIdRequired, applyCashPayReadiness, advanceLabelFor, advanceLabelForLive,
   CASH_PAY_SKIPS_TO_WELCOME_CALL, ADVANCE_TO_MN, ADVANCE_TO_WELCOME_CALL,
 } from "./cashPayIntake";
@@ -93,6 +93,36 @@ describe("picking Cash Pay mirrors it into Primary Insurance", () => {
     expect(primaryInsuranceForGeneral("Aetna", "Aetna Commercial")).toBeNull();
     expect(primaryInsuranceForGeneral("", "Aetna Commercial")).toBeNull();
     expect(primaryInsuranceForGeneral("Medicaid", "")).toBeNull();
+  });
+});
+
+describe("the mirror as the pages apply it", () => {
+  it("adds Primary to the patch that set General Insurance", () => {
+    expect(cashPayMirrorEdit({ generalInsurance: "Cash Pay" }, ""))
+      .toEqual({ generalInsurance: "Cash Pay", primaryInsurance: "Cash Pay" });
+  });
+
+  it("⚠️ passes every other patch through UNTOUCHED, by identity", () => {
+    /* Both pages funnel EVERY field edit through this, so a patch it copies or
+       widens is a patch that writes columns nobody edited. Identity is the
+       cheapest proof it did nothing. */
+    const patch = { name: "Debbie Hinze" };
+    expect(cashPayMirrorEdit(patch, "")).toBe(patch);
+    const blank = { generalInsurance: "" };
+    expect(cashPayMirrorEdit(blank, "Aetna Commercial")).toBe(blank);
+  });
+
+  it("⚠️ a patch that does not name General Insurance is not judged on it", () => {
+    /* `patch.generalInsurance === undefined` is the test, not truthiness: a
+       rep correcting a phone number on a cash pay patient must not have
+       Primary Insurance re-written underneath them on every keystroke. */
+    const patch = { ptPhone: "5555550109" };
+    expect(cashPayMirrorEdit(patch, "Cash Pay")).toBe(patch);
+  });
+
+  it("does not re-write a Primary that already says Cash Pay", () => {
+    const patch = { generalInsurance: "Cash Pay" };
+    expect(cashPayMirrorEdit(patch, "Cash Pay")).toBe(patch);
   });
 });
 

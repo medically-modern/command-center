@@ -16,7 +16,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { useDtcFormLeads } from "@/hooks/profile/useDtcFormLeads";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
-import { applyCashPayReadiness } from "@/lib/profile/cashPayIntake";
+import { applyCashPayReadiness, cashPayMirrorEdit } from "@/lib/profile/cashPayIntake";
 import { profileReferralRole, type ProfileReferralRole } from "@/lib/profile/referralSplit";
 import {
   dtcFormMatchesFor, queueLeadsFrom, dtcLeadKindLabel, dtcLeadRoute,
@@ -320,8 +320,14 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     return () => { cancelled = true; };
   }, [selected?.id]);
 
+  /* ⚠️ Every field edit on this page funnels through here, which is why the
+     Cash Pay mirror lives here rather than on the General Insurance picker:
+     Primary Insurance is the value that travels to Welcome Call, Subscription
+     and the Order board (Brandon, 2026-08-18), and a mirror wired to one
+     control is one a second control silently skips. `cashPayMirrorEdit` is a
+     no-op on every other patch. */
   const onUpdate = useCallback((patch: Partial<Patient>) => {
-    if (selected) updateLocal(selected.id, patch);
+    if (selected) updateLocal(selected.id, cashPayMirrorEdit(patch, selected.primaryInsurance));
   }, [selected, updateLocal]);
 
   const suggestion = useMemo(() => selected ? suggestPrimary(buildSuggestionInputs(selected)) : null, [selected]);

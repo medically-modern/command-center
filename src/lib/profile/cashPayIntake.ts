@@ -53,6 +53,28 @@ export function primaryInsuranceForGeneral(
 }
 
 /**
+ * Apply that mirror to a patch on its way into the patient overlay.
+ *
+ * ⚠️ **`primaryInsuranceForGeneral` had no caller until this existed**, which
+ * is the §5.31b failure exactly: *"a module nobody calls does not fail; it is
+ * absent, and its green tests say otherwise."* Both intake pages funnel every
+ * field edit through one handler, so mirroring THERE rather than on the picker
+ * means any future route that sets General Insurance — a bulk edit, a paste, a
+ * second picker — mirrors too, and no second call site can be forgotten.
+ *
+ * Returns the patch unchanged when the mirror does not fire, so a caller can
+ * pass every patch through it unconditionally.
+ */
+export function cashPayMirrorEdit(
+  patch: Partial<Patient>,
+  currentPrimary: string | null | undefined,
+): Partial<Patient> {
+  if (patch.generalInsurance === undefined) return patch;
+  const mirrored = primaryInsuranceForGeneral(patch.generalInsurance, currentPrimary);
+  return mirrored === null ? patch : { ...patch, primaryInsurance: mirrored };
+}
+
+/**
  * Is the benefit check part of this patient's intake at all?
  *
  * Drives whether Run Stedi and the eligibility readout render. A cash pay

@@ -42,6 +42,37 @@ describe("both intake routes apply the cash pay readiness rule", () => {
   }
 });
 
+describe("both intake routes mirror Cash Pay into Primary Insurance", () => {
+  /* ⚠️ `primaryInsuranceForGeneral` shipped with NO CALLER — tested, green,
+     and absent from the product. That is §5.31b's failure ("a module nobody
+     calls does not fail; it is absent, and its green tests say otherwise"),
+     and its cost here is the column the Order board's cash pay card keys on
+     staying blank all the way downstream. */
+  for (const page of PAGES) {
+    it(`${page} pipes its edit handler through cashPayMirrorEdit`, () => {
+      const src = read(page);
+      expect(src).toContain("cashPayMirrorEdit");
+      /* On the HANDLER, not on the picker: a mirror wired to one control is
+         one a second control silently skips. */
+      expect(src).toMatch(/cashPayMirrorEdit\(patch, selected[.?]*\.?primaryInsurance\)/);
+    });
+  }
+
+  it("⚠️ the intake page mirrors into `verified` too — that is what Advance writes", () => {
+    /* `buildAdvanceTasks` writes Primary Insurance from `opts.verified`, the
+       RIGHT pane's state, and that state is seeded once per patient. Section 1
+       is hidden for a cash pay patient, so nobody can put it right by hand
+       either: mirror into the overlay alone and the column never lands. */
+    const src = read("src/pages/UnverifiedReferralsPage.tsx");
+    const at = src.indexOf("const edit = useCallback");
+    expect(at).toBeGreaterThan(-1);
+    const handler = src.slice(at, at + 700);
+    expect(handler).toContain("cashPayMirrorEdit");
+    expect(handler).toContain("setVerified");
+    expect(handler).toContain("primaryInsurance");
+  });
+});
+
 describe("the benefit-check rule is not re-derived anywhere", () => {
   it("neither page inlines its own Cash Pay string test", () => {
     /* One rule, in lib/shared/cashPay.ts. A second copy is the §5.7/§5.17
