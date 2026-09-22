@@ -28,26 +28,37 @@ which board they land on.
 
 ## The automation
 
-Host board: **Profile Send Off `18406352652`**. **Build all three steps from
-scratch.**
+Host board: **Profile Send Off `18406352652`**.
 
-⚠️ An earlier draft of this file said a draft workflow `18432110599` already
-carried the trigger and the move-to-Completed step. **It does not exist.**
-Checked against `list_automations` on 2026-09-22: that board has 18 workflows
-and 16 legacy automations, none of them is `18432110599`, and **not one of them
-names the Welcome Call board `18410804557` anywhere**. Josh reported the same
-thing from the UI (*"i dont see a draft autoamtion"*). Take this page as the
-whole job.
+✅ **THE DRAFT EXISTS AND ITS THREE STEPS ARE BUILT — workflow object
+`18432285040`, draft `16231685`**, created 2026-09-22 through the workflow
+expert. Open it at
+`https://medicallymodern-force.monday.com/custom_objects/18432285040`.
+`validate_workflow` returns **zero issues**.
 
-⚠️ **I could not build it from here, and it is worth knowing why before
-trying again.** `create_automation` timed out three times on the 60-second MCP
-ceiling — the 38-column mapping is simply a large payload — and each time the
-board was re-checked and was verifiably unchanged, so nothing half-made is
-lying around. The other path, `create_workflow`, creates an *empty* workflow
-and needs `invoke_workflow_expert`'s `create-step` to fill it, which this
-session does not have (only `get-step`). A partial automation is worse than
-none: trigger + move-to-Completed without the create-item step would take a
-patient out of the pipeline and put them nowhere.
+⚠️⚠️ **DO NOT PUBLISH IT YET, AND THE CLEAN VALIDATION IS EXACTLY WHY.** The
+three steps are right; **not one of the 38 column mappings is set**, and monday
+does not count a missing mapping as a validation issue. Published as it stands
+it would create a Welcome Call item carrying **only the patient's name** — no
+phone, no insurance, no doctor — and move the Profile Send Off item to
+Completed, i.e. a patient out of the pipeline and into a stage with nothing to
+work. That is the "a partial automation is worse than none" hazard, arriving
+with a green tick on it. Fill the mapping grid first (below), then publish.
+
+⚠️ **The mappings are the one part no API can do**, so they are a UI job and
+always will be until monday changes something. Checked every route on
+2026-09-22:
+- `create_automation` times out on the 60-second MCP ceiling — on the full
+  38-column payload AND on a bare three-block skeleton with no mappings at all.
+  Each attempt left the board verifiably unchanged.
+- `invoke_workflow_expert` **can** create and configure the steps (it built this
+  draft) but its "Create item in board" block exposes only four fields —
+  `boardId`, `groupId`, `itemName` and an `item` field whose cross-board
+  behaviour is undocumented and which validates as a type mismatch when bound.
+  There are no per-column `item.<columnId>` fields for it to set.
+- monday's public GraphQL API has **no automation-authoring mutation of any
+  kind** — the only one in the whole write schema is `delete_board_automation`.
+  So a raw API call cannot do it either, with any token.
 
 All three verified against the live boards, 2026-09-22.
 
@@ -113,6 +124,27 @@ confirming rather than choosing:
 
 ⚠️ Welcome Call also carries **Profile Send-Off Notes (retired)**. Do not pick
 it — see *Deliberately NOT mapped* below.
+
+**Where the renamed ones actually sit**, since a title you cannot find reads as
+a missing column (positions read off the live boards, 2026-09-22):
+
+- **Insurance Plan** is the 11th column on **Profile Send Off**, up in the top
+  insurance run: Primary Insurance → General Insurance → Member ID → Member ID 1
+  → Secondary Insurance → Member ID 2 → Stedi Plan Name → **Stedi Home Plan** →
+  **Insurance Plan** → Stedi Secondary / Medicaid ID → Run Stedi Eligibility.
+  It is between **Stedi Home Plan** and **Stedi Secondary / Medicaid ID**.
+- On **Welcome Call** the same field is **Plan Name**, and it is nowhere near
+  the top — it is down in the **INSURANCE -->** section: Primary Insurance →
+  Member ID 1 → Secondary Insurance → Member ID 2 → **Plan Name** → Stedi
+  Primary Payer → Stedi QMB → Deductible → Deductible Remaining → OOP Max →
+  OOP Max Remaining.
+- So **Stedi QMB**, and all four of **Deductible / Deductible Remaining /
+  OOP Max / OOP Max Remaining**, sit in that same run a few rows under Plan
+  Name — five of the fiddly rows are neighbours, which is the quickest way to
+  work through them.
+
+⚠️ Welcome Call has **158** columns and Profile Send Off **161**, so scrolling
+for a title is slow. Both boards' mapping pickers search — type the title.
 
 ⚠️ Matching titles do not mean matching ids: **16 of the 38 have a different id
 on the far side**, and row 26 is the reverse case (**Pt. Phone** and **Primary
