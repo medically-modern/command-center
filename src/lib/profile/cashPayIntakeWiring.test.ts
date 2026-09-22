@@ -73,6 +73,62 @@ describe("both intake routes mirror Cash Pay into Primary Insurance", () => {
   });
 });
 
+describe("⚠️ the benefit check and section 1 are actually HIDDEN, not just hideable", () => {
+  /* `benefitCheckApplies` and `verifiedInsuranceStepApplies` shipped alongside
+     `primaryInsuranceForGeneral` and, like it, had NO CALLERS — tested, green,
+     and absent from the product, while CLAUDE.md §5.48 said the benefit check
+     was hidden. A rule nobody calls does not fail; it is absent. */
+  it("the intake page gates the benefit-check actions", () => {
+    const src = read("src/pages/UnverifiedReferralsPage.tsx");
+    expect(src).toContain("benefitCheckApplies");
+    expect(src).toMatch(/const showBenefitCheck = benefitCheckApplies\(selected\)/);
+    /* The two buttons are the point: Run fails on identifiers that do not
+       exist, and Start Insurance Follow-Up texts a cash pay patient asking for
+       a card they have said they do not have. */
+    expect(src).toMatch(/\{showBenefitCheck && \(\s*<div/);
+  });
+
+  it("the intake page gates section 1, and renumbers what is left", () => {
+    const src = read("src/pages/UnverifiedReferralsPage.tsx");
+    expect(src).toMatch(/const showVerifiedInsurance = verifiedInsuranceStepApplies\(selected\)/);
+    expect(src).toMatch(/\{showVerifiedInsurance && \(\s*<Card step=\{1\} title="Verified Insurance"/);
+    /* A list that starts at 2 is a list with a hole — the rep reads the number
+       as their place in it. */
+    expect(src).toContain("step={showVerifiedInsurance ? 2 : 1}");
+    expect(src).toContain("step={showVerifiedInsurance ? 3 : 2}");
+  });
+
+  it("⚠️ neither page leaves a card that just STOPS — each says why", () => {
+    /* Hiding a control without saying why is the failure §5.39g records; a rep
+       who finds a card ending where they expect a button concludes the page is
+       broken. Both notes name cash pay and where the price comes from instead. */
+    for (const page of PAGES) {
+      expect(read(page), page).toMatch(/Cash pay — there is no insurance to check/);
+    }
+    expect(read("src/pages/UnverifiedReferralsPage.tsx"))
+      .toContain("Cash pay — no insurance to verify");
+  });
+
+  it("the /profile route gates its Stedi run too", () => {
+    /* Both routes reach Advance to MN, and §5.19b is the standing lesson about
+       a rule living on one of them. */
+    const src = read("src/pages/ProfilePage.tsx");
+    expect(src).toContain("benefitCheckApplies");
+    expect(src).toMatch(/\{benefitCheckApplies\(pt\) && \(/);
+    expect(src).toMatch(/\{!benefitCheckApplies\(pt\) && \(/);
+  });
+
+  it("⚠️ the General Insurance picker is NEVER hidden — it is how Cash Pay is chosen", () => {
+    /* Hiding the payer picker on a cash pay patient would be a gate with no
+       passing move: there would be no way to change your mind back (§5.10 ·
+       §5.20 · §5.31c · §5.31f · §5.39d). */
+    const prof = read("src/pages/ProfilePage.tsx");
+    const at = prof.indexOf('<Field label="General Insurance" required>');
+    expect(at).toBeGreaterThan(-1);
+    expect(prof.slice(Math.max(0, at - 600), at)).not.toContain("benefitCheckApplies");
+  });
+});
+
 describe("the benefit-check rule is not re-derived anywhere", () => {
   it("neither page inlines its own Cash Pay string test", () => {
     /* One rule, in lib/shared/cashPay.ts. A second copy is the §5.7/§5.17

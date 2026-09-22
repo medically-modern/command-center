@@ -64,7 +64,9 @@ import {
 import {
   evaluateUnlock, coverageActive, inNetwork, networkLabel,
 } from "@/lib/profile/intakeUnlock";
-import { applyCashPayReadiness, cashPayMirrorEdit } from "@/lib/profile/cashPayIntake";
+import {
+  applyCashPayReadiness, benefitCheckApplies, cashPayMirrorEdit, verifiedInsuranceStepApplies,
+} from "@/lib/profile/cashPayIntake";
 import { formatBenefitsFailure } from "@/lib/profile/benefitsFailure";
 // The serving suggestion engine — the same derivation the pre-rewrite panel
 // auto-filled with (canCrossSellCgm × requestType → deriveServing).
@@ -1223,6 +1225,14 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
    * hand either: the column would simply stay blank all the way to the Order
    * board, where the cash pay card keys on it.
    */
+  /* ⚠️ A Cash Pay patient has no payer for Stedi to ask about and no insurance
+     to verify, so the benefit check and section 1 are not part of their intake
+     (§5.48). These rules shipped TESTED AND UNCALLED alongside
+     `primaryInsuranceForGeneral`, which is why they are read here, at the page
+     level, and scanned by `cashPayIntakeWiring.test.ts` rather than trusted. */
+  const showBenefitCheck = benefitCheckApplies(selected);
+  const showVerifiedInsurance = verifiedInsuranceStepApplies(selected);
+
   const edit = useCallback((patch: Partial<Patient>) => {
     if (!selected) return;
     const next = cashPayMirrorEdit(patch, selected.primaryInsurance);
@@ -2970,9 +2980,14 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                 <div className="fgroup">
                   <div className="fgroup-head">
                     <span className="fgroup-title">Needed for the benefits check</span>
-                    <span className={benefitsReady ? "pill ok" : "pill warn"}>
-                      {benefitsReady ? "ready to run" : benefitsMissing.join(" + ") + " needed"}
-                    </span>
+                    {/* ⚠️ Withheld for a cash pay patient: it would read
+                        "Member ID needed" about somebody who has told us they
+                        have no insurance (§5.48). */}
+                    {showBenefitCheck && (
+                      <span className={benefitsReady ? "pill ok" : "pill warn"}>
+                        {benefitsReady ? "ready to run" : benefitsMissing.join(" + ") + " needed"}
+                      </span>
+                    )}
                   </div>
                   <div className="fgrid">
                     {/* Editable, and written by Save — which the benefits check
@@ -3042,6 +3057,23 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     grid: they sat flush against the Secondary Member ID input,
                     which read as part of that field rather than actions on the
                     whole card. */}
+                {/* ⚠️ Both actions are about INSURANCE, so neither belongs on a
+                    cash pay patient: Run would fail on identifiers that do not
+                    exist and leave an eligibility error on the record reading
+                    like a data problem, and Start Insurance Follow-Up texts
+                    them asking for a card they have already told us they do not
+                    have. The line below says so rather than leaving a card that
+                    stops where a rep expects buttons (§5.39g). */}
+                {!showBenefitCheck && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    style={{ marginTop: 24, paddingTop: 18, borderTop: "1px dashed var(--border)" }}
+                  >
+                    Cash pay — there is no insurance to check, so the benefits check and the
+                    insurance follow-up do not apply. What they told us is still recorded above.
+                  </p>
+                )}
+                {showBenefitCheck && (
                 <div
                   className="flex flex-wrap items-center gap-3"
                   style={{ marginTop: 24, paddingTop: 18, borderTop: "1px dashed var(--border)" }}
@@ -3066,11 +3098,12 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     {followUpMinting ? "Preparing…" : "Start Insurance Follow-Up"}
                   </button>
                 </div>
+                )}
                 {/* Names the field that is actually missing. It used to gate
                     on General Insurance alone, which let a rep start a 90-second
                     run with no Member ID — Stedi reads BOTH off the board, so
                     that run could only ever come back as an eligibility error. */}
-                {!benefitsReady && (
+                {showBenefitCheck && !benefitsReady && (
                   <p className="mt-2 text-xs text-muted-foreground">
                     The benefits check needs {benefitsMissing.join(" and ")} first — nothing else
                     on this card.
@@ -3801,6 +3834,29 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                   attempt, Propose Stuck) and links down to it. */}
               <div className="stack">
                 <div>
+                  {/* ⚠️ Section 1 is not part of a Cash Pay patient's intake —
+                      there is nothing to verify (§5.48). Brandon asked for it
+                      hidden; the note takes its place so the pane does not
+                      simply start at a step numbered 2, which reads as
+                      something failing to render.
+
+                      ⚠️ The remaining steps RENUMBER rather than keeping their
+                      own numbers, because the number is the rep's place in a
+                      list and a list that starts at 2 is a list with a hole. */}
+                  {/* No `step` on the note — it is not a step, and a `step={0}`
+                      would draw a "0" in the numbered badge. */}
+                  {!showVerifiedInsurance && (
+                    <Card title="Cash pay — no insurance to verify" tone="lead">
+                      <p className="text-sm text-muted-foreground">
+                        This patient is paying cash, so there is no payer, no member ID and no
+                        benefit check. Their order is priced from Cardinal's costs on the order
+                        board, where the payment link is generated. The two steps below still
+                        apply — the doctor in particular, because Cardinal will not take an order
+                        without one.
+                      </p>
+                    </Card>
+                  )}
+                  {showVerifiedInsurance && (
                   <Card step={1} title="Verified Insurance" tone="lead">
                     <div className="grid grid-cols-2 gap-3">
                       <EditSelect
@@ -3864,13 +3920,14 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       </button>
                     </div>
                   </Card>
+                  )}
 
                   {/* Step 2 — the one decision this card owns. The mockup has
                       Serving and nothing else: Request Type and the coverage
                       paths are the patient's answers and live on the left, so
                       duplicating them here just created two controls for one
                       column and a note explaining which button saved which. */}
-                  <Card step={2} title="Serving & Coverage" tone="lead">
+                  <Card step={showVerifiedInsurance ? 2 : 1} title="Serving & Coverage" tone="lead">
                     <div className="grid grid-cols-2 gap-3">
                       <EditSelect
                         label="Serving"
@@ -3890,7 +3947,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       typed into a real NPI + location + clinicals method. It
                       writes the VERIFIED doctor columns; the Provided * fields
                       on the left are untouched by it (§6.0). */}
-                  <Card step={3} title="Select Correct Provider" tone="lead">
+                  <Card step={showVerifiedInsurance ? 3 : 2} title="Select Correct Provider" tone="lead">
                   <div className="pf-root">
                     {/* ⚠️ `key` is correctness — see the ProfilePage mount: this
                         component's doctor search, picked profile and that

@@ -16,7 +16,9 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { useDtcFormLeads } from "@/hooks/profile/useDtcFormLeads";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
-import { applyCashPayReadiness, cashPayMirrorEdit } from "@/lib/profile/cashPayIntake";
+import {
+  applyCashPayReadiness, benefitCheckApplies, cashPayMirrorEdit,
+} from "@/lib/profile/cashPayIntake";
 import { profileReferralRole, type ProfileReferralRole } from "@/lib/profile/referralSplit";
 import {
   dtcFormMatchesFor, queueLeadsFrom, dtcLeadKindLabel, dtcLeadRoute,
@@ -1423,11 +1425,25 @@ function ProfileBody(p: BodyProps) {
                       onChange={(e) => { setMidInput(e.target.value); p.onUpdate({ workingMemberId: e.target.value }); }} placeholder="Member ID…" />
                   </Field>
                 </div>
+                {/* ⚠️ A Cash Pay patient has no payer for Stedi to ask about, so
+                    the run would fail on identifiers that do not exist and
+                    leave an eligibility error on the record reading like a data
+                    problem (§5.48). The picker above STAYS — it is where Cash
+                    Pay gets chosen — and the note replaces the button rather
+                    than leaving a card that stops where a rep expects one. */}
+                {!benefitCheckApplies(pt) && (
+                  <p className="sugg-note" style={{ marginTop: 16 }}>
+                    Cash pay — there is no insurance to check, so the eligibility check does not
+                    apply. Their order is priced from Cardinal's costs on the order board.
+                  </p>
+                )}
+                {benefitCheckApplies(pt) && (
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
                   <button className="btn primary" onClick={p.onRunStedi} disabled={p.stediRunning}>
                     {p.stediRunning ? "Running…" : "Run Stedi Check"}
                   </button>
                 </div>
+                )}
 
                 {p.stediRunning && (
                   <div className="stedi-running">

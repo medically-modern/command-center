@@ -7989,8 +7989,16 @@ times now). A write to a label id a column does not have is dropped at HTTP 200 
 logs.
 
 **Intake — `lib/profile/cashPayIntake.ts`.** Picking Cash Pay hides **section 1 (Verified
-Insurance)** and the benefit check (Stedi has no payer to ask about), and drops the insurance rows
-from the readiness checklist so Advance can be satisfied. `memberIdRequired` is the single row that
+Insurance)**, the **Run benefits check** / **Start Insurance Follow-Up** pair and `/profile`'s
+**Run Stedi Check** (there is no payer for Stedi to ask about, so a run could only come back as an
+eligibility error reading like a data problem), and drops the insurance rows from the readiness
+checklist so Advance can be satisfied.
+⚠️ **Each one says WHY rather than just stopping** — a card that ends where a rep expects a button
+reads as the page being broken (§5.39g), so a note takes each control's place naming cash pay and
+where the price comes from. ⚠️ The **General Insurance picker is never hidden**: it is how Cash Pay
+gets chosen, and hiding it would be a gate with no way back.
+⚠️ The Clean-Up pane's remaining steps **RENUMBER** (2→1, 3→2) rather than keeping their own
+numbers — the number is the rep's place in a list, and a list starting at 2 is a list with a hole. `memberIdRequired` is the single row that
 actually stranded Debbie: Primary Insurance passes on its own once the mirror has run, and Member
 ID 1 can never be satisfied by somebody with no insurance.
 ⚠️ **SECTION 3 (Select Correct Provider) IS STILL REQUIRED** — a deliberate departure from
@@ -7998,10 +8006,14 @@ Brandon's wording, on Josh's call (2026-09-21: *"keep doctor required. since we 
 order"*). Cardinal's submit payload carries a mandatory `doctorInfo` block, so hiding the doctor
 step would let cash pay orders reach Cardinal with an empty doctor and fail GATE 1 hours downstream
 of the only stage where somebody is still on the phone with the patient.
+⚠️⚠️ **THREE OF THIS MODULE'S RULES SHIPPED WITH NO CALLER AT ALL** — tested, green, and absent
+from the product, which is §5.31b's own failure ("a module nobody calls does not fail; it is
+absent, and its green tests say otherwise"): `primaryInsuranceForGeneral`, `benefitCheckApplies`
+and `verifiedInsuranceStepApplies`. Only `applyCashPayReadiness` was wired. Every one of them is
+now scanned by `cashPayIntakeWiring.test.ts` rather than trusted, each assertion verified to fail
+with its call removed — **assume nothing in this module is live because a test passes.**
 ⚠️⚠️ **THE MIRROR LIVES IN THE PAGES' EDIT HANDLER, NOT ON THE PICKER**
-(`cashPayMirrorEdit`). `primaryInsuranceForGeneral` shipped with **no caller at all** — tested,
-green, and absent from the product, which is §5.31b's own failure ("a module nobody calls does not
-fail; it is absent, and its green tests say otherwise"). A mirror wired to one control is one a
+(`cashPayMirrorEdit`). A mirror wired to one control is one a
 second control silently skips, so it wraps the handler every field edit funnels through and returns
 the patch **by identity** when it does not fire.
 ⚠️⚠️ **ON THE INTAKE PAGE IT MUST ALSO REACH `verified`, AND THAT IS NOT BELT AND BRACES.** Advance
@@ -8133,8 +8145,11 @@ on the Order board.
    Five slices read it (`profile`, `welcomeCall`, `finalConfirm`, `orders`, the Comms Hub dossier);
    a copy per slice is the §5.7/§5.17 hazard and here its failure mode is money.
 2. **The mirror** — `cashPayIntake.cashPayMirrorEdit` ⇄ `ProfilePage.onUpdate` ⇄
-   `UnverifiedReferralsPage.edit` **and its `setVerified` half**. `cashPayIntakeWiring.test.ts`
-   scans all three, each verified to fail.
+   `UnverifiedReferralsPage.edit` **and its `setVerified` half**.
+2b. **The UI gates** — `benefitCheckApplies` ⇄ both pages' benefit-check blocks;
+   `verifiedInsuranceStepApplies` ⇄ the intake page's `showVerifiedInsurance` **and the two
+   renumbered `step=` props**. `cashPayIntakeWiring.test.ts` scans every one of these, each
+   verified to fail.
 3. **The price** — `cashPayPricing` `CASH_PAY_MARKUP` / `MIN_ORDER_MARKUP` / `round2` ⇄ the Debbie
    anchor test ⇄ whatever `coins-form-payment` charges. When the Stripe half lands, the session must
    be built from `cashPayLineItems`, never re-derived.
