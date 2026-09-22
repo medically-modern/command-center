@@ -1476,7 +1476,12 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             ⚠️ Still the same `ConfirmCheck` writing the same intake field: it
             gates Advance and rides out in the notes block, and nothing about
             that moved with it. */}
-        <div className="mt-6 flex flex-col sm:flex-row sm:items-start gap-3">
+        {/* ⚠️ `flex-wrap`: from 640px up this is a row, and at ~768 with the
+            patient sidebar open main is only ~512px — not enough for the
+            button, its note and the checkbox, so the confirmation was pushed
+            off the right edge with its label clipped. Wrapping is inert at
+            every width where the row already fits. */}
+        <div className="mt-6 flex flex-col sm:flex-row sm:items-start flex-wrap gap-3">
           <div className="shrink-0">
           <Button
             variant={patient.welcomeCallTextIndex !== null ? "secondary" : "default"}
@@ -1541,7 +1546,14 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             Sends patient details to confirm.
           </p>
           </div>
-          <div className="flex-1 min-w-0">
+          {/* ⚠️ `sm:min-w-[16rem]` is what makes the row above WRAP instead of
+              crushing this. `flex-1` is `flex: 1 1 0%` — basis 0, so this item
+              never "doesn't fit" and flex-wrap never fires; it just shrank. At
+              ~768 with the sidebar open that squeezed the label to 59px and
+              spilled its text off the right edge. A real minimum makes it wrap
+              to its own line instead, and is inert at every width where the
+              row has room (measured: the label box is unchanged from 900 up). */}
+          <div className="flex-1 min-w-0 sm:min-w-[16rem]">
             <ConfirmCheck intake={intake} onChange={setIntake} field="address" />
           </div>
         </div>

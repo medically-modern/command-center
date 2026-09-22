@@ -381,7 +381,14 @@ const WelcomeCallPage = () => {
                   <h1 className="text-2xl font-bold">Welcome Call</h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}{selected.proposedStuck && <span className="inline-flex items-center rounded-full bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Proposed Stuck</span>}</p>)}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              {/* ⚠️ `flex-wrap` is what stops this row running off the screen.
+                  Seven controls come to ~1010px, so with `flex-nowrap` the page
+                  had a horizontal scrollbar at every width at or below 1280 —
+                  measured, not assumed — and on a phone two thirds of the row
+                  was simply unreachable. Wrapping is inert from 1366 up, where
+                  the row already fits on one line, so the desktop layout is
+                  untouched. Adding an eighth control means re-measuring. */}
+              <div className="flex items-center gap-2 flex-wrap justify-end">
                 {selected && (
                   <CallAttemptsCounter
                     itemId={selected.id}
