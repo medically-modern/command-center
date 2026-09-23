@@ -126,6 +126,14 @@ export default function PatientPage() {
     [dossier],
   );
 
+  /** The patient on this screen, for the Inbox's resolve bar: a note made here
+   *  is about THEM, even when their number files the item under the other
+   *  patient on a shared line. The bar copies it to their live record. */
+  const noteTarget = useMemo(
+    () => (itemId && boardId ? { boardId, itemId: String(itemId) } : null),
+    [itemId, boardId],
+  );
+
   /** What an outbound text is attributed to. Null when there is no live record —
    *  deliberately, because a text filed against a finished item is a note in the
    *  wrong place (§5.28's `threadPatient` rule). */
@@ -205,6 +213,7 @@ export default function PatientPage() {
             active={active}
             contacts={contacts}
             onNoteAppended={(notes) => active && setNoteEdit({ itemId: active.itemId, notes })}
+            noteTarget={noteTarget}
           />
         </div>
       )}

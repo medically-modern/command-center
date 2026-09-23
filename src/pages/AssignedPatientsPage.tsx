@@ -82,7 +82,7 @@ import { buildFaxDirectory, type FaxDirectoryEntry } from "@/lib/commsHub/faxDir
 import { toOutboundRows, viewIsOutbound, type FaxView } from "@/lib/commsHub/faxFilter";
 import { DoctorDbUnavailable, fetchDoctorDbByFax, fetchFaxMatches, type DossierPick } from "@/lib/commsHub/dossierApi";
 import { contactKey } from "@/lib/contactState/contactState";
-import { useDossier } from "@/hooks/commsHub/useDossier";
+import { anchorIndex, useDossier, type DossierAnchor } from "@/hooks/commsHub/useDossier";
 import { useDirectoryNames } from "@/hooks/commsHub/useDirectoryNames";
 import {
   reloadFaxes,
@@ -108,7 +108,7 @@ import {
   useItemKeyForNumber,
 } from "@/hooks/commsInbox/useInbox";
 import type { InboxQuery } from "@/lib/commsInbox/api";
-import { isUnmatchedKey, type InboxItem, type InboxRow } from "@/lib/commsInbox/rules";
+import { inboxStateSig, isUnmatchedKey, type InboxItem, type InboxRow } from "@/lib/commsInbox/rules";
 import { defaultNumber, fillNumbers } from "@/lib/commsInbox/timeline";
 import { contactsFor } from "@/lib/patient/contacts";
 import type { CallLogFilter, TextLogFilter } from "@/lib/commsHub/logFilters";
@@ -382,10 +382,13 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   const stickyRef = useRef<StickyResolution | null>(null);
   stickyRef.current = sticky;
   const releaseSticky = useCallback(() => {
-    if (!stickyRef.current) return;
+    const s = stickyRef.current;
+    if (!s) return;
     stickyRef.current = null;
     setSticky(null);
-    void flushCommsOutbox();
+    // THIS one is copied now; anything else waits out its Undo window, because
+    // another tab may still be offering Undo on it (`flushCommsOutbox`).
+    void flushCommsOutbox(s.resolutionId);
   }, []);
   const openItem = useCallback(
     (key: string | null) => {
@@ -397,16 +400,22 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   // Moving on releases it wherever it happens: another item in any rail, or a
   // rail with nothing open. Re-opening the SAME item — from a log row, say —
   // keeps its Undo.
+  // ⚠️ …which needs the log row's key to have ARRIVED. While it is being looked
+  // up the open key reads null for a moment, and treating that as "moved on"
+  // released the note — copying it to Monday and taking its Undo away — on the
+  // way to re-opening the very same item (2026-09-23 review).
+  const logKeyPending = logRail && logItemKey.loading;
   useEffect(() => {
+    if (logKeyPending) return;
     if (stickyRef.current && stickyRef.current.key !== openKey) releaseSticky();
-  }, [openKey, releaseSticky]);
+  }, [openKey, logKeyPending, releaseSticky]);
   // Opening Communications catches up anything a closed tab left uncopied, and
   // leaving the page copies whatever this one still holds.
   useEffect(() => {
     if (!commsConfig.enabled) return;
     void flushCommsOutbox();
     return () => {
-      void flushCommsOutbox();
+      void flushCommsOutbox(stickyRef.current?.resolutionId);
     };
   }, [commsConfig.enabled]);
 
@@ -426,17 +435,24 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
     () => inboxList.data?.rows.find((r) => r.key === selectedKey) ?? null,
     [inboxList.data, selectedKey],
   );
-  const rowSig = selectedRow
-    ? [selectedRow.lastAt, selectedRow.open, selectedRow.lastResolution?.resolutionId ?? "", selectedRow.attempts.length].join("|")
-    : "";
-  const lastRowSig = useRef<{ key: string | null; sig: string }>({ key: null, sig: "" });
+  const rowSig = selectedRow ? inboxStateSig(selectedRow) : "";
+  /**
+   * ⚠️ Compared with what the OPEN ITEM says, not with the row's previous
+   * value. The old comparison stored "" whenever the row left the list — the
+   * Unresolved view drops a row somebody else resolves — so when a new text
+   * reopened it and it came BACK, the change was read as a first sighting and
+   * the open item kept showing it resolved (2026-09-23 review). Only a row
+   * change triggers this, and the item's own reload does not, so it cannot
+   * loop; an item still loading is compared once it lands.
+   */
+  const itemSigRef = useRef("");
+  itemSigRef.current = item && item.key === selectedKey ? inboxStateSig(item.state) : "";
   useEffect(() => {
-    const prev = lastRowSig.current;
-    lastRowSig.current = { key: selectedKey, sig: rowSig };
-    if (!rowSig || prev.key !== selectedKey || !prev.sig || prev.sig === rowSig) return;
+    const loaded = itemSigRef.current;
+    if (!rowSig || !loaded || loaded === rowSig) return;
     reloadItem();
     setRefreshSeq((n) => n + 1);
-  }, [rowSig, selectedKey, reloadItem]);
+  }, [rowSig, reloadItem]);
 
   const inboxChanged = useCallback(() => {
     invalidateInbox();
@@ -546,11 +562,41 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   const [dossierPick, setDossierPick] = useState<DossierPick | null>(null);
   useEffect(() => setDossierPick(null), [selectedPhone]);
 
+  /**
+   * The patient an OPEN inbox item is filed under — whichever rail opened it.
+   * The profile pane asks the number first (that is what brings the household
+   * switcher) and falls back to this record when the number does not find it:
+   * a caregiver's alternate line, a number a rep linked, a number since
+   * changed. Without it those items read "isn't on any pipeline board" for a
+   * patient the inbox had already named (2026-09-23 review).
+   */
+  const inboxAnchor: DossierAnchor | null = useMemo(() => {
+    if (!item || isUnmatchedKey(item.key) || !item.itemId || !item.boardId) return null;
+    return { boardId: item.boardId, itemId: item.itemId, name: item.name };
+  }, [item]);
+
   const dossier = useDossier(
     selectedPhone,
     tab === "inbox" ? item?.name || "" : dossierPick?.name || directPerson,
     tab === "inbox" ? inboxPick : dossierPick,
+    tab === "inbox" || logRail ? inboxAnchor : null,
   );
+
+  /**
+   * Where a resolve note is copied (plan §5.2). Normally the item's own patient,
+   * which is the gateway's default, so this is null. On a line two patients
+   * share, the rep may have switched the profile to the OTHER one — and the
+   * note is about the person they were looking at, so it is filed to them
+   * rather than to whoever the number happens to be listed under (2026-09-23
+   * review). Never for an unmatched item: that note is never copied.
+   */
+  const inboxNoteTarget = useMemo(() => {
+    const d = dossier.dossier;
+    if (!d || !inboxAnchor) return null;
+    if (anchorIndex([d], inboxAnchor) >= 0) return null;
+    const rec = d.active ?? d.items[0];
+    return rec ? { boardId: Number(rec.boardId), itemId: String(rec.itemId) } : null;
+  }, [dossier.dossier, inboxAnchor]);
 
   /**
    * The item's numbers, with any the gateway couldn't read filled in from THIS
@@ -1008,6 +1054,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
       calling={!!inboxActive?.e164 && activeCall?.phone === inboxActive.e164}
       mondayItemId={inboxMondayItemId}
       canText={inboxCanText}
+      noteTarget={inboxNoteTarget}
       sticky={sticky}
       onResolved={(r, note) => {
         setSticky({ ...r, key: it.key, note });

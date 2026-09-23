@@ -32,10 +32,17 @@ export interface ConversationView {
   /**
    * Send a text, re-read the thread, and arm the late-failure recheck. Throws
    * when the send fails — the caller reports it (and keeps the draft).
+   *
+   * `onAccepted` runs the moment RingCentral ACCEPTS the text, before the
+   * re-read — the composer clears its draft there, as the thread always did
+   * before the extraction. ⚠️ Clearing after the re-read instead left the sent
+   * text in the box while the thread reloaded, and wiped a follow-up typed in
+   * that window (2026-09-23 review).
+   *
    * ⚠️ Does NOT check consent: the composer refuses before calling this, and
    * that refusal is the one copy of the rule.
    */
-  send: (text: string) => Promise<void>;
+  send: (text: string, onAccepted?: () => void) => Promise<void>;
 }
 
 /**
@@ -96,8 +103,9 @@ export function useConversation(phone: string, mondayItemId?: string | null): Co
   }, [phone]);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, onAccepted?: () => void) => {
       await sendMessage({ to: phone, text, mondayItemId: mondayItemId || undefined });
+      onAccepted?.();
       await load(false);
       // This first read shows it Queued; the failure, if any, arrives later.
       recheck.schedule(() => load(false));

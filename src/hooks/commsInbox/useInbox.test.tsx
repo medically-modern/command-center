@@ -135,22 +135,95 @@ describe("⚠️⚠️ the Monday copy (plan §5.2–§5.4)", () => {
     expect(toastError).toHaveBeenCalledWith(expect.stringContaining("Jane Doe"));
   });
 
-  it("flushing is coalesced — two triggers at once run one pass", async () => {
+  it("⚠️ flushes are coalesced — and a trigger DURING a pass gets one more pass, not the next trigger", async () => {
     let release: (v: unknown) => void = () => {};
     api.fetchOutbox.mockReturnValueOnce(new Promise((r) => (release = r)));
+    api.fetchOutbox.mockResolvedValue([]);
     const a = flushCommsOutbox();
-    const b = flushCommsOutbox();
+    const b = flushCommsOutbox(RID); // released while the first pass is reading
     expect(a).toBe(b);
     release([]);
     await a;
-    expect(api.fetchOutbox).toHaveBeenCalledTimes(1);
+    // The first pass read its list before the release; the second one sees it.
+    expect(api.fetchOutbox).toHaveBeenCalledTimes(2);
   });
 
-  it("a flush copies each pending note in turn", async () => {
-    api.fetchOutbox.mockResolvedValueOnce([claimed(), claimed({ resolutionId: "22222222-2222-3333-4444-555555555555" })]);
+  it("a flush copies each note whose Undo window has closed", async () => {
+    const old = Date.now() - 30 * 60_000;
+    api.fetchOutbox.mockResolvedValueOnce([
+      claimed({ resolvedAt: old }),
+      claimed({ resolutionId: "22222222-2222-3333-4444-555555555555", resolvedAt: old }),
+    ]);
     api.claimMirror.mockResolvedValue(null);
     await flushCommsOutbox();
     expect(api.claimMirror).toHaveBeenCalledTimes(2);
+  });
+
+  it("⚠️⚠️ a FRESH note is not copied by a catch-up — another tab may still be offering its Undo", async () => {
+    api.fetchOutbox.mockResolvedValue([claimed({ resolvedAt: Date.now() - 60_000 })]);
+    await flushCommsOutbox();
+    expect(api.claimMirror).not.toHaveBeenCalled();
+    // …but the tab that MOVED ON from it copies it at once.
+    api.claimMirror.mockResolvedValueOnce(null);
+    await flushCommsOutbox(RID);
+    expect(api.claimMirror).toHaveBeenCalledWith(RID);
+  });
+
+  it("a fresh note left behind is copied once its window closes, without waiting for a click", async () => {
+    vi.useFakeTimers();
+    try {
+      api.fetchOutbox.mockResolvedValue([claimed({ resolvedAt: Date.now() - 60_000 })]);
+      api.claimMirror.mockResolvedValue(null);
+      await flushCommsOutbox();
+      expect(api.claimMirror).not.toHaveBeenCalled();
+      api.fetchOutbox.mockResolvedValue([claimed({ resolvedAt: Date.now() - 60 * 60_000 })]);
+      await vi.advanceTimersByTimeAsync(20 * 60_000);
+      expect(api.claimMirror).toHaveBeenCalledWith(RID);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("⚠️ the patient lookup is STRICT — a board that didn't answer is a failure, never 'no live record'", async () => {
+    api.claimMirror.mockResolvedValueOnce(claimed());
+    dossierApi.fetchDossierItemsForPick.mockRejectedValueOnce(new Error("Monday didn't answer for every board"));
+    expect(await copyOne(RID)).toBe("failed");
+    expect(dossierApi.fetchDossierItemsForPick).toHaveBeenCalledWith(
+      expect.objectContaining({ itemId: "900", boardId: 18410804557 }),
+      { strict: true },
+    );
+    expect(api.reportMirrorDone).not.toHaveBeenCalled();
+    expect(api.reportMirrorError).toHaveBeenCalled();
+  });
+
+  it("⚠️⚠️ a lost 'done' never writes the note twice", async () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.clear();
+      api.claimMirror.mockResolvedValueOnce(claimed());
+      dossierApi.fetchDossierItemsForPick.mockResolvedValueOnce([liveItem()]);
+      api.reportMirrorDone.mockRejectedValue(new Error("gateway blip"));
+      const first = copyOne(RID);
+      await vi.advanceTimersByTimeAsync(10_000);
+      // The note IS on Monday: not a failure, and the claim is not released.
+      expect(await first).toBe("copied");
+      expect(api.reportMirrorDone).toHaveBeenCalledTimes(3);
+      expect(api.reportMirrorError).not.toHaveBeenCalled();
+      expect(dossierApi.appendNoteToRecord).toHaveBeenCalledTimes(1);
+
+      // The claim times out and the note is offered again: recorded, not re-written.
+      api.reportMirrorDone.mockReset();
+      api.reportMirrorDone.mockResolvedValue(undefined);
+      api.claimMirror.mockResolvedValueOnce(claimed());
+      expect(await copyOne(RID)).toBe("copied");
+      expect(dossierApi.appendNoteToRecord).toHaveBeenCalledTimes(1);
+      expect(api.reportMirrorDone).toHaveBeenCalledWith(RID, "18410804557:900");
+      expect(localStorage.getItem(`mm-comms-copied:${RID}`)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      api.reportMirrorDone.mockReset();
+      api.reportMirrorDone.mockResolvedValue(undefined);
+    }
   });
 
   it("no gateway → nothing to flush, and nothing is asked", async () => {

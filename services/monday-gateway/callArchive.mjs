@@ -165,6 +165,10 @@ CREATE TABLE IF NOT EXISTS call_archive_runs (
   error        TEXT
 );
 ALTER TABLE call_archive_runs ADD COLUMN IF NOT EXISTS shed BOOLEAN DEFAULT false;
+-- Voice or Fax. The call log carries both, and the Communications inbox reads
+-- this table as a list of phone calls, so it has to be able to leave the
+-- faxes out. Nullable and default-free, so adding it is metadata-only.
+ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS call_type TEXT;
 CREATE INDEX IF NOT EXISTS call_archive_runs_ok_idx   ON call_archive_runs (ok, finished_at DESC);
 CREATE INDEX IF NOT EXISTS call_archive_runs_deep_idx ON call_archive_runs (deep, ok, finished_at DESC);
 
@@ -202,13 +206,13 @@ const SHED_PAUSE_MS = Math.max(Number(process.env.CALL_ARCHIVE_SHED_PAUSE_MS) ||
 const CHUNK = 100;
 
 function upsertSql(count) {
-  const cols = 14;
+  const cols = 15;
   const tuples = [];
   for (let i = 0; i < count; i++) {
     const b = i * cols;
     tuples.push(
       `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6}::jsonb,$${b + 7},$${b + 8},` +
-        `$${b + 9},$${b + 10}::timestamptz,$${b + 11},$${b + 12},$${b + 13},$${b + 14})`,
+        `$${b + 9},$${b + 10}::timestamptz,$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15})`,
     );
   }
   // ⚠️⚠️ THE SCAN MAY ONLY EVER MOVE `none` → `pending`. Every other transition
@@ -228,10 +232,11 @@ function upsertSql(count) {
   return (
     `INSERT INTO call_archive
        (rc_call_id, rc_session_id, rc_recording_id, direction, result, leg_results,
-        phone_hmac, last4, duration_sec, started_at, audio_state, content_uri, attempts, first_seen_at)
+        phone_hmac, last4, duration_sec, started_at, audio_state, content_uri, attempts, first_seen_at, call_type)
      VALUES ${tuples.join(",")}
      ON CONFLICT (rc_call_id) DO UPDATE SET
        rc_session_id   = COALESCE(EXCLUDED.rc_session_id,   call_archive.rc_session_id),
+       call_type       = COALESCE(EXCLUDED.call_type,       call_archive.call_type),
        rc_recording_id = COALESCE(EXCLUDED.rc_recording_id, call_archive.rc_recording_id),
        result          = COALESCE(EXCLUDED.result,          call_archive.result),
        leg_results     = COALESCE(EXCLUDED.leg_results,     call_archive.leg_results),
@@ -268,6 +273,7 @@ async function upsertRows(pool, rows) {
         r.contentUri,
         0,
         new Date().toISOString(),
+        r.callType ?? null,
       );
     }
     const res = await pool.query(upsertSql(slice.length), args);

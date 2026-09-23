@@ -312,8 +312,59 @@ export function callEvent(row, dialedBy = "") {
     legResults: Array.isArray(row?.leg_results) ? row.leg_results.map(String) : [],
     durationSec: Math.max(0, Number(row?.duration_sec ?? 0)) || 0,
     audioState: String(row?.audio_state ?? "none"),
+    // RingCentral's call-log `type` — "Voice" or "Fax". Blank on rows archived
+    // before the column existed; see `isFaxCall`.
+    callType: String(row?.call_type ?? ""),
     dialedBy: dialedBy || "",
   };
+}
+
+/**
+ * Is this call-log row a FAX?
+ *
+ * ⚠️⚠️ THE CALL LOG CARRIES FAXES, and `call_archive` keeps every row it is
+ * given (found by the 2026-09-23 review, against a real Postgres). A received
+ * fax that failed ("Receive Error", duration 0) reads to `callConnected` as a
+ * call nobody answered, so it opened a "Missed call" item — and fed the badge
+ * and the SLA. The SPA has always asked the call log for `type=Voice`; the
+ * archive does not, so the type rides on the row (`call_type`) and is checked
+ * here. A blank type is a VOICE call: only rows archived before the column
+ * existed are blank, and those are all older than the inbox's epoch.
+ */
+export function isFaxCall(e) {
+  return e?.kind === "call" && norm(e.callType) === "fax";
+}
+
+/**
+ * The same RingCentral record read twice in one tick, collapsed to one.
+ *
+ * ⚠️⚠️ OFFSET PAGING SHIFTS UNDER A BUSY LINE. The tick reads several pages of
+ * a newest-first list with a pause between them; a record that arrives in the
+ * pause pushes everything down one, so the last row of page 1 comes back as the
+ * first row of page 2. The archives upsert in multi-row statements, and
+ * Postgres refuses one that touches the same key twice ("ON CONFLICT DO UPDATE
+ * command cannot affect row a second time") — so ONE duplicate failed the whole
+ * tick, every minute the burst lasted (reproduced against a real Postgres,
+ * 2026-09-23 review). The archives' own scans upsert one page at a time, which
+ * is why they never met it.
+ *
+ * The LAST read of a record wins: it is the fresher one (a delivery verdict can
+ * change between the two reads). A record with no id is kept as it is — the
+ * archives' own row builders drop those.
+ */
+export function dedupeRecords(records) {
+  const byId = new Map();
+  const noId = [];
+  for (const r of records ?? []) {
+    const id = r?.id === undefined || r?.id === null ? "" : String(r.id);
+    if (!id) {
+      noId.push(r);
+      continue;
+    }
+    if (byId.has(id)) byId.delete(id); // re-insert, so the order follows the last read
+    byId.set(id, r);
+  }
+  return [...byId.values(), ...noId];
 }
 
 /** A `voicemail_archive` row. */
@@ -360,16 +411,19 @@ export function resolutionFromRow(row) {
  *  · an inbound call that did not connect, unless RingCentral says Blocked;
  *  · a voicemail left for us.
  *
- * Never a fax (no archive this reads holds one), never an outbound event — our
- * replies do not close items and do not open them either — and never an event
- * with no number: a withheld caller cannot be grouped, called back or resolved.
- * Those still show in the hub's Phone tab, as they always have.
+ * Never a fax — `sms_archive` drops them, and the call log's are refused here
+ * by type (`isFaxCall`), because `call_archive` DOES hold them. Never an
+ * outbound event — our replies do not close items and do not open them either —
+ * and never an event with no number: a withheld caller cannot be grouped,
+ * called back or resolved. Those still show in the hub's Phone tab, as they
+ * always have. Our OWN lines are dropped before this is asked (commsInbox's
+ * `dropOwn`): the rules never see a number in the clear, so they cannot tell.
  */
 export function opensItem(e) {
   if (!e || !e.hmac || e.dir !== "in" || !Number.isFinite(e.at)) return false;
   if (e.kind === "text") return true;
   if (e.kind === "voicemail") return true;
-  if (e.kind === "call") return !callConnected(e) && !isBlockedCall(e);
+  if (e.kind === "call") return !isFaxCall(e) && !callConnected(e) && !isBlockedCall(e);
   return false;
 }
 
@@ -1035,6 +1089,34 @@ export function canAddNote({ rows = [], actor = "", now = Date.now(), note = "" 
 }
 
 /**
+ * Where a resolution's note is copied to Monday (plan §5.2): the patient record
+ * stored on the resolution as `item_board` / `item_id`.
+ *
+ * Normally the item's own patient — the record the number files under. On a
+ * number two patients SHARE, though, that is one of them by a deterministic
+ * tie-break (§5.29's `collapseRows`), and the rep may have been looking at the
+ * other: the hub's household switcher, or the other patient's own screen. The
+ * note is about the person the rep was looking at, so the browser can name them
+ * (2026-09-23 review) and the copy goes there.
+ *
+ * ⚠️ Only for an item that IS a patient's. An unmatched number's note is never
+ * copied (plan §5.2), and a request naming somebody for one must not start
+ * copying it — that would write a note about a stranger's number onto a record
+ * nobody linked it to.
+ * ⚠️ Ids are checked for SHAPE only: they are Monday ids, and the browser's copy
+ * step reads the record back by id before writing anything — a record that is
+ * not there is recorded as "no live record" rather than written.
+ */
+export function noteTargetFor(target, requested) {
+  if (!target || !target.itemId) return null;
+  const own = { boardId: Number(target.boardId), itemId: String(target.itemId) };
+  const b = String(requested?.boardId ?? "").trim();
+  const i = String(requested?.itemId ?? "").trim();
+  if (!/^[1-9]\d{0,19}$/.test(b) || !/^[1-9]\d{0,19}$/.test(i)) return own;
+  return { boardId: Number(b), itemId: i };
+}
+
+/**
  * Is this resolution waiting to be copied to Monday by `actor`'s browser?
  *
  * ⚠️ Only the RESOLVER's browser copies: `appendNoteToRecord` stamps the
@@ -1342,18 +1424,21 @@ export function inboxHealth({
   if (okAt === null) reason = "no complete capture tick recorded yet";
   else if (stale) reason = `the last complete capture tick was ${Math.round(ageMs / 60_000)} minutes ago`;
   else if (truncated) reason = "the last capture tick hit its page ceiling, so the two-hour window was only partly read";
-  // ⚠️ An archive switched off is a deliberate act, and the tick honours it —
-  // but the inbox is then BLIND to that kind of event, which reads exactly like
-  // a quiet day. Not ok, and saying which.
-  else if (off.length) reason = `new ${off.join(" and ")} are not reaching the inbox — that archive is switched off`;
   const oldest = oldestPendingMirrorAt ? toMs(oldestPendingMirrorAt) : null;
   const warnings = [];
+  // ⚠️ An archive switched off is a deliberate act, and the tick honours it —
+  // the inbox is then BLIND to that kind of event, which reads exactly like a
+  // quiet day, so the health SAYS so. But it is a WARNING, not a fault: every
+  // archive's own health treats "off on purpose" as quiet, and a page every
+  // ten minutes about a switch somebody flipped on purpose is the kind that
+  // teaches everybody to swipe these away (2026-09-23 review).
+  if (off.length) warnings.push(`new ${off.join(" and ")} are not reaching the inbox — that archive is switched off`);
   if (oldest !== null && now - oldest > MIRROR_WAIT_WARN_MS) {
     warnings.push(`${pendingMirrors} note(s) waiting to be copied to Monday, the oldest ${Math.round((now - oldest) / 3600_000)}h`);
   }
   if (failedMirrors > 0) warnings.push(`${failedMirrors} note(s) could not be copied to Monday after ${MAX_MIRROR_ATTEMPTS} tries`);
   return {
-    ok: !stale && !truncated && !off.length,
+    ok: !stale && !truncated,
     enabled: true,
     stale,
     truncated,

@@ -75,6 +75,7 @@ import {
   callEvent,
   canAddNote,
   canUndo,
+  dedupeRecords,
   dialerFor,
   filterInbox,
   groupKeyFor,
@@ -82,6 +83,7 @@ import {
   itemState,
   mirrorPending,
   normalizeNote,
+  noteTargetFor,
   opensItem,
   parseKey,
   planResolve,
@@ -117,7 +119,27 @@ const SNAPSHOT_TTL_MS = 10_000;
 /** A number Monday knew nothing about is asked again after this, so a patient
  *  added this afternoon stops being "Unknown caller" without waiting a day. */
 const LOOKUP_RECHECK_MS = 6 * 3600_000;
+/**
+ * A number Monday DID know is asked again after this — but only when it texts
+ * or calls again, which is the only time the answer matters.
+ *
+ * ⚠️⚠️ A CACHED HIT MUST EXPIRE, or it outlives the patient's number. The
+ * directory prunes a number once its patient has moved off it (§5.29), because
+ * a stale row is a HIT and a hit is never re-asked; this cache holds the same
+ * kind of answer for numbers the directory has not seen yet, and without an
+ * age it kept mapping a reassigned number to its old patient for ever — a
+ * stranger's texts filed under them, and a Called note copied to their Monday
+ * record (2026-09-23 review). The directory's reconcile is daily, so a patient
+ * a live lookup found has reached it by the time this runs out.
+ */
+const FOUND_RECHECK_MS = 24 * 3600_000;
 const LOOKUP_BATCH = 25;
+/** A forced tick is refused inside this gap: `running` coalesces only ticks
+ *  that overlap, so a client posting again each time one finishes would get a
+ *  full RingCentral read every time (§5.27's reason for flooring these). */
+const TICK_FORCE_MIN_GAP_MS = 30_000;
+/** How long the answer to "which archive tables exist?" is trusted. */
+const PRESENCE_TTL_MS = 60_000;
 const RUNS_KEEP_DAYS = 14;
 const NUMBER_MEMORY_MAX = 5000;
 
@@ -227,6 +249,16 @@ CREATE TABLE IF NOT EXISTS comms_inbox_meta (
   value  TEXT NOT NULL,
   set_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Two columns this module READS on tables it does not own. Each owner adds its
+-- own with the same idempotent statement; they are repeated here because an
+-- owner switched off by its kill switch returns BEFORE its schema runs, and a
+-- column this reads that is not there fails every list, count and resolve with
+-- an undefined-column error, not an empty answer (2026-09-23 review). Adding a
+-- nullable column is metadata-only, and IF EXISTS keeps both a no-op on a
+-- database where the owner never ran at all.
+ALTER TABLE IF EXISTS patient_directory ADD COLUMN IF NOT EXISTS group_id TEXT;
+ALTER TABLE IF EXISTS call_archive ADD COLUMN IF NOT EXISTS call_type TEXT;
 `;
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -254,6 +286,52 @@ async function optionalTable(promise) {
     throw e;
   }
 }
+
+/**
+ * Which of the three archives this reads exist on this database.
+ *
+ * ⚠️ An archive whose kill switch was set from the START never runs its schema,
+ * so its table is simply not there — and `optionalTable` cannot help inside the
+ * resolve's transaction, where the first failed statement aborts everything
+ * after it. So the tables are asked about UP FRONT, and a missing one reads as
+ * no events of that kind: the inbox is blind to it, as `feedsOff` says, never
+ * broken by it (2026-09-23 review). Cached a minute, because an archive
+ * switched on later creates its table on its own boot.
+ */
+let presence = { at: 0, texts: true, calls: true, voicemails: true };
+async function archivesPresent(pool) {
+  if (Date.now() - presence.at < PRESENCE_TTL_MS) return presence;
+  const q = await pool.query(
+    `SELECT to_regclass('sms_archive') IS NOT NULL AS texts,
+            to_regclass('call_archive') IS NOT NULL AS calls,
+            to_regclass('voicemail_archive') IS NOT NULL AS voicemails`,
+  );
+  const r = q.rows[0] || {};
+  presence = { at: Date.now(), texts: r.texts !== false, calls: r.calls !== false, voicemails: r.voicemails !== false };
+  return presence;
+}
+const NONE = Promise.resolve({ rows: [] });
+
+/**
+ * Our own lines, hashed — they never open an item and are never a patient.
+ *
+ * ⚠️ `sms_archive` already refuses our own line as a text's counterparty, but
+ * the call log and the voicemail box do not: a call from the main line to
+ * itself (a test, a transfer) opened an "Unmatched" item. The rules never see a
+ * number in the clear, so they cannot tell; this drops them before the rules
+ * are asked (2026-09-23 review).
+ */
+let ownMemo = { key: "", set: new Set() };
+function ownHmacs() {
+  const nums = ourNumbers();
+  const key = nums.join(",");
+  if (ownMemo.key !== key) ownMemo = { key, set: new Set(nums.map((n) => phoneHmac(n)).filter(Boolean)) };
+  return ownMemo.set;
+}
+const dropOwn = (events) => {
+  const own = ownHmacs();
+  return own.size ? events.filter((e) => !own.has(e.hmac)) : events;
+};
 
 /**
  * Which archives the tick may feed.
@@ -345,17 +423,19 @@ async function readWindow(path, stats) {
     });
     if (res.status === 429) {
       stats.shed = true;
-      return records;
+      return dedupeRecords(records);
     }
     if (!res.ok) throw new Error(`RingCentral read failed (${res.status}) on ${path.split("?")[0]}`);
     const j = await res.json();
     const batch = j.records ?? [];
     records.push(...batch);
-    if (batch.length < TICK_PAGE_SIZE) return records;
+    if (batch.length < TICK_PAGE_SIZE) return dedupeRecords(records);
     if (page === TICK_MAX_PAGES) stats.truncated = true;
     await sleep(1500); // paced, like every archive scan: a burst is what a limiter notices
   }
-  return records;
+  // ⚠️ Deduped: offset paging repeats a record when one arrives between pages,
+  // and one repeat fails the archives' multi-row upsert outright.
+  return dedupeRecords(records);
 }
 
 /** Ask Monday about inbound numbers nothing here recognises yet. */
@@ -371,8 +451,9 @@ async function lookupUnknown(pool, e164s, stats) {
   const q = await pool.query(
     `SELECT phone_hmac FROM comms_links WHERE phone_hmac = ANY($1)
       UNION SELECT phone_hmac FROM comms_number_cache
-             WHERE phone_hmac = ANY($1) AND (found OR checked_at > now() - $2::interval)`,
-    [hmacs, `${Math.round(LOOKUP_RECHECK_MS / 1000)} seconds`],
+             WHERE phone_hmac = ANY($1)
+               AND checked_at > now() - (CASE WHEN found THEN $3 ELSE $2 END)::interval`,
+    [hmacs, `${Math.round(LOOKUP_RECHECK_MS / 1000)} seconds`, `${Math.round(FOUND_RECHECK_MS / 1000)} seconds`],
   );
   const d = await optionalTable(pool.query(`SELECT phone_hmac FROM patient_directory WHERE phone_hmac = ANY($1)`, [hmacs]));
   for (const r of [...q.rows, ...d.rows]) known.add(r.phone_hmac);
@@ -408,11 +489,13 @@ async function lookupUnknown(pool, e164s, stats) {
 }
 
 let tickRunning = false;
+let lastTickStartedAt = 0;
 
 export async function captureTick({ pool } = {}) {
   if (!pool || !rcConfigured()) return { ok: false, error: "not configured" };
   if (tickRunning) return { ok: false, skipped: true };
   tickRunning = true;
+  lastTickStartedAt = Date.now();
   const stats = { texts: 0, calls: 0, voicemails: 0, lookedUp: 0, truncated: false, shed: false };
   let runId = null;
   try {
@@ -468,8 +551,11 @@ export async function captureTick({ pool } = {}) {
     invalidate();
     return { ok: true, ...stats };
   } catch (e) {
-    const msg = String((e && e.message) || e);
-    console.error("comms_inbox tick failed:", msg);
+    console.error("comms_inbox tick failed:", String((e && e.message) || e));
+    // ⚠️ What is STORED is read back by the unauthenticated health route, so a
+    // database error keeps only its SQLSTATE there — its text names tables and
+    // columns. The whole message is in the log line above.
+    const msg = e && typeof e.code === "string" && /^[0-9A-Z]{5}$/.test(e.code) ? `database error ${e.code}` : String((e && e.message) || e);
     if (runId) {
       await pool
         .query(`UPDATE comms_inbox_runs SET finished_at = now(), ok = false, error = $2, shed = $3 WHERE id = $1`, [
@@ -565,8 +651,9 @@ async function loadInboundForList(pool, { epoch, now }) {
   const windowStart = new Date(now - DISPLAY_WINDOW_MS);
   const epochAt = new Date(epoch);
   const labels = CONNECTED_RESULT_LABELS;
+  const has = await archivesPresent(pool);
   const [t, c, v] = await Promise.all([
-    pool.query(
+    !has.texts ? NONE : pool.query(
       `WITH ${COVER_CTE}
        SELECT s.rc_message_id, s.phone_hmac, s.last4, s.direction, s.body, s.message_status, s.delivery_error,
               s.attachments, s.created_at
@@ -575,12 +662,13 @@ async function loadInboundForList(pool, { epoch, now }) {
           AND (s.created_at >= $1 OR (s.created_at >= $2 AND s.created_at > COALESCE(cov.covered, '-infinity'::timestamptz)))`,
       [windowStart, epochAt],
     ),
-    pool.query(
+    !has.calls ? NONE : pool.query(
       `WITH ${COVER_CTE}
        SELECT a.rc_call_id, a.rc_session_id, a.phone_hmac, a.last4, a.direction, a.result, a.leg_results,
-              a.duration_sec, a.started_at, a.audio_state
+              a.duration_sec, a.started_at, a.audio_state, a.call_type
          FROM call_archive a LEFT JOIN cov ON cov.phone_hmac = a.phone_hmac
         WHERE a.direction = 'Inbound' AND a.phone_hmac IS NOT NULL
+          AND a.call_type IS DISTINCT FROM 'Fax'
           AND NOT (lower(btrim(COALESCE(a.result, ''))) = ANY($3))
           AND NOT EXISTS (
                 SELECT 1 FROM jsonb_array_elements_text(COALESCE(a.leg_results, '[]'::jsonb)) AS x(v)
@@ -588,7 +676,7 @@ async function loadInboundForList(pool, { epoch, now }) {
           AND (a.started_at >= $1 OR (a.started_at >= $2 AND a.started_at > COALESCE(cov.covered, '-infinity'::timestamptz)))`,
       [windowStart, epochAt, labels],
     ),
-    pool.query(
+    !has.voicemails ? NONE : pool.query(
       `WITH ${COVER_CTE}
        SELECT v.rc_message_id, v.phone_hmac, v.last4, v.direction, v.duration_sec, v.created_at, v.audio_state,
               v.transcript
@@ -598,7 +686,11 @@ async function loadInboundForList(pool, { epoch, now }) {
       [windowStart, epochAt],
     ),
   ]);
-  return [...t.rows.map((r) => textEvent(r)), ...c.rows.map((r) => callEvent(r)), ...v.rows.map((r) => voicemailEvent(r))];
+  return dropOwn([
+    ...t.rows.map((r) => textEvent(r)),
+    ...c.rows.map((r) => callEvent(r)),
+    ...v.rows.map((r) => voicemailEvent(r)),
+  ]);
 }
 
 /** Outbound texts (with who sent them) and calls (with who dialed) for these
@@ -606,15 +698,18 @@ async function loadInboundForList(pool, { epoch, now }) {
 async function loadOutbound(pool, hmacs, since) {
   if (!hmacs.length) return [];
   const from = new Date(since);
+  const has = await archivesPresent(pool);
   const [t, c, sent, dials] = await Promise.all([
-    pool.query(
+    !has.texts ? NONE : pool.query(
       `SELECT rc_message_id, phone_hmac, last4, direction, body, message_status, delivery_error, attachments, created_at
          FROM sms_archive WHERE phone_hmac = ANY($1) AND direction = 'Outbound' AND created_at > $2`,
       [hmacs, from],
     ),
-    pool.query(
-      `SELECT rc_call_id, rc_session_id, phone_hmac, last4, direction, result, leg_results, duration_sec, started_at, audio_state
-         FROM call_archive WHERE phone_hmac = ANY($1) AND direction = 'Outbound' AND started_at > $2`,
+    !has.calls ? NONE : pool.query(
+      `SELECT rc_call_id, rc_session_id, phone_hmac, last4, direction, result, leg_results, duration_sec, started_at,
+              audio_state, call_type
+         FROM call_archive WHERE phone_hmac = ANY($1) AND direction = 'Outbound' AND started_at > $2
+          AND call_type IS DISTINCT FROM 'Fax'`,
       [hmacs, from],
     ),
     pool.query(
@@ -658,19 +753,21 @@ function attributed({ texts = [], calls = [], voicemails = [], sent = [], dials 
 
 /** Everything for one item's numbers, for its timeline. */
 async function loadGroupAll(pool, hmacs) {
+  const has = await archivesPresent(pool);
   const [t, c, v, res, sent, dials, media] = await Promise.all([
-    pool.query(
+    !has.texts ? NONE : pool.query(
       `SELECT rc_message_id, phone_hmac, last4, direction, body, message_status, delivery_error, attachments, created_at
          FROM sms_archive WHERE phone_hmac = ANY($1) ORDER BY created_at DESC LIMIT 3000`,
       [hmacs],
     ),
-    pool.query(
+    !has.calls ? NONE : pool.query(
       `SELECT rc_call_id, rc_session_id, phone_hmac, last4, direction, result, leg_results, duration_sec, started_at,
-              audio_state, content_uri
-         FROM call_archive WHERE phone_hmac = ANY($1) ORDER BY started_at DESC LIMIT 3000`,
+              audio_state, content_uri, call_type
+         FROM call_archive WHERE phone_hmac = ANY($1) AND call_type IS DISTINCT FROM 'Fax'
+        ORDER BY started_at DESC LIMIT 3000`,
       [hmacs],
     ),
-    pool.query(
+    !has.voicemails ? NONE : pool.query(
       `SELECT rc_message_id, phone_hmac, last4, direction, duration_sec, created_at, audio_state, transcript, content_uri
          FROM voicemail_archive WHERE phone_hmac = ANY($1) ORDER BY created_at DESC LIMIT 1000`,
       [hmacs],
@@ -687,7 +784,7 @@ async function loadGroupAll(pool, hmacs) {
       pool.query(`SELECT rc_message_id, rc_attachment_id, media_state FROM mms_archive WHERE phone_hmac = ANY($1)`, [hmacs]),
     ),
   ]);
-  const events = attributed({ texts: t.rows, calls: c.rows, voicemails: v.rows, sent: sent.rows, dials: dials.rows });
+  const events = dropOwn(attributed({ texts: t.rows, calls: c.rows, voicemails: v.rows, sent: sent.rows, dials: dials.rows }));
   // RingCentral's media URLs, for playback of anything the archive has not got
   // yet — Play falls back to RingCentral, on the press, never on open.
   const callUri = new Map(c.rows.map((r) => [String(r.rc_call_id), r.content_uri || ""]));
@@ -696,28 +793,45 @@ async function loadGroupAll(pool, hmacs) {
   return { events, resolutions: res.rows.map(resolutionFromRow), callUri, vmUri, storedMedia: stored };
 }
 
-/** Opening candidates since the epoch — all a resolve needs. */
-async function loadOpening(client, hmacs, epoch) {
+/**
+ * Opening candidates since the epoch — all a resolve needs.
+ *
+ * ⚠️ ONE QUERY AT A TIME. The resolve runs this on its transaction's client,
+ * and a pg client given a second query while one is in flight queues it with a
+ * deprecation warning today and an error in pg@9 (2026-09-23 review). The
+ * table check is asked of the POOL, before any of it, so a missing archive is
+ * skipped rather than aborting the transaction.
+ */
+async function loadOpening(client, hmacs, epoch, has) {
   const at = new Date(epoch);
-  const [t, c, v, res] = await Promise.all([
-    client.query(
-      `SELECT rc_message_id, phone_hmac, last4, direction, created_at FROM sms_archive
-        WHERE phone_hmac = ANY($1) AND direction = 'Inbound' AND created_at >= $2`,
-      [hmacs, at],
-    ),
-    client.query(
-      `SELECT rc_call_id, phone_hmac, last4, direction, result, leg_results, duration_sec, started_at FROM call_archive
-        WHERE phone_hmac = ANY($1) AND direction = 'Inbound' AND started_at >= $2`,
-      [hmacs, at],
-    ),
-    client.query(
-      `SELECT rc_message_id, phone_hmac, last4, direction, created_at FROM voicemail_archive
-        WHERE phone_hmac = ANY($1) AND direction = 'Inbound' AND created_at >= $2`,
-      [hmacs, at],
-    ),
-    client.query(`SELECT * FROM comms_resolutions WHERE phone_hmac = ANY($1)`, [hmacs]),
+  const t = !has.texts
+    ? { rows: [] }
+    : await client.query(
+        `SELECT rc_message_id, phone_hmac, last4, direction, created_at FROM sms_archive
+          WHERE phone_hmac = ANY($1) AND direction = 'Inbound' AND created_at >= $2`,
+        [hmacs, at],
+      );
+  const c = !has.calls
+    ? { rows: [] }
+    : await client.query(
+        `SELECT rc_call_id, phone_hmac, last4, direction, result, leg_results, duration_sec, started_at, call_type
+           FROM call_archive
+          WHERE phone_hmac = ANY($1) AND direction = 'Inbound' AND started_at >= $2 AND call_type IS DISTINCT FROM 'Fax'`,
+        [hmacs, at],
+      );
+  const v = !has.voicemails
+    ? { rows: [] }
+    : await client.query(
+        `SELECT rc_message_id, phone_hmac, last4, direction, created_at FROM voicemail_archive
+          WHERE phone_hmac = ANY($1) AND direction = 'Inbound' AND created_at >= $2`,
+        [hmacs, at],
+      );
+  const res = await client.query(`SELECT * FROM comms_resolutions WHERE phone_hmac = ANY($1)`, [hmacs]);
+  const events = dropOwn([
+    ...t.rows.map((r) => textEvent(r)),
+    ...c.rows.map((r) => callEvent(r)),
+    ...v.rows.map((r) => voicemailEvent(r)),
   ]);
-  const events = [...t.rows.map((r) => textEvent(r)), ...c.rows.map((r) => callEvent(r)), ...v.rows.map((r) => voicemailEvent(r))];
   return { events, resolutions: res.rows.map(resolutionFromRow) };
 }
 
@@ -726,9 +840,17 @@ async function loadOpening(client, hmacs, epoch) {
  * ──────────────────────────────────────────────────────────────────────────── */
 
 let snap = null; // { at, items, epoch }
-let snapInflight = null;
+let snapInflight = null; // { gen, promise }
+/**
+ * ⚠️ A GENERATION, so a computation that STARTED before a write cannot store
+ * its now-stale answer after it (2026-09-23 review): without it a resolve that
+ * landed while the list was being computed was undone on screen for up to ten
+ * seconds — the row it closed came back open.
+ */
+let snapGen = 0;
 function invalidate() {
   snap = null;
+  snapGen += 1;
 }
 
 async function computeSnapshot(pool) {
@@ -756,14 +878,21 @@ async function computeSnapshot(pool) {
 
 async function snapshot(pool) {
   if (snap && Date.now() - snap.at < SNAPSHOT_TTL_MS) return snap;
-  if (!snapInflight) {
-    snapInflight = computeSnapshot(pool)
-      .then((s) => (snap = s))
+  // A computation begun before the last write is not joined: its answer
+  // predates the write. A fresh one starts instead.
+  if (!snapInflight || snapInflight.gen !== snapGen) {
+    const gen = snapGen;
+    const promise = computeSnapshot(pool)
+      .then((s) => {
+        if (gen === snapGen) snap = s;
+        return s;
+      })
       .finally(() => {
-        snapInflight = null;
+        if (snapInflight?.promise === promise) snapInflight = null;
       });
+    snapInflight = { gen, promise };
   }
-  return snapInflight;
+  return snapInflight.promise;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -839,14 +968,15 @@ async function resolveNumbers(pool, numbers) {
   for (const n of numbers) {
     let e164 = numberMemory.get(n.hmac) || "";
     if (!e164 && reads < 3 && rcConfigured()) {
-      const q = await pool.query(
-        `SELECT k, id FROM (
-           SELECT 'call' AS k, rc_call_id AS id, started_at AS t FROM call_archive WHERE phone_hmac = $1
-           UNION ALL SELECT 'text', rc_message_id, created_at FROM sms_archive WHERE phone_hmac = $1
-           UNION ALL SELECT 'vm', rc_message_id, created_at FROM voicemail_archive WHERE phone_hmac = $1
-         ) x ORDER BY t DESC LIMIT 3`,
-        [n.hmac],
-      );
+      const has = await archivesPresent(pool);
+      const parts = [
+        has.calls && `SELECT 'call' AS k, rc_call_id AS id, started_at AS t FROM call_archive WHERE phone_hmac = $1`,
+        has.texts && `SELECT 'text' AS k, rc_message_id AS id, created_at AS t FROM sms_archive WHERE phone_hmac = $1`,
+        has.voicemails && `SELECT 'vm' AS k, rc_message_id AS id, created_at AS t FROM voicemail_archive WHERE phone_hmac = $1`,
+      ].filter(Boolean);
+      const q = parts.length
+        ? await pool.query(`SELECT k, id FROM (${parts.join(" UNION ALL ")}) x ORDER BY t DESC LIMIT 3`, [n.hmac])
+        : { rows: [] };
       for (const r of q.rows) {
         if (e164 || reads >= 3) break;
         reads += 1;
@@ -920,7 +1050,10 @@ export function registerCommsInbox({ app, pool }) {
     // ⚠️⚠️ THE HEALTH ROUTE SURVIVES THE KILL SWITCH, as every archive's does:
     // switching the inbox off during an incident must read as "off, on
     // purpose", not as a fresh "could not reach the health check" alert.
-    app.get("/comms/inbox-health", (_req, res) => res.json({ ok: true, enabled: false, reason: why }));
+    // ⚠️ But switched ON and unable to run (no messaging pool, no pepper) is
+    // NOT "off on purpose" — somebody asked for the inbox and is not getting
+    // it — so that one is NOT ok, and the monitor says so (2026-09-23 review).
+    app.get("/comms/inbox-health", (_req, res) => res.json({ ok: !ENABLED, enabled: false, reason: why }));
     for (const r of ROUTES) app.all(r, (_req, res) => res.status(503).json({ enabled: false, error: why }));
     return;
   }
@@ -1058,13 +1191,14 @@ export function registerCommsInbox({ app, pool }) {
       const hmacs = numbers.map((n) => n.hmac).sort();
       const now = Date.now();
       const epoch = await loadEpoch(pool);
+      const has = await archivesPresent(pool);
       client = await pool.connect();
       await client.query("BEGIN");
       // ⚠️ The check and the write happen under a lock per NUMBER, taken in a
       // fixed order: two reps on one item is an ordinary afternoon, and without
       // this both could pass the check and both write.
       for (const h of hmacs) await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`comms:${h}`]);
-      const g = await loadOpening(client, hmacs, epoch);
+      const g = await loadOpening(client, hmacs, epoch, has);
       const st = itemState({ events: g.events, resolutions: g.resolutions, now, epoch });
       const plan = planResolve({ how, note: req.body?.note, seenThrough: req.body?.seenThrough, now, state: st });
       if (!plan.ok) {
@@ -1075,6 +1209,9 @@ export function registerCommsInbox({ app, pool }) {
         });
       }
       const rid = crypto.randomUUID();
+      // Where the note is copied — the item's own patient, or the one the rep
+      // was looking at on a shared line (`noteTargetFor`).
+      const noteAt = noteTargetFor(target, req.body?.noteTarget);
       for (const n of numbers) {
         await client.query(
           `INSERT INTO comms_resolutions
@@ -1088,8 +1225,8 @@ export function registerCommsInbox({ app, pool }) {
             plan.note,
             new Date(plan.coversThrough),
             who,
-            target?.itemId ? Number(target.boardId) : null,
-            target?.itemId ? String(target.itemId) : null,
+            noteAt ? noteAt.boardId : null,
+            noteAt ? noteAt.itemId : null,
           ],
         );
       }
@@ -1213,6 +1350,10 @@ export function registerCommsInbox({ app, pool }) {
     if (!who) return;
     const action = String(req.body?.action || "");
     const rid = String(req.body?.resolutionId || "");
+    // ⚠️ Checked here, not left to Postgres: a malformed id is the CALLER's
+    // mistake, and the uuid cast's error would come back as a 500 carrying the
+    // database's own words (2026-09-23 review).
+    if (!UUID.test(rid)) return res.status(400).json({ error: "resolutionId is required" });
     try {
       if (action === "claim") {
         const out = await withResolution(rid, async (client, rows) => {
@@ -1236,9 +1377,16 @@ export function registerCommsInbox({ app, pool }) {
       if (action === "done") {
         const to = String(req.body?.mirroredTo || "").slice(0, 100);
         if (!to) return res.status(400).json({ error: "mirroredTo is required" });
+        // ⚠️ Only a copy that was CLAIMED, of a resolution that STANDS. Undo is
+        // refused once a claim exists, so an unclaimed "done" can only be a
+        // confused client — and marking an undone resolution copied would put
+        // a Communications line on Monday for a resolution that does not
+        // stand, which is the one thing Undo exists to prevent. Idempotent: a
+        // retried "done" for a copy already recorded is accepted again.
         const q = await pool.query(
           `UPDATE comms_resolutions SET mirrored_to = $2, mirror_error = NULL
-            WHERE resolution_id = $1 AND lower(resolved_by) = $3`,
+            WHERE resolution_id = $1 AND lower(resolved_by) = $3
+              AND undone_at IS NULL AND mirror_claimed_at IS NOT NULL`,
           [rid, to, who],
         );
         return res.json({ ok: q.rowCount > 0 });
@@ -1324,7 +1472,7 @@ export function registerCommsInbox({ app, pool }) {
       const hmacs = [...new Set(resolutions.map((r) => r.hmac))];
       // Periods can begin before the window does; reach back well past it.
       const from = new Date(Math.max(epoch, since - 90 * 24 * 3600_000));
-      const events = hmacs.length ? (await loadOpening(pool, hmacs, from.getTime())).events : [];
+      const events = hmacs.length ? (await loadOpening(pool, hmacs, from.getTime(), await archivesPresent(pool))).events : [];
       const s = await snapshot(pool);
       const counts = badgeCounts(s.items);
       res.json(slaReport({ resolutions, events, since, now, epoch, open: counts.open, over: counts.over }));
@@ -1341,21 +1489,23 @@ export function registerCommsInbox({ app, pool }) {
       const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 60);
       const since = Date.now() - days * 24 * 3600_000;
       const at = new Date(since);
+      const has = await archivesPresent(pool);
       const [t, c, v] = await Promise.all([
         // Texts reach a week further back than the window: "is this a reply to
         // one of our automated texts?" looks at the text BEFORE it, and on the
         // window's first day that text is older than the window.
-        pool.query(
+        !has.texts ? NONE : pool.query(
           `SELECT rc_message_id, phone_hmac, last4, direction, body, created_at FROM sms_archive
             WHERE created_at >= $1::timestamptz - $2::interval`,
           [at, `${Math.round(AUTOMATION_REPLY_WINDOW_MS / 1000)} seconds`],
         ),
-        pool.query(
-          `SELECT rc_call_id, phone_hmac, last4, direction, result, leg_results, duration_sec, started_at FROM call_archive
-            WHERE started_at >= $1 AND direction = 'Inbound'`,
+        !has.calls ? NONE : pool.query(
+          `SELECT rc_call_id, phone_hmac, last4, direction, result, leg_results, duration_sec, started_at, call_type
+             FROM call_archive
+            WHERE started_at >= $1 AND direction = 'Inbound' AND call_type IS DISTINCT FROM 'Fax'`,
           [at],
         ),
-        pool.query(
+        !has.voicemails ? NONE : pool.query(
           `SELECT rc_message_id, phone_hmac, last4, direction, created_at FROM voicemail_archive WHERE created_at >= $1`,
           [at],
         ),
@@ -1370,7 +1520,7 @@ export function registerCommsInbox({ app, pool }) {
             )
           ).rows
         : [];
-      const events = attributed({ texts: t.rows, calls: c.rows, voicemails: v.rows, sent });
+      const events = dropOwn(attributed({ texts: t.rows, calls: c.rows, voicemails: v.rows, sent }));
       const { targets } = await loadTargets(pool, hmacs);
       res.json({ days, ...shadowReport({ events, targets, since }) });
     } catch (e) {
@@ -1416,15 +1566,31 @@ export function registerCommsInbox({ app, pool }) {
         ui: UI,
       });
     } catch (e) {
-      res.status(500).json({ ok: false, error: String((e && e.message) || e) });
+      // ⚠️ UNAUTHENTICATED, so the database's own words stay in the log: they
+      // name tables and columns (Greptile, PR #58).
+      console.error("Comms inbox health check failed:", (e && e.message) || e);
+      res.status(500).json({ ok: false, enabled: true, error: "Health check failed" });
     }
   });
 
-  /** Force a tick without waiting a minute. Authenticated; the tick coalesces
-   *  with a running one, so pressing this repeatedly costs at most one. */
+  /**
+   * Force a tick without waiting a minute.
+   *
+   * ⚠️ AUTHENTICATED **AND** RATE-FLOORED, both — §5.27's rule for every forced
+   * run. `tickRunning` coalesces only ticks that OVERLAP, so a client posting
+   * again each time one finishes would get a full RingCentral read every time
+   * (2026-09-23 review); the minute timer is the inbox's freshness, and this
+   * is for somebody watching a deploy, not a loop.
+   */
   app.post("/comms/tick", async (req, res) => {
     const who = await caller(req, res);
     if (!who) return;
+    const since = Date.now() - lastTickStartedAt;
+    if (since < TICK_FORCE_MIN_GAP_MS) {
+      const wait = Math.ceil((TICK_FORCE_MIN_GAP_MS - since) / 1000);
+      res.set?.("Retry-After", String(wait));
+      return res.status(429).json({ ok: false, error: `A capture tick ran moments ago — try again in ${wait}s` });
+    }
     const out = await captureTick({ pool });
     res.status(out.ok || out.skipped ? 200 : 502).json(out);
   });

@@ -25,6 +25,7 @@ export function HubListHeader({
   filterMenu,
   note,
   action,
+  wrapFilters = false,
 }: {
   title: string;
   count?: number;
@@ -48,6 +49,13 @@ export function HubListHeader({
   note?: React.ReactNode;
   /** A primary action beside the refresh button — the Text tab's New text. */
   action?: React.ReactNode;
+  /**
+   * Let the filter row wrap onto a second line. The Communications logs need
+   * it — the Calls log carries Today, Download N and four direction pills,
+   * more than a 320px list holds on one line. ⚠️ OPT-IN, so a hub with the
+   * inbox switched off lays out exactly as it did before (2026-09-23 review).
+   */
+  wrapFilters?: boolean;
 }) {
   return (
     <div className="shrink-0 border-b border-border">
@@ -89,9 +97,7 @@ export function HubListHeader({
       </div>
 
       {(onUnreadOnly || extra || filterMenu) && (
-        // Wraps rather than clipping: the Calls log carries Today, Download N and
-        // four direction pills, which is more than a 320px list holds on one line.
-        <div className="flex flex-wrap items-center gap-1 px-3 pb-2">
+        <div className={cn("flex items-center gap-1 px-3 pb-2", wrapFilters && "flex-wrap")}>
           {extra}
           {filterMenu && <div className="ml-auto">{filterMenu}</div>}
           {!filterMenu && onUnreadOnly && (

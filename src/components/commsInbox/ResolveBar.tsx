@@ -32,6 +32,7 @@ import {
   resolveItem,
   undoResolution,
   type ResolveResult,
+  type NoteTarget,
 } from "@/lib/commsInbox/api";
 import {
   HOW_LABEL,
@@ -63,10 +64,14 @@ export default function ResolveBar({
   onUndone,
   onChanged,
   compact = false,
+  noteTarget = null,
 }: {
   itemKey: string;
   state: ItemState;
   seenThrough: number | null;
+  /** Where the note is copied when that is NOT the item's own patient — the
+   *  other patient on a shared line. Null: the item's own (the gateway's default). */
+  noteTarget?: NoteTarget | null;
   /** The resolution this session just made on THIS item — Undo and the optional note. */
   sticky: StickyResolution | null;
   onResolved: (r: ResolveResult, note: string) => void;
@@ -93,7 +98,7 @@ export default function ResolveBar({
     if (how === "called" && !text.trim()) return;
     setBusy(how);
     try {
-      const r = await resolveItem({ key: itemKey, how, note: text, seenThrough });
+      const r = await resolveItem({ key: itemKey, how, note: text, seenThrough, ...(noteTarget ? { noteTarget } : {}) });
       setCalling(false);
       setNote("");
       if (how === "left_vm") {

@@ -127,10 +127,12 @@ describe("the network (plan §4.6, §4.7)", () => {
 });
 
 describe("the Monday copy happens when the rep moves on (plan §5.4)", () => {
-  it("⚠️⚠️ releasing the sticky row is what copies the note", () => {
+  it("⚠️⚠️ releasing the sticky row is what copies the note — THAT note, named", () => {
     const release = PAGE.slice(PAGE.indexOf("const releaseSticky = useCallback"), PAGE.indexOf("const openItem = useCallback"));
-    expect(release).toContain("void flushCommsOutbox();");
-    expect(release).toContain("if (!stickyRef.current) return;");
+    // The one moved on from is copied now; anything else waits out its Undo
+    // window, because another tab may still offer Undo on it (2026-09-23 review).
+    expect(release).toContain("void flushCommsOutbox(s.resolutionId);");
+    expect(release).toContain("if (!s) return;");
   });
 
   it("opening ANOTHER item releases it; re-opening the same one does not", () => {
@@ -139,9 +141,40 @@ describe("the Monday copy happens when the rep moves on (plan §5.4)", () => {
 
   it("moving on releases it in ANY rail — another item or none — and the page catches up on open and on leave", () => {
     expect(PAGE).toContain("if (stickyRef.current && stickyRef.current.key !== openKey) releaseSticky();");
-    expect(PAGE).toContain("}, [openKey, releaseSticky]);");
+    expect(PAGE).toContain("}, [openKey, logKeyPending, releaseSticky]);");
     const flush = PAGE.slice(PAGE.indexOf("if (!commsConfig.enabled) return;\n    void flushCommsOutbox();"));
-    expect(flush).toContain("return () => {\n      void flushCommsOutbox();");
+    // Leaving copies the note still held here, by name.
+    expect(flush).toContain("return () => {\n      void flushCommsOutbox(stickyRef.current?.resolutionId);");
+  });
+
+  it("⚠️ a log row's key still being LOOKED UP is not moving on (2026-09-23 review)", () => {
+    // While it loads the open key reads null; releasing then copied the note and
+    // took its Undo away on the way to re-opening the very same item.
+    expect(PAGE).toContain("const logKeyPending = logRail && logItemKey.loading;");
+    const eff = PAGE.slice(PAGE.indexOf("const logKeyPending"), PAGE.indexOf("}, [openKey, logKeyPending, releaseSticky]);"));
+    expect(eff.indexOf("if (logKeyPending) return;")).toBeGreaterThan(-1);
+    expect(eff.indexOf("if (logKeyPending) return;")).toBeLessThan(eff.indexOf("releaseSticky()"));
+  });
+
+  it("⚠️ the open item is compared with its row — a row that leaves and comes back changed is re-read", () => {
+    expect(PAGE).toContain("const rowSig = selectedRow ? inboxStateSig(selectedRow) : \"\";");
+    expect(PAGE).toContain("itemSigRef.current = item && item.key === selectedKey ? inboxStateSig(item.state) : \"\";");
+    expect(PAGE).toContain("if (!rowSig || !loaded || loaded === rowSig) return;");
+    // The old guard that read a returning row as a first sighting is gone.
+    expect(PAGE).not.toContain("!prev.sig");
+  });
+
+  it("⚠️ a matched item's pane falls back to the item's own record, in the Inbox AND the log rails", () => {
+    expect(PAGE).toContain("tab === \"inbox\" || logRail ? inboxAnchor : null,");
+    expect(PAGE).toMatch(/if \(!item \|\| isUnmatchedKey\(item\.key\) \|\| !item\.itemId \|\| !item\.boardId\) return null;/);
+  });
+
+  it("⚠️ on a shared line the note follows the patient on screen, through to the resolve", () => {
+    expect(PAGE).toContain("noteTarget={inboxNoteTarget}");
+    const tl = code("src/components/commsInbox/ItemTimeline.tsx");
+    expect(tl).toContain("noteTarget={noteTarget}");
+    const rb = code("src/components/commsInbox/ResolveBar.tsx");
+    expect(rb).toContain("...(noteTarget ? { noteTarget } : {})");
   });
 
   it("⚠️ the copy claims before it writes", () => {
@@ -258,7 +291,9 @@ describe("phase 3 — the patient screen's compact bar (plan §1.2)", () => {
     expect(bar).toContain('import ResolveBar, { type StickyResolution } from "@/components/commsInbox/ResolveBar";');
     expect(bar).toContain("compact");
     const col = code("src/components/patient/PatientCommsColumn.tsx");
-    expect(col.indexOf("<PatientResolveBar numbers={[phone, alt]} />")).toBeGreaterThan(-1);
+    expect(col.indexOf("<PatientResolveBar numbers={[phone, alt]} noteTarget={noteTarget} />")).toBeGreaterThan(-1);
+    // The screen's own record: a note made on this patient's screen is theirs.
+    expect(code("src/pages/PatientPage.tsx")).toContain("noteTarget={noteTarget}");
     expect(col.indexOf("<PatientResolveBar")).toBeLessThan(col.indexOf('<div className="hd">'));
   });
 
@@ -268,7 +303,7 @@ describe("phase 3 — the patient screen's compact bar (plan §1.2)", () => {
   });
 
   it("⚠️ leaving the patient is 'moving on': the note is copied then, not before", () => {
-    expect(bar).toMatch(/return \(\) => \{\s*void flushCommsOutbox\(\);/);
+    expect(bar).toMatch(/return \(\) => \{\s*void flushCommsOutbox\(stickyRef\.current\?\.resolutionId\);/);
     // The column is keyed on the record, which is what makes a patient change an unmount.
     expect(code("src/pages/PatientPage.tsx")).toContain("<PatientCommsColumn\n            key={active?.itemId ?? itemId}");
   });

@@ -16,17 +16,20 @@ import {
   canAddNote,
   canUndo,
   countedWaitMs,
+  dedupeRecords,
   dialerFor,
   etMidnightUtc,
   filterInbox,
   groupKeyFor,
   inboxHealth,
   isBlockedCall,
+  isFaxCall,
   isReplyToAutomation,
   itemState,
   leftVmCallFor,
   mirrorPending,
   normalizeNote,
+  noteTargetFor,
   opensItem,
   parseKey,
   planResolve,
@@ -166,6 +169,49 @@ describe("opensItem", () => {
   it("never an event with no number — a withheld caller cannot be grouped or resolved", () => {
     expect(opensItem(text("", TUE_9AM))).toBe(false);
     expect(opensItem(call(null, TUE_9AM))).toBe(false);
+  });
+  // ⚠️⚠️ The call log carries faxes and call_archive keeps them. A failed
+  // received fax (Receive Error, 0s) reads to callConnected as unanswered, so
+  // it opened a "Missed call" item — the 2026-09-23 review reproduced it.
+  it("⚠️ never a FAX — the call log carries them, and a failed one reads as unanswered", () => {
+    const fax = call(A, TUE_9AM, { result: "Receive Error", durationSec: 0, callType: "Fax" });
+    expect(callConnected(fax)).toBe(false); // why the type check has to exist at all
+    expect(isFaxCall(fax)).toBe(true);
+    expect(opensItem(fax)).toBe(false);
+    expect(opensItem({ ...fax, callType: "fax" })).toBe(false);
+  });
+  it("a Voice call, or a row archived before the type existed, is a phone call", () => {
+    expect(opensItem(call(A, TUE_9AM, { callType: "Voice" }))).toBe(true);
+    expect(opensItem(call(A, TUE_9AM, { callType: "" }))).toBe(true);
+    expect(isFaxCall(text(A, TUE_9AM, { callType: "Fax" }))).toBe(false);
+  });
+  it("a fax never opens an item in the whole inbox either", () => {
+    const fax = call(U, TUE_9AM, { result: "Receive Error", callType: "Fax" });
+    expect(buildInbox({ events: [fax], now: TUE_9AM + H })).toEqual([]);
+  });
+});
+
+/* ── the tick's pages ────────────────────────────────────────────────────── */
+
+describe("dedupeRecords — offset paging repeats a record, and one repeat failed the whole upsert", () => {
+  it("keeps one of each id, the LAST read winning (it is the fresher)", () => {
+    const out = dedupeRecords([
+      { id: 1, messageStatus: "Queued" },
+      { id: 2 },
+      { id: 1, messageStatus: "Delivered" },
+    ]);
+    expect(out.map((r) => r.id)).toEqual([2, 1]);
+    expect(out.find((r) => r.id === 1).messageStatus).toBe("Delivered");
+  });
+  it("treats a numeric and a string id as the same record", () => {
+    expect(dedupeRecords([{ id: 7 }, { id: "7" }])).toHaveLength(1);
+  });
+  it("keeps records with no id as they are — the archives' row builders drop those", () => {
+    expect(dedupeRecords([{ x: 1 }, { x: 2 }, { id: 3 }])).toHaveLength(3);
+  });
+  it("is safe on nothing", () => {
+    expect(dedupeRecords(undefined)).toEqual([]);
+    expect(dedupeRecords([])).toEqual([]);
   });
 });
 
@@ -714,11 +760,15 @@ describe("inboxHealth", () => {
     expect(h.warnings).toHaveLength(2);
     expect(h.oldestPendingMirrorHours).toBe(30);
   });
-  it("⚠️ is NOT ok while an archive the tick feeds is switched off — the inbox is blind to that kind", () => {
+  // ⚠️ Switched off is a deliberate act; paging every ten minutes about it is
+  // the noise that teaches everybody to swipe alerts away (2026-09-23 review).
+  // It is still SAID, because a blind inbox reads exactly like a quiet day.
+  it("⚠️ SAYS an archive the tick feeds is switched off — as a warning, never a page", () => {
     const h = inboxHealth({ lastCompleteAt: now - MIN, feedsOff: ["texts"], now });
-    expect(h.ok).toBe(false);
+    expect(h.ok).toBe(true);
     expect(h.feedsOff).toEqual(["texts"]);
-    expect(h.reason).toMatch(/texts are not reaching the inbox/);
+    expect(h.reason).toBeNull();
+    expect(h.warnings.join(" ")).toMatch(/texts are not reaching the inbox/);
   });
 });
 
@@ -731,7 +781,8 @@ describe("row mappers", () => {
     ).toMatchObject({ kind: "text", id: "7", dir: "out", at: TUE_9AM, sentBy: "k@x", attachments: [] });
     expect(
       callEvent({ rc_call_id: "c1", direction: "Inbound", started_at: new Date(TUE_9AM), phone_hmac: A, result: "Missed", leg_results: ["Missed"], duration_sec: 0 }),
-    ).toMatchObject({ kind: "call", dir: "in", at: TUE_9AM, legResults: ["Missed"] });
+    ).toMatchObject({ kind: "call", dir: "in", at: TUE_9AM, legResults: ["Missed"], callType: "" });
+    expect(callEvent({ rc_call_id: "c2", direction: "Inbound", started_at: TUE_9AM, call_type: "Fax" }).callType).toBe("Fax");
     expect(voicemailEvent({ rc_message_id: "v1", direction: "Inbound", created_at: TUE_9AM, phone_hmac: A, transcript: null })).toMatchObject({
       kind: "voicemail",
       transcript: "",
@@ -739,5 +790,39 @@ describe("row mappers", () => {
     expect(
       resolutionFromRow({ id: 1, resolution_id: "u", phone_hmac: A, how: "called", covers_through: "2026-09-22T13:00:00Z", resolved_at: "2026-09-22T14:00:00Z", item_board: "18407459988" }),
     ).toMatchObject({ coversThrough: TUE_9AM, resolvedAt: TUE_9AM + H, itemBoard: 18407459988, undoneAt: null });
+  });
+});
+
+describe("noteTargetFor — where a resolve note is copied (2026-09-23 review)", () => {
+  const own = { boardId: 18410804557, itemId: "101", name: "Ada Sample" };
+
+  it("defaults to the item's own patient", () => {
+    expect(noteTargetFor(own, undefined)).toEqual({ boardId: 18410804557, itemId: "101" });
+    expect(noteTargetFor(own, null)).toEqual({ boardId: 18410804557, itemId: "101" });
+  });
+
+  it("⚠️ a shared line: the patient the rep was LOOKING AT gets the note", () => {
+    expect(noteTargetFor(own, { boardId: 18407459988, itemId: "202" })).toEqual({ boardId: 18407459988, itemId: "202" });
+    // Numbers arriving as strings are fine; the shape is what is checked.
+    expect(noteTargetFor(own, { boardId: "18407459988", itemId: 202 })).toEqual({ boardId: 18407459988, itemId: "202" });
+  });
+
+  it("⚠️⚠️ an UNMATCHED item never copies, whatever the browser names", () => {
+    expect(noteTargetFor(null, { boardId: 18407459988, itemId: "202" })).toBeNull();
+    expect(noteTargetFor({ boardId: null, itemId: "" }, { boardId: 18407459988, itemId: "202" })).toBeNull();
+  });
+
+  it("a malformed request falls back to the item's own patient, never to nothing", () => {
+    for (const bad of [
+      { boardId: "", itemId: "202" },
+      { boardId: 18407459988, itemId: "" },
+      { boardId: "0", itemId: "202" },
+      { boardId: "18407459988; DROP", itemId: "202" },
+      { boardId: 18407459988, itemId: "abc" },
+      { boardId: 18407459988, itemId: "-5" },
+      "18407459988:202",
+    ]) {
+      expect(noteTargetFor(own, bad), JSON.stringify(bad)).toEqual({ boardId: 18410804557, itemId: "101" });
+    }
   });
 });

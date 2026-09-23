@@ -325,3 +325,75 @@ describe("useDossier — reload keeps the selection", () => {
     expect(screen.getByTestId("name").textContent).toBe("NONE");
   });
 });
+
+
+describe("an inbox item's own patient — the anchor (2026-09-23 review)", () => {
+  // Fake people, 555 numbers.
+  const ADA = { ...item("Ada Sample", "+15550001111"), itemId: "901" };
+  const BEN = { ...item("Ben Sample", "+15550009999"), itemId: "777" };
+  const anchor = { boardId: 18410804557, itemId: "901", name: "Ada Sample" };
+
+  function AnchorProbe({ phone, withAnchor = true }: { phone: string; withAnchor?: boolean }) {
+    const { dossier, loading, people } = useDossier(phone, "", null, withAnchor ? anchor : null);
+    return (
+      <>
+        <span data-testid="name">{dossier?.name ?? "NONE"}</span>
+        <span data-testid="state">{loading ? "LOADING" : "IDLE"}</span>
+        <span data-testid="count">{people.length}</span>
+      </>
+    );
+  }
+
+  beforeEach(() => {
+    fetchDossierItems.mockReset();
+    peekDossierItems.mockReset();
+    peekDossierItems.mockReturnValue(null);
+    fetchDossierItemsForPick.mockReset();
+  });
+
+  it("⚠️⚠️ a number that finds NOBODY — a caregiver's line — opens the item's patient from the record", async () => {
+    fetchDossierItems.mockResolvedValueOnce([]);
+    fetchDossierItemsForPick.mockResolvedValueOnce([ADA]);
+    render(<AnchorProbe phone="+15550004444" />);
+    await waitFor(() => expect(screen.getByTestId("name")).toHaveTextContent("Ada Sample"));
+    expect(fetchDossierItemsForPick).toHaveBeenCalledWith(expect.objectContaining({ itemId: "901", boardId: 18410804557 }));
+  });
+
+  it("⚠️ a number that finds SOMEBODY ELSE still opens the item's patient, never them", async () => {
+    peekDossierItems.mockReturnValue([BEN]);
+    fetchDossierItemsForPick.mockResolvedValueOnce([ADA]);
+    render(<AnchorProbe phone="+15550009999" />);
+    // Never Ben, not even while the record is read.
+    expect(screen.getByTestId("name")).not.toHaveTextContent("Ben Sample");
+    await waitFor(() => expect(screen.getByTestId("name")).toHaveTextContent("Ada Sample"));
+  });
+
+  it("the same item id on ANOTHER board is not the anchor — the record is read instead", async () => {
+    // Item ids are only unique with their board; matching on the id alone could
+    // open a stranger whose record happens to share it.
+    peekDossierItems.mockReturnValue([{ ...ADA, boardId: 18406352652, boardName: "Profile Send Off" }]);
+    fetchDossierItemsForPick.mockResolvedValueOnce([ADA]);
+    render(<AnchorProbe phone="+15550001111" />);
+    await waitFor(() => expect(fetchDossierItemsForPick).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("name")).toHaveTextContent("Ada Sample"));
+  });
+
+  it("⚠️ when the number DOES find the record it opens on that person — switcher intact, no second read", () => {
+    // Ben is on Subscription, further along, so without the anchor he would be
+    // the default.
+    const adaOnWc = { ...ADA };
+    peekDossierItems.mockReturnValue([{ ...BEN, boardId: 18407459988, boardName: "Subscription" }, adaOnWc]);
+    render(<AnchorProbe phone="+15550001111" />);
+    expect(screen.getByTestId("name")).toHaveTextContent("Ada Sample");
+    expect(screen.getByTestId("count")).toHaveTextContent("2");
+    expect(fetchDossierItemsForPick).not.toHaveBeenCalled();
+  });
+
+  it("with no anchor nothing changes — a number on no board still reads NONE", async () => {
+    fetchDossierItems.mockResolvedValueOnce([]);
+    render(<AnchorProbe phone="+15550004444" withAnchor={false} />);
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("IDLE"));
+    expect(screen.getByTestId("name")).toHaveTextContent("NONE");
+    expect(fetchDossierItemsForPick).not.toHaveBeenCalled();
+  });
+});

@@ -344,6 +344,11 @@ export function toCallRow(record) {
     phone,
     last4: last4(phone),
     audioState: rec?.contentUri ? "pending" : "none",
+    // ⚠️ The call log carries FAXES too ("Voice" | "Fax"). Kept, so a consumer
+    // that reads this table as a list of phone calls — the Communications
+    // inbox — can leave the faxes out (commsInboxRules.isFaxCall). Blank when
+    // RingCentral does not say.
+    callType: String(record?.type ?? "").trim() || null,
   };
 }
 

@@ -316,6 +316,21 @@ export function sanitizeNote(note: string): string {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * What an item looks like from the outside — enough to notice that its list
+ * row and the open item disagree (a new message, a resolution, an attempt).
+ * The same fields on both: the list row and the item's state come from one
+ * gateway rule.
+ */
+export function inboxStateSig(s: {
+  lastAt: number;
+  open: boolean;
+  lastResolution: { resolutionId: string } | null;
+  attempts: unknown[];
+}): string {
+  return [s.lastAt, s.open, s.lastResolution?.resolutionId ?? "", s.attempts.length].join("|");
+}
+
 /** What opened an item, in words. */
 export const KIND_LABEL: Record<InboxKind, string> = {
   text: "Text",

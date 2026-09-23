@@ -357,22 +357,24 @@ export function LiveNotes({
   className?: string;
 }) {
   const notesRef = useRef<HTMLPreElement>(null);
-  /** A note added here shows immediately; the cached trail is patched too. */
-  const [notesOverride, setNotesOverride] = useState<string | null>(null);
   const active = dossier.active;
-  const activeId = active?.itemId ?? "";
-
-  // Drop the local copy when the pane moves to another patient, or it would
-  // print the previous one's notes under this one's name.
-  useEffect(() => setNotesOverride(null), [activeId]);
+  /** The record a note here is filed against. */
+  const target = active ? `${active.boardId}:${active.itemId}` : "";
+  /**
+   * A note added here shows immediately; the cached trail is patched too.
+   * ⚠️ Held against the record it was written to, so it can never print under
+   * another patient's name — not even for the one render an effect would take
+   * to clear it.
+   */
+  const [added, setAdded] = useState<{ target: string; notes: string } | null>(null);
 
   // Notes columns are append-only with the newest line LAST (§9), so the
   // useful end of a long history is the bottom.
-  const notes = notesOverride ?? active?.notes ?? "";
+  const notes = (added && added.target === target ? added.notes : null) ?? active?.notes ?? "";
   useEffect(() => {
     const el = notesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [activeId, notes]);
+  }, [target, notes]);
 
   // Already in hand — every board's notes column rides along with its record.
   const otherNotes = stageNoteTrail(dossier);
@@ -391,7 +393,19 @@ export function LiveNotes({
       >
         {notes.trim() || (active ? "No notes on this stage yet." : "No live stage, so no working notes.")}
       </pre>
-      {active && <NoteComposer active={active} phone={phone} onAppended={setNotesOverride} />}
+      {/* ⚠️⚠️ KEYED ON THE RECORD — §9's notes-box rule. A patient already in
+          this session's cache swaps in without a spinner (§5.28), and a shared
+          line's switcher swaps people in place, so an unkeyed box kept its
+          half-typed text and filed it against whoever was on screen when Add
+          was pressed (2026-09-23 review). */}
+      {active && (
+        <NoteComposer
+          key={target}
+          active={active}
+          phone={phone}
+          onAppended={(next) => setAdded({ target, notes: next })}
+        />
+      )}
 
       {/* Every OTHER stage's notes. Shut by default with the newest line on
           the header, so the whole history is one click away without pushing

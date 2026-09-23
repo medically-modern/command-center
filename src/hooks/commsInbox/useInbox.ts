@@ -32,7 +32,7 @@ import {
   type InboxQuery,
   type OutboxEntry,
 } from "@/lib/commsInbox/api";
-import { COMMS_NOTE_STAGE, commsNoteLine, type InboxItem, type InboxList } from "@/lib/commsInbox/rules";
+import { COMMS_NOTE_STAGE, UNDO_WINDOW_MS, commsNoteLine, type InboxItem, type InboxList } from "@/lib/commsInbox/rules";
 import { appendNoteToRecord, fetchDossierItemsForPick } from "@/lib/commsHub/dossierApi";
 import { pickActive } from "@/lib/commsHub/dossier";
 
@@ -151,8 +151,10 @@ function refreshBadge(force = false): void {
   badgeInflight = fetchInboxCount()
     .then(setBadge)
     .catch(() => {
-      // Quiet: a badge that cannot be read shows nothing rather than a stale
-      // number. Backs off exactly as far as a success would.
+      // Quiet: a badge that cannot be read KEEPS the last number it had rather
+      // than dropping to nothing, which on a badge reads as "nothing open" — a
+      // failed read is not an empty answer (§9). Backs off exactly as far as a
+      // success would; the next read corrects it.
       badgeStore.set({ counts: badgeStore.get().counts, at: Date.now() });
     })
     .finally(() => {
@@ -182,13 +184,17 @@ export function useInboxBadge(enabled: boolean): Badge {
 /* ── the list ───────────────────────────────────────────────────────────── */
 
 interface ListState {
+  /** The query last ASKED for — what `loading` and `error` are about. */
   sig: string;
+  /** The query `data` ANSWERS. It trails `sig` while a new query loads, which
+   *  is exactly the moment the rows on screen belong to the previous one. */
+  dataSig: string;
   data: InboxList | null;
   loading: boolean;
   error: string | null;
   fetchedAt: number;
 }
-const listStore = createStore<ListState>({ sig: "", data: null, loading: false, error: null, fetchedAt: 0 });
+const listStore = createStore<ListState>({ sig: "", dataSig: "", data: null, loading: false, error: null, fetchedAt: 0 });
 let listInflight: { sig: string; p: Promise<void> } | null = null;
 let listQuery: InboxQuery | null = null;
 
@@ -212,7 +218,7 @@ function refreshList(force = false): Promise<void> {
       // ⚠️ A slow answer to a query the rep has since changed must not paint
       // over the current one.
       if (!listQuery || sigOf(listQuery) !== sig) return;
-      listStore.set({ sig, data, loading: false, error: null, fetchedAt: Date.now() });
+      listStore.set({ sig, dataSig: sig, data, loading: false, error: null, fetchedAt: Date.now() });
       setBadge(data.badge);
     })
     .catch((e: unknown) => {
@@ -264,12 +270,15 @@ export function useInboxList(query: InboxQuery, enabled: boolean) {
       data: state.data,
       // Rows for another query are still shown while this one loads; `stale`
       // says so, so the list can dim rather than claim they are this query's.
-      stale: !current,
+      // ⚠️ Keyed on what the DATA answers: `sig` moves the moment a new query
+      // starts, so reading it here made `stale` false at exactly the moment it
+      // should be true (2026-09-23 review).
+      stale: !!state.data && state.dataSig !== sig,
       loading: state.loading,
       error: current ? state.error : null,
       reload,
     }),
-    [state, current, reload],
+    [state, current, sig, reload],
   );
 }
 
@@ -402,13 +411,35 @@ export function useItemKeyForNumber(phone: string): {
 /* ── the Monday copy (plan §5.2–§5.4) ───────────────────────────────────── */
 
 let flushing: Promise<void> | null = null;
+/** A flush asked for while one was running. The running pass read its list
+ *  BEFORE the new request, so without one more pass a note released mid-flush
+ *  waited for the next trigger — possibly the next day (2026-09-23 review). */
+let flushAgain = false;
+/** Resolutions this browser has MOVED ON from — copied now, whatever their age. */
+const released = new Set<string>();
+/** One timer, for the youngest note still inside its Undo window. */
+let dueTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * A note nobody has moved on from is copied only once Undo can no longer take
+ * it back — plus a margin for the difference between this browser's clock and
+ * the gateway's, which is the clock `canUndo` reads.
+ */
+export const COPY_UNCLAIMED_AFTER_MS = UNDO_WINDOW_MS + 2 * 60_000;
 
 /**
  * Copy this rep's uncopied resolve notes into the patients' Monday notes.
  *
- * Runs when a row stops being sticky — the rep opens another item or leaves the
- * Inbox — and when Communications opens, to catch up anything a closed tab left
- * behind. Coalesced: two triggers at once run one pass.
+ * @param release  the resolution the rep just MOVED ON from — copied at once.
+ *
+ * ⚠️⚠️ **Only what nobody can still Undo.** A resolution is copied when the rep
+ * moves on from it (`release`), or once its Undo window has closed. It used to
+ * be every pending note on every trigger — so a SECOND tab opening
+ * Communications copied a note the first tab was still showing with Undo, and
+ * that Undo was then refused: exactly the Monday line Undo exists to prevent
+ * (2026-09-23 review). A note left behind by a closed tab is copied by the next
+ * trigger after its window closes, and while a page is open one timer makes
+ * sure that happens without waiting for a click.
  *
  * ⚠️⚠️ CLAIM FIRST. The claim is a compare-and-set on the gateway, so two open
  * tabs can never both write a note; only the RESOLVER's browser is ever
@@ -417,21 +448,96 @@ let flushing: Promise<void> | null = null;
  * ⚠️ A failed copy never un-resolves anything — the note is safe in the log —
  * and the toast names the patient, because by then the rep is on the next item.
  */
-export function flushCommsOutbox(): Promise<void> {
+export function flushCommsOutbox(release?: string | null): Promise<void> {
+  if (release) released.add(release);
   if (!inboxConfigured()) return Promise.resolve();
-  if (flushing) return flushing;
+  if (flushing) {
+    flushAgain = true;
+    return flushing;
+  }
   flushing = (async () => {
-    let pending: OutboxEntry[] = [];
-    try {
-      pending = await fetchOutbox();
-    } catch {
-      return; // the next trigger asks again
-    }
-    for (const e of pending) await copyOne(e.resolutionId);
+    do {
+      flushAgain = false;
+      let pending: OutboxEntry[] = [];
+      try {
+        pending = await fetchOutbox();
+      } catch {
+        return; // the next trigger asks again
+      }
+      const now = Date.now();
+      let nextDue = Infinity;
+      for (const e of pending) {
+        if (!released.has(e.resolutionId) && now - e.resolvedAt <= COPY_UNCLAIMED_AFTER_MS) {
+          nextDue = Math.min(nextDue, e.resolvedAt + COPY_UNCLAIMED_AFTER_MS);
+          continue;
+        }
+        const out = await copyOne(e.resolutionId);
+        // A failure stays "moved on", so the next trigger retries it at once.
+        if (out !== "failed") released.delete(e.resolutionId);
+      }
+      scheduleDue(nextDue);
+    } while (flushAgain);
   })().finally(() => {
     flushing = null;
   });
   return flushing;
+}
+
+function scheduleDue(at: number): void {
+  if (dueTimer) clearTimeout(dueTimer);
+  dueTimer = null;
+  if (!Number.isFinite(at)) return;
+  dueTimer = setTimeout(
+    () => {
+      dueTimer = null;
+      void flushCommsOutbox();
+    },
+    Math.max(1_000, at - Date.now() + 5_000),
+  );
+}
+
+/**
+ * A copy that reached Monday but whose "done" never reached the gateway —
+ * remembered in THIS browser, so the re-claim that follows the stale-claim
+ * timeout records it instead of appending the line a second time. Monday notes
+ * are append-only; a duplicate line cannot be taken back (2026-09-23 review).
+ * Best effort: a browser that blocks storage loses only this safety net.
+ */
+const copiedKey = (rid: string) => `mm-comms-copied:${rid}`;
+function readCopied(rid: string): string | null {
+  try {
+    return localStorage.getItem(copiedKey(rid));
+  } catch {
+    return null;
+  }
+}
+function writeCopied(rid: string, to: string): void {
+  try {
+    localStorage.setItem(copiedKey(rid), to);
+  } catch {
+    /* best effort */
+  }
+}
+function clearCopied(rid: string): void {
+  try {
+    localStorage.removeItem(copiedKey(rid));
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Retried: the append it records can never be taken back. */
+async function reportDone(rid: string, to: string): Promise<boolean> {
+  for (const wait of [0, 1_000, 3_000]) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    try {
+      await reportMirrorDone(rid, to);
+      return true;
+    } catch {
+      /* tried again */
+    }
+  }
+  return false;
 }
 
 /** Test seam. */
@@ -443,13 +549,29 @@ export async function copyOne(resolutionId: string): Promise<"copied" | "skipped
     return "not-claimed";
   }
   if (!claimed) return "not-claimed";
+
+  // ⚠️⚠️ This browser already wrote it, on a try whose "done" was lost: record
+  // it — never write it again.
+  const already = readCopied(resolutionId);
+  if (already) {
+    if (await reportDone(resolutionId, already)) clearCopied(resolutionId);
+    return "copied";
+  }
+
   let patient = "this patient";
   try {
     if (!claimed.itemId || !claimed.itemBoard) {
       await reportMirrorDone(resolutionId, "none:unmatched");
       return "skipped";
     }
-    const items = await fetchDossierItemsForPick({ itemId: claimed.itemId, boardId: claimed.itemBoard, name: "", phone: "" });
+    // ⚠️ STRICT: a board that did not answer must never read as "this patient
+    // has no live record" — that recorded the copy as done with nowhere to put
+    // it, on one Monday blip (2026-09-23 review). It throws instead, and the
+    // copy is retried.
+    const items = await fetchDossierItemsForPick(
+      { itemId: claimed.itemId, boardId: claimed.itemBoard, name: "", phone: "" },
+      { strict: true },
+    );
     patient = items.find((i) => i.itemId === claimed!.itemId)?.name || items[0]?.name || patient;
     // The LIVE record — the one Recent notes writes to. A completed item is
     // read-only in new code (§5.38), so a patient with no live record keeps
@@ -473,7 +595,12 @@ export async function copyOne(resolutionId: string): Promise<"copied" | "skipped
       stage: COMMS_NOTE_STAGE,
       phone: live.phone,
     });
-    await reportMirrorDone(resolutionId, `${live.boardId}:${live.itemId}`);
+    const to = `${live.boardId}:${live.itemId}`;
+    writeCopied(resolutionId, to);
+    // ⚠️ Not a failure even if "done" never lands: the note IS on Monday. The
+    // claim times out, the note is offered again, and the marker above records
+    // it rather than appending it twice.
+    if (await reportDone(resolutionId, to)) clearCopied(resolutionId);
     return "copied";
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -490,8 +617,12 @@ export function __resetInboxStoresForTest(): void {
   configFailedAt = 0;
   badgeStore.set({ counts: null, at: 0 });
   badgeInflight = null;
-  listStore.set({ sig: "", data: null, loading: false, error: null, fetchedAt: 0 });
+  listStore.set({ sig: "", dataSig: "", data: null, loading: false, error: null, fetchedAt: 0 });
   listInflight = null;
   listQuery = null;
   flushing = null;
+  flushAgain = false;
+  released.clear();
+  if (dueTimer) clearTimeout(dueTimer);
+  dueTimer = null;
 }

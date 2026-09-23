@@ -394,6 +394,24 @@ describe("the counter resets on re-entry and on a manager's return", () => {
       isResetLine("8/1/26, 9:00 AM · Patient Doctor Appointment · Scheduled appointment date 2026-08-20 (from Chase) · ok —JH"),
     ).toBe(false);
   });
+
+  // The anchored rule reads the stamp's SHAPE, so a change to either writer
+  // would quietly stop resetting the counter. Checked against the writers
+  // themselves, with the real date formatter, not a hand-typed literal.
+  it("the lines the two writers actually produce are still resets", async () => {
+    const { isResetLine, stampAppointmentNeeded } = await import("./apptOutreach");
+    const { stampReturnedToQueue } = await import("./proposedStuck");
+    const { etNow, formatDateTimeShort } = await import("./etDate");
+    const stamp = formatDateTimeShort(etNow());
+    for (const note of ["", "office wants her in first"]) {
+      for (const initials of ["", "JH"]) {
+        const entryLine = stampAppointmentNeeded({ stamp, fromStage: "Chase Clinicals — Fax", note, initials });
+        expect(isResetLine(entryLine), entryLine).toBe(true);
+        const returnLine = stampReturnedToQueue(note || "Returned by a manager", "9/23/26", initials);
+        expect(isResetLine(returnLine), returnLine).toBe(true);
+      }
+    }
+  });
 });
 
 describe("the 3-attempt cap is a REP guardrail only", () => {

@@ -371,6 +371,7 @@ export function PhonePanel({
         unreadCount={mode === "calls" ? missedCount : unheardCount}
         loading={loading}
         onReload={onReload}
+        wrapFilters={!!log}
         note={naming && <NamingProgress done={naming.done} total={naming.total} />}
         filterMenu={
           log && mode === "calls" ? (

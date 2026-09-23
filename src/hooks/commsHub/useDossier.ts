@@ -23,9 +23,21 @@
  * phone number, so picking "Sue Hartley" opened John, who shares the line and
  * wins the default ordering. A rep who named a patient has already answered the
  * question the switcher asks.
+ *
+ * ⚠️ **`anchor` is stronger still: the RECORD this lookup is for.** The
+ * Communications inbox files an item under one patient (`p:<board>:<item>`),
+ * and the number that item's newest message came from need not be on that
+ * patient's record at all — a caregiver's alternate line, a number a rep
+ * LINKED, a number the patient has since changed. The phone path then finds
+ * nobody (or a household member), and the pane read "isn't on any pipeline
+ * board" for a patient the inbox had already named — with no search offered,
+ * because a matched item has nothing to search for (2026-09-23 review). So: the
+ * number is still asked first, because that is what brings the household
+ * switcher for a shared line (plan §7, job 1), but when it does not find the
+ * anchor record, the trail is read from the record itself.
  */
 import { useCallback, useEffect, useState } from "react";
-import { buildDossier, personKey, splitByPerson, type PatientDossier } from "@/lib/commsHub/dossier";
+import { buildDossier, personKey, splitByPerson, type DossierItem, type PatientDossier } from "@/lib/commsHub/dossier";
 import {
   dossierConfigured,
   fetchDossierItems,
@@ -33,6 +45,20 @@ import {
   peekDossierItems,
   type DossierPick,
 } from "@/lib/commsHub/dossierApi";
+
+/** A known record — an Inbox item's own patient. */
+export interface DossierAnchor {
+  boardId: number;
+  itemId: string;
+  name: string;
+}
+
+/** Which of the people found holds this record, or -1. */
+export function anchorIndex(people: PatientDossier[], anchor: DossierAnchor): number {
+  return people.findIndex((p) =>
+    p.items.some((i: DossierItem) => String(i.itemId) === String(anchor.itemId) && Number(i.boardId) === Number(anchor.boardId)),
+  );
+}
 
 export interface DossierState {
   /** The SELECTED person's dossier — what every consumer reads. */
@@ -63,6 +89,8 @@ export function useDossier(
    * page clears it the moment the rep moves to another number.
    */
   pick?: DossierPick | null,
+  /** The record this lookup is FOR — see the header. A `pick` still wins. */
+  anchor?: DossierAnchor | null,
 ): DossierState & { selectPerson: (i: number) => void; reload: () => void } {
   const [state, setState] = useState<DossierState>({
     dossier: null,
@@ -136,50 +164,74 @@ export function useDossier(
       return;
     }
 
-    // Already resolved this session — render it now rather than blanking and
-    // re-showing the same thing a microtask later.
-    const cached = peekDossierItems(num);
-    if (cached) {
-      const people = splitByPerson(cached);
-      const i = pickIndex(people);
-      setState({ dossier: people[i] ?? null, people, selected: i, loading: false, error: null, configured: true });
-      return;
-    }
     // ⚠️ Bound to the number that was open when the fetch started. Without
     // this, a rep clicking quickly through conversations paints an earlier
     // patient's dossier into a later one's pane — the same class of bug
     // useDeliveryRecheck's cancel() exists to prevent (CLAUDE.md §5.5).
     let alive = true;
+    const fail = (e: unknown) => {
+      if (!alive) return;
+      setState({
+        dossier: null,
+        people: [],
+        selected: 0,
+        loading: false,
+        error: e instanceof Error ? e.message : String(e),
+        configured: true,
+      });
+    };
+    /** Show what the number found — unless it misses the anchor record, in
+     *  which case read the trail from the record itself. */
+    const settle = (items: DossierItem[]) => {
+      // ⚠️ Split by PERSON, not merged. A phone match is not a person: two
+      // patients on one line used to become a single blended profile.
+      const people = splitByPerson(items);
+      if (!anchor) {
+        const i = pickIndex(people);
+        setState({ dossier: people[i] ?? null, people, selected: i, loading: false, error: null, configured: true });
+        return;
+      }
+      const at = anchorIndex(people, anchor);
+      if (at >= 0) {
+        setState({ dossier: people[at], people, selected: at, loading: false, error: null, configured: true });
+        return;
+      }
+      setState((s) => ({ ...s, dossier: null, people: [], selected: 0, loading: true, error: null }));
+      fetchDossierItemsForPick({ itemId: anchor.itemId, boardId: anchor.boardId, name: anchor.name, phone: "" })
+        .then((own) => {
+          if (!alive) return;
+          const mine = splitByPerson(own);
+          const i = Math.max(0, anchorIndex(mine, anchor));
+          setState({ dossier: mine[i] ?? null, people: mine, selected: i, loading: false, error: null, configured: true });
+        })
+        .catch(fail);
+    };
+
+    // Already resolved this session — render it now rather than blanking and
+    // re-showing the same thing a microtask later.
+    const cached = peekDossierItems(num);
+    if (cached) {
+      settle(cached);
+      return () => {
+        alive = false;
+      };
+    }
     // ⚠️ `dossier: null`, not a spread that keeps it — see the header. The
     // previous patient must leave the pane the instant the rep selects another.
     setState((s) => ({ ...s, dossier: null, people: [], selected: 0, loading: true, error: null }));
     fetchDossierItems(num)
       .then((items) => {
         if (!alive) return;
-        // ⚠️ Split by PERSON, not merged. A phone match is not a person: two
-        // patients on one line used to become a single blended profile.
-        const people = splitByPerson(items);
-        const i = pickIndex(people);
-        setState({ dossier: people[i] ?? null, people, selected: i, loading: false, error: null, configured: true });
+        settle(items);
       })
-      .catch((e: unknown) => {
-        if (!alive) return;
-        setState({
-          dossier: null,
-          people: [],
-          selected: 0,
-          loading: false,
-          error: e instanceof Error ? e.message : String(e),
-          configured: true,
-        });
-      });
+      .catch(fail);
     return () => {
       alive = false;
     };
     // `pick` is keyed by its item, not its identity — the page hands down a
     // fresh object per render otherwise (INCIDENT_2026-08-20 rule 2).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone, preferPerson, pick?.boardId, pick?.itemId]);
+  }, [phone, preferPerson, pick?.boardId, pick?.itemId, anchor?.boardId, anchor?.itemId]);
 
   return { ...state, selectPerson, reload };
 }

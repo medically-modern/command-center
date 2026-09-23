@@ -26,11 +26,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ResolveBar, { type StickyResolution } from "@/components/commsInbox/ResolveBar";
 import { flushCommsOutbox, invalidateInbox, useCommsConfig } from "@/hooks/commsInbox/useInbox";
-import { fetchCommsState, type ResolveResult } from "@/lib/commsInbox/api";
+import { fetchCommsState, type NoteTarget, type ResolveResult } from "@/lib/commsInbox/api";
 import type { ItemState } from "@/lib/commsInbox/rules";
 import { contactKey } from "@/lib/contactState/contactState";
 
-export function PatientResolveBar({ numbers }: { numbers: string[] }) {
+export function PatientResolveBar({
+  numbers,
+  noteTarget = null,
+}: {
+  numbers: string[];
+  /**
+   * The patient on THIS screen. A number two patients share files under one of
+   * them, so the item this bar shows can be the other patient's; a note made
+   * here is about the patient the rep is looking at, and is copied to them
+   * (2026-09-23 review).
+   */
+  noteTarget?: NoteTarget | null;
+}) {
   const cfg = useCommsConfig();
   /** A string, so a fresh array from the parent each render is not a new read
    *  (INCIDENT_2026-08-20 rule 2). */
@@ -40,6 +52,8 @@ export function PatientResolveBar({ numbers }: { numbers: string[] }) {
   );
   const [data, setData] = useState<{ key: string; state: ItemState } | null>(null);
   const [sticky, setSticky] = useState<StickyResolution | null>(null);
+  const stickyRef = useRef<StickyResolution | null>(null);
+  stickyRef.current = sticky;
   const want = useRef(0);
 
   const load = useCallback(async () => {
@@ -67,7 +81,8 @@ export function PatientResolveBar({ numbers }: { numbers: string[] }) {
   useEffect(() => {
     if (!cfg.enabled) return;
     return () => {
-      void flushCommsOutbox();
+      // Leaving the patient is moving on from what was resolved here.
+      void flushCommsOutbox(stickyRef.current?.resolutionId);
     };
   }, [cfg.enabled]);
 
@@ -118,6 +133,7 @@ export function PatientResolveBar({ numbers }: { numbers: string[] }) {
         state={state}
         seenThrough={state.newestOpenAt}
         sticky={sticky && sticky.key === data.key ? sticky : null}
+        noteTarget={noteTarget}
         onResolved={onResolved}
         onUndone={() => {
           setSticky(null);

@@ -38,6 +38,7 @@ import type { DossierItem } from "@/lib/commsHub/dossier";
 import type { Contacts } from "@/lib/patient/contacts";
 import { RecentNotes } from "@/components/patient/RecentNotes";
 import { PatientResolveBar } from "@/components/commsInbox/PatientResolveBar";
+import type { NoteTarget } from "@/lib/commsInbox/api";
 
 export function PatientCommsColumn({
   phone,
@@ -47,6 +48,7 @@ export function PatientCommsColumn({
   active,
   contacts,
   onNoteAppended,
+  noteTarget = null,
 }: {
   phone: string;
   patient: PatientRef | null;
@@ -57,6 +59,9 @@ export function PatientCommsColumn({
   /** Who we reach and on which number — null when no record carries them. */
   contacts: Contacts | null;
   onNoteAppended: (next: string) => void;
+  /** The patient on this screen — where a resolve note made here is copied,
+   *  even when the number files the item under another patient. */
+  noteTarget?: NoteTarget | null;
 }) {
   const [useAlt, setUseAlt] = useState(false);
 
@@ -75,7 +80,7 @@ export function PatientCommsColumn({
           the Inbox is switched off or there is neither — so this column is
           otherwise exactly what it was. Both numbers, because an item is the
           PATIENT's, whichever line they reached us on. */}
-      <PatientResolveBar numbers={[phone, alt]} />
+      <PatientResolveBar numbers={[phone, alt]} noteTarget={noteTarget} />
       <div className="hd">
         <div className="side-tabs">
           <button type="button" className={side === "texts" ? "on" : ""} onClick={() => onSide("texts")}>

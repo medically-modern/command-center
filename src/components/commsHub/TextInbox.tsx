@@ -138,6 +138,7 @@ export function TextInbox({
         }
         loading={loading}
         onReload={onReload}
+        wrapFilters={!!logMode}
         note={naming && <NamingProgress done={naming.done} total={naming.total} />}
         action={
           onCompose && (

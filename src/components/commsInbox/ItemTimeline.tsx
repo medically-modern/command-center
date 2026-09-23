@@ -21,14 +21,14 @@
  * `fetch()`ed — a browser following a cross-origin redirect with fetch needs
  * CORS on the bucket, which Railway cannot set.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { AlertTriangle, ArrowRight, Loader2, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Play, Voicemail } from "lucide-react";
 import MessageBubble from "@/components/assignedPatients/MessageBubble";
 import WatchCallbackButton from "@/components/inboundCalls/WatchCallbackButton";
 import Composer from "@/components/assignedPatients/Composer";
 import { MessageAttachments } from "@/components/shared/MessageAttachments";
 import { useConversation } from "@/hooks/assignedPatients/useConversation";
-import { archivedMediaUrl } from "@/lib/commsInbox/api";
+import { archivedMediaUrl, type NoteTarget } from "@/lib/commsInbox/api";
 import { archivedPlaybackUrl } from "@/lib/callHistory/archivedRecordings";
 import { fetchRcContentBlobUrl, fetchRecordingBlobUrl } from "@/lib/fax/ringcentralApi";
 import { fmtPhone } from "@/lib/assignedPatients/format";
@@ -60,6 +60,8 @@ type Props = {
   /** The patient record an outbound text is about (§5.28). */
   mondayItemId: string | null;
   canText?: "yes" | "no" | "unknown";
+  /** Where the resolve note is copied, when not the item's own patient. */
+  noteTarget?: NoteTarget | null;
   sticky: StickyResolution | null;
   onResolved: StickyHandler;
   onUndone: () => void;
@@ -110,6 +112,7 @@ function TimelineShell({
   onCall,
   calling,
   canText,
+  noteTarget,
   sticky,
   onResolved,
   onUndone,
@@ -199,7 +202,13 @@ function TimelineShell({
         ) : (
           <p className="border-b border-border px-4 py-3 text-xs text-muted-foreground">
             The full number for this item couldn&apos;t be read yet, so texting and calling are off here. It
-            shows once RingCentral answers — try Refresh in a moment.
+            shows once RingCentral answers.{" "}
+            {/* ⚠️ Its OWN re-read: the list's Refresh reloads the list, and the
+                open item is read again only when its row changes — so pointing
+                at that button sent a rep to a control that does not do this. */}
+            <button type="button" onClick={onChanged} className="font-medium underline hover:no-underline">
+              Check again
+            </button>
           </p>
         )}
         <ResolveBar
@@ -208,6 +217,7 @@ function TimelineShell({
           state={state}
           seenThrough={seenThrough}
           sticky={sticky && sticky.key === item.key ? sticky : null}
+          noteTarget={noteTarget}
           onResolved={onResolved}
           onUndone={onUndone}
           onChanged={onChanged}
@@ -468,7 +478,25 @@ function PlayAudio({ label, source, unavailable }: { label: string; source: Sour
     }
   };
 
-  if (src) return <audio controls autoPlay src={src} className="mt-1.5 h-8 w-full min-w-[220px]" />;
+  if (src) {
+    return (
+      <audio
+        controls
+        autoPlay
+        src={src}
+        className="mt-1.5 h-8 w-full min-w-[220px]"
+        // ⚠️ An archive link is presigned and dies after five minutes (§5.47),
+        // so a recording paused and resumed later can fail mid-play. The Play
+        // button comes back and fetches a fresh link rather than leaving a
+        // silent, broken player (2026-09-23 review).
+        onError={() => {
+          setSrc(null);
+          setBlob(false);
+          setErr("The recording couldn't load — press play to try again.");
+        }}
+      />
+    );
+  }
   return (
     <div className="mt-1.5">
       <button
@@ -505,20 +533,55 @@ function TimelineAttachments({ messageId, attachments }: { messageId: string; at
   );
 }
 
+/** A presigned archive link lives five minutes (§5.47); older than this, it is
+ *  re-issued before it is opened. */
+const LINK_FRESH_MS = 4 * 60_000;
+
 function ArchivedPhoto({ messageId, attachmentId }: { messageId: string; attachmentId: string }) {
   const [src, setSrc] = useState<string | null>(null);
+  const fetchedAt = useRef(0);
   const [failed, setFailed] = useState(false);
   // A photo IS the message, so it loads with the item — the same posture as
   // today's thread — but from our bucket, which costs RingCentral nothing.
   useEffect(() => {
     let alive = true;
     archivedMediaUrl("photo", { messageId, attachmentId })
-      .then((u) => alive && setSrc(u))
+      .then((u) => {
+        if (!alive) return;
+        fetchedAt.current = Date.now();
+        setSrc(u);
+      })
       .catch(() => alive && setFailed(true));
     return () => {
       alive = false;
     };
   }, [messageId, attachmentId]);
+
+  /**
+   * ⚠️ Opening the full photo later than the link's life would land on the
+   * bucket's AccessDenied page (2026-09-23 review), so an old link is re-issued
+   * first. The tab is opened INSIDE the click — a browser only allows a new tab
+   * during the click itself, and an await before `window.open` spends that — and
+   * pointed at the fresh link when it arrives.
+   */
+  const openFresh = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (Date.now() - fetchedAt.current < LINK_FRESH_MS) return;
+    e.preventDefault();
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.opener = null;
+    archivedMediaUrl("photo", { messageId, attachmentId }).then(
+      (u) => {
+        fetchedAt.current = Date.now();
+        setSrc(u);
+        w.location.href = u;
+      },
+      () => {
+        w.close();
+        setFailed(true);
+      },
+    );
+  };
   if (failed) {
     return (
       <span className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-black/10 px-2 py-1 text-[11px] opacity-80">
@@ -534,7 +597,7 @@ function ArchivedPhoto({ messageId, attachmentId }: { messageId: string; attachm
     );
   }
   return (
-    <a href={src} target="_blank" rel="noopener noreferrer" className="mt-1.5 block">
+    <a href={src} target="_blank" rel="noopener noreferrer" className="mt-1.5 block" onClick={openFresh}>
       <img src={src} alt="Texted photo" className="max-h-56 max-w-full rounded-lg border border-black/10" />
     </a>
   );

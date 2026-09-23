@@ -114,6 +114,28 @@ describe("open", () => {
     expect(onResolved.mock.calls[0][1]).toBe("told her it ships Friday");
   });
 
+  it("⚠️ on a shared line the note goes to the patient the rep was LOOKING AT (2026-09-23 review)", async () => {
+    api.resolveItem.mockResolvedValueOnce(result("texted"));
+    const onResolved = vi.fn();
+    render(
+      <ResolveBar
+        itemKey={KEY}
+        state={open()}
+        seenThrough={SEEN}
+        sticky={null}
+        noteTarget={{ boardId: 18407459988, itemId: "202" }}
+        onResolved={onResolved}
+        onUndone={vi.fn()}
+        onChanged={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Texted/ }));
+    await waitFor(() => expect(onResolved).toHaveBeenCalled());
+    expect(api.resolveItem).toHaveBeenCalledWith(
+      expect.objectContaining({ key: KEY, noteTarget: { boardId: 18407459988, itemId: "202" } }),
+    );
+  });
+
   it("Texted resolves at once, covering what the rep was shown", async () => {
     api.resolveItem.mockResolvedValueOnce(result("texted"));
     const { onResolved } = renderBar(open());

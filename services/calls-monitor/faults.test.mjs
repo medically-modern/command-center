@@ -307,6 +307,19 @@ describe("inboxFaults — the Communications inbox", () => {
     expect(inboxFaults({ ok: true, enabled: false, reason: "switched off" })).toEqual([]);
   });
 
+  // ⚠️ Switched ON but unable to run (no messaging pool, no pepper) is not "off
+  // on purpose": somebody asked for the inbox and is not getting it.
+  it("⚠️ pages when the inbox is switched ON but not running", () => {
+    const f = inboxFaults({ ok: false, enabled: false, reason: "the Communications inbox is not configured (messaging Postgres or PHONE_HMAC_PEPPER missing)" });
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatch(/switched on but not running/);
+    expect(f[0]).toMatch(/PHONE_HMAC_PEPPER/);
+  });
+
+  it("an archive switched off is a WARNING from the gateway, so it never pages", () => {
+    expect(inboxFaults({ ...ok, feedsOff: ["calls"], warnings: ["new calls are not reaching the inbox — that archive is switched off"] })).toEqual([]);
+  });
+
   it("pages when the capture tick has stopped, and says why", () => {
     const f = inboxFaults({ ...ok, ok: false, reason: "the last complete capture tick was 14 minutes ago" });
     expect(f).toHaveLength(1);

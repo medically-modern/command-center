@@ -119,6 +119,36 @@ describe("HubPatientPane", () => {
     expect(m.append).toHaveBeenCalledWith(expect.objectContaining({ itemId: "101", boardId: 18410804557, text: "called back" }));
   });
 
+  it("⚠️⚠️ a half-typed note never follows the pane onto another patient (§9)", () => {
+    const { rerender } = show();
+    fireEvent.click(screen.getByRole("button", { name: /Add a note/ }));
+    fireEvent.change(screen.getByPlaceholderText(/Add to .* notes/), { target: { value: "about Ada" } });
+    // A cached patient swaps in with no spinner — the case that used to keep the box.
+    rerender(
+      <MemoryRouter>
+        <HubPatientPane dossier={ben} loading={false} error={null} phone="+15550001111" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("who").textContent).toBe("Ben Sample");
+    expect(screen.queryByPlaceholderText(/Add to .* notes/)).toBeNull();
+    expect(screen.queryByDisplayValue("about Ada")).toBeNull();
+    expect(m.append).not.toHaveBeenCalled();
+  });
+
+  it("⚠️ a note just added shows for ITS patient and never under the next one's name", async () => {
+    const { rerender } = show();
+    fireEvent.click(screen.getByRole("button", { name: /Add a note/ }));
+    fireEvent.change(screen.getByPlaceholderText(/Add to .* notes/), { target: { value: "called back" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add note" })));
+    expect(document.querySelector("[data-live-notes]")?.textContent).toContain("new body");
+    rerender(
+      <MemoryRouter>
+        <HubPatientPane dossier={ben} loading={false} error={null} phone="+15550001111" />
+      </MemoryRouter>,
+    );
+    expect(document.querySelector("[data-live-notes]")?.textContent).not.toContain("new body");
+  });
+
   it("⚠️⚠️ job 1 — a shared number shows the switcher ABOVE the profile, and switching calls up", () => {
     const onSelectPerson = vi.fn();
     const { container } = show({ people: [ada, ben], selected: 0, onSelectPerson });
@@ -247,7 +277,7 @@ describe("wiring — the five jobs come WITH the embedded screen (plan §7, Josh
   it("⚠️ the notes box writes through appendNoteToRecord, and lists every other stage", () => {
     const live = OLD.slice(OLD.indexOf("export function LiveNotes"), OLD.indexOf("export function PatientDossierPanel"));
     expect(live).toContain("stageNoteTrail(dossier)");
-    expect(live).toContain("<NoteComposer active={active} phone={phone}");
+    expect(live).toMatch(/<NoteComposer\s+key=\{target\}\s+active=\{active\}\s+phone=\{phone\}/);
     const composer = OLD.slice(OLD.indexOf("export function NoteComposer"), OLD.indexOf("function newestLine"));
     expect(composer).toContain("await appendNoteToRecord({");
   });

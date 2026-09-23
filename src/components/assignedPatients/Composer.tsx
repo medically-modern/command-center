@@ -58,8 +58,9 @@ export default function Composer({ conversation, canText, onSent }: Props) {
     if (!text || sending || consent.optedOut || textingOff) return;
     setSending(true);
     try {
-      await conversation.send(text);
-      setDraft("");
+      // ⚠️ Cleared when RingCentral ACCEPTS the text, not after the re-read
+      // that follows — see `ConversationView.send`.
+      await conversation.send(text, () => setDraft(""));
       onSent?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));

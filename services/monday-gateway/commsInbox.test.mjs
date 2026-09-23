@@ -137,6 +137,34 @@ describe("with COMMS_INBOX_ENABLED unset — the default", () => {
   });
 });
 
+describe("with COMMS_INBOX_ENABLED=1 but no pepper — asked for, and unable to run", () => {
+  let app;
+  const saved = { ...process.env };
+  beforeAll(async () => {
+    vi.resetModules();
+    process.env.COMMS_INBOX_ENABLED = "1";
+    delete process.env.PHONE_HMAC_PEPPER;
+    const mod = await import("./commsInbox.mjs");
+    app = fakeApp();
+    mod.registerCommsInbox({ app, pool: { query: async () => ({ rows: [] }) } });
+  });
+  afterAll(() => {
+    for (const k of ["COMMS_INBOX_ENABLED", "PHONE_HMAC_PEPPER"]) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  // ⚠️ Off on purpose is quiet; ON and not running is a fault the monitor must
+  // page on — it used to read ok:true, enabled:false and say nothing at all.
+  it("⚠️ the health route is NOT ok, and says why", async () => {
+    const res = await call(app, "GET", "/comms/inbox-health");
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: false, enabled: false });
+    expect(res.body.reason).toMatch(/not configured/);
+  });
+});
+
 /* ── switched on ─────────────────────────────────────────────────────────── */
 
 describe("with COMMS_INBOX_ENABLED=1", () => {
@@ -262,7 +290,7 @@ describe("⚠️ no RingCentral read on the list, the badge or a resolve (INCIDE
   it("the tick reads on the BACKGROUND tier and never retries a refusal hot", () => {
     const body = fnBody("readWindow");
     expect(body).toMatch(/tier: "background"/);
-    expect(body).toMatch(/status === 429\)\s*\{\s*stats\.shed = true;\s*return records;/);
+    expect(body).toMatch(/status === 429\)\s*\{\s*stats\.shed = true;\s*return dedupeRecords\(records\);/);
   });
 
   it("⚠️ the tick asks for the call log's LEGS — the missed-call verdict reads them", () => {
@@ -339,11 +367,109 @@ describe("⚠️ a resolve is a compare-and-set under a lock", () => {
     expect(insert).toBeGreaterThan(plan);
   });
   it("writes one row per number with ONE resolution id", () => {
-    expect(body).toMatch(/const rid = crypto\.randomUUID\(\);\s*for \(const n of numbers\)/);
+    // One id per click, minted BEFORE the per-number loop.
+    expect(body.match(/crypto\.randomUUID\(\)/g)?.length).toBe(1);
+    expect(body).toMatch(/const rid = crypto\.randomUUID\(\);[\s\S]{0,600}?for \(const n of numbers\)/);
   });
   it("attributes the row to the VERIFIED caller, never to anything the body claims", () => {
-    expect(body).toMatch(/who,\s*\n?\s*target\?\.itemId/);
+    expect(body).toMatch(/who,\s*\n?\s*noteAt \? noteAt\.boardId/);
     expect(body).not.toMatch(/req\.body\??\.(by|resolvedBy|email)/);
+  });
+  it("⚠️ the note's record goes through noteTargetFor — never straight from the body", () => {
+    expect(body).toContain("const noteAt = noteTargetFor(target, req.body?.noteTarget);");
+    expect(body).not.toMatch(/req\.body\??\.noteTarget\??\.(boardId|itemId)/);
+  });
+});
+
+/* ── the 2026-09-23 review ───────────────────────────────────────────────── */
+
+describe("⚠️ the 2026-09-23 review's gateway findings stay fixed", () => {
+  const c = code(SRC);
+
+  it("the tick's pages are deduped before any archive's multi-row upsert sees them", () => {
+    const body = fnBody("readWindow");
+    // Every exit returns the deduped list — one repeat used to fail the tick.
+    expect(body.match(/return dedupeRecords\(records\)/g)?.length).toBe(3);
+    expect(body).not.toMatch(/return records;/);
+  });
+
+  it("⚠️ every call_archive read leaves the FAXES out — the call log carries them", () => {
+    const reads = [...c.matchAll(/FROM call_archive[\s\S]{0,1500}?`/g)].map((m) => m[0]);
+    // resolveNumbers' UNION is the one read that is not a list of calls: it
+    // only fetches the newest record id to recover a number in the clear, and
+    // a fax's record carries the number as well as a call's does.
+    const lists = reads.filter((r) => !/^FROM call_archive WHERE phone_hmac = \$1`$/.test(r));
+    expect(lists.length).toBeGreaterThanOrEqual(5);
+    for (const r of lists) expect(r, r.slice(0, 80)).toMatch(/call_type IS DISTINCT FROM 'Fax'/);
+  });
+
+  it("⚠️ our own lines are dropped before the rules are asked — the rules never see a number", () => {
+    for (const f of ["loadInboundForList", "loadOpening", "loadGroupAll"]) expect(fnBody(f), f).toMatch(/dropOwn\(/);
+    expect(routeBody("get", "/comms/shadow-report")).toMatch(/dropOwn\(/);
+    expect(c).toMatch(/ourNumbers\(\)/);
+  });
+
+  it("⚠️ a cached Monday HIT expires — it must not outlive the patient's number", () => {
+    const body = fnBody("lookupUnknown");
+    expect(body).toMatch(/CASE WHEN found THEN \$3 ELSE \$2 END/);
+    expect(body).toMatch(/FOUND_RECHECK_MS/);
+    expect(body).not.toMatch(/\(found OR checked_at/);
+  });
+
+  it("⚠️ the columns it reads on tables it does not own are ensured, IF the table exists", () => {
+    const schema = SRC.slice(SRC.indexOf("export const SCHEMA = `"), SRC.indexOf("`;", SRC.indexOf("export const SCHEMA = `")));
+    expect(schema).toMatch(/ALTER TABLE IF EXISTS patient_directory ADD COLUMN IF NOT EXISTS group_id TEXT;/);
+    expect(schema).toMatch(/ALTER TABLE IF EXISTS call_archive ADD COLUMN IF NOT EXISTS call_type TEXT;/);
+  });
+
+  it("⚠️ an archive table that was never created reads as empty — never a 500, never an aborted resolve", () => {
+    for (const f of ["loadInboundForList", "loadOutbound", "loadGroupAll"]) expect(fnBody(f), f).toMatch(/archivesPresent\(pool\)/);
+    // The resolve asks BEFORE its transaction, so a missing table is skipped
+    // rather than aborting everything after it.
+    const resolve = routeBody("post", "/comms/resolve");
+    expect(resolve.indexOf("archivesPresent(pool)")).toBeGreaterThan(0);
+    expect(resolve.indexOf("archivesPresent(pool)")).toBeLessThan(resolve.indexOf("pool.connect()"));
+    expect(fnBody("loadOpening")).toMatch(/!has\.calls/);
+  });
+
+  it("⚠️ loadOpening runs ONE query at a time — it is given the resolve's transaction client", () => {
+    expect(fnBody("loadOpening")).not.toMatch(/Promise\.all/);
+  });
+
+  it("⚠️ a snapshot computed before a write can never be stored after it", () => {
+    const inv = fnBody("invalidate");
+    expect(inv).toMatch(/snapGen \+= 1/);
+    const snap = fnBody("snapshot");
+    expect(snap).toMatch(/if \(gen === snapGen\) snap = s;/);
+    expect(snap).toMatch(/snapInflight\.gen !== snapGen/);
+  });
+
+  it("⚠️ /comms/mirror validates the id itself, and 'done' needs a live claim on a standing resolution", () => {
+    const body = routeBody("post", "/comms/mirror");
+    const check = body.indexOf("UUID.test(rid)");
+    expect(check).toBeGreaterThan(0);
+    expect(check).toBeLessThan(body.indexOf('action === "claim"'));
+    const done = body.slice(body.indexOf('action === "done"'), body.indexOf('action === "error"'));
+    expect(done).toMatch(/undone_at IS NULL/);
+    expect(done).toMatch(/mirror_claimed_at IS NOT NULL/);
+  });
+
+  it("⚠️ the unauthenticated health route never sends the database's own words (Greptile, PR #58)", () => {
+    const body = routeBody("get", "/comms/inbox-health");
+    const catchPart = body.slice(body.lastIndexOf("catch (e)"));
+    expect(catchPart).not.toMatch(/e\.message\) \|\| e\) \}\)/);
+    expect(catchPart).toMatch(/"Health check failed"/);
+    // …and the tick stores only a database error's SQLSTATE, since health
+    // reads that row back.
+    expect(fnBody("captureTick")).toMatch(/database error \$\{e\.code\}/);
+  });
+
+  it("⚠️ a forced tick is AUTHENTICATED and RATE-FLOORED — both (§5.27)", () => {
+    const body = routeBody("post", "/comms/tick");
+    expect(body.indexOf("caller(req, res)")).toBeGreaterThan(0);
+    expect(body).toMatch(/TICK_FORCE_MIN_GAP_MS/);
+    expect(body).toMatch(/status\(429\)/);
+    expect(body.indexOf("status(429)")).toBeLessThan(body.indexOf("captureTick("));
   });
 });
 

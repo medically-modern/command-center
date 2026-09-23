@@ -253,7 +253,14 @@ export function inboxFaults(health) {
   if (health === null) {
     return ["Could not reach the Communications inbox health check — this says nothing about the inbox itself, only that we could not ask."];
   }
-  if (health.enabled === false) return [];
+  // Off on purpose is quiet. Switched ON but unable to run (the gateway says
+  // enabled:false with ok:false — no messaging pool, or no pepper) is not: the
+  // inbox was asked for and is not there.
+  if (health.enabled === false) {
+    return health.ok === false
+      ? [`The Communications inbox is switched on but not running: ${health.reason || "reason not reported"}.`]
+      : [];
+  }
   if (health.ok === false) {
     return [`The Communications inbox is not seeing new texts and calls: ${health.reason || "reason not reported"}.`];
   }

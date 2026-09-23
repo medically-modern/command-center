@@ -101,4 +101,41 @@ describe("ConversationThread", () => {
     expect(api.fetchConversation.mock.calls.length).toBe(reads + 2);
     vi.useRealTimers();
   });
+
+  // ⚠️ The extraction regressed this (2026-09-23 review): the draft was cleared
+  // only AFTER the post-send re-read, so the sent text sat in the box while the
+  // thread reloaded — and a follow-up typed in that window was wiped. The old
+  // thread cleared the moment RingCentral accepted the text; so does this.
+  it("⚠️ clears the draft as soon as the text is ACCEPTED — a follow-up typed during the re-read survives", async () => {
+    api.fetchConversation.mockResolvedValueOnce({ messages: [], complete: true });
+    renderThread();
+    const box = (await screen.findByPlaceholderText(/Text from/)) as HTMLTextAreaElement;
+    // The re-read after the send hangs until we let it go.
+    let release: (v: unknown) => void = () => {};
+    api.fetchConversation.mockImplementationOnce(() => new Promise((r) => (release = r)));
+    fireEvent.change(box, { target: { value: "It ships Friday" } });
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    // Accepted, still re-reading: the sent text is already gone from the box.
+    expect(api.sendMessage).toHaveBeenCalledTimes(1);
+    expect(box.value).toBe("");
+    fireEvent.change(box, { target: { value: "And the sensors on Monday" } });
+    await act(async () => {
+      release({ messages: [msg(2, "Outbound", "It ships Friday", 1)], complete: true });
+    });
+    expect(box.value).toBe("And the sensors on Monday");
+  });
+
+  it("a send that fails keeps the draft", async () => {
+    api.fetchConversation.mockResolvedValue({ messages: [], complete: true });
+    api.sendMessage.mockRejectedValueOnce(new Error("RingCentral refused it"));
+    renderThread();
+    const box = (await screen.findByPlaceholderText(/Text from/)) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "It ships Friday" } });
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    expect(box.value).toBe("It ships Friday");
+  });
 });

@@ -152,6 +152,12 @@ export async function fetchCommsState(numbers: string[]): Promise<{ key: string 
 
 /* ── resolving ──────────────────────────────────────────────────────────── */
 
+/** A patient record a resolve note is copied to (plan §5.2). */
+export interface NoteTarget {
+  boardId: number;
+  itemId: string;
+}
+
 export interface ResolveResult {
   resolutionId: string;
   how: ResolveHow;
@@ -174,6 +180,9 @@ export async function resolveItem(opts: {
   how: ResolveHow;
   note?: string;
   seenThrough: number | null;
+  /** Copy the note to THIS patient rather than the one the item is filed
+   *  under — the other patient on a shared line (plan §5.2). */
+  noteTarget?: NoteTarget | null;
 }): Promise<ResolveResult> {
   const res = await call("/comms/resolve", {
     method: "POST",
@@ -182,6 +191,7 @@ export async function resolveItem(opts: {
       how: opts.how,
       note: opts.note ?? "",
       seenThrough: opts.seenThrough === null ? null : new Date(opts.seenThrough).toISOString(),
+      ...(opts.noteTarget ? { noteTarget: opts.noteTarget } : {}),
     }),
   });
   const out = await json<ResolveResult>(res, "Resolving");
