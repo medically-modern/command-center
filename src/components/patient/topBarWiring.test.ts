@@ -17,10 +17,21 @@ const src = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 const DOSSIER_API = src("src/lib/commsHub/dossierApi.ts");
-const PAGE = src("src/pages/PatientPage.tsx");
+/** The top bar lives in the patient screen's BODY since it gained a second host
+ *  — the Communications hub's right pane (COMMS_INBOX_PLAN.md §7). Both hosts
+ *  render it, so these scans follow the code there; the page is checked below
+ *  to still render it. */
+const PAGE = src("src/components/patient/PatientBody.tsx");
 const FIELD = src("src/components/patient/TopBarContact.tsx");
 const SCREEN = src("src/lib/patient/patientScreen.ts");
 const CSS = src("src/pages/patient/redesign.css");
+
+describe("the host", () => {
+  it("the patient screen still renders the body — one top bar, two hosts", () => {
+    expect(code(src("src/pages/PatientPage.tsx"))).toContain("<PatientBody dossier={dossier} itemId={itemId} params={params} setParam={setParam} onSaved={reload} />");
+    expect(code(src("src/components/commsHub/HubPatientPane.tsx"))).toContain("<PatientBody");
+  });
+});
 
 describe("the read", () => {
   it("⚠️ dossierCols asks for the email column", () => {

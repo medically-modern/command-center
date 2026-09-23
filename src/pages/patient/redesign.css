@@ -559,3 +559,34 @@
   color: hsl(var(--muted-foreground)); background: none; border: 0; cursor: pointer;
 }
 .cc-pt .pt-back button:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+
+/* ── Embedded in the Communications hub's right pane (COMMS_INBOX_PLAN.md §7) ──
+   The pane is ~380–540px wide, so the viewport media queries above never fire
+   there: at a 1440 window every grid would lay out for a wide main column and
+   crush itself into the pane. These rules do the narrow layout by CLASS instead
+   — the same overrides Brandon's mockup ships under its own `.embedded`.
+   ⚠️ ONE scroller: the pane scrolls, never this box inside it. `.cc-pt` is a
+   100%-height flex column with its own scrolling `.pt-main`, which inside a
+   scrolling pane would be a second scrollbar with the switcher above it. */
+.cc-pt.embedded { height: auto; flex: none; min-height: 0; background: none; }
+.cc-pt.embedded .pt-main { overflow: visible; padding: 12px 12px 40px; gap: 12px; }
+.cc-pt.embedded .tb-card { padding: 12px 14px; }
+.cc-pt.embedded .tb { gap: 10px 18px; }
+.cc-pt.embedded .tb .vtoggle { width: 100%; margin-left: 0; }
+/* The two halves share the toggle and shrink rather than push it wide — at a
+   ~400px pane "Subscription · Not yet" alone ran 50px past the edge (measured
+   at 1100). The caption gives way first, as an ellipsis, then the padding. */
+.cc-pt.embedded .vtoggle button,
+.cc-pt.embedded .vtoggle span.off { flex: 1 1 0; min-width: 0; justify-content: center; padding: 7px 8px; }
+.cc-pt.embedded .vtoggle .st { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-pt.embedded .tb .fact .v { white-space: normal; }
+.cc-pt.embedded .card.pad { padding: 14px; }
+.cc-pt.embedded .stepper { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cc-pt.embedded .strip,
+.cc-pt.embedded .strip.upstrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cc-pt.embedded .rogrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cc-pt.embedded .clin { grid-template-columns: 1fr; }
+.cc-pt.embedded .clin .ctl { justify-content: flex-start; }
+/* The stage tools are whole pages built for a wide column; in the pane they
+   scroll sideways inside their own frame rather than pushing the pane wide. */
+.cc-pt.embedded .stage-embed { overflow-x: auto; }

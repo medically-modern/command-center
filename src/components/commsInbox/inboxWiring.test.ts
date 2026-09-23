@@ -254,3 +254,43 @@ describe("phase 3 — the patient screen's compact bar (plan §1.2)", () => {
     expect(bar).toContain("fetchCommsState(");
   });
 });
+
+describe("phase 4 — the SLA card on Reports & Metrics (plan §1.2, Josh's D8)", () => {
+  const REPORTS = code("src/pages/OperationsPage.tsx");
+  const CARD = code("src/components/commsInbox/SlaCard.tsx");
+
+  it("renders only with the Inbox switched on — off, the page is the blank one it was", () => {
+    expect(REPORTS).toMatch(/comms\.ui \? \(\s*<div className="mx-auto max-w-6xl">\s*<SlaCard \/>/);
+    expect(REPORTS).toContain("No reports available yet");
+    // It borrows nothing: still not the Operations burndown (lossless.test.ts).
+    expect(REPORTS).not.toContain("<OperationsTab");
+  });
+
+  it("⚠️⚠️ every number is the gateway's — the browser keeps no second copy of the report", () => {
+    expect(CARD).toContain("await fetchSla(SLA_DAYS)");
+    for (const f of [CARD, code("src/lib/commsInbox/sla.ts")]) {
+      expect(f).not.toContain("countedWaitMs");
+      expect(f).not.toMatch(/\bmedian\(/);
+      expect(f).not.toContain("OVER_AFTER_MS");
+    }
+  });
+
+  it("reads once on open and on Refresh — never polled, never RingCentral", () => {
+    expect(CARD).not.toMatch(/setInterval|setTimeout/);
+    expect(CARD).not.toContain("ringcentralApi");
+  });
+
+  it("⚠️ Open breaches lands on the hub's Over 24h view, read once and taken off the URL", () => {
+    expect(CARD).toContain('export const OPEN_BREACHES_HREF = "/assigned-patients?inbox=over"');
+    expect(code("src/App.tsx")).toContain('path="/assigned-patients"');
+    expect(PAGE).toContain('const inboxViewParam = searchParams.get("inbox");');
+    expect(PAGE).toMatch(/view: inboxViewParam === "over" \|\| inboxViewParam === "all" \? inboxViewParam : "open"/);
+    expect(PAGE).toContain('next.delete("inbox");');
+    expect(PAGE).toContain("{ replace: true }");
+  });
+
+  it("⚠️ the link reads the SIGNED-IN person's Communications ability, and is inert without it", () => {
+    expect(CARD).toContain('const canWork = useAbility("comms");');
+    expect(CARD).toMatch(/aria-disabled="true"/);
+  });
+});

@@ -34,6 +34,7 @@
  * opened.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   BellRing,
@@ -58,6 +59,7 @@ import FaxPanel, { FaxProviderDetail } from "@/components/commsHub/FaxPanel";
 import VoicemailDetail from "@/components/commsHub/VoicemailDetail";
 import { voicemailForCall, type PickedCall } from "@/lib/commsHub/callVoicemail";
 import PatientDossierPanel from "@/components/commsHub/PatientDossierPanel";
+import HubPatientPane, { HubPatientPaneHeader } from "@/components/commsHub/HubPatientPane";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { searchPatientsByName, type PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { fmtPhone } from "@/lib/assignedPatients/format";
@@ -309,11 +311,32 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
 
   /* ── The Inbox (COMMS_INBOX_PLAN.md §1–§6) ────────────────────────────── */
 
-  const [inboxQuery, setInboxQuery] = useState<Omit<InboxQuery, "q" | "sticky">>({
-    view: "open",
+  /**
+   * `?inbox=over` is the SLA card's *Open breaches* link (Reports & Metrics,
+   * Josh's D8). Read ONCE, into the Inbox's own view state, then taken off the
+   * address bar: left there it would contradict the rep the moment they change
+   * view, and a reload would drag them back to *Over 24h*. With the Inbox
+   * switched off it lands on nothing — the hub is exactly what it was — and it
+   * is still removed, so it cannot resurface when the switch comes on.
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const inboxViewParam = searchParams.get("inbox");
+  const [inboxQuery, setInboxQuery] = useState<Omit<InboxQuery, "q" | "sticky">>(() => ({
+    view: inboxViewParam === "over" || inboxViewParam === "all" ? inboxViewParam : "open",
     type: "",
     sort: "wait",
-  });
+  }));
+  useEffect(() => {
+    if (inboxViewParam === null) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("inbox");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [inboxViewParam, setSearchParams]);
   const [inboxSearch, setInboxSearch] = useState("");
   const [inboxQ, setInboxQ] = useState("");
   useEffect(() => {
@@ -1444,11 +1467,20 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
         {/* 30% wider than the original clamp(18rem,28%,26rem) (Josh, 2026-09-01) — the
             pane now carries the per-stage call detail, not just notes. */}
         <aside className="hidden w-[clamp(23.5rem,36%,34rem)] shrink-0 flex-col border-l border-border bg-card lg:flex">
-          <div className="shrink-0 border-b border-border px-4 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Command Center profile
-            </p>
-          </div>
+          {/* With the Inbox on, the pane is the patient screen itself
+              (COMMS_INBOX_PLAN.md §7) under the mockup's header; off, it is the
+              profile pane exactly as it was. */}
+          {inboxOn ? (
+            <HubPatientPaneHeader
+              dossier={tab === "fax" || (tab === "inbox" && !item) ? null : dossier.dossier}
+            />
+          ) : (
+            <div className="shrink-0 border-b border-border px-4 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Command Center profile
+              </p>
+            </div>
+          )}
           {tab === "inbox" ? (
             !item ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
@@ -1473,7 +1505,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                     onPickAgain={() => setInboxFindPick(null)}
                   />
                 )}
-                <PatientDossierPanel
+                <HubPatientPane
                   dossier={dossier.dossier}
                   people={dossier.people}
                   selected={dossier.selected}
@@ -1488,6 +1520,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                       ? (row) => setInboxFindPick({ itemId: row.id, boardId: row.boardId, name: row.name, phone: row.phone })
                       : undefined
                   }
+                  onReload={dossier.reload}
                 />
               </>
             )
@@ -1518,20 +1551,38 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                   onPickAgain={() => setDossierPick(null)}
                 />
               )}
-              <PatientDossierPanel
-                dossier={dossier.dossier}
-                people={dossier.people}
-                selected={dossier.selected}
-                onSelectPerson={dossier.selectPerson}
-                loading={dossier.loading}
-                error={dossier.error}
-                phone={selectedPhone || null}
-                picked={dossierPick}
-                onClearPick={() => setDossierPick(null)}
-                onPick={(row) =>
-                  setDossierPick({ itemId: row.id, boardId: row.boardId, name: row.name, phone: row.phone })
-                }
-              />
+              {inboxOn ? (
+                <HubPatientPane
+                  dossier={dossier.dossier}
+                  people={dossier.people}
+                  selected={dossier.selected}
+                  onSelectPerson={dossier.selectPerson}
+                  loading={dossier.loading}
+                  error={dossier.error}
+                  phone={selectedPhone || null}
+                  picked={dossierPick}
+                  onClearPick={() => setDossierPick(null)}
+                  onPick={(row) =>
+                    setDossierPick({ itemId: row.id, boardId: row.boardId, name: row.name, phone: row.phone })
+                  }
+                  onReload={dossier.reload}
+                />
+              ) : (
+                <PatientDossierPanel
+                  dossier={dossier.dossier}
+                  people={dossier.people}
+                  selected={dossier.selected}
+                  onSelectPerson={dossier.selectPerson}
+                  loading={dossier.loading}
+                  error={dossier.error}
+                  phone={selectedPhone || null}
+                  picked={dossierPick}
+                  onClearPick={() => setDossierPick(null)}
+                  onPick={(row) =>
+                    setDossierPick({ itemId: row.id, boardId: row.boardId, name: row.name, phone: row.phone })
+                  }
+                />
+              )}
             </>
           )}
         </aside>

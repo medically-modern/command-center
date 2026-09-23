@@ -31,8 +31,10 @@ function norm(e: string): string {
   return (e || "").trim().toLowerCase();
 }
 
-/** "jane.doe@x.com" → "Jane Doe"; "josh@x.com" → "Josh". */
-function prettyName(email: string): string {
+/** "jane.doe@x.com" → "Jane Doe"; "josh@x.com" → "Josh". Exported for the
+ *  places that name somebody who may no longer be on the access list — the
+ *  Communications report names every rep who ever resolved an item. */
+export function prettyName(email: string): string {
   const local = norm(email).split("@")[0].replace(/[._-]+/g, " ").trim();
   const pretty = local
     .split(" ")

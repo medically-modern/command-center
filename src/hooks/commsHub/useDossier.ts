@@ -25,7 +25,7 @@
  * question the switcher asks.
  */
 import { useCallback, useEffect, useState } from "react";
-import { personKey, splitByPerson, type PatientDossier } from "@/lib/commsHub/dossier";
+import { buildDossier, personKey, splitByPerson, type PatientDossier } from "@/lib/commsHub/dossier";
 import {
   dossierConfigured,
   fetchDossierItems,
@@ -63,7 +63,7 @@ export function useDossier(
    * page clears it the moment the rep moves to another number.
    */
   pick?: DossierPick | null,
-): DossierState & { selectPerson: (i: number) => void } {
+): DossierState & { selectPerson: (i: number) => void; reload: () => void } {
   const [state, setState] = useState<DossierState>({
     dossier: null,
     people: [],
@@ -78,6 +78,28 @@ export function useDossier(
    *  composer and the page's outbound-text attribution. */
   const selectPerson = useCallback((index: number) => {
     setState((s) => (index >= 0 && index < s.people.length ? { ...s, selected: index, dossier: s.people[index] } : s));
+  }, []);
+
+  /**
+   * Re-derive every person from their records, KEEPING the selection — for the
+   * patient screen's top-bar pencils when that body is drawn in the hub's right
+   * pane (COMMS_INBOX_PLAN.md §7). `updatePatientContact` patches the cached
+   * records it wrote, and these are those same objects, so rebuilding is what
+   * puts the new value on screen — the same thing the patient screen's own
+   * reload does against the same cache.
+   *
+   * ⚠️ It never re-runs the lookup, and that is deliberate: re-running it
+   * re-picks the DEFAULT person, so a rep who saved a number for the second
+   * patient on a shared line would be flipped back to the first one (§5.28's
+   * household rule) — with the notes composer and the outbound text following.
+   */
+  const reload = useCallback(() => {
+    setState((s) => {
+      if (!s.dossier) return s;
+      const people = s.people.length ? s.people.map((p) => buildDossier(p.items)) : [];
+      const dossier = people[s.selected] ?? buildDossier(s.dossier.items);
+      return { ...s, people, dossier };
+    });
   }, []);
 
   useEffect(() => {
@@ -159,5 +181,5 @@ export function useDossier(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone, preferPerson, pick?.boardId, pick?.itemId]);
 
-  return { ...state, selectPerson };
+  return { ...state, selectPerson, reload };
 }

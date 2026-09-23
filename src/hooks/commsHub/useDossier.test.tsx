@@ -267,3 +267,61 @@ describe("useDossier with a picked patient", () => {
     expect(screen.getByTestId("name").textContent).toBe("NONE");
   });
 });
+
+/**
+ * `reload` — what the patient screen's top-bar pencils call when that body is
+ * drawn in the hub's right pane (COMMS_INBOX_PLAN.md §7). FAKE people.
+ */
+describe("useDossier — reload keeps the selection", () => {
+  beforeEach(() => {
+    fetchDossierItems.mockReset();
+    peekDossierItems.mockReset();
+  });
+
+  function ReloadProbe({ phone }: { phone: string }) {
+    const { dossier, selected, selectPerson, reload } = useDossier(phone);
+    return (
+      <>
+        <span data-testid="name">{dossier?.name ?? "NONE"}</span>
+        <span data-testid="phone">{dossier?.phone ?? ""}</span>
+        <span data-testid="selected">{selected}</span>
+        <button data-testid="second" onClick={() => selectPerson(1)}>second</button>
+        <button data-testid="reload" onClick={() => reload()}>reload</button>
+      </>
+    );
+  }
+
+  it("⚠️ re-derives the SELECTED person from their records — never flips back to the default one", async () => {
+    // Two people on one line (§5.28's household case), both on Welcome Call.
+    const a = item("Ada Sample", "+15550001111");
+    const b = { ...item("Ben Sample", "+15550001111"), itemId: "ben-1" };
+    peekDossierItems.mockReturnValue(null);
+    fetchDossierItems.mockResolvedValue([a, b]);
+    render(<ReloadProbe phone="+15550001111" />);
+    await waitFor(() => expect(screen.getByTestId("name").textContent).not.toBe("NONE"));
+    const first = screen.getByTestId("name").textContent;
+    await act(async () => screen.getByTestId("second").click());
+    const second = screen.getByTestId("name").textContent;
+    expect(second).not.toBe(first);
+
+    // A pencil saved a new number for the second person — updatePatientContact
+    // patches the cached record object in place, which is what reload reads.
+    const target = second === "Ben Sample" ? b : a;
+    target.phone = "+15550002222";
+    await act(async () => screen.getByTestId("reload").click());
+
+    expect(screen.getByTestId("selected").textContent).toBe("1");
+    expect(screen.getByTestId("name").textContent).toBe(second);
+    expect(screen.getByTestId("phone").textContent).toBe("+15550002222");
+    // …and it never asked Monday again: a re-run would re-pick the default.
+    expect(fetchDossierItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing before anything has loaded", async () => {
+    peekDossierItems.mockReturnValue(null);
+    fetchDossierItems.mockReturnValue(new Promise(() => {}));
+    render(<ReloadProbe phone="+15550003333" />);
+    await act(async () => screen.getByTestId("reload").click());
+    expect(screen.getByTestId("name").textContent).toBe("NONE");
+  });
+});

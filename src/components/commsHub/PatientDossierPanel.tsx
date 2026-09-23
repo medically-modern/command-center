@@ -131,7 +131,7 @@ function DetailRow({ field }: { field: RenderedField }) {
 }
 
 /** Add a line to the stage's notes without leaving the hub. */
-function NoteComposer({
+export function NoteComposer({
   active,
   onAppended,
   phone,
@@ -238,7 +238,7 @@ function newestLine(notes: string): string {
 }
 
 /** One earlier stage's running notes, shut by default. */
-function StageNotesBlock({ stage }: { stage: StageNotes }) {
+export function StageNotesBlock({ stage }: { stage: StageNotes }) {
   const [open, setOpen] = useState(false);
   const preview = newestLine(stage.notes);
   return (
@@ -274,53 +274,27 @@ function StageNotesBlock({ stage }: { stage: StageNotes }) {
   );
 }
 
-export function PatientDossierPanel({
-  dossier,
-  people = [],
-  selected = 0,
-  onSelectPerson,
+/**
+ * The pane's non-profile states — nothing open, looking up, failed, and a
+ * number on no board — shared by this pane and the hub's embedded patient
+ * screen (`HubPatientPane`), so the two cannot say different things about the
+ * same moment. Null when there is a dossier to draw.
+ */
+export function dossierPaneFallback({
+  phone,
   loading,
   error,
-  phone,
+  dossier,
   idleHint = "Open a conversation, call or voicemail to see the patient's Command Center profile.",
   onPick,
-  picked = null,
-  onClearPick,
 }: {
-  dossier: PatientDossier | null;
-  /** The rep found this patient through the pane's search — the number on the
-   *  line is NOT on their record. Shown as a banner so nobody mistakes it for a
-   *  matched number. */
-  picked?: DossierPick | null;
-  /** Offer the search when the number matches nobody. Absent = no search. */
-  onPick?: (row: SystemPatient) => void;
-  onClearPick?: () => void;
-  /** Everyone who shares this number — usually one. */
-  people?: PatientDossier[];
-  selected?: number;
-  onSelectPerson?: (index: number) => void;
+  phone: string | null;
   loading: boolean;
   error: string | null;
-  phone: string | null;
+  dossier: PatientDossier | null;
   idleHint?: string;
-}) {
-  const notesRef = useRef<HTMLPreElement>(null);
-  /** A note added here shows immediately; the cached trail is patched too. */
-  const [notesOverride, setNotesOverride] = useState<string | null>(null);
-  const activeId = dossier?.active?.itemId ?? "";
-
-  // Drop the local copy when the pane moves to another patient, or it would
-  // print the previous one's notes under this one's name.
-  useEffect(() => setNotesOverride(null), [activeId]);
-
-  // Notes columns are append-only with the newest line LAST (§9), so the
-  // useful end of a long history is the bottom.
-  const notes = notesOverride ?? dossier?.active?.notes ?? "";
-  useEffect(() => {
-    const el = notesRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [activeId, notes]);
-
+  onPick?: (row: SystemPatient) => void;
+}): JSX.Element | null {
   if (!phone) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
@@ -380,26 +354,195 @@ export function PatientDossierPanel({
     );
   }
 
-  const { active, path } = dossier;
-  const done = stagesCompleted(path);
-  const detail = active ? buildStageDetail(active.boardId, active.cols) : [];
+  return null;
+}
+
+/** The rep found this patient through the pane's search — the number on the
+ *  line is NOT on their record. Said, so nobody mistakes it for a match. */
+export function FoundBySearchBanner({
+  phone,
+  dossierPhone,
+  onClear,
+}: {
+  phone: string;
+  dossierPhone: string;
+  onClear?: () => void;
+}) {
+  return (
+    <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+      <span className="font-semibold">Found by search.</span> {fmtPhone(phone)} isn't on this patient's record
+      {dossierPhone && dossierPhone !== phone ? <> — on file: {fmtPhone(dossierPhone)}</> : null}.
+      {onClear && (
+        <button onClick={onClear} className="ml-2 underline hover:text-amber-700 dark:hover:text-amber-200">
+          Clear
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * ⚠️ A shared line, and the rep has to be told BEFORE they read the notes or
+ * type one. 18 of our 3,140 numbers are shared by genuinely different
+ * patients — households like the Hartleys, and several pairs with different
+ * surnames. Everything that follows this selection — the note composer and the
+ * outbound text's patient attribution — follows it on BOTH panes.
+ */
+export function HouseholdSwitcher({
+  people,
+  selected,
+  onSelectPerson,
+  className,
+}: {
+  people: PatientDossier[];
+  selected: number;
+  onSelectPerson?: (index: number) => void;
+  className?: string;
+}) {
+  if (people.length < 2) return null;
+  return (
+    <div
+      className={cn("rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/60", className)}
+      data-household-switcher
+    >
+      <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-900 dark:text-amber-100">
+        <Users className="h-3.5 w-3.5 shrink-0" />
+        {people.length} patients share this number
+      </p>
+      <div className="mt-1.5 flex flex-wrap gap-1">
+        {people.map((p, i) => (
+          <button
+            key={`${p.active?.itemId ?? p.name}-${i}`}
+            onClick={() => onSelectPerson?.(i)}
+            aria-pressed={i === selected}
+            title={p.active ? `Working on ${p.active.boardName}` : "No live stage"}
+            className={cn(
+              "max-w-full truncate rounded px-2 py-1 text-[11px] font-medium transition-colors",
+              i === selected
+                ? "bg-amber-500 text-white"
+                : "bg-white text-amber-900 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900",
+            )}
+          >
+            {p.name || fmtPhone(p.phone)}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[10px] text-amber-800 dark:text-amber-200">
+        {/* Say what the choice CHANGES, or a rep has no reason to make it. */}
+        Notes and outbound texts are filed against the patient selected here.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The live stage's notes, WRITABLE, with every other record's notes collapsed
+ * underneath — Josh's "main attraction" (2026-09-02) and the hub's reason for
+ * being a place a rep writes things down. Shared by both panes.
+ */
+export function LiveNotes({
+  dossier,
+  phone,
+  className = "flex flex-col border-b border-border",
+}: {
+  dossier: PatientDossier;
+  phone: string;
+  className?: string;
+}) {
+  const notesRef = useRef<HTMLPreElement>(null);
+  /** A note added here shows immediately; the cached trail is patched too. */
+  const [notesOverride, setNotesOverride] = useState<string | null>(null);
+  const active = dossier.active;
+  const activeId = active?.itemId ?? "";
+
+  // Drop the local copy when the pane moves to another patient, or it would
+  // print the previous one's notes under this one's name.
+  useEffect(() => setNotesOverride(null), [activeId]);
+
+  // Notes columns are append-only with the newest line LAST (§9), so the
+  // useful end of a long history is the bottom.
+  const notes = notesOverride ?? active?.notes ?? "";
+  useEffect(() => {
+    const el = notesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activeId, notes]);
+
   // Already in hand — every board's notes column rides along with its record.
   const otherNotes = stageNoteTrail(dossier);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-      {picked && (
-        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-          <span className="font-semibold">Found by search.</span>{" "}
-          {fmtPhone(phone)} isn't on this patient's record
-          {dossier.phone && dossier.phone !== phone ? <> — on file: {fmtPhone(dossier.phone)}</> : null}.
-          {onClearPick && (
-            <button onClick={onClearPick} className="ml-2 underline hover:text-amber-700 dark:hover:text-amber-200">
-              Clear
-            </button>
-          )}
+    <div className={className} data-live-notes>
+      <div className="flex shrink-0 items-center gap-1.5 px-4 pb-1.5 pt-3">
+        <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          {active ? `${active.stageAdvancerText || active.boardName} notes` : "Notes"}
+        </span>
+      </div>
+      <pre
+        ref={notesRef}
+        className="mx-4 mb-2 max-h-80 min-h-[6rem] overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 p-2.5 font-sans text-[11px] leading-relaxed"
+      >
+        {notes.trim() || (active ? "No notes on this stage yet." : "No live stage, so no working notes.")}
+      </pre>
+      {active && <NoteComposer active={active} phone={phone} onAppended={setNotesOverride} />}
+
+      {/* Every OTHER stage's notes. Shut by default with the newest line on
+          the header, so the whole history is one click away without pushing
+          the stage detail off the pane. */}
+      {otherNotes.length > 0 && (
+        <div className="mb-3 space-y-1.5 px-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Notes from other stages ({otherNotes.length})
+          </p>
+          {otherNotes.map((stage) => (
+            <StageNotesBlock key={`${stage.boardId}:${stage.itemId}`} stage={stage} />
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+export function PatientDossierPanel({
+  dossier,
+  people = [],
+  selected = 0,
+  onSelectPerson,
+  loading,
+  error,
+  phone,
+  idleHint = "Open a conversation, call or voicemail to see the patient's Command Center profile.",
+  onPick,
+  picked = null,
+  onClearPick,
+}: {
+  dossier: PatientDossier | null;
+  /** The rep found this patient through the pane's search — the number on the
+   *  line is NOT on their record. Shown as a banner so nobody mistakes it for a
+   *  matched number. */
+  picked?: DossierPick | null;
+  /** Offer the search when the number matches nobody. Absent = no search. */
+  onPick?: (row: SystemPatient) => void;
+  onClearPick?: () => void;
+  /** Everyone who shares this number — usually one. */
+  people?: PatientDossier[];
+  selected?: number;
+  onSelectPerson?: (index: number) => void;
+  loading: boolean;
+  error: string | null;
+  phone: string | null;
+  idleHint?: string;
+}) {
+  const fallback = dossierPaneFallback({ phone, loading, error, dossier, idleHint, onPick });
+  if (fallback || !dossier || !phone) return fallback;
+
+  const { active, path } = dossier;
+  const done = stagesCompleted(path);
+  const detail = active ? buildStageDetail(active.boardId, active.cols) : [];
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {picked && <FoundBySearchBanner phone={phone} dossierPhone={dossier.phone} onClear={onClearPick} />}
       {/* ── Who ─────────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-border px-4 py-3">
         <p className="truncate text-sm font-semibold">{dossier.name || fmtPhone(dossier.phone)}</p>
@@ -407,43 +550,7 @@ export function PatientDossierPanel({
           {fmtPhone(dossier.phone || phone)}
           {active ? ` · ${active.boardName}` : " · no live stage"}
         </p>
-
-        {/* ⚠️ A shared line, and the rep has to be told BEFORE they read the
-            notes or type one. 18 of our 3,140 numbers are shared by genuinely
-            different patients — households like the Hartleys, and several
-            pairs with different surnames. Everything below follows this
-            selection, including the note composer and the outbound text's
-            patient attribution. */}
-        {people.length > 1 && (
-          <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/60">
-            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-900 dark:text-amber-100">
-              <Users className="h-3.5 w-3.5 shrink-0" />
-              {people.length} patients share this number
-            </p>
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {people.map((p, i) => (
-                <button
-                  key={`${p.active?.itemId ?? p.name}-${i}`}
-                  onClick={() => onSelectPerson?.(i)}
-                  aria-pressed={i === selected}
-                  title={p.active ? `Working on ${p.active.boardName}` : "No live stage"}
-                  className={cn(
-                    "max-w-full truncate rounded px-2 py-1 text-[11px] font-medium transition-colors",
-                    i === selected
-                      ? "bg-amber-500 text-white"
-                      : "bg-white text-amber-900 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900",
-                  )}
-                >
-                  {p.name || fmtPhone(p.phone)}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1.5 text-[10px] text-amber-800 dark:text-amber-200">
-              {/* Say what the choice CHANGES, or a rep has no reason to make it. */}
-              Notes and outbound texts are filed against the patient selected here.
-            </p>
-          </div>
-        )}
+        <HouseholdSwitcher people={people} selected={selected} onSelectPerson={onSelectPerson} className="mt-2" />
       </div>
 
       {/* ── 1. The path ─────────────────────────────────────── */}
@@ -469,35 +576,7 @@ export function PatientDossierPanel({
       </div>
 
       {/* ── 2. Notes — the main view, and writable ──────────── */}
-      <div className="flex flex-col border-b border-border">
-        <div className="flex shrink-0 items-center gap-1.5 px-4 pb-1.5 pt-3">
-          <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {active ? `${active.stageAdvancerText || active.boardName} notes` : "Notes"}
-          </span>
-        </div>
-        <pre
-          ref={notesRef}
-          className="mx-4 mb-2 max-h-80 min-h-[6rem] overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 p-2.5 font-sans text-[11px] leading-relaxed"
-        >
-          {notes.trim() || (active ? "No notes on this stage yet." : "No live stage, so no working notes.")}
-        </pre>
-        {active && <NoteComposer active={active} phone={phone} onAppended={setNotesOverride} />}
-
-        {/* 2b. Every OTHER stage's notes. Shut by default with the newest line
-            on the header, so the whole history is one click away without
-            pushing the stage detail off the pane. */}
-        {otherNotes.length > 0 && (
-          <div className="mb-3 space-y-1.5 px-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Notes from other stages ({otherNotes.length})
-            </p>
-            {otherNotes.map((stage) => (
-              <StageNotesBlock key={`${stage.boardId}:${stage.itemId}`} stage={stage} />
-            ))}
-          </div>
-        )}
-      </div>
+      <LiveNotes dossier={dossier} phone={phone} />
 
       {/* ── 3. Open in the stage, or on the patient screen ──── */}
       {active && (
