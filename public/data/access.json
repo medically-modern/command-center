@@ -74,7 +74,7 @@
       "perms": {
         "viewOthers": true,
         "stageManager": false,
-        "editProfile": true
+        "editProfile": false
       },
       "homeView": [
         "coordinator",
