@@ -92,4 +92,9 @@ describe("browser-answering slots (§5.13b) — assigned by a manager, capped at
     expect(c.processors["madd@medicallymodern.com"]).toBeUndefined();
     expect(c.managers).toEqual(cfg.managers);
   });
+
+  it("removing a person keeps everybody else's admin list, and drops theirs", () => {
+    const c = configWithoutEmail({ ...cfg, admins: ["josh@medicallymodern.com", "madd@medicallymodern.com"] }, "madd@medicallymodern.com");
+    expect(c.admins).toEqual(["josh@medicallymodern.com"]);
+  });
 });

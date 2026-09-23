@@ -7,7 +7,7 @@ import { AbilitiesEditor } from "@/components/shell/AbilitiesEditor";
 import { CROSS_SELL_FILTER_ROLES, roleFilterFor, roleOrderNumber } from "@/lib/roleView";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ArrowLeft, Headphones, Shield, UserCog, X, Plus } from "lucide-react";
+import { ArrowLeft, Shield, UserCog, X, Plus } from "lucide-react";
 
 /** Managers-only UI. Every person can be a Manager (full access), a Processor
  *  (only their checked bars), or BOTH. Each assigned role carries a filter
@@ -146,59 +146,10 @@ export default function AccessAdminPage() {
           </p>
         </section>
 
-        {/* Browser call answerers (§5.13b): who the main line rings in the
-            Command Center. Capped at RingCentral's five devices per
-            extension — the sixth checkbox is refused here, and RingCentral
-            itself refuses a sixth browser with "603 Too Many Contacts". */}
-        <section className="bg-card border border-border rounded-xl p-5 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Headphones className="w-4 h-4" /> Answer calls in the browser
-            <span className="ml-auto text-xs font-normal text-muted-foreground tabular-nums">
-              {answerers.length} of {MAX_CALL_ANSWERERS}
-            </span>
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Only the people checked here are shown incoming calls, and they answer them in the
-            Command Center. RingCentral allows five devices on the main line, and every browser a
-            person opens the app in counts as one — so keep this to the people who actually pick
-            up, and have them use one machine.
-          </p>
-          {allEmails.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Add a person first.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {allEmails.map((pe) => {
-                const on = answerers.includes(pe);
-                const full = !on && answerers.length >= MAX_CALL_ANSWERERS;
-                return (
-                  <label
-                    key={pe}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm",
-                      on ? "border-emerald-500/40 bg-emerald-500/5" : "border-border",
-                      full ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
-                    )}
-                    title={full ? `All ${MAX_CALL_ANSWERERS} slots are taken — uncheck somebody first` : undefined}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      disabled={full}
-                      onChange={() => {
-                        if (!setCallAnswerer(pe, !on)) {
-                          toast.error(`All ${MAX_CALL_ANSWERERS} browser-answering slots are taken. Uncheck somebody first.`);
-                        }
-                      }}
-                      className="accent-emerald-600"
-                    />
-                    <span className="truncate">{config.processors[pe]?.name || pe}</span>
-                    <span className="ml-auto text-[11px] text-muted-foreground truncate">{pe}</span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </section>
+        {/* ⚠️ The "Answer calls in the browser" section is GONE (Josh,
+            2026-09-23): it was a second control onto `callAnswerers[]`, the
+            same list the "Answers calls" chip on each person's Abilities row
+            writes. That chip is now the only one, and the count lives on it. */}
 
         {/* People */}
         <section className="space-y-3">
@@ -279,6 +230,7 @@ export default function AccessAdminPage() {
                       isSelf={isSelf}
                       answersCalls={answerers.includes(pe)}
                       answerSlotsFull={!answerers.includes(pe) && answerers.length >= MAX_CALL_ANSWERERS}
+                      answerCount={answerers.length}
                       onAbility={(a, on) => setAbility(pe, a, on)}
                       onHomeView={(v, on) => setHomeView(pe, v, on)}
                       onAdmin={(on) => setAdmin(pe, on)}

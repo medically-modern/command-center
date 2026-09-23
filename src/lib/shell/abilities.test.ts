@@ -304,34 +304,35 @@ describe("⚠️ the shipped access.json", () => {
    * `viewOthers`-only version of this test passed unchanged when `stageManager`
    * joined the list, which is the drift it exists to catch.
    */
+  /* ⚠️ A SUBSET check, not an exact one (2026-09-23). access.json is edited
+     LIVE from /access and committed straight to main, so pinning the exact
+     grant list meant an admin revoking one on the page broke every deploy
+     (Brandon's stageManager was turned off at 14:42 that day and CI went red).
+     What matters is the direction that WIDENS access: nobody outside the two
+     named people may hold an opt-in ability. Revoking is always allowed. */
+  const ALLOWED = new Set(["brandon@medicallymodern.com", "josh@medicallymodern.com"]);
+
   for (const ability of OPT_IN_ABILITIES) {
-    it(`grants ${ability} to Josh and Brandon, and to nobody else`, async () => {
+    it(`grants ${ability} to nobody but Josh and Brandon`, async () => {
       const cfg = (await import("../../../public/data/access.json")).default as unknown as AccessConfig;
       const granted = Object.entries(cfg.processors || {})
         .filter(([, p]) => p?.perms?.[ability] === true)
-        .map(([e]) => e)
-        .sort();
-      expect(granted).toEqual([
-        "brandon@medicallymodern.com",
-        "josh@medicallymodern.com",
-      ]);
+        .map(([e]) => e.trim().toLowerCase());
+      expect(granted.filter((e) => !ALLOWED.has(e))).toEqual([]);
     });
   }
 
   it("⚠️ nobody holds an opt-in ability by ACCIDENT — every grant is deliberate", async () => {
     // An opt-in flag is the only `perms` value that grants rather than removes,
     // so a stray `true` on somebody's row is the one edit that widens access
-    // without anybody choosing it. This is the whole opt-in set, in one place.
+    // without anybody choosing it.
     const cfg = (await import("../../../public/data/access.json")).default as unknown as AccessConfig;
-    const holders = Object.entries(cfg.processors || {}).flatMap(([email, p]) =>
-      OPT_IN_ABILITIES.filter((a) => p?.perms?.[a] === true).map((a) => `${email}:${a}`),
+    const strays = Object.entries(cfg.processors || {}).flatMap(([email, p]) =>
+      OPT_IN_ABILITIES.filter((a) => p?.perms?.[a] === true && !ALLOWED.has(email.trim().toLowerCase())).map(
+        (a) => `${email}:${a}`,
+      ),
     );
-    expect(holders.sort()).toEqual([
-      "brandon@medicallymodern.com:stageManager",
-      "brandon@medicallymodern.com:viewOthers",
-      "josh@medicallymodern.com:stageManager",
-      "josh@medicallymodern.com:viewOthers",
-    ]);
+    expect(strays).toEqual([]);
   });
 });
 
