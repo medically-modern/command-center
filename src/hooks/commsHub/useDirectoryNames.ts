@@ -245,6 +245,21 @@ export function useDirectoryNames(keys: string[], enabled = true): DirectoryName
   return { names, progress: enabled ? prog : NO_PROGRESS };
 }
 
+/**
+ * Drop what this session knows about one number, and ask again.
+ *
+ * ⚠️ For the Communications inbox's "this number is that patient" (COMMS_INBOX_
+ * PLAN.md §6). Misses are cached for the whole session — deliberately, see
+ * rule 2 in the header — so without this a number a rep has just linked to a
+ * patient would go on reading "Unknown" in the Text and Phone lists until a
+ * reload.
+ */
+export function forgetDirectoryName(key: string): void {
+  if (!known.delete(key)) return;
+  emit();
+  resolve([key]);
+}
+
 /** Test seam — resets the module store between cases. */
 export function __resetDirectoryNamesForTest(): void {
   known.clear();

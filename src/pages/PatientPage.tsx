@@ -45,37 +45,16 @@
  * nothing and guessing would mean a board scan per open.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowUpRight, ClipboardList, RefreshCw, RotateCw } from "lucide-react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { ArrowLeft, RotateCw } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
-import { OnboardingView } from "@/components/patient/OnboardingView";
+import { PatientBody } from "@/components/patient/PatientBody";
 import { PatientCommsColumn } from "@/components/patient/PatientCommsColumn";
 import { usePatientRecord } from "@/hooks/patient/usePatientRecord";
 import { clearDossierCaches, type DossierPick } from "@/lib/commsHub/dossierApi";
-import {
-  BOARD_PARAM,
-  SIDE_PARAM,
-  SNAP_PARAM,
-  TOOL_PARAM,
-  SUB_PARAM,
-  STEP_PARAM,
-  VIEW_PARAM,
-  buildStages,
-  defaultStepIndex,
-  onboardingCaption,
-  parseSide,
-  viewFor,
-  subscriptionCaption,
-  subscriptionItem,
-  topBarFacts,
-  type PatientSide,
-} from "@/lib/patient/patientScreen";
+import { BOARD_PARAM, SIDE_PARAM, parseSide, type PatientSide } from "@/lib/patient/patientScreen";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { contactsFor } from "@/lib/patient/contacts";
-import { contactTarget, patientEmail } from "@/lib/patient/contactEdit";
-import { TopBarContact } from "@/components/patient/TopBarContact";
-import { useAbility } from "@/components/shell/AbilityLock";
-import { SubscriptionView, parseSubTab } from "@/components/patient/SubscriptionView";
 import "./patient/redesign.css";
 
 export default function PatientPage() {
@@ -136,27 +115,8 @@ export default function PatientPage() {
     reload();
   }, [reload]);
 
-  const steps = useMemo(() => buildStages(dossier), [dossier]);
-  const rawStep = params.get(STEP_PARAM);
-  const stepIdx = rawStep !== null && Number.isFinite(Number(rawStep))
-    ? Math.max(0, Math.min(steps.length - 1, Number(rawStep)))
-    : defaultStepIndex(steps);
-
-  /** ⚠️ Resolved from the RECORD when the URL names no view (§5.46b): a patient
-   *  on the Subscription board opens on it. An explicit `?view=` still wins, so
-   *  the toggle, a shared link and Back all behave as they did. */
-  const view = viewFor(params.get(VIEW_PARAM), dossier);
   const active = dossier?.active ?? null;
   const phone = dossier?.phone || active?.phone || "";
-  const subItem = subscriptionItem(dossier);
-  const subTab = parseSubTab(params.get(SUB_PARAM));
-  /** Brandon's fourth top-bar fact, and what the two pencils write (§5.46g).
-   *  Read across the records for the same reason the info strip is — the live
-   *  record's board may not carry the column at all. */
-  const email = useMemo(() => patientEmail(dossier), [dossier]);
-  const target = useMemo(() => contactTarget(dossier), [dossier]);
-  const canEditProfile = useAbility("editProfile");
-  const facts = topBarFacts(dossier, email);
 
   /** Who we reach and on which number (§5.46e) — the live record's block, or
    *  any record that carries one. Costs no read: the columns ride the dossier
@@ -164,6 +124,14 @@ export default function PatientPage() {
   const contacts = useMemo(
     () => (dossier ? contactsFor(dossier.items, dossier.active?.itemId) : null),
     [dossier],
+  );
+
+  /** The patient on this screen, for the Inbox's resolve bar: a note made here
+   *  is about THEM, even when their number files the item under the other
+   *  patient on a shared line. The bar copies it to their live record. */
+  const noteTarget = useMemo(
+    () => (itemId && boardId ? { boardId, itemId: String(itemId) } : null),
+    [itemId, boardId],
   );
 
   /** What an outbound text is attributed to. Null when there is no live record —
@@ -227,96 +195,10 @@ export default function PatientPage() {
       ) : (
         <div className="pt-screen">
           <div className="pt-main">
-            {/* ── the top bar card, on BOTH views ─────────────────────────── */}
-            <section className="card tb-card">
-              <div className="tb">
-                {/* ⚠️ The four facts wrap AMONG THEMSELVES, in their own group.
-                    Flat in `.tb` the fourth fact drops below the view toggle at
-                    ~1100 — measured — because `.vtoggle` takes `margin-left:
-                    auto` on whatever line it lands on, so the card reads as the
-                    toggle and one stray field. */}
-                <div className="tbfacts">
-                {facts.map((f, i) =>
-                  f.field ? (
-                    /* ⚠️ Keyed on the RECORD, not just the label: the draft
-                       inside must not survive a patient switch and be saved
-                       onto whoever is open now (§9's notes-box rule). */
-                    <TopBarContact
-                      key={`${f.label}-${active?.itemId ?? itemId}`}
-                      label={f.label}
-                      value={f.value}
-                      missing={f.missing}
-                      field={f.field}
-                      target={target}
-                      lookupPhone={phone}
-                      canEdit={canEditProfile}
-                      onSaved={reload}
-                    />
-                  ) : (
-                    <div className="fact" key={f.label}>
-                      <div className="k">{f.label}</div>
-                      <div className={`v${i === 0 ? " nm" : ""}${f.missing ? " gone" : ""}`}>
-                        {f.value}
-                      </div>
-                    </div>
-                  ),
-                )}
-                </div>
-
-                <div className="vtoggle">
-                  <button
-                    type="button"
-                    className={view === "onboarding" ? "on" : ""}
-                    onClick={() => setParam({ [VIEW_PARAM]: "onboarding" })}
-                  >
-                    <ClipboardList style={{ width: 14, height: 14 }} /> Onboarding
-                    <span className="st">{onboardingCaption(dossier)}</span>
-                  </button>
-                  {/* ⚠️ Disabled by the ROW'S EXISTENCE, never by a status — the
-                      row is created at Final Profile Confirmation, so a patient
-                      stuck in Insurance with an early row can still open it. */}
-                  {subItem ? (
-                    <button
-                      type="button"
-                      className={view === "subscription" ? "on" : ""}
-                      onClick={() => setParam({ [VIEW_PARAM]: "subscription" })}
-                    >
-                      <RefreshCw style={{ width: 14, height: 14 }} /> Subscription
-                      <span className="st">{subscriptionCaption(subItem)}</span>
-                    </button>
-                  ) : (
-                    <span
-                      className="off"
-                      aria-disabled="true"
-                      title="Not on the Subscription board yet — the row is created at Final Profile Confirmation"
-                    >
-                      <RefreshCw style={{ width: 14, height: 14 }} /> Subscription
-                      <span className="st">Not yet</span>
-                    </span>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            {view === "onboarding" || !subItem ? (
-              <OnboardingView
-                dossier={dossier}
-                steps={steps}
-                stepIdx={stepIdx}
-                onStep={(i) => setParam({ [STEP_PARAM]: String(i), [SNAP_PARAM]: "", [TOOL_PARAM]: "" })}
-                snapId={params.get(SNAP_PARAM) || ""}
-                onSnap={(id) => setParam({ [SNAP_PARAM]: id, [TOOL_PARAM]: "" })}
-                toolKey={params.get(TOOL_PARAM) || ""}
-                onTool={(k) => setParam({ [TOOL_PARAM]: k })}
-              />
-            ) : (
-              <SubscriptionView
-                item={subItem}
-                phone={dossier?.phone ?? ""}
-                tab={subTab}
-                onTab={(next) => setParam({ [SUB_PARAM]: next })}
-              />
-            )}
+            {/* The main column is its own component so the Communications
+                hub's right pane can render the same thing (COMMS_INBOX_PLAN.md
+                §7). The view state is this page's URL, as it always was. */}
+            <PatientBody dossier={dossier} itemId={itemId} params={params} setParam={setParam} onSaved={reload} />
           </div>
 
           {/* ⚠️ Keyed on the record, so the alternate-number switch inside it
@@ -331,6 +213,7 @@ export default function PatientPage() {
             active={active}
             contacts={contacts}
             onNoteAppended={(notes) => active && setNoteEdit({ itemId: active.itemId, notes })}
+            noteTarget={noteTarget}
           />
         </div>
       )}

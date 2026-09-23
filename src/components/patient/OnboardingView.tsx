@@ -50,9 +50,32 @@ interface Props {
   /** Which sub-stage tool the panel shows — "" means the default. */
   toolKey: string;
   onTool: (key: string) => void;
+  /**
+   * Drawn inside the Communications hub's right pane (COMMS_INBOX_PLAN.md §7).
+   * Two things change, both because the pane is ~400–540px and a rep there is
+   * mid-conversation:
+   *   · the stage's call-detail cards come BEFORE the embedded tool, not after
+   *     it — the tool is a whole read-only page, and the cards are the answer to
+   *     "what matters on this call" (the job the dossier pane's stage detail
+   *     did, §5.28);
+   *   · the live record's "Notes from this stage" card is not drawn, because the
+   *     pane's own writable notes, directly above, ARE that record's notes. A
+   *     historical step's card still is.
+   */
+  embedded?: boolean;
 }
 
-export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap, toolKey, onTool }: Props) {
+export function OnboardingView({
+  dossier,
+  steps,
+  stepIdx,
+  onStep,
+  snapId,
+  onSnap,
+  toolKey,
+  onTool,
+  embedded = false,
+}: Props) {
   const facts = infoStripFacts(dossier);
   const step = steps[stepIdx];
   const snap = step?.items.find((i) => i.itemId === snapId) ?? step?.lead ?? null;
@@ -198,12 +221,12 @@ export function OnboardingView({ dossier, steps, stepIdx, onStep, snapId, onSnap
           )}
 
           <div className="snap-page">
-            <Snapshot step={step} item={snap} tool={tool} />
+            <Snapshot step={step} item={snap} tool={tool} detailFirst={embedded} />
           </div>
         </section>
       )}
 
-      {snap && (
+      {snap && !(embedded && snap.itemId === dossier.active?.itemId) && (
         <section className="card pad">
           <div className="section-h">
             <b className="small">Notes from this stage</b>
@@ -275,7 +298,18 @@ function OpenTool({ item, tool }: { item: DossierItem | null; tool: SubStageStep
   );
 }
 
-function Snapshot({ step, item, tool }: { step: StageStep; item: DossierItem | null; tool: SubStageStep | null }) {
+function Snapshot({
+  step,
+  item,
+  tool,
+  detailFirst = false,
+}: {
+  step: StageStep;
+  item: DossierItem | null;
+  tool: SubStageStep | null;
+  /** The call-detail cards before the tool rather than after (embedded). */
+  detailFirst?: boolean;
+}) {
   if (!item) {
     return (
       <div className="card pad small muted">
@@ -317,8 +351,7 @@ function Snapshot({ step, item, tool }: { step: StageStep; item: DossierItem | n
         {tool && !item.isCompleted && SUB_STAGE_CAVEAT}
       </div>
 
-      {embeddable && tool && <StagePanelEmbed item={item} subStage={tool.key} />}
-      {tool && !embeddable && <StagePanelUnavailable tool={tool.tool} />}
+      {!detailFirst && tool && <ToolPanel item={item} tool={tool} embeddable={embeddable} />}
 
       {sections.length === 0 && (
         <div className="card pad small muted">
@@ -341,6 +374,13 @@ function Snapshot({ step, item, tool }: { step: StageStep; item: DossierItem | n
           </div>
         </section>
       ))}
+
+      {detailFirst && tool && <ToolPanel item={item} tool={tool} embeddable={embeddable} />}
     </>
   );
+}
+
+/** The real stage tool, read-only — or the sentence saying it has no panel. */
+function ToolPanel({ item, tool, embeddable }: { item: DossierItem; tool: SubStageStep; embeddable: boolean }) {
+  return embeddable ? <StagePanelEmbed item={item} subStage={tool.key} /> : <StagePanelUnavailable tool={tool.tool} />;
 }

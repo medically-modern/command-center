@@ -106,8 +106,10 @@ CREATE TABLE IF NOT EXISTS sms_archive_runs (
 CREATE INDEX IF NOT EXISTS sms_archive_runs_ok_idx ON sms_archive_runs (ok, finished_at DESC);
 `;
 
-/** Our own line(s), so the archive is keyed by the PATIENT and never by us. */
-function ourNumbers() {
+/** Our own line(s), so the archive is keyed by the PATIENT and never by us.
+ *  Exported because the Communications inbox must exclude exactly these
+ *  numbers too (COMMS_INBOX_PLAN.md §10) — one list, not two. */
+export function ourNumbers() {
   const extra = String(process.env.SMS_ARCHIVE_OUR_NUMBERS || "")
     .split(",")
     .map((s) => s.trim())
@@ -188,6 +190,42 @@ async function upsertRows(pool, rows) {
   return written;
 }
 
+/**
+ * Hand RingCentral message-store records to the archive.
+ *
+ * ⚠️ THE one path into sms_archive — the nightly reconcile below and the
+ * Communications inbox's minute-by-minute capture (commsInbox.mjs) both come
+ * through here, so the table keeps exactly one writer and its rules (DO UPDATE
+ * on the delivery verdict, counterparty never our own line, never a fax or a
+ * voicemail) live in one place. Records of any type may be passed; anything
+ * that is not a text is ignored, exactly as the reconcile always has.
+ *
+ * @returns {Promise<{written: number, skipped: number, rows: object[]}>}
+ *   `rows` carry the counterparty in the clear for the caller's in-memory use
+ *   only — nothing here stores it.
+ */
+export async function archiveTextRecords({ pool, records, ours = ourNumbers() }) {
+  const rows = [];
+  let skipped = 0;
+  for (const r of records ?? []) {
+    const row = toArchiveRow(r, ours);
+    // Only count a SKIP for something that was a text — faxes and
+    // voicemails share this store and are not misses.
+    if (!row) {
+      if (isArchivable(r)) skipped++;
+      continue;
+    }
+    const h = phoneHmac(row.phone);
+    if (!h) {
+      skipped++;
+      continue;
+    }
+    rows.push({ ...row, phoneHmac: h });
+  }
+  const written = rows.length ? await upsertRows(pool, rows) : 0;
+  return { written, skipped, rows };
+}
+
 /** One reconcile may run at a time. A boot run and a timer tick can land
  *  together; two full scans at once would double the RingCentral spend to write
  *  the same rows. Same coalescing lesson as the call-subscription reconcile. */
@@ -227,23 +265,9 @@ export async function reconcileSmsArchive({ pool, now = Date.now() } = {}) {
       stats.pages = page;
       stats.seen += records.length;
 
-      const rows = [];
-      for (const r of records) {
-        const row = toArchiveRow(r, ours);
-        // Only count a SKIP for something that was a text — faxes and
-        // voicemails share this store and are not misses.
-        if (!row) {
-          if (isArchivable(r)) stats.skipped++;
-          continue;
-        }
-        const h = phoneHmac(row.phone);
-        if (!h) {
-          stats.skipped++;
-          continue;
-        }
-        rows.push({ ...row, phoneHmac: h });
-      }
-      stats.written += await upsertRows(pool, rows);
+      const out = await archiveTextRecords({ pool, records, ours });
+      stats.written += out.written;
+      stats.skipped += out.skipped;
 
       if (records.length < PAGE_SIZE) break;
       // Hitting the ceiling means the window held more than we read, i.e. the

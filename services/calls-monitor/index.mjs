@@ -24,6 +24,7 @@
  *                CALL_ARCHIVE_HEALTH_URL  also watch the call-recording archive
  *                VOICEMAIL_ARCHIVE_HEALTH_URL  also watch the voicemail archive
  *                MMS_ARCHIVE_HEALTH_URL   also watch the MMS media archive
+ *                COMMS_INBOX_HEALTH_URL   also watch the Communications inbox
  *                DRY_RUN=1                print, don't notify
  */
 
@@ -33,6 +34,7 @@ const {
   CALL_ARCHIVE_HEALTH_URL,
   VOICEMAIL_ARCHIVE_HEALTH_URL,
   MMS_ARCHIVE_HEALTH_URL,
+  COMMS_INBOX_HEALTH_URL,
   NTFY_URL,
   NTFY_TOPIC,
   DRY_RUN,
@@ -228,6 +230,44 @@ export function archiveFaults(health, labels = {}) {
 }
 
 /**
+ * Communications inbox → human-readable problems. Empty means healthy.
+ *
+ * The inbox is fed by a capture tick that reads RingCentral every minute; when
+ * it stops, the Unresolved list simply stops growing — which, from a rep's
+ * chair, is indistinguishable from patients having gone quiet. So a stale tick
+ * pages, like every silent failure this file watches.
+ *
+ * The verdict is `inboxHealth`'s on the gateway (commsInboxRules.mjs), unit
+ * tested there; this only decides whether to wake somebody.
+ *
+ * ⚠️ `warnings` NEVER page. They are notes waiting to be copied to Monday: the
+ * note is safe in the inbox either way, and a push every ten minutes about
+ * something nobody has to do right now is the kind that teaches everybody to
+ * swipe these away. They are logged instead.
+ *
+ * ⚠️ Switched off on purpose is not a fault, and unreachable is "could not
+ * check", never "the inbox is broken" — the same two lines `archiveFaults`
+ * draws, for the same reasons.
+ */
+export function inboxFaults(health) {
+  if (health === null) {
+    return ["Could not reach the Communications inbox health check — this says nothing about the inbox itself, only that we could not ask."];
+  }
+  // Off on purpose is quiet. Switched ON but unable to run (the gateway says
+  // enabled:false with ok:false — no messaging pool, or no pepper) is not: the
+  // inbox was asked for and is not there.
+  if (health.enabled === false) {
+    return health.ok === false
+      ? [`The Communications inbox is switched on but not running: ${health.reason || "reason not reported"}.`]
+      : [];
+  }
+  if (health.ok === false) {
+    return [`The Communications inbox is not seeing new texts and calls: ${health.reason || "reason not reported"}.`];
+  }
+  return [];
+}
+
+/**
  * Ask one archive how it is, and push if it says it is not ok.
  *
  * ⚠️ An unreachable health check is "could not check", never "the archive is
@@ -312,6 +352,29 @@ async function main() {
     logName: "MMS archive",
     labels: { noun: "MMS-media-archive", notArchived: "Patient photos are not being archived" },
   });
+
+  // The Communications inbox: its own push, for the same reason each archive
+  // has one — "the inbox stopped seeing new messages" has its own remedy.
+  if (COMMS_INBOX_HEALTH_URL) {
+    let inbox = null;
+    try {
+      const res = await get(COMMS_INBOX_HEALTH_URL);
+      if (res.ok) inbox = await res.json();
+      else console.error(`Comms inbox health returned ${res.status}`);
+    } catch (e) {
+      console.error("Comms inbox health unreachable:", e.message);
+    }
+    const inboxProblems = inboxFaults(inbox);
+    if (inboxProblems.length) {
+      console.error("COMMS INBOX PROBLEMS:\n" + inboxProblems.map((p) => ` - ${p}`).join("\n"));
+      await notify("Command Center: Communications inbox", inboxProblems.join("\n") + "\n\nCheck: " + COMMS_INBOX_HEALTH_URL);
+    } else if (inbox && inbox.enabled !== false) {
+      console.log(
+        `Comms inbox OK — last complete tick ${inbox.ageMinutes ?? "?"} min ago` +
+          (inbox.warnings?.length ? `; ${inbox.warnings.join("; ")}` : ""),
+      );
+    }
+  }
 
   if (!problems.length) {
     console.log(

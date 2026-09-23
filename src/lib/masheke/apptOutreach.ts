@@ -223,13 +223,31 @@ export function parseApptAttempt(slot: 1 | 2 | 3, raw: string): ApptAttempt {
  * Without this, both cases silently lock the processor out of a patient they
  * are supposed to be working, with no error and no way to tell why.
  */
-const RESET_MARKERS = [
-  "Provider requires a new visit",
-  RETURNED_TO_QUEUE_TAG,
-];
+/** What the entry stamp's third segment opens with (`stampAppointmentNeeded`). */
+const ENTRY_RESET_TEXT = "Provider requires a new visit";
 
-function isResetLine(line: string): boolean {
-  return RESET_MARKERS.some((m) => line.includes(m));
+/**
+ * ⚠️⚠️ ANCHORED TO THE STAMPS THAT REALLY WRITE THESE MARKERS — never a bare
+ * `includes` (COMMS_INBOX_PLAN.md §5.5, fixed 2026-09-23). This used to be an
+ * unanchored `line.includes(marker)`, so ANY line in the MN notes that merely
+ * mentioned either phrase reset the count: a rep writing "office says provider
+ * requires a new visit" in an ordinary note handed the next rep three fresh
+ * attempts, with nothing on screen saying why. The two shapes that are resets:
+ *
+ *  - the entry stamp, `<date> · Patient Doctor Appointment · Provider requires a
+ *    new visit…` — the prefix segment is what makes it this stage's own line;
+ *  - a manager's return, which STARTS the line with `[Returned to queue`
+ *    (`stampReturnedToQueue` always puts the tag first).
+ *
+ * A stamped NotesPanel line (`[Sep 23, 2026, 2:10 PM] Evaluate: …`) and a
+ * Communications copy (`commsInbox/rules.commsNoteLine`, which also rewrites
+ * " · ") can therefore never be read as either, whatever the rep typed.
+ */
+export function isResetLine(line: string): boolean {
+  const t = line.trim();
+  if (t.startsWith(RETURNED_TO_QUEUE_TAG)) return true;
+  const parts = t.split(" · ");
+  return parts.length >= 3 && parts[1].trim() === APPT_NOTE_PREFIX && parts[2].trim().startsWith(ENTRY_RESET_TEXT);
 }
 
 /**

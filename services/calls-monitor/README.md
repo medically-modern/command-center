@@ -41,6 +41,10 @@ Deploy `services/calls-monitor` with **cron** `*/10 * * * *`.
 | `NTFY_URL` | `https://ntfy-production-d31f.up.railway.app` |
 | `NTFY_TOPIC` | the private topic (see below) |
 | `DRY_RUN` | `1` to print instead of notifying |
+| `CALL_ARCHIVE_HEALTH_URL` | optional — `…/calls/archive-health` |
+| `VOICEMAIL_ARCHIVE_HEALTH_URL` | optional — `…/voicemail/archive-health` |
+| `MMS_ARCHIVE_HEALTH_URL` | optional — `…/mms/archive-health` |
+| `COMMS_INBOX_HEALTH_URL` | optional — `…/comms/inbox-health`. Pages when the Communications inbox's minute-by-minute capture tick has stopped (the list would silently stop growing). Notes waiting to be copied to Monday are logged, never paged |
 
 ⚠️ **The ntfy topic is the only thing protecting these alerts.** An ntfy topic
 is readable by anyone who knows its name, so it is generated with ~145 bits of

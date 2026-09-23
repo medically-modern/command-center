@@ -39,6 +39,7 @@ import { resolveDisplayName, type NameSource } from "@/lib/commsHub/directory";
 import type { PickedCall } from "@/lib/commsHub/callVoicemail";
 import { cn } from "@/lib/utils";
 import { FilterPill, HubListHeader, Initials, ListEmpty, ListError, NamingProgress, listTime } from "./HubList";
+import { CALL_LOG_FILTERS, callLogMatches, type CallLogFilter } from "@/lib/commsHub/logFilters";
 
 export type PhoneMode = "calls" | "voicemail";
 
@@ -163,6 +164,7 @@ export function PhonePanel({
   onMissedOnly,
   names,
   naming,
+  log,
 }: {
   mode: PhoneMode;
   onMode: (m: PhoneMode) => void;
@@ -198,6 +200,18 @@ export function PhonePanel({
   /** Name-resolution progress, so a long list says how far along it is rather
    *  than filling in silently (Josh, 2026-09-02). */
   naming?: { done: number; total: number };
+  /**
+   * The Calls / VMs LOG, once the Inbox is switched on (COMMS_INBOX_PLAN.md
+   * §1.2, Josh's D4): each is its own rail, so there is no Calls | Voicemail
+   * toggle here; Calls filters *All · Inbound · Outbound · Missed* and VMs has
+   * no filter at all — the *Unheard* filter retires. Opt-in: absent, this panel
+   * is exactly what it was.
+   *
+   * ⚠️ Everything else stays (§5.39f's lossless rule): Today, the per-row ⤓ and
+   * *Download N* with archive playback (§5.16, §5.47), the heard/unheard
+   * right-click — the heard flag is RingCentral's, and the desktop app shows it.
+   */
+  log?: { callFilter: CallLogFilter; onCallFilter: (f: CallLogFilter) => void };
 }) {
   const rows = useMemo(() => toRows(calls ?? []), [calls]);
   /**
@@ -228,17 +242,18 @@ export function PhonePanel({
     [rows, names],
   );
 
+  const callFilter = log?.callFilter;
   const shownCalls = useMemo(
     () =>
       labelled.filter((r) => {
         // "Missed" is an INBOUND call nobody answered. An outbound call that
         // went unanswered is not a missed call — nobody was trying to reach us.
-        if (missedOnly && !(r.inbound && !r.connected)) return false;
+        if (callFilter ? !callLogMatches(r, callFilter) : missedOnly && !(r.inbound && !r.connected)) return false;
         if (todayOnly && !isEtToday(r.at)) return false;
         if (!q) return true;
         return r.label.toLowerCase().includes(q) || (digits.length >= 3 && r.key.includes(digits));
       }),
-    [labelled, missedOnly, todayOnly, q, digits],
+    [labelled, missedOnly, todayOnly, q, digits, callFilter],
   );
 
   /**
@@ -331,17 +346,18 @@ export function PhonePanel({
           fmtPhone,
         ),
       })).filter(({ vm, label }) => {
-        if (missedOnly && vm.read) return false;
+        // The VMs log has no filter (Josh's D4); the Phone tab keeps Unheard.
+        if (!log && missedOnly && vm.read) return false;
         if (!q) return true;
         return label.toLowerCase().includes(q) || (digits.length >= 3 && contactKey(vm.fromNumber).includes(digits));
       }),
-    [voicemails, missedOnly, q, digits, names],
+    [voicemails, missedOnly, q, digits, names, log],
   );
 
   return (
     <>
       <HubListHeader
-        title="Phone"
+        title={log ? (mode === "calls" ? "Calls" : "Voicemails") : "Phone"}
         count={mode === "calls" ? rows.length : (voicemails ?? []).length}
         query={query}
         onQuery={onQuery}
@@ -349,52 +365,70 @@ export function PhonePanel({
         // placeholder has to say so — a capability the rep can't see is one
         // they don't have (the §5.15 fix-the-copy rule).
         placeholder={mode === "calls" ? "Search calls by name or number…" : "Search voicemail by name or number…"}
-        unreadOnly={missedOnly}
-        onUnreadOnly={onMissedOnly}
+        unreadOnly={log ? undefined : missedOnly}
+        onUnreadOnly={log ? undefined : onMissedOnly}
         unreadLabel={mode === "calls" ? "Missed" : "Unheard"}
         unreadCount={mode === "calls" ? missedCount : unheardCount}
         loading={loading}
         onReload={onReload}
+        wrapFilters={!!log}
         note={naming && <NamingProgress done={naming.done} total={naming.total} />}
-        extra={
-          <div className="flex flex-wrap items-center gap-1">
-            <FilterPill active={mode === "calls"} onClick={() => onMode("calls")}>
-              Calls
-            </FilterPill>
-            <FilterPill active={mode === "voicemail"} onClick={() => onMode("voicemail")}>
-              Voicemail
-              {!!unheardCount && <span className="ml-1 tabular-nums">{unheardCount}</span>}
-            </FilterPill>
-            {mode === "calls" && (
-              <>
-                <FilterPill active={todayOnly} onClick={() => setTodayOnly(!todayOnly)}>
-                  Today
+        filterMenu={
+          log && mode === "calls" ? (
+            <div className="flex items-center gap-1">
+              {CALL_LOG_FILTERS.map((f) => (
+                <FilterPill key={f.id} active={log.callFilter === f.id} onClick={() => log.onCallFilter(f.id)}>
+                  {f.label}
                 </FilterPill>
-                {bulk ? (
-                  <span className="inline-flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Saving {bulk.done}/{bulk.total}
-                    <button
-                      onClick={() => cancelBulk.current?.abort()}
-                      className="font-semibold text-foreground hover:underline"
-                    >
-                      Stop
-                    </button>
-                  </span>
-                ) : (
-                  !!downloadable.length && (
-                    <button
-                      onClick={() => void saveAll()}
-                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-[color:var(--mm-teal)] hover:bg-muted/60"
-                      title="Download every recording in this list"
-                    >
-                      <Download className="h-3 w-3" /> Download {downloadable.length}
-                    </button>
-                  )
-                )}
-              </>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : undefined
+        }
+        extra={
+          log && mode === "voicemail" ? undefined : (
+            <div className="flex flex-wrap items-center gap-1">
+              {!log && (
+                <>
+                  <FilterPill active={mode === "calls"} onClick={() => onMode("calls")}>
+                    Calls
+                  </FilterPill>
+                  <FilterPill active={mode === "voicemail"} onClick={() => onMode("voicemail")}>
+                    Voicemail
+                    {!!unheardCount && <span className="ml-1 tabular-nums">{unheardCount}</span>}
+                  </FilterPill>
+                </>
+              )}
+              {mode === "calls" && (
+                <>
+                  <FilterPill active={todayOnly} onClick={() => setTodayOnly(!todayOnly)}>
+                    Today
+                  </FilterPill>
+                  {bulk ? (
+                    <span className="inline-flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Saving {bulk.done}/{bulk.total}
+                      <button
+                        onClick={() => cancelBulk.current?.abort()}
+                        className="font-semibold text-foreground hover:underline"
+                      >
+                        Stop
+                      </button>
+                    </span>
+                  ) : (
+                    !!downloadable.length && (
+                      <button
+                        onClick={() => void saveAll()}
+                        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-[color:var(--mm-teal)] hover:bg-muted/60"
+                        title="Download every recording in this list"
+                      >
+                        <Download className="h-3 w-3" /> Download {downloadable.length}
+                      </button>
+                    )
+                  )}
+                </>
+              )}
+            </div>
+          )
         }
       />
 
@@ -409,8 +443,12 @@ export function PhonePanel({
                   <span className="inline-flex items-center gap-1.5">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading calls…
                   </span>
-                ) : missedOnly ? (
+                ) : (log ? callFilter === "missed" : missedOnly) ? (
                   "No missed calls — everybody got through."
+                ) : callFilter === "in" ? (
+                  "No inbound calls in the last 14 days."
+                ) : callFilter === "out" ? (
+                  "No outbound calls in the last 14 days."
                 ) : (
                   "No calls in the last 14 days."
                 )}
@@ -509,7 +547,7 @@ export function PhonePanel({
                   <span className="inline-flex items-center gap-1.5">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading voicemail…
                   </span>
-                ) : missedOnly ? (
+                ) : !log && missedOnly ? (
                   "Nothing unheard."
                 ) : (
                   "No voicemail in the last 30 days."

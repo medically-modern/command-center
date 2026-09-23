@@ -18,6 +18,9 @@ const DOSSIER_API = src("src/lib/commsHub/dossierApi.ts");
 const PATIENT_PAGE = src("src/pages/PatientPage.tsx");
 const COMMS_COLUMN = src("src/components/patient/PatientCommsColumn.tsx");
 const THREAD = src("src/components/assignedPatients/ConversationThread.tsx");
+// The guards moved into the shared composer (COMMS_INBOX_PLAN.md §4.6) so the
+// inbox's timeline renders the same one — scanned there now.
+const COMPOSER = src("src/components/assignedPatients/Composer.tsx");
 const SUB_VIEW = src("src/components/patient/SubscriptionView.tsx");
 
 describe("the read", () => {
@@ -68,30 +71,42 @@ describe("the right column", () => {
 describe("the composer block", () => {
   it("⚠️ Can Text is OPT-IN, so the other call sites are byte-identical", () => {
     expect(THREAD).toMatch(/canText\?: "yes" \| "no" \| "unknown";/);
-    for (const p of [
-      "src/pages/AssignedPatientsPage.tsx",
-      "src/components/profile/IntakeMessages.tsx",
-    ]) {
-      expect(src(p)).not.toContain("canText={");
-    }
+    expect(COMPOSER).toMatch(/canText\?: "yes" \| "no" \| "unknown";/);
+    // The thread hands it straight to the one composer.
+    expect(THREAD).toContain("<Composer conversation={conversation} canText={canText} />");
+    expect(src("src/components/profile/IntakeMessages.tsx")).not.toContain("canText={");
+    // The hub's own threads stay as they were. (Its Inbox passes Can Text to
+    // its timeline on purpose — the next test pins how.)
+    const hub = src("src/pages/AssignedPatientsPage.tsx");
+    const threads = hub.split("<ConversationThread").slice(1).map((b) => b.slice(0, b.indexOf("/>")));
+    expect(threads.length).toBeGreaterThan(0);
+    for (const t of threads) expect(t).not.toContain("canText=");
+  });
+
+  it("⚠️ the Inbox applies Can Text to the PRIMARY line only (§5.31d)", () => {
+    // Can Text is the starred slot's answer — this very number's — so it must
+    // never block a text to the patient's OTHER number.
+    const hub = src("src/pages/AssignedPatientsPage.tsx");
+    expect(hub).toContain("if (contactKey(d.active?.phone || d.phone) !== contactKey(inboxActive.e164)) return undefined;");
+    expect(hub).toContain("canText={inboxCanText}");
   });
 
   it("⚠️⚠️ blocks on an explicit No ONLY, never on truthiness", () => {
     // A blank column is unknown (§5.31d) and reads as `undefined` here; a
     // truthiness test would block texting for every patient on every board.
-    expect(THREAD).toContain('const textingOff = canText === "no";');
-    expect(THREAD).toContain("if (!text || sending || consent.optedOut || textingOff) return;");
-    expect(THREAD).toContain("{consent.optedOut || textingOff ? (");
+    expect(COMPOSER).toContain('const textingOff = canText === "no";');
+    expect(COMPOSER).toContain("if (!text || sending || consent.optedOut || textingOff) return;");
+    expect(COMPOSER).toContain("{consent.optedOut || textingOff ? (");
   });
 
   it("⚠️ a STOP reply outranks the column", () => {
     // The patient's own words beat a rep's note about the line.
-    expect(THREAD).toContain("{textingOff && !consent.optedOut ? (");
+    expect(COMPOSER).toContain("{textingOff && !consent.optedOut ? (");
   });
 
   it("⚠️ Can Text never wears the pending look", () => {
     // It is something we know, however the STOP check is going.
-    expect(THREAD).toContain("consent.unknown && loading && !textingOff");
+    expect(COMPOSER).toContain("consent.unknown && loading && !textingOff");
   });
 });
 

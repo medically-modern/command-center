@@ -39,7 +39,9 @@ import { registerPatientDirectory } from "./patientDirectory.mjs";
 import { registerCallArchive } from "./callArchive.mjs";
 import { registerVoicemailArchive } from "./voicemailArchive.mjs";
 import { registerMmsArchive } from "./mmsArchive.mjs";
+import { registerCommsInbox } from "./commsInbox.mjs";
 import { mergeConversation } from "./smsArchiveRules.mjs";
+import { attributeSenders } from "./sentAttribution.mjs";
 
 export { toE164, phoneHmac };
 
@@ -185,6 +187,17 @@ export function registerMessaging({ app }) {
   // than standing alone — its queue is sms_archive, which lives on this pool.
   // See mmsArchive.mjs.
   registerMmsArchive({ app, pool, requireCaller });
+
+  // The Communications inbox — "the Unresolved queue" (COMMS_INBOX_PLAN.md).
+  // It reads the four archives above and writes only its own tables: who
+  // resolved a patient's texts and calls, how, and the rep's inline note — PHI
+  // of the same kind as sms_archive.body. Registered on THIS pool for exactly
+  // that reason, and it must stay here: the audit Postgres keeps its "metadata
+  // only" property. Off unless COMMS_INBOX_ENABLED=1; its health route answers
+  // either way. It does its own HARD sign-in check rather than taking
+  // requireCaller, because every write it accepts is attributed. See
+  // commsInbox.mjs.
+  registerCommsInbox({ app, pool });
 
   /**
    * Send a text to a patient and record who sent it.
@@ -396,28 +409,14 @@ export function registerMessaging({ app }) {
       // Attribution. Matched on RingCentral's message id where we have it;
       // otherwise the nearest send to the same number within two minutes, so
       // rows logged before ids were captured (or when RC 5xx'd) still resolve.
+      // The rule lives in sentAttribution.mjs so the Communications inbox reads
+      // "who sent this" the same way this thread does (commsInbox.mjs).
       const rows = await pool.query(
         `SELECT rc_message_id, sender_email, sent_at FROM sent_messages
           WHERE phone_hmac = $1 ORDER BY sent_at`,
         [phoneHmac(phone)],
       );
-      const byId = new Map();
-      const loose = [];
-      for (const r of rows.rows) {
-        if (r.rc_message_id) byId.set(String(r.rc_message_id), r.sender_email);
-        else loose.push(r);
-      }
-      for (const m of messages) {
-        if (m.direction !== "Outbound") continue;
-        const exact = byId.get(String(m.id));
-        if (exact) {
-          m.sentBy = exact;
-          continue;
-        }
-        const t = new Date(m.time).getTime();
-        const near = loose.find((r) => Math.abs(new Date(r.sent_at).getTime() - t) < 120_000);
-        if (near) m.sentBy = near.sender_email;
-      }
+      attributeSenders(messages, rows.rows);
 
       messages.sort((a, b) => String(a.time).localeCompare(String(b.time)));
       res.json({ messages, complete });

@@ -2685,10 +2685,12 @@ archive was written. Every day it is not running is ~140 more texts purged.
 
 
 ### 5.28 The Communications Hub, and the manager sidebars' contact marks (Sep 2026)
-> ⚠️ **A v2 of this hub — the "Unresolved queue" (Brandon + Katie, 2026-09-22) — is PLANNED, NOT
-> BUILT.** It replaces unread with a shared resolved/unresolved state kept on the gateway. Plan,
-> diff and Josh's decisions (every question answered 2026-09-23):
-> [`COMMS_INBOX_PLAN.md`](COMMS_INBOX_PLAN.md). Nothing below describes it yet.
+> ⚠️ **A v2 of this hub — the "Unresolved queue" (Brandon + Katie, 2026-09-22) — is BUILT, behind
+> two gateway switches that are OFF by default: §5.49.** With them off, everything below is still
+> exactly what the hub is. With `COMMS_INBOX_UI=1` the rails become Inbox · Fax · Texts · Calls ·
+> VMs, the Unread / Unheard filters give way to the logs' own, and the right pane becomes the patient
+> screen — carrying every job this section's pane does (§5.49 lists them). Plan and decisions:
+> [`COMMS_INBOX_PLAN.md`](COMMS_INBOX_PLAN.md).
 
 Two halves of one ask (Josh, 2026-09-01): *"a rep can see the full context without having to go
 back and forth"*. Everything a patient does to reach the MM line — call, voicemail, text, fax —
@@ -2826,6 +2828,21 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   they had just navigated away from. A number already in the session cache renders synchronously
   via `peekDossierItems`, so clicking between two threads doesn't flicker a spinner over data we
   already hold. Pinned by `useDossier.test.tsx`.
+  ⚠️ **Which is also why the notes box is keyed on the record** (2026-09-23): a cached patient swaps
+  in with no spinner, so an unkeyed composer kept its half-typed text and filed it against whoever
+  was on screen when Add was pressed. `LiveNotes` keys `NoteComposer` and its just-added copy of the
+  notes on `board:item`.
+- ⚠️⚠️ **Only a COMPLETE lookup is remembered** (`dossierApi`'s `SearchCtx`, 2026-09-23). The
+  session cache is what every later open shows, and it used to take whatever came back: a board
+  search that FAILED was cached as a board with nobody on it, and a failed by-id read returned null —
+  "It may have been deleted on Monday" — and that empty answer was cached for the session. Now a
+  failed board is shown (the others still answer) but never cached, `fetchDossierItemById` THROWS
+  on a failed read (null is only "not on that board"), an empty pick is never cached, and a caller
+  that writes off the answer passes `{ strict: true }` and gets an error instead of a partial trail.
+  A write patches EVERY cached copy of the record — its number, a pick of it, a household member's
+  number — in the text Monday will render (a phone or email object used to be cached as `""`, so a
+  saved number vanished on save), and a new primary number drops its own cache entry. One lookup
+  per number at a time. Pinned by `dossierCacheSafety.test.ts`, verified to fail on the old code.
 - **The dossier pane is the point of the whole page.** `PatientDossierPanel` renders, in this
   order: the **path** (which stages they have completed profiles in, in tracker order — §6), the
   **notes** (Josh's explicit ask: the running case history is what tells a rep what to say next;
@@ -6812,6 +6829,11 @@ is the blank Reports page now, so asserting it is reachable there asserts the wr
 ⚠️ **What the real page is is WRITTEN DOWN** — §5.39b has the board id, the app feature and the
 list of numbers, and every one of them is a §5.8 counting-contract number that must mirror
 `useRoleCounts` AND both baseline generators. Read the handoff before building it.
+⚠️ **With the Communications Inbox switched on (`COMMS_INBOX_UI=1`) this page shows the
+*Communications SLA · 24 hours* card instead of the blank line** — §5.49, Josh's D8. It is still not
+the handoff's page: the tracker and the pipeline numbers above stay unbuilt, and the card changes
+nothing about the Operations door. `lossless.test.ts` still asserts the blank text and the absent
+`<OperationsTab`, which hold either way.
 
 **⚠️ Still open, deliberately: STAGE MANAGER.** *"Delete stage manager - i want to better
 understand what that was used for, and anything that it was needed, we should be able to implement
@@ -9124,6 +9146,10 @@ indistinguishable on screen from a call that was never recorded (§5.16). At ~69
 (cheap, complete), then drains a bounded, paced slice of the audio queue. That ordering is the
 durability: the index is always complete even when the audio is behind, and a crash mid-run loses
 nothing.
+⚠️ **The call log carries FAXES too** — RingCentral's `type` is `Voice` or `Fax` — and every row is
+stored. Since 2026-09-23 the row keeps that type in **`call_type`** (the upsert never blanks a known
+one with a typeless re-scan), because the Communications inbox (§5.49) must not read an inbound fax
+as a missed call. A row stored before the column existed is NULL and is treated as a call.
 ⚠️ **OLDEST FIRST.** The oldest unarchived recording is the one closest to deletion, so the queue
 makes the job race the cliff rather than the clock. Newest-first archives what has ninety days
 left and loses what had one.
@@ -9915,6 +9941,298 @@ free (handoff item 5).
    still flips Order Status → "Ordered" on the board and nothing physically stops an unpaid cash pay
    order going out. The manager **release** button is live regardless, because it only writes a
    stamped note.
+
+### 5.49 The Communications Inbox — the Unresolved queue (Sep 2026)
+Brandon + Katie's v2 (2026-09-22), every question answered by Josh on 2026-09-23, then *"this all
+looks good, build it end to end"*. Plan, decisions D1–D8 and the reasoning behind each:
+[`COMMS_INBOX_PLAN.md`](COMMS_INBOX_PLAN.md). **Built behind two switches that are OFF by default —
+with them off, every screen is exactly what it was** (render-checked: the hub's three tabs, the
+Unread and Missed filters, the old profile pane, the blank Reports page, no Inbox request beyond
+reading the switch).
+
+**The problem it solves.** Unread was the only work signal, and it is RingCentral's per-message read
+flag: shared with the desktop app, cleared by anybody who opens a thread, blind to a callback.
+Nothing recorded that a text was HANDLED. The Inbox is our own resolved / unresolved state: every
+inbound text or MMS, missed inbound call and voicemail opens (or reopens) an item for that patient,
+our replies never close it, and a person closes it with one click that says how — **Called** (a
+note is required), **Texted**, **No action needed**.
+
+**The switches** (gateway env, `cmd ctr server`):
+
+| var | effect |
+|---|---|
+| `COMMS_INBOX_ENABLED=1` | starts the capture tick and the `/comms/*` routes — "shadow mode", nothing on screen |
+| `COMMS_INBOX_UI=1` | tells the SPA to show it (`GET /comms/config` → `{enabled, ui}`) |
+| `COMMS_INBOX_EPOCH` | optional — re-baselines what counts. First boot stamps NOW, or every patient who ever texted us would be "unresolved" on day one |
+| `COMMS_INBOX_TICK_SECONDS` (60) · `COMMS_INBOX_TICK_WINDOW_MINUTES` (120) | the capture tick |
+
+⚠️ While the switch is being read, and if that read fails, the SPA draws the OLD screens — never a
+half-built Inbox. ⚠️ **Plan §8's order is the rollout: ENABLED alone for a few business days, read
+`GET /comms/shadow-report`, THEN `COMMS_INBOX_UI=1`.**
+
+**The gateway** — `services/monday-gateway/commsInbox.mjs` + `commsInboxRules.mjs` (pure, tested),
+registered from `messaging.mjs`.
+- ⚠️⚠️ **It keeps NO copy of the events.** Texts, calls, voicemails and photos are already archived on
+  this pool (§5.27, §5.47, §5.47b, §5.47c); what they lacked was freshness. The 60-second capture
+  tick reads RingCentral's last two hours and hands every record to the OWNING archive's own upsert
+  (`archiveTextRecords` · `archiveCallRecords` · `archiveVoicemailRecords`). One writer per table,
+  so every archive's invariants hold whoever scans (§5.47's `none` → `pending` rule among them), and
+  each archive's own kill switch is honoured. Reconcile, never increment.
+- Its own tables are only what is new: `comms_resolutions` (resolutions and attempts, the inline
+  note, the Monday-copy state), `comms_links` ("this number is that patient"), `comms_dials` (who
+  pressed Call), `comms_number_cache` (live Monday lookups), `comms_inbox_runs`, `comms_inbox_meta`.
+- ⚠️⚠️ **PHI on §5.27's terms**: the messaging pool (`ASSIGNMENTS_DATABASE_URL`), never the audit
+  pool — **do not move these tables** — and HMAC + last4, never a number in the clear. The one new
+  category is the rep's NOTE. `/comms/state` keeps a bounded in-memory map of numbers a caller
+  brought, so an item opened from a log can show its full number; it is never stored, and a test
+  scans that route for an INSERT or UPDATE.
+- ⚠️ **No RingCentral on any list, count or resolve route.** The badge is on every page for every
+  rep, so a count that polled RingCentral per browser is INCIDENT_2026-08-20's shape. The tick is the
+  one RingCentral reader (about two requests a minute, `background` tier, shed first).
+  `commsInbox.test.mjs` scans for it.
+- Routes, all behind a signed-in employee except the first and the last: `GET /comms/config` ·
+  `GET /comms/inbox` · `GET /comms/inbox/count` · `GET /comms/item?key=` · `POST /comms/state` ·
+  `POST /comms/resolve` · `POST /comms/undo` · `POST /comms/note` · `GET /comms/outbox` ·
+  `POST /comms/mirror` · `POST /comms/link` · `POST /comms/dialed` · `GET /comms/sla` ·
+  `GET /comms/shadow-report` · `POST /comms/tick` · `GET /comms/inbox-health` (counts only, and it
+  answers with the module switched off, so an incident switch-off reads as "off, on purpose").
+  Watched by `services/calls-monitor` through `COMMS_INBOX_HEALTH_URL`.
+- ⚠️ **The tick's pages are DEDUPLICATED** (`dedupeRecords`, last read wins). RingCentral's pages
+  overlap when a record lands between two reads, and Postgres refuses a multi-row `INSERT … ON
+  CONFLICT DO UPDATE` that touches one key twice — one repeat failed the whole tick. Reproduced on a
+  real Postgres before the fix.
+- ⚠️ **It never assumes an archive ran.** Every read asks which archive tables exist (`to_regclass`,
+  cached a minute) and leaves a missing one out, and the inbox's own schema adds the two columns it
+  reads (`patient_directory.group_id`, `call_archive.call_type`) with `ALTER TABLE IF EXISTS … ADD
+  COLUMN IF NOT EXISTS` — an archive whose kill switch is on never ran its own schema, and the list
+  used to 500.
+- A number looked up live and FOUND is asked again after **24 hours** (a miss after 6), or a patient
+  who changed boards stays filed under the old record for ever. `POST /comms/tick` has a **30-second
+  floor** (429 + `Retry-After`). Reads that follow a write are generation-checked, so a snapshot
+  computed before a resolve can never be stored after it.
+- ⚠️ **Health**: an archive switched off is a WARNING, not a fault (nothing is broken — its events
+  just don't arrive); `ENABLED=1` with no `PHONE_HMAC_PEPPER` reports `enabled:false, ok:false` and
+  **pages** (`inboxFaults`); a failed health query answers *"Health check failed"* and names no table
+  (it is an unauthenticated route — Greptile, PR #58).
+
+**The rules that are load-bearing** — all in `commsInboxRules.mjs`, all tested:
+- **Keys**: `p:<board>:<item>` for a patient — all of a person's numbers are ONE item — and
+  `n:<hmac>` for a number on no board.
+- **Opens**: an inbound SMS or MMS; an inbound call that did not connect, read from the LEGS (§5.16,
+  parity-tested against `callHistory.ts`), unless RingCentral says `Blocked`; a voicemail. A missed
+  call that left a voicemail is ONE event (the `callVoicemail.ts` join, parity-tested). **Never** a
+  fax, and never our own numbers (`sms_archive`'s exclusion list).
+  ⚠️ **The call log carries FAXES** — RingCentral's `type` is `Voice` or `Fax`, and the SPA has always
+  asked for `type=Voice` while the archive stored both. Every inbound fax is an unconnected inbound
+  call, so it opened an item. `call_archive` now keeps that type (`call_type`, §5.47), every inbox read
+  filters `call_type IS DISTINCT FROM 'Fax'` (a row stored before the column existed is still a
+  call), and `isFaxCall` refuses one in `opensItem` as well. ⚠️ Our own lines are dropped from every
+  event list by `dropOwn` — calls as well as texts (2026-09-23 review).
+- ⚠️ **The wait clock has ONE copy, `countedWaitMs`, on the gateway.** Saturday and Sunday in Eastern
+  (via `Intl`, so both daylight-saving weekends are right) don't count; holidays do (Josh's D7). The
+  wait on screen, the red flag, *Over 24h* and every SLA number come from it — the browser only shows
+  the wait it is given.
+- ⚠️ **Coverage is per NUMBER** (`coversThrough`), and a resolve is a **compare-and-set** carrying
+  `seenThrough`, the newest inbound event the rep was SHOWN — so anything that arrived after stays
+  open. A **409** names who got there first (or says the item `moved`); **Called without a note is a
+  400.**
+- ⚠️⚠️ **Left voicemail is an ATTEMPT** (Josh's D6): `how = left_vm`, no note, it never moves
+  `coversThrough`, the clock keeps running, and the report counts it as an attempt — never a
+  resolution. Its *Listen* plays the newest outbound call that ended no more than 15 minutes before
+  the press, worked out when the timeline is read, never stored, and it fails CLOSED.
+- **The suggestion**: a CONNECTED outbound call not already linked to a Left-voicemail attempt
+  suggests *Called*; an outbound text WITH a sender — somebody pressed Send in the Command Center
+  (`sentAttribution.mjs`) — suggests *Texted*. Automations text from the same line, which is why a
+  sender is required. ⚠️ **A text RingCentral gave up on never suggests *Texted*** (`SendingFailed` /
+  `DeliveryFailed`, parity-tested against `smsDelivery.ts`, and re-checked in the browser against the
+  live thread): accepted is not delivered (§5.5), and confirming it closes the item on a message the
+  patient never got.
+- **Undo**: the resolver only, within 15 minutes, and not once the note has been copied to Monday.
+
+**The Monday copy of a note** (Josh's D5). The note is saved to the log the moment the rep resolves,
+and copied into the patient's notes — on the board they are on NOW — when the rep **moves on**
+(opens another item, leaves the rail, leaves the patient, closes the page), so an Undo before then
+leaves nothing on Monday. A closed tab is caught up the next time that rep opens Communications.
+- ⚠️ Only the resolver's browser copies it, after CLAIMING it (`/comms/mirror`), through
+  `appendNoteToRecord` (§5.28's re-read-before-append), stamped `Communications`.
+- ⚠️⚠️ **A flush copies only what nobody can still Undo** (`useInbox.flushCommsOutbox`): the
+  resolution the rep just moved on from, NAMED by the caller, and otherwise only notes past their Undo
+  window plus two minutes of clock margin (`COPY_UNCLAIMED_AFTER_MS`). It used to copy every pending
+  note on every trigger — so a SECOND tab opening Communications claimed a note the first tab was
+  still offering Undo on, and that Undo was refused. A trigger during a running pass gets one more
+  pass; one timer copies a note left behind once its window closes. ⚠️ A log row's key being looked
+  up reads as a null open key for a moment, and is NOT moving on (`logKeyPending`).
+- ⚠️ **A pass that did not finish is tried again on `COPY_RETRY_MS`** (30s · 1m · 2m · 5m · 10m),
+  then left to the next trigger — the outbox could not be read, a copy failed, or its claim could
+  not be ASKED (`copyOne` → `"retry"`, which keeps the note moved-on; a claim somebody else holds is
+  still `"not-claimed"`). A rep sitting on one item presses nothing, so the timer is often the only
+  trigger, and a blip at that moment used to strand the note past its Undo window with the tab still
+  open (Greptile, PR #58). Only while there is known work — a note moved on from, or one waiting out
+  its window — so a tab with nothing to copy does not keep asking a gateway that is down; and a note
+  moved on from that the outbox no longer offers (copied elsewhere, undone, noteless, out of
+  attempts) is let go. ⚠️ A due time already PAST is what fired a failed pass: the retry must not be
+  scheduled on it, or the ladder is spent in five seconds.
+- ⚠️ **The lookup behind the copy is STRICT** (`fetchDossierItemsForPick(…, { strict: true })`): a
+  board that did not answer throws and the copy is retried, where it used to read as "this patient
+  has no live record" and record the copy as done with nowhere to put it.
+- ⚠️⚠️ **A lost "done" never writes the note twice.** Monday notes are append-only. After a
+  successful append `done` is retried three times; if it still fails, the copy is NOT reported as an
+  error (the claim is not released), and `mm-comms-copied:<resolutionId>` in localStorage makes the
+  re-claim after the stale-claim timeout record it instead of appending again. Browser-local: a
+  second browser of the same rep could still duplicate — rare, and written down.
+- ⚠️ **On a shared line the note goes to the patient on screen** (`noteTarget` → the gateway's
+  `noteTargetFor`, stored as the resolution's `item_board`/`item_id`, which is all the copy reads). A
+  number two patients share files under ONE of them (§5.29's tie-break), and the rep may have switched
+  the profile to the other, or be on the other's own patient screen. ⚠️ Never for an UNMATCHED item —
+  its note is never copied, whatever the browser names — and a malformed target falls back to the
+  item's own patient.
+- ⚠️⚠️ **The line is `commsNoteLine()`** (`src/lib/commsInbox/rules.ts`): it rewrites ` · `, strips
+  newlines and the Welcome Call intake markers, so a copied note can never be read by the three note
+  PARSERS as an attempt line (§5.12's counter), a Proposed Stuck reason, or a split intake block —
+  each proven against the real parser.
+- ⚠️ **Shipped with it: `apptOutreach.isResetLine` is ANCHORED** to the two stamps that really reset
+  the Doctor Appointments counter. It was an unanchored `includes`, so any note that merely mentioned
+  the phrase handed a rep three fresh attempts — live on every Medical Evaluation notes box, Inbox or
+  not.
+
+**The SPA** — every piece gated on `useCommsConfig().ui`:
+- **The hub's rails become Inbox · Fax · Texts · Calls · VMs**, the Inbox the default
+  (`pages/AssignedPatientsPage.tsx`). Only Inbox (unresolved) and Fax (unread) carry a count.
+- **The Inbox** (`components/commsInbox/InboxList.tsx`): Unresolved · Over 24h · All, type chips,
+  search, Longest waiting · Newest; each row a stage pill, the counted wait and a kind edge. The row
+  just resolved stays in place, dimmed, until the rep opens another item.
+- **One timeline per patient** (`ItemTimeline.tsx`): every text, call, voicemail, attempt and
+  resolution on the patient's numbers. ⚠️ The live thread is laid over the archived texts and the
+  LIVE copy wins a collision — a late `SendingFailed` has to show (§5.5). ⚠️ Playback is archive-first
+  through the archives' own routes (`/calls/recording`, `/voicemail/audio`, `/mms/media`): a
+  presigned URL used as a bare `src`, never `fetch()`ed, so every one stays audited (§5.47).
+  ⚠️ That URL lives five minutes: an old photo link is re-issued when clicked (the tab opens inside
+  the click), and a player whose link died puts Play back rather than going silent.
+  ⚠️ **The open item follows its row by comparing the two** (`inboxStateSig` on the row and on the
+  item's own state), never the row with its previous self — a row that left the Unresolved list and
+  came back reopened used to read as a first sighting, and the item kept showing it resolved.
+- ⚠️⚠️ **The composer and the conversation were EXTRACTED from `ConversationThread`**
+  (`assignedPatients/Composer.tsx`, `hooks/assignedPatients/useConversation.ts`), so the opt-out,
+  delivery and Can Text guards exist ONCE and both screens render them. Can Text applies only when
+  the active number is the patient's PRIMARY.
+- **The resolve bar** (`ResolveBar.tsx`): *Mark resolved* Called · Texted · No action needed, with
+  Left voicemail apart; Undo; an optional note; a 409 says who.
+- **Unknown caller**: the pane's own find-a-patient, then *Add as alternate phone* (it replaces the
+  existing alternate), *Use as primary phone instead* (clears Can Text, §5.46g), *Link only*, or
+  *Pick someone else* (`AddNumberCard.tsx`, `lib/commsInbox/addNumber.ts`; Josh's D1). ⚠️ Writes go
+  through `contactEdit`'s rules and `dossierApi.updatePatientContact` — Monday before the link, the
+  refusal checked BEFORE the write, **Edit profile** checked in the HANDLER as well as on the button,
+  and never a write to Caregiver Name or Caregiver Authorized.
+- **The badge** — the header's Communications tab and the rail: the unresolved count, from Postgres
+  (`useInboxBadge`, 60 seconds, hidden tabs don't ask). ⚠️ The badge and the list read the same route
+  family, so they cannot disagree.
+- **The logs** (Josh's D4, `lib/commsHub/logFilters.ts`): Texts All · Received · Sent; Calls All ·
+  Inbound · Outbound · Missed (an inbound call nobody answered); VMs none. ⚠️ **Only the Unread /
+  Unheard FILTERS retire** — the read flag is RingCentral's and stays: rows wear it, opening marks
+  read, the right-click flips it. ⚠️ Every log row opens its number's item (`useItemKeyForNumber` →
+  `/comms/state`, bound to the number it asked about), and ⚠️ **a log never dead-ends**: if the Inbox
+  cannot be read, the row shows today's thread with a note saying so.
+- **The patient screen**: `PatientResolveBar` at the top of the Texts | Calls column — the Inbox's
+  own ResolveBar, compact — for an open item, or the last resolution. Read on open, never polled;
+  leaving the patient is "moving on".
+- **Dial attribution**: every Call that dials through the softphone reports who dialed through ONE
+  entry point, `reportDial`, which waits for the switch to be read rather than guessing. The whole
+  team is one RingCentral extension (§5.13b), so the call log cannot say. Three dialers today — the
+  hub, the Care Coordinator's `CallPatientDialog` and §5.30h's `DialPatientDialog` (which arrived on
+  `main` while this was being built and was wired in the merge). ⚠️ `inboxWiring.test.ts` finds
+  dialers by SCANNING `src/` for a dial call, not from a list, so a fourth that forgets to report
+  fails the build. ⚠️ The `tel:` links in `PatientContact` do not report — they hand off to the
+  RingCentral app; only the screens that pass `onCall` (§5.30h) dial in the page.
+- **The hub's right pane IS the patient screen** (plan §7, Josh's D3;
+  `components/commsHub/HubPatientPane.tsx`). `PatientPage` was split into a route shell and
+  `components/patient/PatientBody.tsx`, and both render the same body — its view state arrives as a
+  get/set pair keyed by the patient screen's own param names, so the page passes its URL and the
+  hub a per-patient map.
+  - ⚠️⚠️ **The five jobs the old pane did come WITH it**, each as the old pane's own component (now
+    exported from `PatientDossierPanel.tsx`; the non-profile states from `dossierPaneFallback.tsx`),
+    never a copy: **1** the household switcher, ABOVE
+    everything, because it decides whose profile the rest is (§5.28); **2** writable notes
+    (`LiveNotes` → `NoteComposer` → `appendNoteToRecord`); **3** every other stage's notes,
+    collapsed; **4** find-a-patient on a number on no board, and the *Found by search* banner after a
+    pick; **5** the per-stage call detail (`stageDetail.ts`, Welcome Call's wide one included) — the
+    Onboarding view's snapshot cards, drawn BEFORE the embedded tool in `embedded` mode so they are
+    what a rep on a call sees first. Plus *Open Profile Page* in the pane's header
+    (`lib/patient/profileHref.ts`). `hubPatientPane.test.tsx` names every one, and fails if either
+    pane defines its own fallback instead of importing the shared one.
+  - ⚠️ **Narrow layout by CLASS** (`.cc-pt.embedded`, `pages/patient/redesign.css`): the pane is
+    ~376–544px, so the patient screen's viewport media queries never fire there. One scroller — the
+    pane, never the `.pt-main` inside it. The view toggle shrinks rather than overflowing (measured:
+    it ran 50px past the pane at 1100 before).
+  - ⚠️ **View state is per patient and forgotten on leaving** — the next conversation opens on its own
+    live stage, not the previous patient's step.
+  - ⚠️ **`useDossier.reload` re-derives the SELECTED person from the cached records** — what a top-bar
+    pencil calls after a save. Re-running the lookup instead would flip a shared line back to the
+    default patient, with the note composer and the outbound text following.
+  - ⚠️⚠️ **A matched item's pane falls back to the item's OWN record** (`useDossier`'s `anchor`, in
+    the Inbox and the log rails). The number the item's newest message came from need not be on the
+    patient's record — a caregiver's alternate line, a LINKED number, a number since changed — and the
+    phone lookup then found nobody: the pane read "isn't on any pipeline board", with no search
+    offered, for a patient the inbox had already named. The number is still asked first (it is what
+    brings the household switcher); when it misses the record, the trail is read from the record.
+  - ⚠️ **The notes box is KEYED on the record** (§9's rule): a cached patient swaps in with no spinner
+    and the switcher swaps people in place, so an unkeyed box carried its half-typed text onto the
+    next patient. Pre-existing in the old pane too; fixed in the shared `LiveNotes`.
+  - Heavier than the old pane, as the plan accepted: the embedded stage tool reads its record at full
+    width and the Subscription view reads the order board — on open, never polled.
+- **Reports & Metrics** (Josh's D8): the *Communications SLA · 24 hours* card
+  (`components/commsInbox/SlaCard.tsx`, wording rules in `lib/commsInbox/sla.ts`) replaces *"No
+  reports available yet"* while the Inbox is on: unresolved now and over 24h, the share resolved
+  within 24h, the median, how items were resolved, a per-rep table, and *Open breaches* →
+  `/assigned-patients?inbox=over` (read once by the hub and removed from the URL; shown inert, with
+  the reason, to somebody without Communications). ⚠️ Every number is the gateway's `slaReport`; the
+  browser computes none. ⚠️ Left voicemail sits BESIDE the resolutions and in its own column, never
+  among them. ⚠️ A failed read draws no numbers. Never polled. It is still NOT the handoff's Reports
+  page — Katie's tracker and the pipeline numbers stay unbuilt (§5.39b, §5.46b).
+
+**Not verified live — do these before `COMMS_INBOX_UI=1`:**
+- Phase 1's measurement: run `COMMS_INBOX_ENABLED=1` alone for a few business days and read
+  `/comms/shadow-report` — items a day by kind, how many are unmatched, replies to automated texts,
+  doctor offices and vendors (plan §9.3).
+- **The one test call** (plan §4.4): a callback that reaches a patient's voicemail box — does
+  RingCentral log it as connected, and is it recorded? That decides whether *Called* lights up after
+  a message was left, and whether Left voicemail's *Listen* has anything to play. Reasoned, not
+  measured.
+- Everything above was render-checked against a FAKE gateway (Chromium at 1024 · 1100 · 1440, light
+  and dark). The gateway's SQL ran against a throwaway REAL Postgres 16 (30 checks, 2026-09-23:
+  schema on an old database, the dedupe, the fax and own-number filters, resolve, the note target,
+  the mirror rules, the tick floor, a missing archive table, the health route). Nothing has run
+  against live RingCentral or Monday.
+- ⚠️ **Known limitation — coverage is by EVENT time.** A resolve covers what happened up to
+  `seenThrough`; a message the tick captures AFTER the resolve but stamped EARLIER than what it
+  covered counts as handled though the rep never saw it. The window is the tick's lag (about a
+  minute).
+- The anchored `isResetLine` (above) was measured on the live Medical Evaluation board, counts only:
+  6 items in Doctor Appointments, **0** whose attempt count changes under the new rule, 0 that reach
+  the three-attempt lock either way.
+
+**Deliberately not built**: *Mine | All* (Josh's D2 — everyone works one list, the §5.13 / §5.30
+no-ownership rule); the mockup's Inbox *New* button; phase 5 — the SLA by week / stage / trend,
+capture by webhook instead of the tick, manager sidebar marks switched to "unresolved", and a count
+on the dashboard's Communications bar (⚠️ that last is a §5.8 counting-contract change).
+
+**Keep-in-agreement:**
+1. **The missed-call verdict** in `commsInboxRules` ⇄ `src/lib/callHistory/callHistory.ts`, and **the
+   call-to-voicemail join** ⇄ `src/lib/commsHub/callVoicemail.ts` — `inboxParity.test.mjs` runs both
+   against the SPA's real code, as it does the failed-text statuses ⇄ `lib/shared/smsDelivery.ts`.
+2. **`countedWaitMs`** — one copy, on the gateway. Never a second one in the browser.
+3. **The own-number exclusion** ⇄ `sms_archive`'s list.
+4. **The tick writes each archive only through that archive's own upsert** — one writer per table.
+5. **`ItemTimeline` and `ConversationThread` share `Composer` / `useConversation`** — never a second
+   copy of the opt-out, delivery or Can Text guards (`inboxWiring.test.ts`).
+6. **Every Monday write of a note** goes through `appendNoteToRecord`; **adding a number** through
+   `contactEdit` and `updatePatientContact`, refusal first.
+7. **`commsNoteLine()`** ⇄ the three note parsers: `apptOutreach`, `proposedStuck`, `callIntake`.
+8. **The badge and the list** read the same route family; **no RingCentral** on any list, count or
+   resolve route (scanned).
+9. **The right pane's five jobs** ⇄ `hubPatientPane.test.tsx`, which names each; the switched-off hub
+   still renders `PatientDossierPanel`.
+10. **`PatientBody`** is the one top bar and view for both hosts — `topBarWiring.test.ts` scans the
+    body and asserts both hosts render it.
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -11196,6 +11514,14 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
 | A voicemail won't stay heard / unheard, or a call doesn't open the message it left | §5.28 — read state is RingCentral's `readStatus` (`applyMessageReadOverrides`, the same rule the fax list uses); the panel must render `voicemailList`, not `voicemails.data`. A call opens its message through `lib/commsHub/callVoicemail.ts`, a number-and-time match gated on the call log saying it reached voicemail — it fails closed, so "no voicemail shown" means no match in the window, and that window is **reasoned, not measured** (no token reaches RingCentral from here). `voicemailWiring.test.ts` scans both |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
+| The Inbox rail is missing / the hub looks exactly as it always did | §5.49 — two gateway switches, both OFF by default. `GET /comms/config` answers `{enabled, ui}`; the rail needs BOTH true. While that read is pending, or after it fails, the SPA deliberately draws the OLD screens — never a half-built Inbox. A failed read is asked again when a page that uses it next opens, no sooner than a minute later — not on a timer, so a tab left open stays on the old screens until then |
+| A patient texted or called and no Inbox item opened | §5.49 — `GET /comms/inbox-health` (unauthenticated) first: a stale `lastCompleteAt` means the capture tick isn't completing, and `feedsOff` names any archive whose own kill switch (`SMS_/CALL_/VOICEMAIL_ARCHIVE_ENABLED=0`) turned that feed off. By design, nothing opens for: a fax, our own numbers, a call RingCentral marks `Blocked`, a call that connected, or anything before the epoch. A missed call that left a voicemail is ONE item, not two |
+| Mark resolved is refused (409), or Called won't save | §5.49 — resolving is a compare-and-set: the 409 names who resolved it first, or says a newer message arrived after what the rep was shown (`seenThrough`), or that the item `moved` to a patient record. Reopen and look again; never retry blind. *Called* without a note is a 400 by design |
+| A resolve note isn't in the patient's Monday notes | §5.49 — it is copied when the rep MOVES ON (opens another item, leaves the patient, closes the page), by the resolver's browser only; a closed tab is caught up the next time that rep opens Communications. An Undo before then leaves nothing on Monday, by design. *Left voicemail*, a resolution with no note, and a number on no board never copy. After 3 failed tries it shows as `failedMirrors` in `/comms/inbox-health` |
+| An Inbox item's profile pane says "isn't on any pipeline board" for a patient the inbox named | §5.49 — `useDossier`'s `anchor` should have read the item's own record. The number the newest message came from is often not on the record (a caregiver's line, a linked or changed number); check the item's key is `p:` and that the fallback pick did not fail (the pane then shows the error, not "no board") |
+| A resolve note landed on the other patient on a shared line | §5.49 — `noteTarget`: the hub passes the switcher's selection, the patient screen passes its own record, and the gateway stores it via `noteTargetFor` as the resolution's `item_board`/`item_id`. Read that row; an unmatched item never copies |
+| Reports & Metrics says "No reports available yet" | §5.49 — correct while `COMMS_INBOX_UI` is off. With it on, the page is the Communications SLA card; every number is the gateway's `slaReport`, and a failed read draws NO numbers rather than stale ones. Katie's tracker and the pipeline numbers are still unbuilt (§5.39b) |
+| The hub's right pane lost the household switcher, the notes box, or the patient search | §5.49 — with the Inbox on, the pane is the patient screen (`HubPatientPane`) and must carry all five jobs the old `PatientDossierPanel` did; `hubPatientPane.test.tsx` names each. With the Inbox off it is still `PatientDossierPanel`, untouched |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | A patient's search row still shows several times / "+N more records" is back | §5.46b — the fold is `searchPeople.sameHuman` (phone agrees, OR a phone is blank and the DOB agrees) inside a NAME bucket. Several rows for one patient means `SystemPatient.dob` came back blank for that board — check `BoardDef.dobColId` is still in `searchColumnIds`. ⚠️ Two rows with two DIFFERENT non-blank numbers are correct and deliberate (fail closed); so is a row with neither a phone nor a DOB |
 | A patient's ORDERS show as extra rows in the HEADER search | §5.46h — `foldRedundantOrders` drops an order hit whose patient is a row on the same list; they are not profiles, and the patient screen's Orders tab already lists every one. ⚠️ An order with NO patient on screen still stands alone, deliberately — a CAH, PO or tracking query matches the order board and nothing else (§5.35), so folding it would break the lookup Josh asked for. An order row beside its patient means the phones CONTRADICT (two same-named people), which is the one case it must not fold |

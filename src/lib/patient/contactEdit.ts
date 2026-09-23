@@ -200,3 +200,51 @@ export function contactWrites(
   if (changed && target.canTextColId) out[target.canTextColId] = {};
   return out;
 }
+
+/**
+ * The patient's Alternate Phone column on this record's board, or null.
+ *
+ * It exists on Welcome Call and Subscription only (§5.31d). On every other
+ * board the Communications inbox offers "Link to <name>" instead of "Add as
+ * alternate phone" — the history moves to the patient in the inbox and nothing
+ * is written to Monday (COMMS_INBOX_PLAN.md §6, §9.3).
+ */
+export function alternatePhoneColId(target: ContactTarget | null): string | null {
+  if (!target) return null;
+  return CONTACT_COL[target.item.boardId]?.alternatePhone ?? null;
+}
+
+/** What the record holds in Alternate Phone now — shown on the button as
+ *  "(replaces …)", so the rep sees what goes. "" when blank or no column. */
+export function currentAlternatePhone(target: ContactTarget | null): string {
+  const col = alternatePhoneColId(target);
+  if (!col || !target) return "";
+  return String(target.item.cols?.[col] ?? "").trim();
+}
+
+/**
+ * The column value "Add as alternate phone" writes — the Alternate Phone
+ * column and NOTHING else (COMMS_INBOX_PLAN.md §6, Josh's D1: *"fine"*).
+ *
+ * ⚠️ It REPLACES whatever alternate is there, as the mockup draws it; the
+ * button names the number it replaces.
+ *
+ * ⚠️⚠️ Never Caregiver Name, Caregiver Authorized or Alternate Contact. Those
+ * are consent records and the slot's Patient/Caregiver answer, and they stay
+ * the Welcome Call page's — `phoneSlots.setSlotNumber` keeps the slot's answer
+ * when its number changes, and so does this. The alternate slot has no Can
+ * Text of its own, so nothing else needs clearing.
+ *
+ * ⚠️ The caller runs `phoneRefusal` FIRST: `planPhoneWrite` skips a number it
+ * cannot parse, so an unchecked save would report success having written
+ * nothing (§5.32d).
+ *
+ * Returns `{}` when the board has no Alternate Phone column, which
+ * `updatePatientContact` refuses loudly rather than sending an empty write.
+ */
+export function alternatePhoneWrites(target: ContactTarget, value: string): Record<string, unknown> {
+  const col = alternatePhoneColId(target);
+  if (!col) return {};
+  const digits = phoneDigits((value ?? "").trim());
+  return { [col]: digits ? { phone: digits, countryShortName: "US" } : {} };
+}

@@ -68,7 +68,7 @@ describe("toDirectoryRow", () => {
     // four-digit hint. Asserted on the shape rather than by searching the JSON,
     // which would only ever prove something about the fake hash above.
     expect(Object.keys(row).sort()).toEqual(
-      ["boardId", "boardName", "last4", "mondayItemId", "name", "phoneHmac", "rank"].sort(),
+      ["boardId", "boardName", "groupId", "last4", "mondayItemId", "name", "phoneHmac", "rank"].sort(),
     );
     expect(row.last4).toHaveLength(4);
   });
@@ -189,8 +189,9 @@ describe("directoryHealth", () => {
 });
 
 describe("upsertSql", () => {
-  it("binds six columns per row", () => {
-    expect(upsertSql(2)).toContain("($1,$2,$3,$4,$5,$6,now()),($7,$8,$9,$10,$11,$12,now())");
+  it("binds seven columns per row — the group rides along for the inbox's stage pill", () => {
+    expect(upsertSql(2)).toContain("($1,$2,$3,$4,$5,$6,$7,now()),($8,$9,$10,$11,$12,$13,$14,now())");
+    expect(upsertSql(1)).toContain("group_id       = EXCLUDED.group_id");
   });
 
   it("UPDATEs on conflict — a renamed patient must overwrite, not be ignored", () => {

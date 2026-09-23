@@ -152,7 +152,10 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     expect(h, "Daily operations is back on the settings menu").not.toContain(
       'navigate("/system-mgmt?tab=operations")',
     );
-    // And /operations really is the blank page, so the tab is not a door either.
+    // And /operations is still not Operations, so the tab is not a door either:
+    // the blank page, or — with the Communications inbox switched on — the
+    // Communications SLA card (COMMS_INBOX_PLAN.md, Josh's D8), which borrows
+    // nothing from Operations.
     const page = live(read("pages/OperationsPage.tsx"));
     expect(page).toContain("No reports available yet");
     expect(page, "the Reports tab is borrowing Operations again").not.toContain("<OperationsTab");

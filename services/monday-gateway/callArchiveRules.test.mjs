@@ -128,6 +128,15 @@ describe("toCallRow", () => {
   it("never carries a hash — hashing is the caller's job, with the shared pepper", () => {
     expect(toCallRow(call())).not.toHaveProperty("phoneHmac");
   });
+
+  // ⚠️ The call log carries FAXES. The Communications inbox reads this table
+  // as a list of phone calls, and a failed received fax read as a missed call
+  // until the type rode on the row (2026-09-23 review).
+  it("carries RingCentral's call type, so a fax can be told from a phone call", () => {
+    expect(toCallRow(call({ type: "Voice" })).callType).toBe("Voice");
+    expect(toCallRow(call({ type: "Fax" })).callType).toBe("Fax");
+    expect(toCallRow(call({ type: undefined })).callType).toBeNull();
+  });
 });
 
 describe("objectKey", () => {
@@ -434,6 +443,16 @@ describe("callArchive.mjs invariants", () => {
   // ⚠️ A scan re-reading a stored call must not reset it to pending (infinite
   // re-download), and a PURGED recording comes back from the log as `none`,
   // which must not erase the fact that a recording existed.
+  it("writes the call type, and never lets a re-scan with no type blank a known one", () => {
+    const sql = src.slice(src.indexOf("function upsertSql"), src.indexOf("async function upsertRows"));
+    expect(sql).toMatch(/const cols = 15;/);
+    expect(sql).toMatch(/first_seen_at, call_type\)/);
+    expect(sql).toMatch(/call_type\s*=\s*COALESCE\(EXCLUDED\.call_type,\s*call_archive\.call_type\)/);
+    const rows = src.slice(src.indexOf("async function upsertRows"), src.indexOf("export async function archiveCallRecords"));
+    expect(rows).toMatch(/r\.callType \?\? null,\s*\);/);
+    expect(src).toMatch(/ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS call_type TEXT;/);
+  });
+
   it("lets the scan move only `none` → `pending`, never anything else", () => {
     const sql = src.slice(src.indexOf("function upsertSql"), src.indexOf("async function upsertRows"));
     expect(sql).toMatch(/audio_state\s*=\s*CASE/);

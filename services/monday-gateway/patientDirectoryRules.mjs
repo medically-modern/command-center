@@ -123,6 +123,11 @@ export function toDirectoryRows(item, board, hash) {
       mondayItemId: String(item.id),
       boardId: Number(board.boardId),
       boardName: board.name,
+      // The item's GROUP, for the Communications inbox's stage pill: a
+      // Subscription patient in "Not Active Patients" reads Inactive, which the
+      // board alone cannot say (COMMS_INBOX_PLAN.md §4.4). Null when the read
+      // did not ask for it.
+      groupId: item?.group?.id ? String(item.group.id) : null,
       rank: boardRank(board.boardId),
     });
   }

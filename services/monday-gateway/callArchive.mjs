@@ -165,6 +165,10 @@ CREATE TABLE IF NOT EXISTS call_archive_runs (
   error        TEXT
 );
 ALTER TABLE call_archive_runs ADD COLUMN IF NOT EXISTS shed BOOLEAN DEFAULT false;
+-- Voice or Fax. The call log carries both, and the Communications inbox reads
+-- this table as a list of phone calls, so it has to be able to leave the
+-- faxes out. Nullable and default-free, so adding it is metadata-only.
+ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS call_type TEXT;
 CREATE INDEX IF NOT EXISTS call_archive_runs_ok_idx   ON call_archive_runs (ok, finished_at DESC);
 CREATE INDEX IF NOT EXISTS call_archive_runs_deep_idx ON call_archive_runs (deep, ok, finished_at DESC);
 
@@ -202,13 +206,13 @@ const SHED_PAUSE_MS = Math.max(Number(process.env.CALL_ARCHIVE_SHED_PAUSE_MS) ||
 const CHUNK = 100;
 
 function upsertSql(count) {
-  const cols = 14;
+  const cols = 15;
   const tuples = [];
   for (let i = 0; i < count; i++) {
     const b = i * cols;
     tuples.push(
       `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6}::jsonb,$${b + 7},$${b + 8},` +
-        `$${b + 9},$${b + 10}::timestamptz,$${b + 11},$${b + 12},$${b + 13},$${b + 14})`,
+        `$${b + 9},$${b + 10}::timestamptz,$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15})`,
     );
   }
   // ⚠️⚠️ THE SCAN MAY ONLY EVER MOVE `none` → `pending`. Every other transition
@@ -228,10 +232,11 @@ function upsertSql(count) {
   return (
     `INSERT INTO call_archive
        (rc_call_id, rc_session_id, rc_recording_id, direction, result, leg_results,
-        phone_hmac, last4, duration_sec, started_at, audio_state, content_uri, attempts, first_seen_at)
+        phone_hmac, last4, duration_sec, started_at, audio_state, content_uri, attempts, first_seen_at, call_type)
      VALUES ${tuples.join(",")}
      ON CONFLICT (rc_call_id) DO UPDATE SET
        rc_session_id   = COALESCE(EXCLUDED.rc_session_id,   call_archive.rc_session_id),
+       call_type       = COALESCE(EXCLUDED.call_type,       call_archive.call_type),
        rc_recording_id = COALESCE(EXCLUDED.rc_recording_id, call_archive.rc_recording_id),
        result          = COALESCE(EXCLUDED.result,          call_archive.result),
        leg_results     = COALESCE(EXCLUDED.leg_results,     call_archive.leg_results),
@@ -268,12 +273,38 @@ async function upsertRows(pool, rows) {
         r.contentUri,
         0,
         new Date().toISOString(),
+        r.callType ?? null,
       );
     }
     const res = await pool.query(upsertSql(slice.length), args);
     written += res.rowCount || 0;
   }
   return written;
+}
+
+/**
+ * Hand RingCentral call-log records to the archive.
+ *
+ * ⚠️ THE one path into call_archive's metadata — the hourly scan below and the
+ * Communications inbox's minute-by-minute capture (commsInbox.mjs) both come
+ * through here, so the upsert's rule that a scan may only ever move `none` →
+ * `pending` holds whoever is scanning. Pass `view=Detailed` records: the legs
+ * are what the missed-call verdict reads.
+ *
+ * @returns {Promise<{written: number, rows: object[]}>} `rows` carry the
+ *   counterparty in the clear for the caller's in-memory use only.
+ */
+export async function archiveCallRecords({ pool, records }) {
+  const rows = [];
+  for (const rec of records ?? []) {
+    const row = toCallRow(rec);
+    if (!row) continue;
+    // A blank or unhashable number is not a reason to drop the call — an
+    // internal or blocked-caller row is still a call somebody may ask about.
+    rows.push({ ...row, phoneHmac: row.phone ? phoneHmac(row.phone) || null : null });
+  }
+  const written = rows.length ? await upsertRows(pool, rows) : 0;
+  return { written, rows };
 }
 
 /**
@@ -340,15 +371,7 @@ async function scanCallLog({ pool, days, now, stats }) {
     stats.pages = page;
     stats.seen += records.length;
 
-    const rows = [];
-    for (const rec of records) {
-      const row = toCallRow(rec);
-      if (!row) continue;
-      // A blank or unhashable number is not a reason to drop the call — an
-      // internal or blocked-caller row is still a call somebody may ask about.
-      rows.push({ ...row, phoneHmac: row.phone ? phoneHmac(row.phone) || null : null });
-    }
-    stats.rowsWritten += await upsertRows(pool, rows);
+    stats.rowsWritten += (await archiveCallRecords({ pool, records })).written;
 
     if (records.length < PAGE_SIZE) return;
     // Hitting the ceiling means the window held more than we read, i.e. the

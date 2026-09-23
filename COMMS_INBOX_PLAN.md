@@ -5,10 +5,13 @@
 > detailed plan for building this and ask any questions on anything that is unclear / seems
 > destructive"*
 
-**Status: DRAFT — nothing is built.** Josh answered every question on 2026-09-23: the five
-destructive items and the four follow-ups (§9.1). Nothing is open; the defaults in §9.3 stand unless
-he changes one. When a phase ships, record it in CLAUDE.md (a new §5 section, the way §5.47 recorded
-the call archive) and mark it here.
+**Status: BUILT — phases 1–4, behind two gateway switches that are OFF by default.** Recorded in
+CLAUDE.md §5.49 (Josh, 2026-09-23: *"this all looks good, build it end to end"*). Every question
+was answered the same day (§9.1), and the defaults in §9.3 stand unless he changes one.
+- ⚠️ **Not yet verified live** — only against a fake gateway. Before `COMMS_INBOX_UI=1`: run
+  `COMMS_INBOX_ENABLED=1` alone for a few business days and read `GET /comms/shadow-report`, and make
+  phase 1's one test call (§8).
+- Phase 5 is not built (§8).
 
 **Source.** Brandon's `command-center-mockup-REAL-DATA_2.html` (7.7 MB). The spec is the script
 block headed *"COMMUNICATIONS v2 — the Unresolved queue (Brandon + Katie, 2026-09-22)"*, plus the
@@ -798,7 +801,7 @@ Each phase lands on its own, and nothing is removed before phase 3.
 
 **Phase 0 — done.** Every question is answered (§9.1).
 
-**Phase 1 — the gateway, in shadow mode, with no UI (M).**
+**Phase 1 — the gateway, in shadow mode, with no UI (M). ✅ Built — the measurement and the test call are still to do.**
 - Build all of §4.2–§4.5 and §4.9, behind `COMMS_INBOX_ENABLED`.
 - Run it for a few business days and *measure before anyone sees it*:
   - items opened per day, by kind;
@@ -818,7 +821,7 @@ Each phase lands on its own, and nothing is removed before phase 3.
   - the missed-call parity test, and the call-to-voicemail join's;
   - the no-plaintext-number source scan.
 
-**Phase 2 — the Inbox (L).**
+**Phase 2 — the Inbox (L). ✅ Built.**
 - Add an **Inbox rail as the hub's default**. Phone, Text and Fax stay untouched.
 - Build:
   - the list;
@@ -831,7 +834,7 @@ Each phase lands on its own, and nothing is removed before phase 3.
 - **Prerequisite:** anchor `isResetLine` (§5.5).
 - Render-check at 1100 / 1440 / dark, with a **long** real list (CLAUDE.md §7's lesson).
 
-**Phase 3 — spread it (M).**
+**Phase 3 — spread it (M). ✅ Built.**
 - The patient screen's compact resolve bar.
 - Reshape the logs:
   - Calls and VMs become their own rails;
@@ -841,7 +844,7 @@ Each phase lands on its own, and nothing is removed before phase 3.
   (§9.1 D4).
 - Dial attribution.
 
-**Phase 4 — the rest (L).**
+**Phase 4 — the rest (L). ✅ Built.**
 - The right pane becomes the embedded patient screen, carrying §7's five jobs.
 - **The SLA card as drawn** (§9.1 D8), once the log has a few weeks in it. Reports & Metrics shows it
   in place of *"No reports available yet"*.
@@ -850,7 +853,7 @@ Each phase lands on its own, and nothing is removed before phase 3.
   - The rest of what the handoff specifies for that page — Katie's tracker embedded and the pipeline
     numbers (§5.46b) — stays unbuilt. The card doesn't change that.
 
-**Phase 5 — optional.**
+**Phase 5 — optional. Not built.**
 - The SLA card's footnote views — by week, by stage, and a trend line — from the same log (§9.3).
 - Capture through `message-sync` or a webhook instead of polling.
 - The manager sidebar contact marks switch to "unresolved". Today they show "who spoke last", so the
@@ -930,7 +933,7 @@ Each follows the mockup or a rule the app already has. Say so to change one.
 
 ## 10. Guards and keep-in-agreement
 
-Write these into CLAUDE.md when the feature ships.
+Written into CLAUDE.md §5.49's keep-in-agreement list when the feature shipped.
 
 - The missed-call verdict in `commsInboxRules` ⇄ `src/lib/callHistory/callHistory.ts` (the parity
   test).
@@ -962,8 +965,7 @@ Write these into CLAUDE.md when the feature ships.
 
 ## 11. Found along the way (not part of this plan)
 
-- **`isResetLine` is unanchored** (§5.5). It is live today; the chance of hitting it is low, and it
-  is silent when it hits.
+- **`isResetLine` was unanchored** (§5.5). ✅ Anchored in phase 2a, before any note is copied.
 - **`GET /messaging/call-health` is public and uncached,** and it does a real SIP provision on every
   hit.
   - Each hit spends the rate-limit key shared with softphone setup and the call-webhook renewal.

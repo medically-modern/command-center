@@ -47,6 +47,7 @@ import { THEMES } from "@/lib/shell/theme";
 import { useAccessContext } from "@/components/AccessProvider";
 import { hasAbility, isAdmin, isManagerOf } from "@/lib/shell/abilities";
 import { useViewAs } from "@/lib/shell/viewAs";
+import { useCommsConfig, useInboxBadge } from "@/hooks/commsInbox/useInbox";
 import type { Ability } from "@/lib/accessStore";
 
 interface Tab {
@@ -139,6 +140,15 @@ export function GlobalHeader() {
    *  `admins` is empty (§5.39c), so today this is the same set — but the two
    *  answer different questions and must not be conflated. */
   const managerish = isManagerOf(who, config);
+  /**
+   * The Communications tab's red badge: the UNRESOLVED count, never an unread
+   * one (COMMS_INBOX_PLAN.md §1.2, §9.1 D4). ⚠️ A Postgres count on the
+   * gateway, polled once a minute and never from a hidden tab — a badge on
+   * every page for every rep cannot be RingCentral reads (INCIDENT_2026-08-20).
+   * Only for somebody who can see the tab, and only once the inbox is on.
+   */
+  const commsConfig = useCommsConfig();
+  const inboxBadge = useInboxBadge(commsConfig.ui && hasAbility(who, config, "comms"));
   const [menu, setMenu] = useState(false);
   const menuBox = useRef<HTMLSpanElement>(null);
   const [manage, setManage] = useState(false);
@@ -178,15 +188,18 @@ export function GlobalHeader() {
         {TABS.filter((t) => !t.ability || hasAbility(who, config, t.ability)).map((t) => {
           const Icon = t.icon;
           const active = t.match(pathname, search);
+          const n = t.key === "comms" && inboxBadge ? inboxBadge.open : 0;
           return (
             <Link
               key={t.key}
               to={t.to}
               className={`tab${active ? " active" : ""}`}
               aria-current={active ? "page" : undefined}
+              title={n ? `${n} unresolved${inboxBadge?.over ? ` · ${inboxBadge.over} over 24h` : ""}` : undefined}
             >
               <Icon style={{ width: 15, height: 15 }} />
               <span className="lbl">{t.label}</span>
+              {n > 0 && <span className="badge">{n > 99 ? "99+" : n}</span>}
             </Link>
           );
         })}

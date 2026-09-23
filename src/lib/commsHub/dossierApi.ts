@@ -252,7 +252,28 @@ function dossierCols(board: BoardDef): string[] {
     .filter((c, i, all) => all.indexOf(c) === i);
 }
 
-async function boardSearch(board: BoardDef, colId: string, needle: string, limit = 25): Promise<RawItem[]> {
+/**
+ * Did every board answer? One lookup's board searches share one of these.
+ *
+ * ⚠️ A board that failed is NOT a board with nobody on it, and the difference
+ * decides what may be remembered: a trail read while a board was down is shown
+ * (the other boards still answer) but never cached, so the next open asks
+ * again. Before this, one Monday blip pinned a partial trail — or an empty one —
+ * for the rest of the session, and the Communications inbox read "no live
+ * record" off it and dropped a resolve note's Monday copy as done (2026-09-23
+ * review).
+ */
+interface SearchCtx {
+  failed: boolean;
+}
+
+async function boardSearch(
+  board: BoardDef,
+  colId: string,
+  needle: string,
+  limit = 25,
+  ctx?: SearchCtx,
+): Promise<RawItem[]> {
   try {
     const data = await gql<{ boards: Array<{ items_page?: { items: RawItem[] } }> }>(DOSSIER_QUERY, {
       board: [String(board.boardId)],
@@ -265,7 +286,8 @@ async function boardSearch(board: BoardDef, colId: string, needle: string, limit
   } catch {
     // One board failing (permissions, a renamed column) must not blank the
     // whole trail — the other boards still answer. Same posture as
-    // patientLookup's cross-board search.
+    // patientLookup's cross-board search. It is RECORDED, though: see SearchCtx.
+    if (ctx) ctx.failed = true;
     return [];
   }
 }
@@ -290,31 +312,52 @@ async function boardSearch(board: BoardDef, colId: string, needle: string, limit
  *
  * Returns null when the id is not on that board, which is the ONE case where
  * "deleted on Monday" is the honest sentence.
+ *
+ * ⚠️ **A failed read THROWS; it never returns null.** It used to catch
+ * everything into null, so a Monday 503 read exactly like a deleted patient:
+ * the patient screen said "It may have been deleted on Monday", the empty trail
+ * was cached for the session, and the Communications inbox recorded a resolve
+ * note's Monday copy as done with nowhere to put it (2026-09-23 review). Every
+ * caller already handles a throw as "couldn't load — ask again".
  */
 async function fetchDossierItemById(boardId: number, itemId: string): Promise<DossierItem | null> {
   const board = BOARDS.find((b) => b.boardId === boardId);
   if (!board) return null;
-  try {
-    const data = await gql<{ items?: Array<RawItem & { board?: { id: string } }> }>(
-      `query ($ids: [ID!], $cols: [String!]) {
-         items (ids: $ids) {
-           id name created_at board { id } group { id title } column_values (ids: $cols) { id text value }
-         }
-       }`,
-      { ids: [String(itemId)], cols: dossierCols(board) },
-    );
-    const raw = data.items?.[0];
-    if (!raw) return null;
-    // ⚠️ `items(ids:)` is board-agnostic — it answers for ANY item id on the
-    // account. The columns are read with THIS board's ids, so mapping a record
-    // that lives somewhere else would read every field as blank and present it
-    // under the wrong board's name. A mismatch means the `?board=` in the URL
-    // is wrong, which is a caller bug, not a deleted patient.
-    if (raw.board?.id && String(raw.board.id) !== String(boardId)) return null;
-    return toDossierItem(board, raw);
-  } catch {
-    return null;
+  const data = await gql<{ items?: Array<RawItem & { board?: { id: string } }> }>(
+    `query ($ids: [ID!], $cols: [String!]) {
+       items (ids: $ids) {
+         id name created_at board { id } group { id title } column_values (ids: $cols) { id text value }
+       }
+     }`,
+    { ids: [String(itemId)], cols: dossierCols(board) },
+  );
+  const raw = data.items?.[0];
+  if (!raw) return null;
+  // ⚠️ `items(ids:)` is board-agnostic — it answers for ANY item id on the
+  // account. The columns are read with THIS board's ids, so mapping a record
+  // that lives somewhere else would read every field as blank and present it
+  // under the wrong board's name. A mismatch means the `?board=` in the URL
+  // is wrong, which is a caller bug, not a deleted patient.
+  if (raw.board?.id && String(raw.board.id) !== String(boardId)) return null;
+  return toDossierItem(board, raw);
+}
+
+/** Thrown by a STRICT lookup when a board did not answer — see `SearchCtx`. */
+export class DossierIncompleteError extends Error {
+  constructor() {
+    super("Monday didn't answer for every board, so this patient's records may be incomplete — try again in a moment.");
+    this.name = "DossierIncompleteError";
   }
+}
+
+export interface DossierFetchOptions {
+  /**
+   * Refuse a trail that is missing a board rather than return what answered.
+   * For a caller that WRITES off the answer — the inbox's Monday copy picks
+   * the live record from it — where a board that was down reads as "this
+   * patient has no live record" and the note is recorded as done.
+   */
+  strict?: boolean;
 }
 
 /** Session cache. The trail behind a number does not change while a rep reads
@@ -357,17 +400,49 @@ export function peekDossierItems(phone: string): DossierItem[] | null {
   return dossierCache.get(want) ?? null;
 }
 
-export async function fetchDossierItems(phone: string): Promise<DossierItem[]> {
+export async function fetchDossierItems(phone: string, opts: DossierFetchOptions = {}): Promise<DossierItem[]> {
+  const ctx: SearchCtx = { failed: false };
+  const items = await readDossierItems(phone, ctx);
+  if (ctx.failed && opts.strict) throw new DossierIncompleteError();
+  return items;
+}
+
+/** One lookup per number at a time. A pane that re-asks while the first
+ *  answer is still on its way — the inbox's item arriving a moment after the
+ *  number it was opened from (`useDossier`'s `anchor`) — shares that answer
+ *  instead of starting a second seven-board fan-out. */
+const dossierInflight = new Map<string, Promise<{ items: DossierItem[]; failed: boolean }>>();
+
+/** `fetchDossierItems`, reporting into the caller's `SearchCtx` rather than
+ *  throwing, so a pick can fold it into its own verdict. Only a trail every
+ *  board answered for is cached. */
+async function readDossierItems(phone: string, ctx: SearchCtx): Promise<DossierItem[]> {
   const want = toE164(phone);
   if (!want || !dossierConfigured()) return [];
   const cached = dossierCache.get(want);
   if (cached) return cached;
+  let running = dossierInflight.get(want);
+  if (!running) {
+    // ⚠️ The `finally` is on the CHAINED promise, which is the one stored —
+    // otherwise an earlier lookup's cleanup could clear a later one's slot
+    // (§5.28's `inflight` lesson).
+    running = lookupNumber(want).finally(() => dossierInflight.delete(want));
+    dossierInflight.set(want, running);
+  }
+  const out = await running;
+  if (out.failed) ctx.failed = true;
+  return out.items;
+}
 
+async function lookupNumber(want: string): Promise<{ items: DossierItem[]; failed: boolean }> {
+  const ctx: SearchCtx = { failed: false };
   const tail = want.replace(/\D/g, "").slice(-4);
-  if (tail.length < 4) return [];
+  if (tail.length < 4) return { items: [], failed: false };
 
   const byPhone = (
-    await Promise.all(BOARDS.map(async (b) => (await boardSearch(b, b.phoneColId, tail)).map((it) => toDossierItem(b, it))))
+    await Promise.all(
+      BOARDS.map(async (b) => (await boardSearch(b, b.phoneColId, tail, 25, ctx)).map((it) => toDossierItem(b, it))),
+    )
   )
     .flat()
     .filter((i) => i.phone === want);
@@ -400,7 +475,7 @@ export async function fetchDossierItems(phone: string): Promise<DossierItem[]> {
           dob: byPhone.find((i) => personKey(i.name) === personKey(name) && i.dob)?.dob ?? "",
         };
         const hits = await Promise.all(
-          BOARDS.map(async (b) => (await boardSearch(b, "name", name)).map((it) => toDossierItem(b, it))),
+          BOARDS.map(async (b) => (await boardSearch(b, "name", name, 25, ctx)).map((it) => toDossierItem(b, it))),
         );
         return hits
           .flat()
@@ -418,8 +493,9 @@ export async function fetchDossierItems(phone: string): Promise<DossierItem[]> {
     seen.add(k);
     return true;
   });
-  dossierCache.set(want, items);
-  return items;
+  // Only a COMPLETE answer is remembered — see `SearchCtx`.
+  if (!ctx.failed) dossierCache.set(want, items);
+  return { items, failed: ctx.failed };
 }
 
 /**
@@ -451,11 +527,12 @@ export interface DossierPick {
  * Cached under the item, not the number: the number on the line is exactly
  * what does NOT identify this patient.
  */
-export async function fetchDossierItemsForPick(pick: DossierPick): Promise<DossierItem[]> {
+export async function fetchDossierItemsForPick(pick: DossierPick, opts: DossierFetchOptions = {}): Promise<DossierItem[]> {
   if (!dossierConfigured()) return [];
   const key = `pick:${pick.boardId}:${pick.itemId}`;
   const cached = dossierCache.get(key);
   if (cached) return cached;
+  const ctx: SearchCtx = { failed: false };
 
   /**
    * ⚠️⚠️ **THE PICKED RECORD IS RESOLVED BY ID FIRST, and everything else is
@@ -477,7 +554,7 @@ export async function fetchDossierItemsForPick(pick: DossierPick): Promise<Dossi
   const phone = pick.phone || anchorItem?.phone || "";
 
   const e164 = toE164(phone);
-  const byNumber = e164 ? await fetchDossierItems(e164) : [];
+  const byNumber = e164 ? await readDossierItems(e164, ctx) : [];
   // The phone path keeps every PERSON on that number; we want only the one the
   // rep picked — `splitByPerson` would separate them again, but a foreign
   // household member's record must not even reach the cache under this key.
@@ -491,13 +568,15 @@ export async function fetchDossierItemsForPick(pick: DossierPick): Promise<Dossi
     const own =
       anchorItem ??
       (board && name
-        ? (await boardSearch(board, "name", name)).map((it) => toDossierItem(board, it)).find((i) => i.itemId === pick.itemId)
+        ? (await boardSearch(board, "name", name, 25, ctx)).map((it) => toDossierItem(board, it)).find((i) => i.itemId === pick.itemId)
         : undefined);
     if (own) {
       const anchor: PatientIdentity = { phone: own.phone, dob: own.dob };
       const trailName = own.name || name;
       const byName = (
-        await Promise.all(BOARDS.map(async (b) => (await boardSearch(b, "name", trailName)).map((it) => toDossierItem(b, it))))
+        await Promise.all(
+          BOARDS.map(async (b) => (await boardSearch(b, "name", trailName, 25, ctx)).map((it) => toDossierItem(b, it))),
+        )
       )
         .flat()
         .filter((i) => i.name.trim().toLowerCase() === trailName.trim().toLowerCase())
@@ -513,7 +592,12 @@ export async function fetchDossierItemsForPick(pick: DossierPick): Promise<Dossi
     seen.add(k);
     return true;
   });
-  dossierCache.set(key, out);
+  if (ctx.failed && opts.strict) throw new DossierIncompleteError();
+  // ⚠️ Remembered only when every board answered AND the picked record was
+  // found. An empty pick is either a record that is really gone — rare, and
+  // cheap to ask again — or a read that went wrong, which must never be pinned
+  // for the session (`SearchCtx`).
+  if (!ctx.failed && out.length) dossierCache.set(key, out);
   return out;
 }
 
@@ -807,6 +891,7 @@ export async function fetchDirectoryNames(keys: string[]): Promise<DirectoryName
 export function clearDossierCaches(): void {
   doctorDbCache.clear();
   dossierCache.clear();
+  dossierInflight.clear();
   faxCache.clear();
 }
 
@@ -939,12 +1024,43 @@ export async function appendNoteToRecord(opts: {
 
   // Keep the memoised trail in step, or re-selecting the patient shows the
   // note missing until the cache expires — which it never does in a session.
-  const cached = dossierCache.get(toE164(opts.phone));
-  if (cached) {
-    const hit = cached.find((i) => i.itemId === opts.itemId && i.boardId === opts.boardId);
-    if (hit) hit.notes = next;
-  }
+  // EVERY cached copy: the record can sit under its number, under a pick of it
+  // and under a household member's number, not always as the same object.
+  for (const hit of cachedCopies(opts.boardId, opts.itemId)) hit.notes = next;
   return next;
+}
+
+/**
+ * Every cached copy of one Monday record. The same item can be memoised under
+ * several lookups — its number, a pick of it (`pick:`), a household member's
+ * number — and a pick found through its name search holds its own object, so a
+ * write that patched only the lookup it came from left the others showing the
+ * old value for the rest of the session (2026-09-23 review).
+ */
+function cachedCopies(boardId: number, itemId: string): DossierItem[] {
+  const out = new Set<DossierItem>();
+  for (const list of dossierCache.values()) {
+    for (const i of list) if (i.boardId === boardId && i.itemId === itemId) out.add(i);
+  }
+  return [...out];
+}
+
+/**
+ * What Monday will render as a column's TEXT for a value we just wrote. The
+ * cache holds rendered text, never the write shape — and writing "" for every
+ * object value (a phone, an email column) made a saved number or address
+ * vanish from the screen the moment it was saved, because the screen's reload
+ * rebuilds from these very records (2026-09-23 review). `{}` is a clear.
+ */
+export function renderedColumnText(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    for (const k of ["phone", "email", "label", "text"]) {
+      if (typeof o[k] === "string") return o[k] as string;
+    }
+  }
+  return "";
 }
 
 /**
@@ -988,16 +1104,21 @@ export async function updatePatientContact(opts: {
   );
 
   // Keep the memoised trail in step, or re-opening the patient shows the old
-  // value until the cache expires — which it never does in a session.
-  const cached = dossierCache.get(toE164(opts.phone));
-  const hit = cached?.find((i) => i.itemId === opts.itemId && i.boardId === opts.boardId);
-  if (hit) {
-    for (const [id, v] of Object.entries(opts.values)) {
-      // ⚠️ The cache holds RENDERED text, so an object value (a phone, an email
-      // column, a clear) cannot be written into it verbatim. Phone has its own
-      // field; everything else is refreshed by the caller's reload.
-      hit.cols = { ...hit.cols, [id]: typeof v === "string" ? v : "" };
-    }
+  // value until the cache expires — which it never does in a session. Every
+  // cached copy, and the value as Monday will RENDER it: the caller's reload
+  // rebuilds the screen from these records rather than asking Monday again.
+  for (const hit of cachedCopies(opts.boardId, opts.itemId)) {
+    for (const [id, v] of Object.entries(opts.values)) hit.cols = { ...hit.cols, [id]: renderedColumnText(v) };
     if (opts.nextPhone !== undefined) hit.phone = toE164(opts.nextPhone);
+  }
+  if (opts.nextPhone !== undefined) {
+    // ⚠️ A NEW primary number: whatever this session remembered for it — often
+    // "nobody", from before the number was on the record — and for the old one
+    // (which would now list a patient it no longer finds) is asked again on
+    // the next open.
+    for (const n of [opts.nextPhone, opts.phone]) {
+      const k = toE164(n);
+      if (k) dossierCache.delete(k);
+    }
   }
 }
