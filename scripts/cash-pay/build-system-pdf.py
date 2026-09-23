@@ -102,13 +102,13 @@ story.append(P("MEDICALLY MODERN &nbsp;&middot;&nbsp; COMMAND CENTER",
                  fontSize=8.4, textColor=TEAL, spaceAfter=6)))
 story.append(P("Cash Pay, end to end", H1))
 story.append(Spacer(1, 2))
-story.append(P("How a patient with no insurance moves from intake to a shipped order. Every stage is "
-               "live, and every one was verified against the real boards and services.", Lead))
+story.append(P("How a patient with no insurance moves from intake to a shipped order &mdash; what to "
+               "press, what each answer means, and what to do when one of them does not work.", Lead))
 story.append(Spacer(1, 8))
 story.append(rule())
 story.append(table([
-    ["Written", "22 September 2026"],
-    ["Verified against", "the live monday boards and the Railway services on that date"],
+    ["Written", "22 September 2026, revised 23 September"],
+    ["Verified against", "the live monday boards and the Railway services on both dates"],
     ["Audience", "Brandon (monday access) and whoever is helping him &mdash; including an AI assistant"],
     ["Source of truth", "CLAUDE.md &sect;5.48 in the <font face='Courier' size='8'>command-center-test</font> repo, plus <font face='Courier' size='8'>scripts/cash-pay/</font>"],
 ], [1.25*inch, 5.3*inch], head=False))
@@ -151,10 +151,13 @@ story.append(callout(
 story.append(PageBreak())
 story.append(P("2 &nbsp; Status &mdash; is it up and running?", H2))
 story.append(P(
-    "<b>Yes.</b> All six stages are live, and every one of them was verified against the real boards "
-    "and the real services on 22 September 2026 rather than reasoned about &mdash; a throwaway "
-    "patient was advanced, a throwaway order was priced, a real Stripe link was minted and a real "
-    "text was sent. The test rows were deleted afterwards.", Body))
+    "<b>Yes &mdash; a cash pay patient can be taken from intake to a paid order today.</b> Five of the "
+    "six stages are live and each was verified against the real boards and the real services on 22 "
+    "September 2026 rather than reasoned about: a throwaway patient was advanced, a throwaway order "
+    "was priced, a real Stripe link was minted and a real text was sent. The test rows were deleted "
+    "afterwards. <b>The sixth &mdash; the ordering gate &mdash; is built but not yet switched on</b>, "
+    "so nothing in the software physically stops an unpaid cash pay order going to Cardinal. That is "
+    "the one thing to know before using this.", Body))
 
 story.append(table([
     ["Stage", "State", "What that means in practice"],
@@ -179,9 +182,11 @@ story.append(table([
      "<b>Generate link</b> mints a Stripe payment link for the quoted amount; <b>Send to patient</b> "
      "texts it and stamps the date. Both are monday webhooks onto the payment service."],
     ["6. Ordering gate",
-     chip("LIVE", LIVE),
-     "An unpaid cash pay order cannot be placed. A manager can release it with a typed reason, "
-     "which is stamped into the order's notes."],
+     chip("BUILT, OFF", PART),
+     "<b>Does not bite yet.</b> The rule that refuses an unpaid cash pay order lives inside the "
+     "app's own &ldquo;place this order&rdquo; button, and that button is still switched off &mdash; "
+     "orders are placed by flipping Order Status on the board, which nothing checks. The manager "
+     "release <i>is</i> live. See section 10."],
 ], [1.85*inch, 0.95*inch, 3.75*inch]))
 
 story.append(callout(
@@ -458,9 +463,19 @@ story.append(callout(
 # ---------------------------------------------------------------- stage 6
 story.append(PageBreak())
 story.append(P("10 &nbsp; Stage 6 &mdash; the ordering gate", H2))
+story.append(callout(
+    "Read this before you rely on it",
+    "<b>The gate is written and tested, and it is not yet switched on.</b> It sits inside the Command "
+    "Center's own <i>Mark as Ordered</i> button &mdash; and that button is behind a separate switch "
+    "that is still off, because the Command Center does not place orders yet. Today an order is placed "
+    "the way it always has been: a person flips <b>Order Status &rarr; Ordered</b> on the New Order "
+    "Board, and nothing checks whether the patient paid. <b>Until that switch flips, the only thing "
+    "standing between an unpaid cash pay order and Cardinal is somebody reading the Cash Pay card "
+    "before they flip it.</b> The card says in plain words whether the order is paid.",
+    bg=BGWARN, bar=DARK))
 story.append(P(
-    "<b>Live.</b> An unpaid cash pay order cannot be sent to Cardinal. Goods do not leave before money "
-    "arrives.", Body))
+    "What the gate will do once it is on: an unpaid cash pay order cannot be sent to Cardinal, so goods "
+    "do not leave before money arrives.", Body))
 story.append(P(
     "The gate reads the <b>payment columns</b> &mdash; the Stripe charge id and the paid date &mdash; and "
     "not the &ldquo;Paid Cash&rdquo; status label. That distinction matters: the label predates this work "
@@ -496,8 +511,9 @@ story.append(table([
      "The first mints the Stripe link, the second texts it. Two presses on purpose &mdash; nothing "
      "goes to a patient without a rep pressing send."],
     ["7", "Wait for payment, then place the order.",
-     "Order Status flips to <b>Paid Cash</b> on its own when Stripe reports the payment. Until "
-     "then the order cannot be placed."],
+     "Order Status flips to <b>Paid Cash</b> on its own when Stripe reports the payment, and the "
+     "Cash Pay card says so. <b>Check the card before you flip Order Status &mdash; nothing else "
+     "will.</b> See section 10."],
     ["8", "If they pay another way, a manager releases it with a typed reason.",
      "Cheque or over the phone. The reason is stamped into the order's notes &mdash; the only "
      "record of why goods went out against no Stripe payment."],
@@ -511,9 +527,87 @@ story.append(callout(
     "the patient holds two and paying the older one charges the older price.",
     bg=BGSOFT, bar=TEAL))
 
+# ---------------------------------------------------------------- trouble
+story.append(PageBreak())
+story.append(P("12 &nbsp; When something does not work", H2))
+story.append(P(
+    "Every cash pay step reports what it did on the order row itself, in the <b>Cash Pay Action</b> "
+    "column. Read that column first &mdash; it answers most of these without anyone opening a log.", Body))
+
+story.append(table([
+    ["What you see", "What it means", "What to do"],
+    ["<b>Generate link</b> or <b>Send to patient</b> are greyed out, with a line of text under them.",
+     "That line is the reason. Usually the feature switch has been turned off, or the order is "
+     "already paid, or the quote could not be priced.",
+     "Read the line. Nothing on the board needs fixing."],
+    ["You pressed Generate and nothing appears to have happened.",
+     "Look at <b>Cash Pay Action</b>. Empty, with a link in <b>Cash Pay Link</b>, means it worked. "
+     "Still reading <i>Generate link</i> means the webhook never fired or was refused.",
+     "If it worked, refresh. If it is stuck on <i>Generate link</i>, see the webhook check below."],
+    ["Cash Pay Action reads <b>Link failed</b>.",
+     "The payment service refused to mint a link and said why in its own log.",
+     "Check the coins-form-payment log on Railway for the reason, fix it, then press Generate again."],
+    ["Cash Pay Action reads <b>Text failed</b>.",
+     "The link exists; the text did not send. Almost always a missing or unusable mobile number on "
+     "the row.",
+     "Fix the number, then press <b>Send to patient</b> again. The link is not re-minted."],
+    ["The card says it has had <b>no answer yet</b> after about 45 seconds.",
+     "That is not a failure. The mint may still be in flight.",
+     "Wait and refresh the page. <b>Do not press Generate again</b> &mdash; that risks a second link."],
+    ["The patient says they paid, but the order still reads unpaid.",
+     "Payment is recorded by Stripe writing two columns: the charge id and the paid date.",
+     "Check <b>Stripe Charge ID</b> and <b>Cash Pay Paid Date</b> on the order. If they are blank, "
+     "the payment did not reach us &mdash; ask Josh to check Stripe."],
+    ["The card refuses to price the order at all.",
+     "One of the products has no price on the Cardinal SKU Tracker. The whole quote is refused on "
+     "purpose &mdash; a total that silently leaves a product out is the one failure this cannot have.",
+     "Get the product priced on the tracker, or take it off the order."],
+    ["The order changed after the link was sent, so the amount is now wrong.",
+     "A link's amount is fixed when it is minted. The card will not quietly re-price it.",
+     "Clear <b>Cash Pay Link</b> on the board, then press <b>Generate link</b> again. Replacing a "
+     "link is deliberate and visible."],
+], [1.75*inch, 2.3*inch, 2.5*inch]))
+
+story.append(callout(
+    "The trap: a dead automation that looks like a broken one",
+    "If you find an automation in monday reading <i>&ldquo;When Cash Pay Action changes to Generate "
+    "link, send a webhook&rdquo;</i> that is <b>disabled with a red banner about authentication</b>, "
+    "it is a <b>corpse</b>. Two webhooks were deleted on 22 September while the authentication was "
+    "being fixed, and monday leaves the disabled entry behind with its old failure attached. "
+    "<b>Do not press &ldquo;Update automation&rdquo; and do not re-enable it.</b> It points at the "
+    "old address: at best it fails again, at worst it comes back as a third webhook on the same "
+    "column and the patient is charged twice. Delete it.",
+    bg=BGWARN, bar=DARK))
+
+story.append(P("How to check the two webhooks are healthy", H3))
+story.append(table([
+    ["Question", "Answer"],
+    ["Which two are live?",
+     "<b>641121194</b> &mdash; fires on <i>Generate link</i>. <b>641125712</b> &mdash; fires on "
+     "<i>Send to patient</i>. Both on the New Order Board."],
+    ["Which are dead?",
+     "<b>641115241</b> and <b>641118584</b>. Any note, screenshot or message naming those is stale."],
+    ["How do I tell if they are working?",
+     "By their <b>run history</b> on the board, not by the fact that they are listed &mdash; monday "
+     "lists a suspended webhook exactly like a healthy one. As of 23 September: 198 successes, "
+     "0 failures since the fix."],
+    ["What did the two failures on 22 September mean?",
+     "monday signs every delivery with its own credential, which was hiding ours, so the payment "
+     "service refused them. Fixed the same afternoon; the webhooks were deleted and remade, which "
+     "is why the ids changed."],
+], [1.9*inch, 4.65*inch]))
+
+story.append(callout(
+    "If the shared secret is ever changed",
+    "The webhook address carries a secret. Changing it on the payment service <b>breaks both "
+    "webhooks until they are deleted and recreated</b> with the new address &mdash; monday stores "
+    "the address, so the old pair would be refused on every delivery. That is exactly the failure "
+    "of 22 September. Change the secret and the webhooks together, never one without the other.",
+    bg=BGWARN, bar=DARK))
+
 # ---------------------------------------------------------------- reference
 story.append(PageBreak())
-story.append(P("12 &nbsp; Reference", H2))
+story.append(P("13 &nbsp; Reference", H2))
 
 story.append(P("Boards", H3))
 story.append(table([
@@ -571,9 +665,15 @@ story.append(table([
      "<font face='Courier' size='8'>coins-form-payment</font>, <font face='Courier' size='8'>backend/src/cashPay/</font>"],
 ], [2.6*inch, 3.95*inch]))
 
-story.append(P("13 &nbsp; Still open", H2))
+story.append(P("14 &nbsp; Still open", H2))
 story.append(table([
     ["Question", "Whose call"],
+    ["<b>The ordering gate is off.</b> Until the Command Center places orders itself, nothing stops "
+     "an unpaid cash pay order being sent to Cardinal &mdash; a person has to read the Cash Pay card "
+     "first. This is the one open item that can cost money.", "Josh"],
+    ["<b>A dead automation is still sitting in monday</b> &mdash; disabled, with an authentication "
+     "banner, left over from the two webhooks deleted on 22 September. It does nothing, but it "
+     "invites somebody to re-enable it, which would charge a patient twice. Delete it.", "Brandon"],
     ["<b>Nothing chases an unpaid link.</b> The 15-day reminder the handoff asks for is not built "
      "&mdash; today somebody has to notice an order with a sent date and no payment. It belongs on "
      "the order board as a date-arrival automation.", "Josh"],
@@ -593,7 +693,7 @@ def deco(canvas, doc):
     canvas.line(0.85*inch, 0.72*inch, w - 0.85*inch, 0.72*inch)
     canvas.setFont("Helvetica", 7.6); canvas.setFillColor(MUTED)
     canvas.drawString(0.85*inch, 0.55*inch,
-                      "Medically Modern · Cash Pay, end to end · 22 September 2026")
+                      "Medically Modern · Cash Pay, end to end · 23 September 2026")
     canvas.drawRightString(w - 0.85*inch, 0.55*inch, "Page %d" % canvas.getPageNumber())
     if canvas.getPageNumber() == 1:
         canvas.setFillColor(TEAL)

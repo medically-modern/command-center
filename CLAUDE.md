@@ -8923,24 +8923,36 @@ alone and the column stays blank all the way to the Order board, where the cash 
 for §5.19b's reason: the doctor-fax requirement blocked on one route while the banner shared by both
 told reps it blocked on each. `cashPayIntakeWiring.test.ts` scans every half.
 
-**⚠️⚠️ THE SKIP-TO-WELCOME-CALL ROUTE IS DARK — `CASH_PAY_SKIPS_TO_WELCOME_CALL = false`.** A cash
-pay patient has no medical necessity to document and no auth to chase, so they should skip Medical
-Evaluation and Insurance entirely (Corey, 2026-08-14). The board label **"Advance to Welcome Call"**
-(`color_mm1zmeb3` id 6) exists live; the **automation does not**. ⚠️ An earlier note here said
-workflow 18432110599 carried the trigger and the move-to-Completed step as an unpublished draft —
-checked against `list_automations` 2026-09-22, it is on neither that board's workflow nor its legacy
-list, and **nothing on Profile Send Off names the Welcome Call board at all**. All three steps are to
-be built, by a person in monday's UI: `create_automation` times out on the 38-column payload (three
-attempts, board verifiably unchanged after each) and `create_workflow` only makes an empty shell this
-session cannot add steps to. **`scripts/cash-pay/README.md` is that person's runbook** — the three steps and all
-38 column mappings, derived from the three hop automations a column must survive today so the item
-this creates is shaped exactly like one that took the long way round, plus
-`deriveHopChain.mjs` to re-derive the table rather than trust it. Writing the label first is worse than not offering it: the label lands, nothing fires,
-the item never leaves Profile Clean-Up and the rep has pressed a button that silently did nothing
-(§9's advancer class). While the flag is false a cash pay patient still advances, on "Advance to
-MN", exactly as today — so nobody is stranded either way and flipping it only changes WHICH board
-they land on. **Automation 7917676280 is deliberately untouched**: it triggers on label id 1, so an
-insured patient's route is byte-identical to what it has always been.
+✅ **THE SKIP-TO-WELCOME-CALL ROUTE IS LIVE — `CASH_PAY_SKIPS_TO_WELCOME_CALL = true` from
+2026-09-22.** A cash pay patient has no medical necessity to document and no auth to chase, so they
+skip Medical Evaluation and Insurance entirely (Corey, 2026-08-14). Their Advance writes **"Advance
+to Welcome Call"** (`color_mm1zmeb3` label id **6**) instead of "Advance to MN", and monday
+automation **7923595946** on Profile Send Off turns that into a **Welcome Call** item and moves the
+source item to Completed. Built by Josh in monday's UI, not over the API —
+`create_automation` times out on the 38-column payload and `create_workflow` only makes an empty
+shell; **`scripts/cash-pay/README.md` is that runbook**, with all 38 column mappings derived from
+the three hop automations a column must survive today (plus `deriveHopChain.mjs` to re-derive the
+table rather than trust it), so the item this creates is shaped exactly like one that took the long
+way round.
+⚠️⚠️ **PROVED END TO END BEFORE THE FLAG WAS FLIPPED, not reasoned about** — a throwaway item in
+Profile Clean-Up carrying Cash Pay was advanced, the source landed in **Completed**, and a Welcome
+Call item appeared in the Welcome Call group carrying Primary Insurance = Cash Pay, DOB, phone,
+doctor and Serving. Both test items deleted. **That test was the point, because the failure mode is
+silent**: the automation still carries **23 mappings aimed at Medical Evaluation column ids**, left
+over from the duplicate it was built from, and a create-item step carrying column ids the
+destination board does not have *could* have been refused outright — creating no item at all while
+the source still moved to Completed, i.e. cash pay patients out of the pipeline entirely with
+nothing erroring. It does not; monday ignores them. Delete them anyway if you are in there
+(`scripts/cash-pay/README.md` lists all 23).
+⚠️ **Six of the 38 columns are deliberately unmapped and that is not a gap** (Josh, 2026-09-22):
+both Coverage Paths, Stedi Home Plan, Stedi Coinsurance %, Stedi Plan Begin Date and Referral? —
+*"we dont need any of that data, the patient doesn have insruance or need a coverage path they pay
+oop for everytrhing"*. **Profile Send-Off Notes IS mapped**, which is the one that mattered: it is
+the intake case history the Welcome Call rep reads.
+⚠️ **Automation 7917676280 is deliberately untouched**: it triggers on label id **1** ("Advance to
+MN"), so an insured patient's route is byte-identical to what it has always been. Setting the flag
+back to `false` sends cash pay patients down that same route to Medical Evaluation — nobody is
+stranded either way, it only changes WHICH board they land on.
 
 **Pricing — `lib/orders/cashPayPricing.ts`.** Each line is the Cardinal SKU Tracker **Cost**
 (`numeric_mm4wd6b`, scraped daily at 9:05 ET) × the order's quantity, ×**1.25**, **rounded per
@@ -9034,12 +9046,37 @@ pricing rule in a second repo, whose drift is a patient charged an amount no scr
 total is identical; the itemisation lives on the card the rep reads from. A departure from handoff
 item 5, **Josh's to accept or reject**: `POST /api/cash-pay/create-link` still exists, is tested and
 takes the itemised lines, but needs the SPA to call it with a service token — the shape he declined.
-⚠️⚠️ **STILL DARK — `CASH_PAY_LINK_FROM_COMMAND_CENTER = false`**, because the two board automations
-do not exist yet and `CASH_PAY_WEBHOOK_SECRET` is not set on the coins service (unset disables the
-route, 503). The presses render **INERT with the reason on screen, never hidden** (§5.39g), and both
-handlers open with `if (!wired) return notBuilt()`, so flipping the flag early refuses loudly rather
-than writing a status nothing listens to. **`scripts/cash-pay/PAYMENT_LINK.md` is the four-step
-runbook** — one Railway variable and two automations, then I flip it.
+✅ **LIVE — `CASH_PAY_LINK_FROM_COMMAND_CENTER = true` from 2026-09-22.** Both presses reach monday,
+both webhooks fire, and the whole route was proved end to end before the flag moved. The handlers
+still open with `if (!wired) return notBuilt()` and the presses still render **INERT with the reason
+on screen, never hidden** (§5.39g), so setting the flag back refuses loudly rather than writing a
+status nothing listens to. `scripts/cash-pay/PAYMENT_LINK.md` is the runbook that got it there.
+⚠️⚠️ **THE TWO WEBHOOKS ARE API-CREATED, NOT UI AUTOMATIONS, AND THEY WERE RECREATED TWICE**
+(`webhooks(board_id: 18405457690)`, verified 2026-09-23): **641121194** fires on Cash Pay Action →
+*Generate link* (index 0) and **641125712** on → *Send to patient* (index 3), both `state: "active"`,
+created 20:53:26Z and 21:02:36Z. The ids **641115241** and **641118584** are DEAD — monday suspended
+them during the 401 loop below and they had to be deleted and remade, so any note or screenshot
+naming those is stale.
+⚠️⚠️ **MONDAY SIGNS EVERY DELIVERY WITH ITS OWN JWT IN THE `Authorization` HEADER**, which shadowed
+our secret in the service's `header || query || path` chain and 401'd every delivery — the cause of
+the two failures still in the board's run history (`20:43:11Z store.webhooks.error.unauthorized`,
+`20:48:22Z monday.webhook_error`). Fixed in coins-form-payment `c678aa2` by testing all three
+candidates rather than the first. An earlier diagnosis — "monday drops the query string" — shipped as
+`8b980c5` and was **wrong**; do not reason from it.
+⚠️⚠️ **A SUSPENDED WEBHOOK LEAVES A DISABLED ENTRY IN MONDAY'S AUTOMATION CENTRE THAT OUTLIVES THE
+WEBHOOK**, reading *"The webhook endpoint requires authentication… re-enable this automation"* with
+its one failed run still attached. It is a corpse, and **pressing "Update automation" or re-enabling
+it is the one thing not to do**: it points at the old URL, so it either 401s again or resurrects as a
+third webhook on the same column and **double-mints**. Delete it. The board's own automation list is
+the truth — on 2026-09-23 it held eight webhooks, the two above among them, and the only inactive one
+was Josh's unrelated `593677609` "order trigger".
+⚠️ **Presence in `webhooks(board_id:)` is not evidence of liveness** — that query has no status field
+and monday lists a suspended webhook exactly like a healthy one. Read `list_automations`' legacy
+entries (`state`/`active`) and `get_automation_runs` (board 18405457690) instead; 198 successes and
+**0 failures** since 20:48 on 2026-09-22.
+⚠️ **The challenge handshake answers BEFORE the secret is checked**, deliberately — monday must be
+able to register the webhook — so a 200 on a `{"challenge":…}` POST proves reachability and nothing
+about auth. Test auth with a non-challenge event body: it 401s with a wrong or absent secret.
 ⚠️ **What does NOT wait is the QUOTE** — the card prices the order today, so a rep on the phone can
 read the patient their number and take payment the way they do now. That is the half that actually
 unblocked Debbie, and it is why the flag gates the presses rather than the card.
@@ -9099,11 +9136,15 @@ free (handoff item 5).
 `lib/orders/mondayWrite.ts` and the two presses wired. Everything above describes what is built.
 
 **Still outstanding, each for its own reason:**
-- **The two board automations and the secret** — `scripts/cash-pay/PAYMENT_LINK.md`. Josh's, because
-  monday's automation builder is a UI and the secret is his to generate. ⚠️ The text automation must
-  also stamp **Cash Pay Link Sent** `date_mm7d7wxe`, or the card sits on *Link ready* for ever and a
-  rep keeps re-sending. The wording is `cashPayText()` in `coins-form-payment`, exported unused so it
-  has one home.
+- ✅ **The two webhooks and the secret — DONE 2026-09-22.** `CASH_PAY_WEBHOOK_SECRET` is set on
+  coins-form-payment (unset still disables the route with a 503), and the two deliveries are API
+  webhooks **641121194** / **641125712** rather than the UI automations `PAYMENT_LINK.md` first
+  described. ⚠️ **The secret is in the URL PATH** (`/webhook/monday/cash-pay/<secret>`), so it is in
+  Railway's HTTP log; the query-string form is accepted too and is stripped by Railway. ⚠️ **Rotating
+  it means recreating BOTH webhooks** — monday stores the URL, so a new secret with the old webhooks
+  401s every delivery, which is the failure mode this whole section records. The text side stamps
+  **Cash Pay Link Sent** `date_mm7d7wxe` itself, so the card leaves *Link ready* on its own; the
+  wording is `cashPayText()` in `coins-form-payment`.
 - **The 15-day reminder loop** — the order board's job, deliberately (a date-arrival automation, the
   shape §5.36's MR ladder uses).
 - **The itemised route.** `POST /api/cash-pay/create-link` is correct, tested, and takes the three
@@ -9136,8 +9177,14 @@ free (handoff item 5).
 4. **The gate** — `cashPayGate` ⇄ `mondayWrite.orderingRefusal` / `markOrdered`'s pre-write read ⇄
    `CashPayCard`'s disabled states. The button is what a person sees; the write is what stops it.
 5. **The switches** — `orders/config.CASH_PAY_LINK_FROM_COMMAND_CENTER` and
-   `profile/cashPayIntake.CASH_PAY_SKIPS_TO_WELCOME_CALL`, both pinned at false by tests. Each test
-   failing is the reminder to read this section before flipping.
+   `profile/cashPayIntake.CASH_PAY_SKIPS_TO_WELCOME_CALL`, **both `true` since 2026-09-22** and both
+   pinned at that value by tests. Each test failing is the reminder to read this section before
+   moving either one; flipping one back is a decision about which route live patients take, not a
+   tidy-up. ⚠️ **`ORDERING_FROM_COMMAND_CENTER` is still `false`**, so the payment gate
+   (`cashPayOrderingRefusal`, wired into `markOrdered`) is built and **dormant** — today a human
+   still flips Order Status → "Ordered" on the board and nothing physically stops an unpaid cash pay
+   order going out. The manager **release** button is live regardless, because it only writes a
+   stamped note.
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -10244,9 +10291,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A cash pay patient can't be advanced from Intake / is asked for insurance they don't have | §5.48 — `lib/profile/cashPayIntake.ts`. Picking **General Insurance = Cash Pay** hides section 1 and drops the insurance readiness rows; **section 3 (the doctor) is still required** on Josh's call, because Cardinal's payload needs it. Still blocked ⇒ check the mirror actually ran: Primary Insurance is what travels, and on the intake page it also has to reach the `verified` state, which is what Advance writes |
 | A cash pay patient reads as insured on Welcome Call or the Order board | §5.48 — those boards have **no General Insurance column**, so Primary Insurance is the only marker there and the intake mirror (`cashPayMirrorEdit`) is what puts it on the row. A patient whose Primary was never mirrored is indistinguishable from an insured one, with nothing erroring |
 | "What does this cash pay patient owe?" / the total looks wrong by a cent | §5.48 — `lib/orders/cashPayPricing.ts`: tracker cost x qty, x1.25 **rounded per line**, plus a $10 shipping line under $10 of markup. The Debbie Hinze test ($1,030.69) is the anchor — if it stops matching, the rule has drifted from a price a patient agreed to. ⚠️ `round2` goes through `toPrecision(12)`; a naive `Math.round(n*100)` loses a cent on her infusion-set line. A REFUSAL rather than a total means a line has no tracker cost, and quoting short is the one thing it must not do |
-| The cash pay Generate / Send buttons do nothing | §5.48 — they are inert behind `orders/config.CASH_PAY_LINK_FROM_COMMAND_CENTER`, with the reason on screen. The code on both sides is built; what is missing is the two board automations and `CASH_PAY_WEBHOOK_SECRET` (`scripts/cash-pay/PAYMENT_LINK.md`). The QUOTE above them is live regardless |
+| The cash pay Generate / Send buttons do nothing | §5.48 — both are LIVE since 2026-09-22, so an inert button means `CASH_PAY_LINK_FROM_COMMAND_CENTER` went back to `false`; the reason is on screen. Pressed and nothing happened ⇒ read **Cash Pay Action** on the row (*Link failed* / *Text failed* name the service's refusal, in coins-form-payment's Railway log), then check webhooks **641121194** (Generate) and **641125712** (Send) with `get_automation_runs`, never with `webhooks(board_id:)`, which lists a suspended webhook exactly like a live one. ⚠️ A disabled *"send a webhook"* entry in monday's automation centre is the **corpse of a deleted webhook** — delete it, never re-enable it (it points at the old URL and would double-mint) |
 | Generate was pressed and no link appeared | §5.48 — read **Cash Pay Action** on the row. *Link failed* means the payment service refused (its reason is in `coins-form-payment`'s Railway log); still reading *Generate link* means the automation never fired or the webhook was refused — check Railway's HTTP log for `/webhook/monday/cash-pay`, where a **401** is the secret and a **503** is the variable being unset. Cleared, with a link, is success. ⚠️ The card says *no answer yet* rather than *failed* when its 45-second watch runs out — the mint may still be in flight, and pressing again risks a second link |
-| An unpaid cash pay order won't go to Cardinal / a paid one is refused | §5.48 — `lib/orders/cashPayGate.ts` reads the **payment columns**, never the `Paid Cash` label (Debbie's delivered order sits at that label). A finished order is refused by its **CAH Order Number**, which is positive evidence. The way through is a **manager** release with a typed reason, stamped into the order's notes |
+| An unpaid cash pay order won't go to Cardinal / a paid one is refused | §5.48 — `lib/orders/cashPayGate.ts` reads the **payment columns**, never the `Paid Cash` label (Debbie's delivered order sits at that label). A finished order is refused by its **CAH Order Number**, which is positive evidence. The way through is a **manager** release with a typed reason, stamped into the order's notes. ⚠️ The gate is **DORMANT today** — it lives inside `markOrdered`, which is behind `ORDERING_FROM_COMMAND_CENTER = false`, so a human flipping Order Status on the board is not stopped by it |
 | A new ICD-10 code won't save / an Evaluate send times out on verify | §5.46 — Diagnosis is a **dropdown** since 2026-09-21 (`lib/shared/diagnosisCell.ts`). monday status columns cap at **39 labels / id 160** and all three Diagnosis columns were full, so `create_labels_if_missing` was dropped at HTTP 200 with no error. If it recurs, check the write shape is `{labels:[code]}` and the COL map points at the `dropdown_` id — `diagnosisColumnIds.test.ts` scans `src/` for retired ids. ⚠️ A blank Diagnosis downstream usually means the **hop automation** still copies the retired status column: re-run `scripts/diagnosis-migration/migrateDiagnosis.mjs --apply` |
 | A payer is $0 on one screen and charged on another | §5.37 — `src/lib/shared/payerPolicy.json` is canonical; `node scripts/check-payer-policy.mjs` names every copy that disagrees. A DECLARED deviation is a difference somebody has signed off; profile's CGM-monitor exclusion is the only one. A drift line right after a push to another repo may be the raw CDN being ~5 min stale — re-run with `GITHUB_TOKEN` set. The **Python** copy is in another org and is checked by nobody |
 | A patient's Medical Records still read "MR Expired" after new records went in | §5.36 — `lib/subscription/mrStatus.ts` (the rung rule) → `mondayWrite.saveVisitDateVerified`. The board's five automations only count DOWN and nothing there writes **MR Valid**, so before 2026-09-16 the only fix was by hand. If it recurs: check the Update Visit Date save actually ran (it writes MN Expiry AND MR), then that `MR_STATUS_INDEX` still matches `color_mktyr8xg`'s live `settings_str` — a stale id is dropped at HTTP 200 with nothing in the logs |
