@@ -23,7 +23,7 @@ import { Search } from "lucide-react";
 import { useLiveSearch } from "@/hooks/systemMgmt/useLiveSearch";
 import { searchBucket } from "@/lib/systemMgmt/searchBuckets";
 import { looseSearchTerms } from "@/lib/systemMgmt/mondayApi";
-import { groupSearchHits, hitCaption } from "@/lib/shell/searchPeople";
+import { foldRedundantOrders, groupSearchHits, hitCaption } from "@/lib/shell/searchPeople";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 
 /** People, not board items — a patient with six records is ONE row (§5.42). */
@@ -49,12 +49,17 @@ export function GlobalSearch() {
   const { results, searching, tooShort, error } = useLiveSearch(open ? query : "");
 
   /**
-   * ⚠️ **GROUPED FIRST, THEN CAPPED** — the cap has to fall on people, or the
-   * eight slots are spent on one patient's six board records and everybody else
-   * who matched is trimmed off the end (§5.42). The measured case was exactly
-   * that: a name that returned six rows for one person.
+   * ⚠️ **GROUPED, THEN ORDERS FOLDED AWAY, THEN CAPPED** — the cap has to fall
+   * on people, or the eight slots are spent on one patient's six board records
+   * and everybody else who matched is trimmed off the end (§5.42). The
+   * measured case was exactly that: a name that returned six rows for one
+   * person, and later one that returned a Subscription row plus three of that
+   * patient's orders (§5.46b's `foldRedundantOrders`).
    */
-  const rows = useMemo(() => groupSearchHits(results).slice(0, MAX_ROWS), [results]);
+  const rows = useMemo(
+    () => foldRedundantOrders(groupSearchHits(results)).slice(0, MAX_ROWS),
+    [results],
+  );
 
   // Reset the cursor whenever the list changes under it, or Enter fires on a
   // row that is no longer the one highlighted on screen.

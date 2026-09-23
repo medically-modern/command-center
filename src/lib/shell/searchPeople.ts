@@ -206,3 +206,56 @@ export function groupSearchHits(rows: readonly SystemPatient[]): PersonHit[] {
 export function hitCaption(hit: PersonHit): string {
   return hit.lead.pipelineStage || hit.lead.groupTitle || hit.lead.boardName;
 }
+
+/**
+ * ⚠️⚠️ **AN ORDER IS NOISE WHEN ITS PATIENT IS ALREADY ON SCREEN** (Josh,
+ * 2026-09-23, on a name search that came back as one Subscription row and
+ * three order rows: *"the data on those bottom 3 lines is already here in her
+ * view so its not necessary / all we need is subscriptions"*).
+ *
+ * He is right, and the reason is the patient screen: its Orders tab lists
+ * every order on the board for that patient — number, date, type, items,
+ * status, shipped, delivered, each row a link (§5.45). So an order rendered
+ * beside its own patient in an eight-row drop-down spends a slot to repeat
+ * something one click away, and a patient with eight reorders crowds out
+ * everybody else who matched.
+ *
+ * ⚠️ **A STANDALONE ORDER ROW STAYS, and that is the whole reason this is a
+ * second pass rather than a change to `groupKeyFor`.** Josh asked for CAH, PO
+ * and tracking-number search himself (§5.35), and the header's placeholder
+ * promises "order #": those queries match the ORDER board and nothing else, so
+ * there is no patient hit to fold into and the order row is the only way
+ * through. Folding orders into the name bucket instead would also collapse
+ * three orders of one patient into ONE row — and a rep who pasted one CAH
+ * number would open whichever of the three sorted first.
+ *
+ * ⚠️ **Nothing is lost when one IS folded away.** The order stays in System
+ * Management's Orders folder (its own tab, which is where Josh asked for them
+ * — §5.35), on `/orders`, and on the patient's own Orders tab.
+ */
+export function orderFoldsInto(order: SystemPatient, hit: PersonHit): boolean {
+  const name = personKey(order.name);
+  if (!name) return false;
+  if (!hit.rows.some((r) => personKey(r.name) === name)) return false;
+
+  // ⚠️ A POSITIVE CONTRADICTION, not `sameHuman`'s agreement — the opposite
+  // discipline, and deliberately so. `sameHuman` fails closed because
+  // over-merging puts one patient's history under another's name; here the
+  // only consequence of folding is a row that does not render in one
+  // drop-down, with three other routes to it, while the consequence of NOT
+  // folding is exactly the clutter being reported. The order board carries no
+  // DOB (§5.44), so the phone is all there is to contradict with.
+  const theirs = last10(order.phone);
+  const ours = hit.rows.map((r) => last10(r.phone)).filter(Boolean);
+  if (!theirs || !ours.length) return true;
+  return ours.includes(theirs);
+}
+
+/** Drop the order hits whose patient is already a row on this list. */
+export function foldRedundantOrders(hits: readonly PersonHit[]): PersonHit[] {
+  const people = hits.filter((h) => h.bucket !== "orders");
+  if (!people.length) return [...hits];
+  return hits.filter(
+    (h) => h.bucket !== "orders" || !people.some((p) => orderFoldsInto(h.lead, p)),
+  );
+}

@@ -42,6 +42,12 @@ interface Props {
   order: Order;
   /** The slim list — for the "other orders for this patient" strip. */
   allOrders: readonly Order[];
+  /**
+   * Has `allOrders` actually landed? On a deep link this card renders about
+   * thirteen seconds before it does (§5.35's speed note), and that window is
+   * long enough to read a claim off the screen.
+   */
+  ordersLoaded?: boolean;
   onSelect: (id: string) => void;
   onPlaced?: () => void;
 }
@@ -67,7 +73,7 @@ const DOT: Record<PillTone, string> = {
   violet: "bg-violet-500",
 };
 
-export function OrderHeaderCard({ order, allOrders, onSelect, onPlaced }: Props) {
+export function OrderHeaderCard({ order, allOrders, ordersLoaded = true, onSelect, onPlaced }: Props) {
   const stage = orderStage(order);
   const head = orderHeadline(order);
   // Sky flags are information, and the headline already carries them
@@ -77,7 +83,18 @@ export function OrderHeaderCard({ order, allOrders, onSelect, onPlaced }: Props)
   const needsPerson = flags.some((f) => f.tone === "rose") || ["hold", "error", "review"].includes(head.flagId ?? "");
   const tone: PillTone = needsPerson ? "rose" : STAGE_TONE[stage];
 
-  const eyebrow = [orderTypeLabel(order, allOrders), order.subscriptionType || productWords(order)].filter(Boolean).join(" · ") || "Order";
+  // ⚠️ **"First Order" is a CLAIM, and checking it needs the patient's OTHER
+  // orders** — the column is not maintained per item, so `orderTypeLabel`
+  // suppresses it when a sibling is dated on or before this one (§5.35). With
+  // an empty `allOrders` nothing can contradict it, so on a deep link it would
+  // print "FIRST ORDER" for the seconds before the list lands and then take it
+  // back. Withheld until there is something to check it against; every other
+  // label is not contradictable and shows straight away. The sibling strip
+  // below simply appears when the list arrives, which is additive rather than
+  // a retraction.
+  const typeWord = orderTypeLabel(order, allOrders);
+  const shownType = ordersLoaded || !/^first order$/i.test(typeWord) ? typeWord : "";
+  const eyebrow = [shownType, order.subscriptionType || productWords(order)].filter(Boolean).join(" · ") || "Order";
   const meta = [order.dob ? `DOB ${order.dob}` : "", order.address ? `Ships to ${order.address}` : ""].filter(Boolean);
 
   const others = ordersForSamePatient(order, allOrders)

@@ -29,6 +29,11 @@ const SLIM_FIELD_COLUMNS: Record<string, string> = {
   dateOfIntake: COL.dateOfIntake,
   intakeEscalation: COL.intakeEscalation,
   ptPhone: COL.ptPhone,
+  // The sidebar's "Already in System" pill (Josh, 2026-09-23). ⚠️ The VERDICT
+  // column, never `alreadyInSystem` — on a partial lead the duplicate check is
+  // flag-only by design (§5.21), so the flag is blank for most of the
+  // population the pill exists for.
+  dupCheckResult: COL.dupCheckResult,
 };
 
 /** Present on every item regardless of the column set — they are not columns. */

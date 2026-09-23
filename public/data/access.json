@@ -73,7 +73,8 @@
       "roleFilters": {},
       "perms": {
         "viewOthers": true,
-        "stageManager": true
+        "stageManager": false,
+        "editProfile": false
       },
       "homeView": [
         "coordinator",
@@ -103,8 +104,12 @@
       },
       "perms": {
         "viewOthers": true,
-        "stageManager": true
-      }
+        "stageManager": false
+      },
+      "homeView": [
+        "oversight",
+        "bars"
+      ]
     },
     "katie@medicallymodern.com": {
       "name": "katie",
@@ -126,7 +131,10 @@
       "name": "janelle",
       "roles": [
         "doctorAppointments"
-      ]
+      ],
+      "perms": {
+        "stageManager": true
+      }
     },
     "masani@medicallymodern.com": {
       "name": "Masani",

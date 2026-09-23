@@ -2,8 +2,10 @@
  * Per-person abilities and home view, on the Access page (§5.39c) — Brandon's
  * "User management" card, added beside the role grid rather than replacing it.
  *
- * ⚠️ **Purely additive: the role grid, the manager toggle and the call-answerer
- * roster are all untouched.** This adds two rows to a card that already exists,
+ * ⚠️ **"Answers calls" lives ONLY here** since 2026-09-23 — the page's
+ * separate "Answer calls in the browser" roster was a second control onto the
+ * same `callAnswerers[]` list and was removed (Josh). The N-of-5 count moved
+ * onto the chip. The role grid is untouched. This adds two rows to a card that already exists,
  * which is what "we'll trim together after" needs — nothing here has to be
  * unwound to go back.
  *
@@ -50,6 +52,7 @@ export function AbilitiesEditor({
   isSelf,
   answersCalls,
   answerSlotsFull,
+  answerCount,
   onAbility,
   onHomeView,
   onAdmin,
@@ -64,6 +67,8 @@ export function AbilitiesEditor({
   answersCalls: boolean;
   /** All five RingCentral slots are taken and this person holds none (§5.13b). */
   answerSlotsFull: boolean;
+  /** How many of the MAX_CALL_ANSWERERS slots are taken, company-wide. */
+  answerCount: number;
   onAbility: (ability: Ability, on: boolean) => void;
   onHomeView: (view: HomeView, on: boolean) => void;
   onAdmin: (on: boolean) => void;
@@ -185,12 +190,16 @@ export function AbilitiesEditor({
               render straight from the config. */}
           <button
             type="button"
-            onClick={() => onAnswersCalls(!answersCalls)}
-            disabled={answerSlotsFull}
+            // ⚠️ aria-disabled, not disabled: a disabled button shows no tooltip
+            // in most browsers, and the tooltip is the only thing saying WHY.
+            onClick={() => {
+              if (!answerSlotsFull) onAnswersCalls(!answersCalls);
+            }}
+            aria-disabled={answerSlotsFull}
             title={
               answerSlotsFull
                 ? `All ${MAX_CALL_ANSWERERS} browser-answering slots are taken — turn somebody else off first`
-                : "Incoming patient calls ring this person's browser. RingCentral allows five devices on the main line."
+                : "Only people with this on are shown incoming patient calls, and they answer them in the browser. RingCentral allows five devices on the main line, and every browser this person opens counts as one."
             }
             className={cn(
               "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs",
@@ -198,7 +207,11 @@ export function AbilitiesEditor({
               answerSlotsFull && "cursor-not-allowed opacity-60",
             )}
           >
+            {answersCalls && <Check className="h-3 w-3" />}
             <Headphones className="h-3 w-3" /> Answers calls
+            <span className="tabular-nums opacity-70">
+              {answerCount}/{MAX_CALL_ANSWERERS}
+            </span>
           </button>
 
           <button

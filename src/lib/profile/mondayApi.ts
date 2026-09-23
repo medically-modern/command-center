@@ -309,8 +309,14 @@ export const READ_COLUMN_IDS: string[] = [
  * fails the build if one is missing.
  *
  * Not here, deliberately: `alreadyInSystem` / `referralType` (this page's queue
- * is the GROUP — it never runs `profileReferralRole`), and `dupCheckResult` /
- * `intakeSubStage` (patient header only, i.e. the detail record).
+ * is the GROUP — it never runs `profileReferralRole`) and `intakeSubStage`
+ * (patient header only, i.e. the detail record).
+ *
+ * ⚠️ `dupCheckResult` IS here from 2026-09-23 (Josh: the Already in System pill
+ * *"in the side bar on the left"*). It is the tenth column on a ~1,900-row poll,
+ * which is the cost this list exists to keep down — worth it because the flag
+ * tells a rep not to ring somebody we already serve, and reading it only on the
+ * patient they have already opened is one call too late.
  */
 export const LIST_COLUMN_IDS: string[] = [
   // Grouping + ordering in sidebarList.ts
@@ -319,6 +325,12 @@ export const LIST_COLUMN_IDS: string[] = [
   COL.followUpDate, COL.dateOfIntake,
   // The page's manager-view filter (?origin=manager-intervention / final-decisions)
   COL.intakeEscalation,
+  // The sidebar's "Already in System" pill. ⚠️ The VERDICT column, never
+  // `alreadyInSystem` — on a PARTIAL lead the duplicate check is deliberately
+  // flag-only and never writes that column, because writing it trips automation
+  // 7922049614 and empties this queue (§5.21). Reading the flag would hide the
+  // pill from most of its own population.
+  COL.dupCheckResult,
   // The manager view's contact marks (ContactStateMarks) key on the patient's
   // number. ⚠️ Without it the row reads "" and every patient looks like nobody
   // has ever contacted them — no error, just a permanently empty corner, which

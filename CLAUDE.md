@@ -3748,6 +3748,108 @@ Files: `lib/careCoordinator/{workflow,pills,mondayApi}.ts` (+ `intakeBlocker.tes
 `components/masheke/mmKit.tsx`, `components/welcomeCall/PatientActivityCard.tsx`,
 `components/copyPhoneScope.test.ts`, `pages/CareCoordinatorPage.tsx`.
 
+### 5.30h The carrier dropdown, and three follow-ups (Sep 2026)
+Brandon's bullet 2 from 2026-09-22, built on Josh's 2026-09-23 decision, plus the three notes he
+sent with it. **No board change; app only.**
+
+⚠️⚠️ **THIS IS THE DASHBOARD'S SECOND WRITE** (§5.30's read-only line; `callAttempt.ts` was the
+first). It is crossed the same narrow way: `lib/careCoordinator/carrierAssign.ts` holds the RULE
+and calls **`profile/mondayWrite.writeBenefitsInputs`**, the profile page's own writer, with the
+member ID passed blank. No new mutation, no advancer, no group move. Two writers for one column is
+§5.31c/§5.31d's failure; calling the existing one from a second screen is what keeps there being one.
+
+**What Brandon asked for:** *"When i click photo upload, i should be able to see the photo, but also
+then assign a general insurance from a drop-down. Once i've assigned it, that general insurance
+should be the pill, instead of 'Photo Upload', with a little photo icon in top right of the pill."*
+**What Josh decided (2026-09-23):** *"click it, it opens the photo, we select an insurance from the
+drop down of general insurance, it writes to monday only the general insurance, doesnt run a stedi
+check, this is just an ease of access thing."*
+
+⚠️⚠️ **IT DELIBERATELY DOES NOT RUN THE CHECK, and that reverses §5.30f's "skip".** General
+Insurance `color_mm24ap4j` is one of the FOUR inputs Stedi reads off the item — name, DOB, this, and
+the working Member ID `text_mm4t8gbq` (§5.11) — and the member ID is not on the card photo and is not
+on this dashboard. §5.30f declined the dropdown on exactly that ground (a carrier with no member ID
+and no re-run arms the next check to fail on an unverified payer — **Savannah French**, `AAA 73`,
+twice). What changed is the scope, not the argument: recording the carrier is now explicitly NOT a
+benefits step. The dialog says so on screen, and `carrierAssign.test.ts` scans the module for
+`triggerStediRun` · `writePatientProfile` · `verifyProfileWritten` · `memberIdWorking` and fails on
+any of them. **Never widen this to run the check** — the member ID is still nowhere near this screen.
+
+⚠️⚠️ **THE REFUSAL RUNS BEFORE THE WRITE.** `writeBenefitsInputs` resolves the label to an index and
+**skips the column silently** when it cannot (`if (generalInsurance && gi !== undefined)`), so an
+unresolvable carrier comes back a clean, resolved promise having written nothing and the dialog
+would close green over an unchanged board. Same trap `unwritableDoctorFields` (§7) and
+`phoneRejectionReason` (§5.32d) exist for. ⚠️ Checked against the **live** index (§5.33): a write to
+a label id a column does not have is taken at HTTP 200 and written nowhere, so a hardcoded map
+silently drops any payer added on monday since — the failure this refusal has to catch rather than
+reproduce. A board that could not be read falls back to the hardcoded map, never to refusing
+everything.
+
+⚠️ **The pill changing to the carrier costs no code.** `pills.intakeInsurance` already prefers a real
+General Insurance over the photo note, so writing the column IS the pill change. Do not add a second
+rule: that same function is what `intakeFilter.facetValue` derives the Insurance facet's options
+from (§5.30e), and the option and the pill must stay one string.
+
+⚠️ **The gate is the FILE, not the pill's words.** It used to also require the pill to read "Photo
+upload" — right while the press only opened the photo, wrong now that the press is what makes the
+pill stop saying that. Keyed on the words, the pill would go inert on its own next poll: no way back
+to the photo and no way to correct a carrier misread off it.
+
+⚠️ **The photo glyph is DERIVED, not stored** (`carrierFromPhoto`): a carrier on the row **and**
+Insurance Provided Via = "Photo of card". No provenance column was added and none is needed — whether
+a coordinator set it here or a rep read the same photo on the profile page, the carrier came from the
+photo. A session-scoped "I just set it" flag would go quiet the moment they clicked another card
+(§5.19's provenance rule, one board over). ⚠️ Measured in a browser: 10px, 3px from the pill's right
+edge inside a 15px `iconPad`, so it never covers the label — and the caption row stays registered
+across all five slots, which is Brandon's own 9/22 alignment fix and the thing a corner glyph is most
+likely to undo.
+
+⚠️ **ONE dialog, not the global viewer plus a picker.** `openFileViewer` is full-screen, so a
+dropdown on the card underneath would be covered at exactly the moment the coordinator is reading the
+carrier off the photo. ⚠️ The image is **tried and falls back**, never sniffed by filename — these are
+whatever a patient's phone uploaded, and `<img onError>` is the only test that is true of the actual
+bytes; the fallback hands the file to the shared viewer, which has pdf.js behind it. ⚠️ The signed URL
+is resolved **on open**: it expires in an hour, so it cannot ride the list row even if that were free
+(§5.30f's `protected_static` note). ⚠️ A failed save **keeps the dialog open** holding the pick — the
+carrier is on a photo they are looking at right now.
+
+⚠️ **The pill flips immediately via a page-level override**, not a `refetch()`: that is four paged
+monday requests for one one-column write, and a minute of "Photo upload" after a save reads as the
+save not having taken. Written only on a confirmed write and dropped as soon as the board agrees —
+`pruneMessageReadOverrides`' rule (§5.28), never a stored opinion.
+
+**Josh's three follow-ups the same day, all on the INTAKE PROFILE page** (§5.30's two-screens rule —
+*"the red on the main dashboard is fine"*):
+1. **"Already in System" in the LEFT SIDEBAR**, beside the name. ⚠️ It reads **Dup Check Result**, never
+   the Already In System flag: on a partial lead the check is flag-only by design, because writing that
+   column trips automation 7922049614 and empties this queue (§5.21). ⚠️ `COL.dupCheckResult` joined
+   **`LIST_COLUMN_IDS`** for it — the tenth column on a ~1,900-row poll — and `listColumns.test.ts`
+   caught the omission and named the fix, which is what that test is for.
+2. **The phone number dials in the page** — `components/shared/DialPatientDialog`, via
+   `PatientContact`'s opt-in `onCall`. ⚠️ **DIAL ONLY**: this page already owns its attempt step, with
+   its own writer and its own required-note gate, so the popup hands off to it rather than carrying a
+   second form — two dialogs onto one write is what §5.30e records finding on this very page with
+   Propose Stuck. ⚠️ No `<CallOverlay>` (one is mounted app-wide). ⚠️ Every other header still passes
+   nothing and keeps its `tel:` anchor byte for byte; only this page and the dashboard card opt in.
+3. **All four exit-row buttons are the same size** (Josh: *"advance and log call attempt are huge"*).
+   The left pair took `flex:1 1 0` inside a `flex:1 1 320px` group and grew to fill whatever the right
+   pair left. ⚠️ This reverses Brandon's 2026-09-17 *"a bit smaller"*; his LAYOUT point is kept — Propose
+   Stuck is still in the right-hand group, away from the button pressed after every good call. Measured
+   at 900/640/460: all four 44px tall, `11px 20px`, 14.4px, and the row wraps rather than squeezing.
+
+**Keep-in-agreement:** `carrierAssign.carrierFromPhoto` ⇄ `pills.PHOTO_OF_CARD` (the board's own
+answer, one spelling) ⇄ `pills.intakeInsurance`'s switch · `carrierOptions` ⇄
+`boardLabels.payerOptions`, which is what keeps **"Stedi"** out of the picker (§5.33) ·
+`carrierWriteRefusal` ⇄ `writeBenefitsInputs`' own silent skip — the refusal exists because of it ·
+`PillActions.icon` ⇄ `Pill`'s `iconPad`, which is the only thing stopping the glyph covering the
+label · `PatientsSidebar`'s pill ⇄ `profile/dupCheckFlag` ⇄ `LIST_COLUMN_IDS` ⇄
+`listColumns.test.ts`' `SLIM_FIELD_COLUMNS`.
+Files: `lib/careCoordinator/{carrierAssign,pills}.ts`,
+`components/careCoordinator/{InsuranceCardDialog,cards,PatientCard}.tsx`,
+`components/shared/DialPatientDialog.tsx`, `components/profile/PatientsSidebar.tsx`,
+`lib/profile/mondayApi.ts`, `pages/{CareCoordinatorPage,UnverifiedReferralsPage}.tsx`,
+`pages/profile/intake.css` (+ `carrierAssign.test.ts`, 33 tests, six verified to fail when reverted).
+
 ### 5.30g Brandon's 2026-09-22 notes on the Masani dashboard
 Seventeen notes, and two of his diagnoses were wrong in ways that changed the work — both worth
 reading before touching anything here. **No board change; one write added, and one change in
@@ -5917,6 +6019,22 @@ Files: `lib/shell/{viewAs,homeProfile,abilities}.ts`,
 `lib/accessStore.ts`, `App.tsx` (+ `viewAsScope.test.ts`, `homeViewBorrow.test.tsx`,
 `abilities.test.ts`, `shellRemovals.test.ts`, `lossless.test.ts`, `patientScreen.test.ts`).
 
+### 5.39j The Access page: local edits win over the poll (Sep 2026)
+Josh, 2026-09-23: *"when i click something it shows briefly assigned and then i have to click it
+again"*. `useAccess` polled GitHub every 10s and `setConfig`'d whatever came back — and GitHub
+serves the PREVIOUS access.json for a while after a PUT, so the poll put a just-ticked chip back.
+Now a poll result is DROPPED while a save is pending, if any edit happened while it was in flight,
+or within `WRITE_QUIET_MS` (30s) of our own last save. Saves are serialised and always write the
+LATEST config (two quick clicks can't land out of order), the save no longer runs inside a state
+updater, a stale poll no longer overwrites `cachedSha` (which made the next save 409 and fail
+silently), and a failed save toasts. `accessStore.poll.test.tsx` pins it.
+⚠️ `configWithoutEmail` rebuilt the config from three keys and wiped `admins[]` for everybody on
+any Remove — it spreads now.
+⚠️ **"Answer calls in the browser" is no longer its own section** — the **Answers calls** chip on
+each person's Abilities row is the one control onto `callAnswerers[]`, carrying the N/5 count.
+⚠️ `abilities.test.ts` checks opt-in grants are a SUBSET of Josh + Brandon, not an exact list:
+the file is edited live from this page, so an exact pin turned every revoke into a red deploy.
+
 ### 5.41 Reports & Metrics and Stage Manager get their own pages (Sep 2026)
 Josh, 2026-09-21, four asks in one message. **No board change; app only.**
 
@@ -7189,6 +7307,96 @@ Email reads blank on every patient with nothing erroring · `contactWrites`' Can
 Files: `lib/patient/contactEdit.ts` (+ `contactEdit.test.ts`), `lib/commsHub/dossierApi.ts`,
 `lib/patient/patientScreen.ts`, `components/patient/TopBarContact.tsx` (+ `topBarWiring.test.ts`),
 `pages/PatientPage.tsx`, `pages/patient/redesign.css`.
+
+### 5.46h The header search hides a patient's own orders, and the Orders page stops waiting (Sep 2026)
+Josh, 2026-09-23, two notes from the floor. **No board change; app only.**
+
+**1. A name search returned one patient row and three of her orders.**
+*"this should not show anything more than one profile per a fix recently. whats going wrong
+here"* — then, once the rows were named: *"the data on those bottom 3 lines is already here in
+her view so its not necessary / all we need is subscriptions"*.
+
+⚠️⚠️ **THE THREE EXTRA ROWS WERE NEVER PATIENT PROFILES, WHICH IS WHY §5.42's FOLD LOOKED
+BROKEN AND WAS NOT.** They were New Order Board items — each carrying her name, an order date, a
+group and a CAH number — and `groupKeyFor` returns `order:<id>` for every one of them, on
+purpose: an order opens `/orders`, and a patient has one item per reorder (§5.35). The fold only
+ever covered PATIENT records, so it did exactly what it was written to do and the orders came
+through beside it.
+
+**`foldRedundantOrders`** (a second pass over `groupSearchHits`, + tests) drops an order hit whose
+patient is already a row on the same list. He is right that it is redundant: the patient screen's
+Orders tab lists every order on the board for that patient — number, date, type, items, status,
+shipped, delivered, each row a link (§5.45) — so an order rendered beside its own patient spends
+one of eight slots to repeat something one click away, and a patient with eight reorders crowds
+out everybody else who matched.
+⚠️⚠️ **A STANDALONE ORDER ROW STAYS, and that is why this is a second pass rather than a change
+to `groupKeyFor`.** Josh asked for CAH, PO and tracking-number search himself (§5.35) and the
+placeholder promises "order #": those queries match the order board and nothing else, so there is
+no patient hit to fold into and the order row is the only way through. Folding orders into the
+name bucket instead would also collapse three orders of one patient into ONE row, and a rep who
+pasted one CAH number would open whichever of the three sorted first.
+⚠️ **The test is a POSITIVE CONTRADICTION, not `sameHuman`'s agreement** — deliberately the
+opposite discipline from every other identity rule here. `sameHuman` fails closed because
+over-merging puts one patient's history under another's name; the only consequence of folding an
+order away is a row that does not render in one drop-down, with the Orders folder, `/orders` and
+the patient's own Orders tab all still on it, while the consequence of NOT folding is exactly the
+clutter reported. So the order folds unless a phone we hold for that patient contradicts it — two
+patients called Jamie Rivers, one with an order on another number, keep both rows. The order board
+carries no DOB (§5.44), so the phone is all there is to contradict with.
+⚠️ **System Management's search is untouched** — `groupSearchHits` has only ever had the one
+caller, and orders there live in their own folder, which is where Josh asked for them (§5.35).
+
+**2. `/orders?orderId=…` took fourteen seconds to show an order it already had.**
+*"this takes 14 seconds to load and i can see it has the patient info via hyper link"* ·
+*"deep dive into orders … make it faster, show a loading icon in upper right until it's all
+there"*. His screenshot is the whole diagnosis: the order card fully drawn — headline, timeline,
+tracking button, notes — greyed out under a *"Loading orders…"* overlay.
+
+⚠️⚠️ **TWO READS RUN IN PARALLEL AND THE PAGE BLOCKED ON THE WRONG ONE.** The DETAIL is
+`fetchOrderById`, one item, and lands in about a second. The LIST is ~1,480 rows over three
+sequential pages at Monday's 500 cap. `PageLoadingOverlay` is `fixed inset-0` and captures pointer
+events, and it keyed on `initialLoading`, which is the LIST — so the order the rep came for sat
+finished and unclickable for another thirteen seconds.
+- **The overlay now stands down once an order is selected** (`initialLoading && !selectedId`).
+  ⚠️ **The LANDING keeps it**, because there the overview's counts really do need the whole board
+  — which is also why `fetchOrders` throws rather than return the pages it got.
+- ⚠️ **`initialLoading` means "there is nothing to show", not "this mount's first fetch has not
+  landed"** — it is seeded `lastList === null` now. It was `true` on every mount, so a return
+  visit within the session blocked for fourteen seconds behind a list `lastList` had already
+  painted, at most a minute stale, with the poll about to refresh it.
+- **The header carries the chip he asked for**, with the row count: "loading" alone does not say
+  whether anything is left. Shown on Inventory too, where it explains the open-order column's
+  em dashes (§5.46b).
+- ⚠️ **"First Order" is withheld until the list lands.** The column is not maintained per item, so
+  `orderTypeLabel` can only suppress the claim once the patient's OTHER orders are known (§5.35) —
+  with an empty list nothing contradicts it, and it would have printed and then been taken back.
+  `OrderHeaderCard` takes `ordersLoaded`, defaulting true so every other caller is unchanged.
+
+⚠️ **The list itself is no faster and cannot easily be.** Monday caps `items_page` at 500 and its
+pagination is cursor-based, so the three pages cannot run in parallel; the slim set is already
+guarded by `listColumns.test.ts`, so trimming it means removing a feature. What changed is that
+nothing a rep came for waits on it. ⚠️ **Do NOT "fix" it by committing pages as they arrive** —
+`orders` feeds the overview's counts and the SKU tracker's open-order numbers, and a partial list
+renders those as facts (§5.30g's progressive read was safe precisely because that column had no
+counters on it).
+
+⚠️ **Found by rendering it** (§5.30d), and the render turned up one more thing: `CashPayCard` and
+`SubstitutionCard` are siblings that both carried **`key={open.id}`**, so React warned they "may
+be duplicated and/or omitted". The keys are prefixed (`cash-` / `sub-`) and still carry the order
+id, which is what makes a sidebar click drop a typed release reason (§9's notes-box rule).
+Measured at 1440×900 against an 8s list: at **t+2s** the order is readable with the chip in the
+header and no overlay, at **t+12s** the chip clears and the sidebar fills — no horizontal overflow
+at any point, and no console errors.
+
+**Keep-in-agreement:** `foldRedundantOrders` ⇄ `GlobalSearch`'s `rows` memo (grouped → folded →
+capped, in that order — the cap must fall on people) ⇄ `groupKeyFor`'s order carve-out, which is
+what leaves a standalone order row intact · `useOrders.initialLoading` ("nothing to show") ⇄ the
+overlay's `!selectedId` ⇄ `OrdersSidebar`'s skeleton ⇄ `SkuTrackerView`'s `ordersLoading` ⇄
+`OrderHeaderCard`'s `ordersLoaded`. Tests: `lib/shell/searchPeople.test.ts` (eight new, two
+verified to fail when the fold is reverted) and `components/orders/inventoryBlocking.test.ts`
+(five new, three verified to fail).
+Files: `lib/shell/searchPeople.ts`, `components/shell/GlobalSearch.tsx`,
+`hooks/orders/useOrders.ts`, `pages/OrdersPage.tsx`, `components/orders/OrderHeaderCard.tsx`.
 
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
@@ -10712,6 +10920,29 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   send. `notesDraftIsolation.test.ts` scans for all three. ⚠️ Keying is required on top of the guard:
   a remounted box starts empty, and the masheke panels reset their lifted `pendingNoteText` on
   `patient.id` for the same reason — a lifted flag that outlives the box blocks the NEXT patient's send.
+- **A DEEP-LINKED patient goes through the overlay, in the same commit as the queue** (MM-1094,
+  2026-09-23). Every role hook re-fetches a `?patientId=` that is not in its own queue on EVERY poll
+  and adds it to the list. The Profile hook `unshift`ed that record RAW (since 2026-05-11), so on
+  `/profile` the rep's unsaved edits were replaced by Monday's copy every 15s — every 4s while a
+  Stedi check polls — and fields blank on the board came back red. Janelle: *"All fields keep
+  resetting and showing as red after I made an update"* (address, gender, insurance, serving).
+  ⚠️ **Only an OUT-OF-QUEUE patient can hit this** — a queue row always went through the overlay —
+  which is why it survived four months. Hers was a *New Form — Partial Leads* patient on `/profile`;
+  the ticket URL is the one the Comms Hub's **Profile** step chip built, which took `board.route`
+  for every Profile Send Off group (most likely how she got there — no other door found in the code
+  builds that URL for a form-group patient). Three fixes: the Profile hook merges the overlay (the
+  as-received snapshot stays PRE-edit); **Final Confirm** had the same raw injection in a SECOND
+  `setPatients` after the list committed, so the patient also blinked out for the length of each
+  fetch — now added before the commit, the masheke shape; and the chip is **`dossier.stepOpenHref`**
+  — a live record opens its GROUP's page (`item.route`, the answer the pane's "Open on" button and
+  Search already gave), a completed one still opens in review mode on the board's page.
+  `hooks/deepLinkOverlay.test.ts` scans all six hooks for the raw shapes; both halves verified to
+  fail on the old code. ⚠️ **`/profile`'s Save Progress is BROWSER-ONLY** (`prof-overlays` in
+  localStorage) — nothing typed there reached Monday, so no board data was overwritten. If she
+  pressed Save Progress, her edits are still in that browser's `prof-overlays`, and **Info
+  Collection reads the same key** (`fetchDetail` applies it) and saves to Monday — so opening the
+  patient on `/unverified-referrals` recovers them even before this deploys. Otherwise they went
+  with the tab.
 - **Toasts are TOP-CENTRE (`App.tsx`), and both other corners are ruled out by past bugs.**
   Bottom-right is where every stage page puts its primary action, so a toast landed on the button
   the rep presses next — adding a note on Evaluate popped "Note saved to Monday" over **Completed
@@ -11013,6 +11244,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A voicemail's audio, or its transcript, from another service | §5.47b — `GET /voicemail/audio?messageId=` (302 presigned, `?mode=proxy` to stream) and `POST /voicemail/archive/query` (also the batched "do we hold these"; pass `messageIds` and it is not date-bounded). Same `CALL_ARCHIVE_SERVICE_TOKEN`, same `last4`-never-the-number posture |
 | A voicemail has no transcript | §5.47b — **that is the expected reading**, not a fault: transcription is a per-account RingCentral feature and it is not established that it is on here (§5.28). `archiveHealth` reports the count so the other explanation (the fetch is broken) is visible; nothing marks a row failed for want of one. A transcript that arrives LATE is still picked up — `transcript_uri` is refreshed on every scan |
 | A bulk download stopped part-way | §5.16 — `lib/callHistory/recordingDownload.ts`. The run is paced at ~24/min against `rcLimiter`'s 40-per-caller budget and retries a throttled file once; the toast reports how many failed. Closing the tab ends it — whatever already saved is kept |
+| A rep's edits "reset" every few seconds / fields go red on their own | §9 — the page is showing a DEEP-LINKED patient that is not in its queue, and its hook re-fetches that record every poll; the injected record must go through the overlay (`hooks/deepLinkOverlay.test.ts`). Compare the URL's `?patientId=` with the page's queue first — an out-of-queue patient is the only one this can happen to. A Comms Hub chip that opens the wrong page is `dossier.stepOpenHref` |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
 | A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Since the 2026-09-03 cutover the six live notes columns are uncapped `text`, so this now means a column still `long_text` (Request Message `long_text_mm4cnw52`, the Escalation Notes, the two Insurance call logs) — `columnType.isCappedColumn` asks the board. Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
@@ -11086,6 +11318,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The Welcome Call column says "Scheduled 0" for a moment on load | §5.30d — correct since 2026-09-16 only if the amber "Checking Calendly" line is showing with it. No line and Scheduled 0 means `useWelcomeCallBookings.ready` has gone back to latching on the first (empty) address list — `useWelcomeCallBookings.test.tsx` pins it |
 | A patient who clearly gave us insurance shows no Insurance pill | §5.30c · §5.30f — `lib/careCoordinator/pills.ts` `intakeInsurance`. A card photo reads **"Photo upload"** and the pill OPENS the card; **"Not provided"** is deliberately blank. If it is blank for somebody who sent a photo, check `color_mm5zv5pa` is still in `INTAKE_COLS`; if the pill is there but inert, the row has no file on `file_mm5zhy1` (one live row is exactly that) |
 | The Photo upload pill opens an error, or the wrong document | §5.30f — the click resolves the ASSET (`mondayApi.fetchInsuranceCardAsset`), because the file column's own `text` is a `protected_static` link that **302s to a login page** without a monday session. An error means the asset is gone from the item or monday returned no `public_url`; the WRONG file means something went back to `assets[0]` instead of matching the column's asset id. ⚠️ This is the general rule for every file column — read `UnverifiedReferralsPage`'s `FileColumnRow` comment before wiring one up |
+| Setting the carrier from a card photo does nothing / saves green and the board is unchanged | §5.30h — `lib/careCoordinator/carrierAssign.ts`. `writeBenefitsInputs` **skips a label it cannot resolve silently**, so the refusal runs BEFORE the write and names the label; a carrier added on monday since needs the live index (§5.33). ⚠️ It writes General Insurance and nothing else — no Stedi run, deliberately, because the member ID is the other half of that input and is on neither the photo nor this screen |
+| The Insurance pill won't open the photo, or won't change to the carrier | §5.30h — the pill is pressable whenever the row HAS a file (never gated on the words "Photo upload", or the press disables itself). The pill switching to the carrier is `pills.intakeInsurance` preferring a real General Insurance — no second rule, because `intakeFilter.facetValue` reads the same function. A pill still reading "Photo upload" a minute after a save means the page-level override was dropped |
+| The photo glyph covers the label, or the pill captions fall out of line | §5.30h — `PillActions.icon` must be paired with `Pill`'s `iconPad` (15px reserved for a 10px glyph 3px from the edge). Reproduce by MEASURING the caption row across several cards; "Pump path" sitting 2px low is the em-dash slot and is pre-existing on cards with no glyph at all |
+| A phone number still opens the RingCentral app | §5.30h — `PatientContact`'s `onCall` is **opt-in**, and only the Care Coordinator card and the intake profile page pass it. Adding it elsewhere is one prop; the popup is `components/shared/DialPatientDialog`, which **dials only** — a screen that owns its own attempt step must hand off to it rather than grow a second form |
 | A patient a rep has worked is missing from the Care Coordinator dashboard | §5.30f — they are in **Review Profile** now, not an exclusion. `callDone` and `sendNow` were exclusions until 2026-09-18 and between them hid everybody who does not need a call. A Review card prints the **blocker** (`workflow.intakeBlocker`); a BLANK blocker means "nothing this dashboard can see", never "ready to advance" — the authority is `profile/intakeUnlock.evaluateUnlock` on the profile page |
 | A Review Profile card shows no blocker but the profile page won't advance | §5.30f — expected, and the narrower read is deliberate: `cgmInPlay` on the page also consults Provided CGM Preference and CGM Data Awareness, which this dashboard does not carry. Widening it means adding those columns to `INTAKE_COLS`, not special-casing the card |
 | Somebody wants the copy-number button on another screen | §5.30f — it is opt-in (`PatientContact` `showCopy`) and Welcome Call is the only caller, because Katie asked for it there and Brandon asked for it off the Care Coordinator card. Adding a caller is a decision; `copyPhoneScope.test.ts` will fail until this section and the test are updated |
@@ -11129,11 +11365,14 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The hub's right pane lost the household switcher, the notes box, or the patient search | §5.49 — with the Inbox on, the pane is the patient screen (`HubPatientPane`) and must carry all five jobs the old `PatientDossierPanel` did; `hubPatientPane.test.tsx` names each. With the Inbox off it is still `PatientDossierPanel`, untouched |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | A patient's search row still shows several times / "+N more records" is back | §5.46b — the fold is `searchPeople.sameHuman` (phone agrees, OR a phone is blank and the DOB agrees) inside a NAME bucket. Several rows for one patient means `SystemPatient.dob` came back blank for that board — check `BoardDef.dobColId` is still in `searchColumnIds`. ⚠️ Two rows with two DIFFERENT non-blank numbers are correct and deliberate (fail closed); so is a row with neither a phone nor a DOB |
+| A patient's ORDERS show as extra rows in the HEADER search | §5.46h — `foldRedundantOrders` drops an order hit whose patient is a row on the same list; they are not profiles, and the patient screen's Orders tab already lists every one. ⚠️ An order with NO patient on screen still stands alone, deliberately — a CAH, PO or tracking query matches the order board and nothing else (§5.35), so folding it would break the lookup Josh asked for. An order row beside its patient means the phones CONTRADICT (two same-named people), which is the one case it must not fold |
 | A search hit opens the wrong half of the record | §5.46b — `pickLead` scores the **Subscription** board above every pipeline bucket and `patientScreen.defaultView` reads the same fact, so the row and the screen agree. Keyed on the row EXISTING, never a status. An explicit `?view=` always wins |
 | The search dropdown shows rows and then changes them | §5.46b — correct: the NAME pass paints first and the loose + same-number passes land after it, which is why "Still looking…" sits under the rows. A row that only ever appears late is the same-number pass (§7), and it says so |
 | The Subscription profile shows the wrong facts, or a fact twice | §5.46b — the strip is `lib/patient/subscriptionOverview.ts` (Status · Next order · Subscription · First order) and is deliberately NOT `stageDetail`'s SUBSCRIPTION map, which keeps all six for the Comms Hub. A fact rendered twice means `FORM_SECTIONS` stopped matching that map's TITLES |
 | A rep without `editProfile` can change the subscription form | §5.46b — the guard is `inert` on the wrapper plus a no-op writer, and the Send bar is not rendered at all. `patientScreen.test.ts` pins all three |
-| Inventory locks the page for ~15s | §5.46b — `PageLoadingOverlay` must be `view === "orders" && initialLoading`; it is the ORDER BOARD's read, which Inventory only needs for the open-order column (and that says "—" until it lands, never 0) |
+| Inventory locks the page for ~15s | §5.46b — `PageLoadingOverlay` must be `view === "orders" && initialLoading && !selectedId`; it is the ORDER BOARD's read, which Inventory only needs for the open-order column (and that says "—" until it lands, never 0) |
+| An order opened from a link sits behind "Loading orders…" for ~14s | §5.46h — fixed 2026-09-23: the DETAIL read is one item and lands in ~1s, the LIST is ~1,480 rows over three sequential pages, and the overlay keyed on the LIST. It stands down whenever an order is selected; the header chip says the list is still arriving. If it recurs, check the overlay still carries `&& !selectedId` and that `initialLoading` is still seeded `lastList === null` — `inventoryBlocking.test.ts` scans both |
+| The order list itself is still slow | §5.46h — and largely irreducible: Monday caps `items_page` at 500 and pages by cursor, so three round trips cannot be parallelised, and the slim column set is guarded by `listColumns.test.ts`. ⚠️ **Do not commit pages as they arrive** — `orders` feeds the overview's counts and the SKU tracker's open-order numbers, and a partial list renders those as facts |
 | "Where did Daily Operations go?" | §5.46b — Reports & Metrics is deliberately blank now and Operations has **no door in the chrome**: go to `/system-mgmt?tab=operations`, or `/system-mgmt` and press the Operations tab. The settings-menu entry is COMMENTED OUT in `GlobalHeader` on Josh's word — uncomment it to put the door back, and `lossless.test.ts` fails if it returns quietly |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
 | A patient's ORDERS aren't in System Search, or an order turns up in another folder | §5.35 — `lib/systemMgmt/ordersSearch.ts`. The board rides `LIVE_SEARCH_BOARDS` (what the search box asks) and is deliberately absent from `BOARDS` (the patient registry — inbound-call lookup, the dossier, the gateway's mirrored directory, the snapshot); `searchBucket` returns `orders` FIRST, or every order files under Active with nothing erroring. An empty Orders folder under a chart pick or a stage filter is correct — those rows come from the snapshot |

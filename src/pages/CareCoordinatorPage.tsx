@@ -59,6 +59,7 @@ import { cn } from "@/lib/utils";
 import { useBoardPoll } from "@/hooks/careCoordinator/useBoardPoll";
 import { useCalendlyBookings } from "@/hooks/careCoordinator/useCalendlyBookings";
 import { CallPatientDialog, type CallTarget } from "@/components/careCoordinator/CallPatientDialog";
+import { InsuranceCardDialog, type InsuranceCardTarget } from "@/components/careCoordinator/InsuranceCardDialog";
 import {
   fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUPS, INTAKE_FORM_GROUP_IDS, NOTES_COLUMN,
 } from "@/lib/careCoordinator/mondayApi";
@@ -149,7 +150,43 @@ export default function CareCoordinatorPage() {
    * filter had just removed.
    */
   const [facets, setFacets] = useState<FacetSelection>(EMPTY_SELECTION);
-  const allIntakeLeads = useMemo(() => intake.data ?? [], [intake.data]);
+
+  /**
+   * Carriers set from a card photo since the last poll.
+   *
+   * ⚠️ The column re-reads ~1,754 rows over four paged requests (§5.30), so a
+   * `refetch()` after one one-column write is the wrong price — and a minute of
+   * the pill still reading "Photo upload" after a coordinator has just set the
+   * carrier reads as the save not having taken, which is what makes them press
+   * it again.
+   *
+   * ⚠️ Written ONLY on a confirmed write, so this can never claim something the
+   * board does not have; and dropped as soon as the board's own value agrees,
+   * so it is a bridge over one poll rather than a stored opinion (the
+   * `pruneMessageReadOverrides` rule, §5.28).
+   */
+  const [carrierEdits, setCarrierEdits] = useState<Record<string, string>>({});
+  const allIntakeLeads = useMemo(() => {
+    const rows = intake.data ?? [];
+    if (!Object.keys(carrierEdits).length) return rows;
+    return rows.map((l) => (carrierEdits[l.id] ? { ...l, generalInsurance: carrierEdits[l.id] } : l));
+  }, [intake.data, carrierEdits]);
+
+  useEffect(() => {
+    const rows = intake.data ?? [];
+    setCarrierEdits((prev) => {
+      if (!Object.keys(prev).length) return prev;
+      const next = { ...prev };
+      let changed = false;
+      for (const row of rows) {
+        if (next[row.id] && (row.generalInsurance || "").trim() === next[row.id]) {
+          delete next[row.id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [intake.data]);
   const intakeLeads = useMemo(
     () => allIntakeLeads.filter((l) => matchesFacets(l, facets, INTAKE_FORM_GROUPS)),
     [allIntakeLeads, facets],
@@ -181,6 +218,11 @@ export default function CareCoordinatorPage() {
    * the next one's chart.
    */
   const [callTarget, setCallTarget] = useState<CallTarget | null>(null);
+
+  /** The patient whose insurance card is open, or null. Held by the PAGE for
+   *  the same reason `callTarget` is: one at a time, and it survives the card
+   *  re-rendering under it on a poll. */
+  const [cardTarget, setCardTarget] = useState<InsuranceCardTarget | null>(null);
 
   const ctx = useMemo(() => ({ today, nowMinutes, nowMs }), [today, nowMinutes, nowMs]);
   const intakeB = useMemo(
@@ -252,6 +294,7 @@ export default function CareCoordinatorPage() {
   const extrasFor = useCallback((itemId: string, phone: string, notes: Map<string, string>): CardExtras => {
     const state = contacts.states?.get(contactKey(phone));
     return {
+      onInsuranceCard: setCardTarget,
       notes: notes.get(itemId),
       reached: contacts.states ? { byText: !!state?.reachedByText, byCall: !!state?.reachedByCall } : undefined,
       callCount: contacts.states && !contacts.truncated ? (state?.calls ?? 0) : undefined,
@@ -490,6 +533,12 @@ export default function CareCoordinatorPage() {
       {/* ⚠️ Keyed on the patient, so the draft note cannot survive a change of
           patient — §9's notes-box rule, which this codebase records costing a
           note filed against the wrong chart. */}
+      <InsuranceCardDialog
+        key={cardTarget?.itemId ?? "no-card"}
+        target={cardTarget}
+        onClose={() => setCardTarget(null)}
+        onSaved={(id, carrier) => setCarrierEdits((prev) => ({ ...prev, [id]: carrier }))}
+      />
       <CallPatientDialog
         key={callTarget?.itemId ?? "none"}
         target={callTarget}

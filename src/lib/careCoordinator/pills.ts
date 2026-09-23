@@ -214,6 +214,12 @@ export function pillTone(slot: PillSlotKey, value: string, variant: PillVariant 
  *  off it — two copies of the string is how the button stops matching. */
 export const PHOTO_UPLOAD = "Photo upload";
 
+/** Insurance Provided Via's answer for a patient who sent a card photo — the
+ *  board's own words, not ours. Exported because `carrierAssign.carrierFromPhoto`
+ *  keys the pill's photo glyph off the same answer: two spellings of one board
+ *  label is how the marker stops matching the pill it sits on. */
+export const PHOTO_OF_CARD = "Photo of card";
+
 export function intakeInsurance(lead: {
   generalInsurance: string;
   insuranceProvidedVia: string;
@@ -225,7 +231,7 @@ export function intakeInsurance(lead: {
   if (general === "Other") return other || "Other";
 
   switch ((lead.insuranceProvidedVia || "").trim()) {
-    case "Photo of card": return PHOTO_UPLOAD;
+    case PHOTO_OF_CARD: return PHOTO_UPLOAD;
     case "Entered manually": return other || "Entered manually";
     default: return "";
   }

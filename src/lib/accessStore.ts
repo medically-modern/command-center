@@ -16,6 +16,7 @@ import { withAbility, withAdmin, withHomeView } from "@/lib/shell/abilities";
  * user out.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { dataRepoName } from "./shared/dataRepo";
 import { FILE_PROXY_URL } from "./shared/mondayAssets";
 
@@ -201,10 +202,14 @@ export function configWithoutEmail(cfg: AccessConfig, email: string): AccessConf
   const processors = { ...cfg.processors };
   const pk = Object.keys(processors).find((k) => norm(k) === e);
   if (pk) delete processors[pk];
+  // ⚠️ Spread first: this used to rebuild the config from three keys and so
+  // dropped `admins` for EVERYONE whenever anybody was removed.
   return {
+    ...cfg,
     managers: cfg.managers.filter((m) => norm(m) !== e),
     processors,
     callAnswerers: (cfg.callAnswerers || []).filter((a) => norm(a) !== e),
+    ...(cfg.admins ? { admins: cfg.admins.filter((a) => norm(a) !== e) } : {}),
   };
 }
 
@@ -227,17 +232,21 @@ export function resolveAccess(email: string, cfg: AccessConfig): Access {
 
 let cachedSha: string | null = null;
 
+/**
+ * ⚠️ Does NOT touch `cachedSha` — the caller decides whether this read is one
+ * to believe. GitHub's contents API can answer a GET with the PREVIOUS version
+ * for several seconds after a PUT; a poll that stored that stale sha made the
+ * next save 409, and the edit silently failed (§5.39j).
+ */
 async function fetchAccess(): Promise<{ data: AccessConfig; sha: string | null }> {
   const res = await fetch(`${ACCESS_URL}&t=${Date.now()}`, {
     cache: "no-store",
   });
   if (res.status === 404) {
-    cachedSha = null;
     return { data: { ...EMPTY_ACCESS }, sha: null };
   }
   if (!res.ok) throw new Error(`GitHub fetch failed: ${res.status}`);
   const json = await res.json();
-  cachedSha = json.sha;
   const parsed = JSON.parse(atob(json.content));
   return {
     data: {
@@ -269,7 +278,10 @@ async function saveAccess(data: AccessConfig): Promise<void> {
   const put = (sha: string | null) =>
     fetch(ACCESS_URL, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body(sha)) });
   let res = await put(cachedSha);
-  if (res.status === 409 || res.status === 422) {
+  // ⚠️ A conflict means our sha is behind. Re-read it and retry — a few times,
+  // because the re-read itself can come back stale for a moment after a PUT.
+  for (let attempt = 0; attempt < 3 && (res.status === 409 || res.status === 422); attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
     const latest = await fetchAccess();
     cachedSha = latest.sha;
     res = await put(cachedSha);
@@ -279,43 +291,84 @@ async function saveAccess(data: AccessConfig): Promise<void> {
   cachedSha = json.content?.sha ?? cachedSha;
 }
 
+/**
+ * How long after our own last save a poll result is ignored. GitHub can serve
+ * the previous version of the file for a while after a write, and applying it
+ * put a just-ticked chip back to how it was — the "click it, it flips back,
+ * click it again" report (Josh, 2026-09-23).
+ */
+const WRITE_QUIET_MS = 30_000;
+
 export function useAccess() {
   const [config, setConfig] = useState<AccessConfig>({ ...EMPTY_ACCESS });
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
+  /* ⚠️⚠️ **LOCAL EDITS MUST WIN OVER THE POLL** (§5.39j). The 10s poll used to
+     `setConfig` whatever GitHub answered, so a poll that had STARTED before a
+     click — or that read the file before GitHub served the new version —
+     overwrote the click. The chip lit up, went back, and the admin clicked it
+     again. Three guards: a poll is dropped if any edit happened while it was in
+     flight (`editGen`), while a save is still pending (`pendingSaves`), or
+     inside `WRITE_QUIET_MS` of our own last save (`lastWriteAt`). */
+  const configRef = useRef<AccessConfig>(config);
+  const editGen = useRef(0);
+  const pendingSaves = useRef(0);
+  const lastWriteAt = useRef(0);
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    const load = async (initial: boolean) => {
+      const gen = editGen.current;
       try {
-        const { data } = await fetchAccess();
-        if (mounted) setConfig(data);
+        const { data, sha } = await fetchAccess();
+        if (!mounted) return;
+        const stale =
+          !initial &&
+          (gen !== editGen.current ||
+            pendingSaves.current > 0 ||
+            Date.now() - lastWriteAt.current < WRITE_QUIET_MS);
+        if (stale) return;
+        cachedSha = sha;
+        configRef.current = data;
+        setConfig(data);
       } catch (e) {
-        console.error("Failed to load access config:", e);
+        if (initial) console.error("Failed to load access config:", e);
       } finally {
-        if (mounted) setLoading(false);
+        if (initial && mounted) setLoading(false);
       }
-    })();
-    pollRef.current = setInterval(async () => {
-      try {
-        const { data } = await fetchAccess();
-        if (mounted) setConfig(data);
-      } catch {
-        /* silent */
-      }
-    }, POLL_INTERVAL);
+    };
+    void load(true);
+    pollRef.current = setInterval(() => void load(false), POLL_INTERVAL);
     return () => {
       mounted = false;
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
+  /* ⚠️ The save is a SIDE EFFECT and lives outside the state updater — React
+     may run an updater twice (StrictMode), which sent every change twice.
+     Saves are SERIALISED and each writes the LATEST config, so two quick clicks
+     can never land out of order and have the older one overwrite the newer. */
   const mutate = useCallback((fn: (prev: AccessConfig) => AccessConfig) => {
-    setConfig((prev) => {
-      const next = fn(prev);
-      saveAccess(next).catch((e) => console.error("Failed to save access:", e));
-      return next;
-    });
+    const prev = configRef.current;
+    const next = fn(prev);
+    if (next === prev) return;
+    configRef.current = next;
+    editGen.current += 1;
+    lastWriteAt.current = Date.now();
+    setConfig(next);
+    pendingSaves.current += 1;
+    saveChain.current = saveChain.current
+      .then(() => saveAccess(configRef.current))
+      .catch((e) => {
+        console.error("Failed to save access:", e);
+        toast.error("Couldn't save that access change. Refresh the page and try again.");
+      })
+      .finally(() => {
+        pendingSaves.current -= 1;
+        lastWriteAt.current = Date.now();
+      });
   }, []);
 
   /** Add to managers WITHOUT touching any processor profile — a person can be
@@ -379,10 +432,10 @@ export function useAccess() {
    * write, so two managers editing at once cannot land a sixth between them.
    */
   const setCallAnswerer = useCallback((email: string, on: boolean): boolean => {
-    if (!withCallAnswerer(config, email, on)) return false;
+    if (!withCallAnswerer(configRef.current, email, on)) return false;
     mutate((prev) => withCallAnswerer(prev, email, on) ?? prev);
     return true;
-  }, [mutate, config]);
+  }, [mutate]);
 
   /** Add a processor profile WITHOUT removing a manager flag — supports dual. */
   const addProcessor = useCallback((email: string, name: string) => {

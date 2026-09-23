@@ -25,11 +25,12 @@
  * Referral Source left the Welcome Call pills with that rebuild.
  */
 import { displayTime } from "@/lib/scheduledCalls/workflow";
-import { coveragePathPill, intakeInsurance, PHOTO_UPLOAD, type PillSlots } from "@/lib/careCoordinator/pills";
-import { toast } from "sonner";
-import { openFileViewer } from "@/components/shared/FileViewerModal";
+import { Camera } from "lucide-react";
+import { coveragePathPill, intakeInsurance, type PillSlots } from "@/lib/careCoordinator/pills";
+import { carrierFromPhoto } from "@/lib/careCoordinator/carrierAssign";
+import type { InsuranceCardTarget } from "./InsuranceCardDialog";
 import type { PillActions } from "./PatientCard";
-import { fetchInsuranceCardAsset, INTAKE_FORM_GROUPS } from "@/lib/careCoordinator/mondayApi";
+import { INTAKE_FORM_GROUPS } from "@/lib/careCoordinator/mondayApi";
 import {
   formCompletion, formatDaysSince, shortMonthDay,
   type IntakeLead, type ReviewEntry, type ScheduledEntry, type UnscheduledEntry,
@@ -72,6 +73,14 @@ export interface CardExtras {
    * Absent leaves `PatientContact`'s ordinary `tel:` handoff.
    */
   onCall?: (target: CallTarget) => void;
+  /**
+   * Open the card photo with the carrier picker beside it.
+   *
+   * ⚠️ Absent leaves the Insurance pill an ordinary label. The Welcome Call
+   * card never reads it — that board carries no insurance card and no Insurance
+   * Provided Via, so `insurancePillAction` is an intake-only call.
+   */
+  onInsuranceCard?: (target: InsuranceCardTarget) => void;
 }
 
 const FROM = "from=care-coordinator";
@@ -199,7 +208,7 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       network={lead.stediInNetwork}
       when={<ScheduledWhen entry={entry} muted={entry.when === "today-passed"} />}
       pills={intakePills(lead, false)}
-      pillActions={insurancePillAction(lead)}
+      pillActions={insurancePillAction(lead, extras)}
       inSystem={inSystem(lead)}
       contact={extras.contact}
       phone={lead.phone}
@@ -229,7 +238,7 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       network={lead.stediInNetwork}
       when={<DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
-      pillActions={insurancePillAction(lead)}
+      pillActions={insurancePillAction(lead, extras)}
       inSystem={inSystem(lead)}
       contact={extras.contact}
       phone={lead.phone}
@@ -246,79 +255,47 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
 }
 
 /**
- * The Insurance pill opens the uploaded card, when there is one.
+ * The Insurance pill opens the uploaded card, with the carrier picker beside it.
  *
  * Brandon, 2026-09-17: *"'Card on file' should also be a link where you can
- * open up the card from that view … Change to 'Photo upload'."* The photo is
- * the answer for these patients — 19 of the 23 live "Photo of card" rows carry
- * no General Insurance at all — so the pill that names it opens it.
+ * open up the card from that view … Change to 'Photo upload'."* — then
+ * 2026-09-22: *"i should be able to see the photo, but also then assign a
+ * general insurance from a drop-down. Once i've assigned it, that general
+ * insurance should be the pill, instead of 'Photo Upload', with a little photo
+ * icon in top right of the pill."*
  *
- * ⚠️ **The dropdown he asked for beside the photo is deliberately NOT here**
- * (Josh, 2026-09-18: "photo only, carrier gets picked on profile page"). The
- * carrier is a **Stedi input** (§5.11), so setting it from a photo with no
- * member ID and no re-run sets the next eligibility check up to fail on a
- * payer nobody verified — and this dashboard writes NOTHING (§5.30). The rep
- * reads the card here and types the carrier where Run Stedi lives.
+ * ⚠️⚠️ **THE GATE IS THE FILE, NOT THE PILL'S WORDS.** It used to also require
+ * the pill to read "Photo upload", which was right while the only thing the
+ * press did was open the photo — and is wrong now that it also sets the
+ * carrier, because the press is what MAKES the pill stop saying that. Keyed on
+ * the words, the dialog would close and the pill would go inert on its own
+ * next poll: no way back to the photo, and no way to correct a carrier read off
+ * it wrongly. Keyed on the file, the photo stays one press away for as long as
+ * it is on the row, which is what the glyph promises.
  *
- * ⚠️ Keyed on the URL, not on the pill's words: one live row answers "Photo of
- * card" with no file attached, and an action on it would be a button that
- * opens nothing. The pill still says "Photo upload" there, which is true —
- * they told us they uploaded one.
+ * ⚠️ **The pill changing to the carrier costs nothing here** —
+ * `pills.intakeInsurance` already prefers a real General Insurance over the
+ * photo note, so writing the column IS the pill change. Do not add a second
+ * rule for it; that function is also what the intake filter's Insurance facet
+ * derives its options from (§5.30e), and the two must stay one string.
+ *
+ * ⚠️ The glyph only renders once a carrier is actually on the row
+ * (`carrierFromPhoto`): on a patient who has not been assigned one yet the pill
+ * still reads "Photo upload", which already says where the answer is.
  */
-function insurancePillAction(lead: IntakeLead): PillActions | undefined {
-  if (!lead.hasInsuranceCard || intakeInsurance(lead) !== PHOTO_UPLOAD) return undefined;
+function insurancePillAction(lead: IntakeLead, extras: CardExtras): PillActions | undefined {
+  const open = extras.onInsuranceCard;
+  if (!open || !lead.hasInsuranceCard) return undefined;
+  const fromPhoto = carrierFromPhoto(lead);
   return {
     insurance: {
-      title: `Open ${lead.name}'s insurance card`,
-      onClick: () => void openInsuranceCard(lead),
+      title: fromPhoto
+        ? `${intakeInsurance(lead)} — read off ${lead.name}'s card photo. Open it, or change the carrier.`
+        : `Open ${lead.name}'s insurance card and record the carrier`,
+      onClick: () => open({ itemId: lead.id, name: lead.name, carrier: lead.generalInsurance }),
+      icon: fromPhoto ? <Camera className="h-2.5 w-2.5" /> : undefined,
     },
   };
-}
-
-/**
- * Resolve the card's signed URL, then open it.
- *
- * ⚠️⚠️ **THE TWO STEPS ARE NOT AN OPTIMISATION — one step was the bug.** This
- * shipped on 2026-09-18 passing the file column's own `text` straight to the
- * viewer, and that link is a `protected_static` path: **302 to a login page**
- * without a monday session, so the pill opened an error on every patient while
- * every test stayed green (nothing asserts a URL is reachable). The signed
- * `public_url` lives on the ASSET and expires in an hour, so it can only be
- * fetched on the click — `mondayApi.fetchInsuranceCardAsset`.
- *
- * ⚠️ A failure SAYS SO. The whole point of the pill is that the photo is the
- * insurance answer for these patients (§5.30c: 18 of 20 carry no carrier at
- * all), so "nothing happened" is the one outcome that teaches a coordinator to
- * stop pressing it. The same reasoning as the Comms Hub's `viewFax`, which is
- * the other fetch-then-open in the app.
- *
- * ⚠️ One request per click, `inFlight` guarded: a double-click on a card in a
- * long list is ordinary, and this is a read against the same monday budget the
- * ~1,754-row column already spends (§5.30's load note).
- */
-const inFlight = new Set<string>();
-
-async function openInsuranceCard(lead: IntakeLead) {
-  if (inFlight.has(lead.id)) return;
-  inFlight.add(lead.id);
-  const toastId = `card-photo-${lead.id}`;
-  toast.loading("Opening the insurance card…", { id: toastId });
-  try {
-    const photo = await fetchInsuranceCardAsset(lead.id);
-    if (!photo) {
-      // The column said a file was attached and the item does not hold it —
-      // a cleared asset, or a value we could not read. Name that, rather than
-      // opening something arbitrary off the item.
-      toast.error("That insurance card is no longer on the patient's row.", { id: toastId });
-      return;
-    }
-    toast.dismiss(toastId);
-    openFileViewer({ url: photo.url, name: `Insurance card — ${lead.name}` });
-  } catch (e) {
-    toast.error(`Couldn't open the insurance card: ${e instanceof Error ? e.message : String(e)}`, { id: toastId });
-  } finally {
-    inFlight.delete(lead.id);
-  }
 }
 
 /**
@@ -349,7 +326,7 @@ export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
       network={lead.stediInNetwork}
       when={<DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
-      pillActions={insurancePillAction(lead)}
+      pillActions={insurancePillAction(lead, extras)}
       inSystem={inSystem(lead)}
       blocker={entry.blocker}
       blockerDetail={entry.blockerDetail}
