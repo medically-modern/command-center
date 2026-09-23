@@ -6413,11 +6413,24 @@ object that reaches the writer is byte-for-byte the one `/subscription` sends.
 > columns rather than blanking any — the full read is belt and braces, chosen because "it would
 > only have under-written" is not a property anybody should have to re-derive.
 
-⚠️ **Fetched only when the Profile tab is open AND the person may edit**, so a rep without the
-ability costs exactly what the read-only screen cost. Every INCIDENT_2026-08-20 guard otherwise:
-module-scope cache, one in-flight request per item with the `finally` on the CHAINED promise
-(§5.28), a `want` ref so a slow answer cannot paint the previous patient's record into the open
-one, no timer, and a FAILURE that is not cached so re-opening retries.
+⚠️ **Fetched when the Profile tab OPENS, never on a timer** (for everybody since §5.46b — the
+read-only half is the same form, inert). Every INCIDENT_2026-08-20 guard: module-scope cache, one
+in-flight request per item with the `finally` on the CHAINED promise (§5.28), a `want` ref so a slow
+answer cannot paint the previous patient's record into the open one, and a FAILURE that is not
+cached so re-opening retries.
+⚠️⚠️ **THE CACHE PAINTS; IT IS NEVER SENT** (2026-09-23). A cache hit used to mean no read at all
+for the rest of the session, and the tab's send was built on that record — so a record read in the
+morning and sent in the afternoon put the morning's values back over everything written since, with
+a green toast. The send writes every board-mirrored column it holds (Next Order, Order Type,
+Subscription, the infusion sets and quantities, the auth statuses and ids, Doctor, NPI, Secondary
+Insurance, Fax/Parachute). Now a hit is shown and then **re-read on every open**, and the send is
+built on **`readFresh()`** — a read issued at the press, deliberately NOT the in-flight dedupe — with
+only the rep's own `edits` laid over it, validated as it will actually go. That is
+`dossierApi.readNotesNow`'s rule applied to a whole record: Monday has no compare-and-set, so the
+base of a write is read immediately before it. ⚠️ A failed RE-read keeps the painted record rather
+than replacing the form with an error card; a failed pre-send read refuses the send and says
+nothing was written. `useSubscriptionRecord.test.tsx` + `subscriptionView.test.ts` pin both halves,
+verified to fail on the old code.
 
 ⚠️ **Gated TWICE — `useAbility("editProfile")` on the control and `if (!canEdit) return` inside the
 handler.** §5.39h's rule: the button is what a rep sees, the handler is what stops the write, and a

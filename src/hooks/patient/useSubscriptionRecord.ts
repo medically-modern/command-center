@@ -10,13 +10,24 @@
  * slice's own `fetchItemById` and maps it with the slice's own mapping. One
  * shape, one mapping, one writer — the same object `/subscription` sends.
  *
- * ⚠️ **Fetched only when the tab is open AND the person may edit.** A rep
- * without `editProfile` never triggers it, so the read-only screen costs
- * exactly what it cost before. Every INCIDENT_2026-08-20 guard otherwise:
+ * ⚠️ **Fetched on OPEN, never on a timer.** Every INCIDENT_2026-08-20 guard:
  * module-scope cache, one in-flight request per item, a `want` ref so a slow
- * answer cannot paint the previous patient's record into the open one, no
- * timer, and a FAILURE that is not cached so re-opening retries (§5.28's
+ * answer cannot paint the previous patient's record into the open one, and a
+ * FAILURE that is not cached so re-opening retries (§5.28's
  * `fetchDirectoryNames` lesson).
+ *
+ * ⚠️⚠️ **THE CACHE IS FOR PAINTING, NEVER FOR SENDING** (2026-09-23). It used
+ * to be the answer: a hit on open meant no read at all, for the rest of the
+ * session, and the send was built on it. The Subscription send writes every
+ * board-mirrored column it holds — Next Order, Order Type, Subscription, the
+ * infusion sets and their quantities, the auth statuses and ids, Doctor, NPI,
+ * Secondary Insurance, Fax/Parachute — so a record read at 9 AM and sent at 3
+ * PM put 9 AM's values back over anything /subscription, Welcome Call's hop or
+ * another rep had written since, with a green toast. So a hit is SHOWN and then
+ * re-read (`load`), and a send builds on `readFresh()` — a read issued at the
+ * moment of the press, with only the rep's own edits laid over it. That is the
+ * notes rule (`dossierApi.readNotesNow`) applied to a whole record: Monday has
+ * no compare-and-set, so the base of a write is read immediately before it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchItemById } from "@/lib/subscription/mondayApi";
@@ -36,6 +47,9 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
   loading: boolean;
   error: string;
   reload: () => Promise<void>;
+  /** The record as the board holds it NOW — the only base a send may use.
+   *  Bypasses the cache and any read in flight; throws when it cannot say. */
+  readFresh: () => Promise<Patient>;
 } {
   const [patient, setPatient] = useState<Patient | null>(() => cache.get(itemId) ?? null);
   const [loading, setLoading] = useState(false);
@@ -48,15 +62,15 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
       setPatient(null);
       return;
     }
-    if (!force) {
-      const hit = cache.get(itemId);
-      if (hit) {
-        setPatient(hit);
-        return;
-      }
+    // A hit paints at once and is then RE-READ — shown, never trusted (see
+    // the header). While it is on screen a failed re-read is not an error: the
+    // form is still usable, and the send re-reads for itself regardless.
+    const hit = force ? undefined : cache.get(itemId);
+    if (hit) setPatient(hit);
+    else {
+      setLoading(true);
+      setError("");
     }
-    setLoading(true);
-    setError("");
     try {
       let p = inflight.get(itemId);
       if (!p || force) {
@@ -68,6 +82,7 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
       }
       const rec = await p;
       if (rec) cache.set(itemId, rec);
+      else cache.delete(itemId);
       // A slow answer for a patient the rep has already left is dropped.
       if (want.current === itemId) {
         setPatient(rec);
@@ -75,10 +90,25 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
       }
     } catch (e) {
       // NOT cached — re-opening the tab retries rather than pinning it broken.
-      if (want.current === itemId) setError(e instanceof Error ? e.message : String(e));
+      if (want.current === itemId && !hit) setError(e instanceof Error ? e.message : String(e));
+      else if (hit) console.warn("[useSubscriptionRecord] re-read failed; showing the cached record", e);
     } finally {
       if (want.current === itemId) setLoading(false);
     }
+  }, [itemId]);
+
+  const readFresh = useCallback(async (): Promise<Patient> => {
+    // Deliberately NOT the in-flight dedupe: a read that started before the
+    // rep pressed Send is exactly the staleness this exists to close.
+    const it = await fetchItemById(itemId);
+    const rec = it ? mondayItemToPatient(it) : null;
+    if (!rec) {
+      cache.delete(itemId);
+      throw new Error("That item is no longer on the Subscription board.");
+    }
+    cache.set(itemId, rec);
+    if (want.current === itemId) setPatient(rec);
+    return rec;
   }, [itemId]);
 
   useEffect(() => {
@@ -92,5 +122,5 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
     await load(true);
   }, [itemId, load]);
 
-  return { patient, loading, error, reload };
+  return { patient, loading, error, reload, readFresh };
 }

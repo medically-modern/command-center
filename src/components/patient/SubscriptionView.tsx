@@ -365,7 +365,7 @@ function SubscriptionEditor({ itemId, canEdit }: { itemId: string; canEdit: bool
      this screen is the same form, inert. It is one item read against the
      board, and the cards above render from the dossier we already hold, so
      nothing is blank while it lands. */
-  const { patient, loading, error, reload } = useSubscriptionRecord(itemId, true);
+  const { patient, loading, error, reload, readFresh } = useSubscriptionRecord(itemId, true);
   const [edits, setEdits] = useState<Partial<SubPatient>>({});
 
   const merged = useMemo(
@@ -389,8 +389,31 @@ function SubscriptionEditor({ itemId, canEdit }: { itemId: string; canEdit: bool
     // revoked ability all reach this line and not that one.
     if (!canEdit) return;
     if (refusePendingNote()) return;
+    // ⚠️⚠️ The send is built on a record read NOW, never on `merged`. `merged`
+    // is the record this tab read when it opened — possibly hours ago — and the
+    // send writes every board-mirrored column it holds (Next Order, Order Type,
+    // the sets and quantities, the auth ids, Doctor, NPI…), so sending it put
+    // that morning's values back over whatever /subscription or another rep had
+    // written since. Only the rep's OWN edits are laid over the fresh read.
+    let toSend: SubPatient;
     try {
-      await sendPatientToMonday(merged, { requireDone: true });
+      toSend = { ...(await readFresh()), ...edits } as SubPatient;
+    } catch (e) {
+      toast.error("Couldn't re-read this record before saving — nothing was written", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
+    }
+    // The board may have moved under the rep: validate what will actually go.
+    const check = validatePatientForSend(toSend);
+    if (!check.valid) {
+      toast.error("Not sent — the record on Monday has changed", {
+        description: check.errors.join(" · "),
+      });
+      throw new Error(check.errors.join("; "));
+    }
+    try {
+      await sendPatientToMonday(toSend, { requireDone: true });
       toast.success("Sent to Monday");
       confetti({ particleCount: 160, spread: 90, origin: { y: 0.6 } });
       setEdits({});
@@ -411,7 +434,7 @@ function SubscriptionEditor({ itemId, canEdit }: { itemId: string; canEdit: bool
       });
       throw e;
     }
-  }, [merged, canEdit, reload]);
+  }, [merged, canEdit, reload, readFresh, edits]);
 
   if (error) {
     return (
