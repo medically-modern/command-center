@@ -456,6 +456,12 @@
 
 
 /* ── Right column: Texts | Calls ──────────────────────────────────────────── */
+/* The Inbox's compact resolve bar, above the tabs. ⚠️ `flex: none`, the same
+   load-bearing rule as Recent notes: in a flex column a wrapping bar must not
+   steal the thread's height. */
+.cc-pt .pt-resolve { flex: none; border-bottom: 1px solid var(--bd); background: var(--mut); }
+.cc-pt .pt-resolve[data-state="over"] { box-shadow: inset 3px 0 0 hsl(var(--destructive)); }
+.cc-pt .pt-resolve[data-state="resolved"] { background: var(--cd); }
 .cc-pt .pt-side .hd { padding: 10px 12px; border-bottom: 1px solid var(--bd); }
 .cc-pt .side-tabs { display: inline-flex; background: var(--mut); padding: 2px; border-radius: 8px; border: 1px solid var(--bd); }
 .cc-pt .side-tabs button {

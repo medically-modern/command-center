@@ -7,7 +7,7 @@
  * record, and never let a failed copy un-resolve anything.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 
 const { api, dossierApi, toastError } = vi.hoisted(() => ({
   api: {
@@ -16,6 +16,8 @@ const { api, dossierApi, toastError } = vi.hoisted(() => ({
     fetchInbox: vi.fn(),
     fetchInboxCount: vi.fn(),
     fetchInboxItem: vi.fn(),
+    fetchCommsState: vi.fn(),
+    reportDialed: vi.fn(),
     fetchOutbox: vi.fn(),
     claimMirror: vi.fn(),
     reportMirrorDone: vi.fn(async () => {}),
@@ -35,9 +37,12 @@ import {
   __resetInboxStoresForTest,
   copyOne,
   flushCommsOutbox,
+  reportDial,
   useCommsConfig,
   useInboxBadge,
+  useInboxItem,
   useInboxList,
+  useItemKeyForNumber,
 } from "./useInbox";
 import type { InboxQuery } from "@/lib/commsInbox/api";
 
@@ -226,5 +231,85 @@ describe("the list and the badge", () => {
       slow(list(99, 99));
     });
     expect(screen.getByTestId("counts").textContent).toBe("3/0");
+  });
+});
+
+describe("a log row opens its number's item (plan §1.2)", () => {
+  beforeEach(() => {
+    __resetInboxStoresForTest();
+    vi.clearAllMocks();
+  });
+
+  it("⚠️ a slow answer for the previous row never opens under the next one", async () => {
+    let slow: (v: unknown) => void = () => {};
+    api.fetchCommsState.mockReturnValueOnce(new Promise((r) => (slow = r)));
+    api.fetchCommsState.mockResolvedValueOnce({ key: "p:18410804557:2", state: null });
+    const { result, rerender } = renderHook(({ phone }) => useItemKeyForNumber(phone), {
+      initialProps: { phone: "+15550001111" },
+    });
+    expect(result.current.key).toBeNull();
+    expect(result.current.loading).toBe(true);
+    rerender({ phone: "+15550002222" });
+    await waitFor(() => expect(result.current.key).toBe("p:18410804557:2"));
+    await act(async () => slow({ key: "p:18410804557:1", state: null }));
+    expect(result.current.key).toBe("p:18410804557:2");
+    // A blank number asks nothing and opens nothing.
+    rerender({ phone: "" });
+    expect(result.current.key).toBeNull();
+    expect(result.current.loading).toBe(false);
+    expect(api.fetchCommsState).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed lookup is an ERROR the page can fall back from, never a silent nothing", async () => {
+    api.fetchCommsState.mockRejectedValueOnce(new Error("gateway 503"));
+    const { result } = renderHook(() => useItemKeyForNumber("+15550003333"));
+    await waitFor(() => expect(result.current.error).toBe("gateway 503"));
+    expect(result.current.key).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("⚠️ the item hook only ever returns the item for the key asked for", async () => {
+    api.fetchInboxItem.mockImplementation(async (k: string) => ({ key: k, state: {}, timeline: [], numbers: [] }));
+    // Every render is recorded: `result.current` only shows the LAST one, and the
+    // hazard is the single render in which the key has changed and the effect
+    // clearing the old item has not run yet.
+    const renders: string[] = [];
+    const { result, rerender } = renderHook(
+      ({ k }) => {
+        const r = useInboxItem(k);
+        renders.push(`${k}→${r.item?.key ?? "none"}`);
+        return r;
+      },
+      { initialProps: { k: "p:1:1" as string | null } },
+    );
+    await waitFor(() => expect(result.current.item?.key).toBe("p:1:1"));
+    rerender({ k: "p:1:2" });
+    await waitFor(() => expect(result.current.item?.key).toBe("p:1:2"));
+    expect(renders).not.toContain("p:1:2→p:1:1");
+    expect(renders).toContain("p:1:2→none");
+  });
+});
+
+describe("reportDial — who dialed (plan §4.6)", () => {
+  beforeEach(() => {
+    __resetInboxStoresForTest();
+    vi.clearAllMocks();
+  });
+
+  it("⚠️ never guesses: a dial before the switch is read waits for it, and reports only if ON", async () => {
+    let answer: (v: unknown) => void = () => {};
+    api.fetchCommsConfig.mockReturnValueOnce(new Promise((r) => (answer = r)));
+    reportDial("+15550004444");
+    expect(api.reportDialed).not.toHaveBeenCalled();
+    await act(async () => answer({ enabled: true, ui: false }));
+    expect(api.reportDialed).toHaveBeenCalledWith("+15550004444");
+  });
+
+  it("with the module off, nothing is sent", async () => {
+    api.fetchCommsConfig.mockResolvedValueOnce({ enabled: false, ui: false });
+    reportDial("+15550005555");
+    await act(async () => {});
+    reportDial("+15550005555");
+    expect(api.reportDialed).not.toHaveBeenCalled();
   });
 });

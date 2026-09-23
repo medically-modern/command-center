@@ -37,6 +37,7 @@ import type { PatientSide } from "@/lib/patient/patientScreen";
 import type { DossierItem } from "@/lib/commsHub/dossier";
 import type { Contacts } from "@/lib/patient/contacts";
 import { RecentNotes } from "@/components/patient/RecentNotes";
+import { PatientResolveBar } from "@/components/commsInbox/PatientResolveBar";
 
 export function PatientCommsColumn({
   phone,
@@ -69,6 +70,12 @@ export function PatientCommsColumn({
 
   return (
     <aside className="pt-side">
+      {/* The Inbox's resolve bar, compact (COMMS_INBOX_PLAN.md §1.2): the
+          patient's open item, or their last resolution. It renders nothing when
+          the Inbox is switched off or there is neither — so this column is
+          otherwise exactly what it was. Both numbers, because an item is the
+          PATIENT's, whichever line they reached us on. */}
+      <PatientResolveBar numbers={[phone, alt]} />
       <div className="hd">
         <div className="side-tabs">
           <button type="button" className={side === "texts" ? "on" : ""} onClick={() => onSide("texts")}>

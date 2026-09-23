@@ -32,7 +32,8 @@ import type { Conversation } from "@/lib/commsHub/conversations";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { resolveDisplayName } from "@/lib/commsHub/directory";
 import { cn } from "@/lib/utils";
-import { HubListHeader, Initials, ListEmpty, ListError, NamingProgress, listTime } from "./HubList";
+import { FilterPill, HubListHeader, Initials, ListEmpty, ListError, NamingProgress, listTime } from "./HubList";
+import { TEXT_LOG_FILTERS, textLogMatches, type TextLogFilter } from "@/lib/commsHub/logFilters";
 
 export function TextInbox({
   conversations,
@@ -50,6 +51,8 @@ export function TextInbox({
   names,
   naming,
   onCompose,
+  logFilter,
+  onLogFilter,
 }: {
   conversations: Conversation[];
   loading: boolean;
@@ -73,7 +76,17 @@ export function TextInbox({
    *  what is already on screen; reaching somebody with no thread yet needs its
    *  own door (Josh, 2026-09-02). */
   onCompose?: () => void;
+  /**
+   * The Texts LOG's filter, once the Inbox is switched on (Josh's D4) —
+   * *All · Received · Sent* in place of *All · Unread*. Opt-in: absent, this
+   * list is exactly what it was. The read flag itself is untouched either way
+   * (it is RingCentral's, and the desktop app shows it): the rows still wear
+   * it and the right-click still flips it; only the FILTER retires.
+   */
+  logFilter?: TextLogFilter;
+  onLogFilter?: (f: TextLogFilter) => void;
 }) {
+  const logMode = !!onLogFilter;
   const unreadTotal = useMemo(() => conversations.filter((c) => c.unread > 0).length, [conversations]);
 
   const shown = useMemo(() => {
@@ -87,7 +100,7 @@ export function TextInbox({
         ...resolveDisplayName({ rcName: c.rcName, directoryName: names.get(c.key), phone: c.phone }, fmtPhone),
       }))
       .filter(({ c, label }) => {
-        if (unreadOnly && !c.unread) return false;
+        if (logMode ? !textLogMatches(c, logFilter ?? "all") : unreadOnly && !c.unread) return false;
         if (!q) return true;
         // Matched on what the row SHOWS, the preview, and the number's digits —
         // a rep searching "555" means the number, not a message containing
@@ -99,19 +112,30 @@ export function TextInbox({
           (digits.length >= 3 && c.key.includes(digits))
         );
       });
-  }, [conversations, query, unreadOnly, names]);
+  }, [conversations, query, unreadOnly, names, logMode, logFilter]);
 
   return (
     <>
       <HubListHeader
-        title="Text"
+        title={logMode ? "Texts" : "Text"}
         count={conversations.length}
         query={query}
         onQuery={onQuery}
         placeholder="Search texts…"
-        unreadOnly={unreadOnly}
-        onUnreadOnly={onUnreadOnly}
+        unreadOnly={logMode ? undefined : unreadOnly}
+        onUnreadOnly={logMode ? undefined : onUnreadOnly}
         unreadCount={unreadTotal}
+        filterMenu={
+          logMode ? (
+            <div className="flex items-center gap-1">
+              {TEXT_LOG_FILTERS.map((f) => (
+                <FilterPill key={f.id} active={(logFilter ?? "all") === f.id} onClick={() => onLogFilter?.(f.id)}>
+                  {f.label}
+                </FilterPill>
+              ))}
+            </div>
+          ) : undefined
+        }
         loading={loading}
         onReload={onReload}
         note={naming && <NamingProgress done={naming.done} total={naming.total} />}
@@ -132,13 +156,17 @@ export function TextInbox({
         {error && <ListError error={error} />}
         {!error && !shown.length && (
           <ListEmpty>
-            {unreadOnly
+            {!logMode && unreadOnly
               ? "Nothing unread — everyone has been answered."
               : query
                 ? "No conversations matched."
                 : loading
                   ? "Loading conversations…"
-                  : "No texts in the last 30 days."}
+                  : logMode && logFilter === "in"
+                    ? "No texts received in the last 30 days."
+                    : logMode && logFilter === "out"
+                      ? "No texts sent in the last 30 days."
+                      : "No texts in the last 30 days."}
           </ListEmpty>
         )}
 

@@ -89,7 +89,9 @@ export function HubListHeader({
       </div>
 
       {(onUnreadOnly || extra || filterMenu) && (
-        <div className="flex items-center gap-1 px-3 pb-2">
+        // Wraps rather than clipping: the Calls log carries Today, Download N and
+        // four direction pills, which is more than a 320px list holds on one line.
+        <div className="flex flex-wrap items-center gap-1 px-3 pb-2">
           {extra}
           {filterMenu && <div className="ml-auto">{filterMenu}</div>}
           {!filterMenu && onUnreadOnly && (

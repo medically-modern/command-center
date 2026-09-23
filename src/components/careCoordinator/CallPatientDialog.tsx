@@ -34,6 +34,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
+import { reportDial } from "@/hooks/commsInbox/useInbox";
 import { defaultFollowUpDate } from "@/lib/careCoordinator/followUp";
 import { logCallAttempt, type CallAttemptTarget } from "@/lib/careCoordinator/callAttempt";
 import { etToday } from "@/lib/masheke/etDate";
@@ -72,6 +73,9 @@ export function CallPatientDialog({ target, onClose, onLogged }: {
   const itemId = target?.itemId ?? "";
   useEffect(() => {
     if (!target) return;
+    // Who dialed — the call log can't say (§5.13b). The Communications inbox
+    // reads it for "We called · <name>"; a no-op while that module is off.
+    reportDial(target.phone);
     phone.dial(target.phone);
     // `phone.dial` is a stable store method; re-running on it would redial.
     // eslint-disable-next-line react-hooks/exhaustive-deps

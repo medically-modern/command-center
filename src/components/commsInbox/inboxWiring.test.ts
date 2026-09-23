@@ -84,9 +84,20 @@ describe("the network (plan §4.6, §4.7)", () => {
     expect(code("src/hooks/commsInbox/useInbox.ts")).toContain("await appendNoteToRecord({");
   });
 
-  it("every Call on the hub reports who dialed, and only while the module is on", () => {
-    expect(PAGE).toContain("if (commsConfig.enabled) reportDialed(phone);");
+  it("every Call that dials through the softphone reports who dialed, through ONE entry point", () => {
+    // The hub: every Call goes through dialNumber, which reports first.
+    const dialNumber = PAGE.slice(PAGE.indexOf("const dialNumber = useCallback"), PAGE.indexOf("const dialNumber = useCallback") + 200);
+    expect(dialNumber).toContain("reportDial(phone);");
     expect(PAGE).not.toMatch(/void dial\(/);
+    // The Care Coordinator's dialer too, before it dials.
+    const cc = code("src/components/careCoordinator/CallPatientDialog.tsx");
+    expect(cc.indexOf("reportDial(target.phone);")).toBeGreaterThan(-1);
+    expect(cc.indexOf("reportDial(target.phone);")).toBeLessThan(cc.indexOf("phone.dial(target.phone);"));
+    // Only while the module is on — and never guessed before the switch is read.
+    const store = code("src/hooks/commsInbox/useInbox.ts");
+    const fn = store.slice(store.indexOf("export function reportDial("), store.indexOf("export function useCommsConfig"));
+    expect(fn).toContain("if (c.enabled) reportDialed(number);");
+    expect(fn).toContain("if (configStore.get().enabled) reportDialed(number);");
   });
 });
 
@@ -101,8 +112,9 @@ describe("the Monday copy happens when the rep moves on (plan §5.4)", () => {
     expect(PAGE).toContain("if (stickyRef.current && stickyRef.current.key !== key) releaseSticky();");
   });
 
-  it("leaving the Inbox rail releases it, and the page catches up on open and on leave", () => {
-    expect(PAGE).toContain('if (tab !== "inbox") releaseSticky();');
+  it("moving on releases it in ANY rail — another item or none — and the page catches up on open and on leave", () => {
+    expect(PAGE).toContain("if (stickyRef.current && stickyRef.current.key !== openKey) releaseSticky();");
+    expect(PAGE).toContain("}, [openKey, releaseSticky]);");
     const flush = PAGE.slice(PAGE.indexOf("if (!commsConfig.enabled) return;\n    void flushCommsOutbox();"));
     expect(flush).toContain("return () => {\n      void flushCommsOutbox();");
   });
@@ -117,7 +129,7 @@ describe("the Monday copy happens when the rep moves on (plan §5.4)", () => {
 
 describe("additive first (plan §8)", () => {
   it("the Inbox rail exists only when the gateway switches it on", () => {
-    expect(PAGE).toContain("(inboxOn ? [INBOX_TAB, ...TABS] : TABS)");
+    expect(PAGE).toContain("(inboxOn ? INBOX_TABS : TABS)");
     expect(PAGE).toContain("const inboxOn = commsConfig.ui;");
     // The existing three rails are untouched.
     expect(PAGE).toContain('{ id: "phone", label: "Phone", Icon: Phone },');
@@ -162,5 +174,83 @@ describe("adding a number to a patient (plan §6)", () => {
     const tl = code("src/lib/commsInbox/timeline.ts");
     expect(tl).toContain('import { smsDeliveryState } from "@/lib/shared/smsDelivery"');
     expect(tl).toContain('smsDeliveryState(e.status) === "failed"');
+  });
+});
+
+describe("phase 3 — the logs open the item (plan §1.2, Josh's D4)", () => {
+  it("⚠️ a log row opens its number's item — and only once the Inbox is on", () => {
+    expect(PAGE).toContain("const logRail = inboxOn && isLogTab(tab);");
+    expect(PAGE).toContain('const logItemKey = useItemKeyForNumber(logRail ? logPhone : "");');
+    expect(PAGE).toContain("const inboxItem = useInboxItem(openKey);");
+    // One rendering of the item, whichever rail opened it.
+    expect(PAGE.match(/<ItemTimeline\b/g)?.length).toBe(1);
+    expect(PAGE.match(/itemTimeline\(item\)/g)?.length).toBe(2);
+  });
+
+  it("⚠️⚠️ a log never dead-ends: if the Inbox can't be read, the old thread renders", () => {
+    const branch = PAGE.slice(PAGE.indexOf("{logRail &&\n"), PAGE.indexOf('{tab === "text" &&\n            !logRail'));
+    expect(branch).toContain("logItemKey.error || inboxItem.error ?");
+    expect(branch).toContain("{legacyLogDetail()}");
+    expect(PAGE).toContain("<ConversationThread\n          key={logPhone}");
+  });
+
+  it("⚠️ nothing the old thread header had is lost — the watch-callback bell comes along", () => {
+    const tl = code("src/components/commsInbox/ItemTimeline.tsx");
+    expect(tl).toContain("<WatchCallbackButton phone={active.e164} label={item.name} />");
+  });
+
+  it("the switched-off hub is untouched: Text and Phone keep their own details", () => {
+    expect(PAGE).toContain('{tab === "text" &&\n            !logRail &&');
+    expect(PAGE).toContain('{tab === "phone" &&');
+  });
+
+  it("the Unread / Unheard FILTERS retire only with the Inbox on — the read flag stays", () => {
+    expect(PAGE).toContain("logFilter={inboxOn ? textLog : undefined}");
+    expect(PAGE).toContain("onLogFilter={inboxOn ? setTextLog : undefined}");
+    expect(PAGE).toContain("log={{ callFilter: callLog, onCallFilter: setCallLog }}");
+    // With the Inbox on, only Inbox (unresolved) and Fax (unread) carry a count.
+    const badge = PAGE.slice(PAGE.indexOf("const badge ="), PAGE.indexOf("return (\n              <button\n                key={id}"));
+    expect(badge).toContain("inboxOn\n                    ? 0");
+    // The row menus that flip RingCentral's read flag are still wired.
+    expect(PAGE).toContain("onMarkUnread={markUnread}");
+    expect(PAGE).toContain("onSetVoicemailRead={setVoicemailRead}");
+  });
+
+  it("⚠️ a log row's key is bound to the number it was asked for", () => {
+    const hook = code("src/hooks/commsInbox/useInbox.ts");
+    const fn = hook.slice(hook.indexOf("export function useItemKeyForNumber"));
+    expect(fn).toContain("const mine = got.phone === phone;");
+    expect(fn).toContain("key: phone && mine ? got.key : null,");
+    // …and the item itself is only ever the one asked for.
+    expect(hook).toContain("item: item && item.key === key ? item : null");
+  });
+});
+
+describe("phase 3 — the patient screen's compact bar (plan §1.2)", () => {
+  const bar = code("src/components/commsInbox/PatientResolveBar.tsx");
+
+  it("is the Inbox's own ResolveBar, compact, at the top of the column", () => {
+    expect(bar).toContain('import ResolveBar, { type StickyResolution } from "@/components/commsInbox/ResolveBar";');
+    expect(bar).toContain("compact");
+    const col = code("src/components/patient/PatientCommsColumn.tsx");
+    expect(col.indexOf("<PatientResolveBar numbers={[phone, alt]} />")).toBeGreaterThan(-1);
+    expect(col.indexOf("<PatientResolveBar")).toBeLessThan(col.indexOf('<div className="hd">'));
+  });
+
+  it("⚠️ renders nothing with the Inbox off — the patient screen is what it was", () => {
+    expect(bar).toContain("if (!cfg.ui || !data) return null;");
+    expect(bar).toContain("if (!state.open && !state.lastResolution) return null;");
+  });
+
+  it("⚠️ leaving the patient is 'moving on': the note is copied then, not before", () => {
+    expect(bar).toMatch(/return \(\) => \{\s*void flushCommsOutbox\(\);/);
+    // The column is keyed on the record, which is what makes a patient change an unmount.
+    expect(code("src/pages/PatientPage.tsx")).toContain("<PatientCommsColumn\n            key={active?.itemId ?? itemId}");
+  });
+
+  it("reads Postgres on open and after an action — never a poll, never RingCentral", () => {
+    expect(bar).not.toMatch(/setInterval|setTimeout/);
+    expect(bar).not.toMatch(/ringcentralApi|\/rc\//);
+    expect(bar).toContain("fetchCommsState(");
   });
 });

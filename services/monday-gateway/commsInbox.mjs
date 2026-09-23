@@ -1014,14 +1014,21 @@ export function registerCommsInbox({ app, pool }) {
     }
   });
 
-  /** The patient screen's compact bar: state for numbers the page already holds.
-   *  The `/directory/lookup` posture — nothing is disclosed the caller didn't bring. */
+  /** The patient screen's compact bar, and a log row opening its item: state
+   *  for numbers the page already holds. The `/directory/lookup` posture —
+   *  nothing is disclosed the caller didn't bring. */
   app.post("/comms/state", async (req, res) => {
     const who = await caller(req, res);
     if (!who) return;
     try {
       const raw = Array.isArray(req.body?.numbers) ? req.body.numbers.slice(0, 5) : [];
       const hmacs = [...new Set(raw.map((n) => phoneHmac(n)).filter(Boolean))];
+      // The caller BROUGHT these numbers, so holding them in memory discloses
+      // nothing — and it is what lets the item this key opens show its full
+      // number (and a last four) even when the number has never been captured:
+      // a New text to somebody who has never texted us, say. Memory only,
+      // bounded, never stored — the tick's own rule.
+      for (const n of raw) remember(n, phoneHmac(n));
       if (!hmacs.length) return res.json({ key: null, state: null });
       const { targets } = await loadTargets(pool, hmacs);
       const lead = hmacs.find((h) => targets.get(h)) ?? hmacs[0];

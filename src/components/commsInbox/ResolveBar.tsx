@@ -152,7 +152,10 @@ export default function ResolveBar({
           Resolved · {HOW_LABEL[r.how] ?? r.label} · {whoShort(r.by) || r.by} · {formatWhen(r.at)}
           {r.note ? ` — “${r.note}”` : ""}
         </span>
-        {mine && !compact && (
+        {/* Undo in BOTH sizes: until the rep moves on, nothing has reached
+            Monday, and taking a resolution back is the whole point of that
+            window (plan §5.4). Only the optional note is Inbox-only. */}
+        {mine && (
           <button onClick={() => void undo(r.resolutionId)} className="shrink-0 font-semibold underline hover:no-underline">
             Undo
           </button>

@@ -349,6 +349,15 @@ describe("⚠️ a resolve is a compare-and-set under a lock", () => {
 
 /* ── template-literal SQL ────────────────────────────────────────────────── */
 
+describe("the numbers a page already holds", () => {
+  it("/comms/state keeps them in MEMORY only, so the item it names can show its full number", () => {
+    const body = routeBody("post", "/comms/state");
+    expect(body).toContain("for (const n of raw) remember(n, phoneHmac(n));");
+    // …and never writes them anywhere.
+    expect(body).not.toMatch(/INSERT|UPDATE/);
+  });
+});
+
 describe("⚠️ SQL in template literals", () => {
   it("both files parse — a stray backtick inside SQL ends the literal early", () => {
     for (const f of ["commsInbox.mjs", "commsInboxRules.mjs", "messaging.mjs"]) {

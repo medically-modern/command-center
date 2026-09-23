@@ -19,11 +19,13 @@ import { toast } from "sonner";
 import {
   claimMirror,
   fetchCommsConfig,
+  fetchCommsState,
   fetchInbox,
   fetchInboxCount,
   fetchInboxItem,
   fetchOutbox,
   inboxConfigured,
+  reportDialed,
   reportMirrorDone,
   reportMirrorError,
   type CommsConfig,
@@ -87,6 +89,30 @@ function loadConfig(): void {
     .finally(() => {
       configInflight = null;
     });
+}
+
+/**
+ * Report who dialed a number — the ONE entry point every Call button that dials
+ * through the softphone uses (COMMS_INBOX_PLAN.md §4.6). The call log cannot
+ * say who: the whole team is one RingCentral extension (§5.13b). It is what
+ * makes *"We called · Katie"* on the timeline and an attributed *Called*
+ * suggestion possible.
+ *
+ * Only while the module is on. If the switch has not been read yet — a dial on
+ * a page that has just opened — it is read FIRST rather than guessed either way.
+ * Best-effort: a dial is never held up by it.
+ */
+export function reportDial(number: string): void {
+  if (!number) return;
+  const c = configStore.get();
+  if (c.loaded) {
+    if (c.enabled) reportDialed(number);
+    return;
+  }
+  loadConfig();
+  void configInflight?.then(() => {
+    if (configStore.get().enabled) reportDialed(number);
+  });
 }
 
 /**
@@ -311,7 +337,66 @@ export function useInboxItem(key: string | null) {
     if (want.current) void load(want.current, false);
   }, [load]);
 
-  return { item, loading, error, moved, reload };
+  // ⚠️ Only ever the item for the key ASKED FOR. The effect above clears the
+  // old one — but an effect runs after the render in which the key changed, so
+  // for that one render the previous patient's item would come back under the
+  // new selection, composer and all.
+  return { item: item && item.key === key ? item : null, loading, error, moved, reload };
+}
+
+/**
+ * The inbox key a number files under — what a Texts, Calls or VMs row opens
+ * (COMMS_INBOX_PLAN.md §1.2: *"Any log row opens the same item detail as the
+ * Inbox"*).
+ *
+ * One Postgres read per row opened (`/comms/state`), never polled; no
+ * RingCentral. The gateway returns a key for ANY number — an unmatched one files
+ * under the number itself — so a thread with somebody who has never texted us
+ * still opens, with an empty timeline and the composer.
+ *
+ * ⚠️ The answer is bound to the number it was asked for, and read back only
+ * while that is still the number: a key for the previous row must never open
+ * under the next one.
+ */
+export function useItemKeyForNumber(phone: string): {
+  key: string | null;
+  loading: boolean;
+  error: string | null;
+  reload: () => void;
+} {
+  const [got, setGot] = useState<{ phone: string; key: string | null; error: string | null; done: boolean }>({
+    phone: "",
+    key: null,
+    error: null,
+    done: true,
+  });
+  const [seq, setSeq] = useState(0);
+  const want = useRef("");
+
+  useEffect(() => {
+    want.current = phone;
+    if (!phone) return;
+    setGot((g) => (g.phone === phone ? { ...g, done: false } : { phone, key: null, error: null, done: false }));
+    fetchCommsState([phone]).then(
+      (out) => {
+        if (want.current === phone) setGot({ phone, key: out.key, error: null, done: true });
+      },
+      (e: unknown) => {
+        if (want.current === phone) {
+          setGot({ phone, key: null, error: e instanceof Error ? e.message : String(e), done: true });
+        }
+      },
+    );
+  }, [phone, seq]);
+
+  const reload = useCallback(() => setSeq((n) => n + 1), []);
+  const mine = got.phone === phone;
+  return {
+    key: phone && mine ? got.key : null,
+    loading: !!phone && (!mine || !got.done),
+    error: phone && mine ? got.error : null,
+    reload,
+  };
 }
 
 /* ── the Monday copy (plan §5.2–§5.4) ───────────────────────────────────── */

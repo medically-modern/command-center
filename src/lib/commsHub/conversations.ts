@@ -57,6 +57,10 @@ export interface Conversation {
   /** RingCentral gave up on the newest outbound message. Surfaced so a failed
    *  text is visible from the LIST, not only once the thread is opened. */
   failed: boolean;
+  /** They have texted us in the window — the Texts log's *Received* filter. */
+  hasInbound: boolean;
+  /** We have texted them in the window — the Texts log's *Sent* filter. */
+  hasOutbound: boolean;
 }
 
 const TEXT_TYPES = new Set(["sms", "mms"]);
@@ -125,6 +129,8 @@ export function buildConversations(
           unreadIds: [],
           newestInboundId: 0,
           failed: false,
+          hasInbound: false,
+          hasOutbound: false,
         },
         lastMs: -Infinity,
         newestInboundMs: -Infinity,
@@ -133,6 +139,9 @@ export function buildConversations(
     }
     const { row } = acc;
     if (!row.rcName && party?.name) row.rcName = String(party.name).trim();
+
+    if (outbound) row.hasOutbound = true;
+    else row.hasInbound = true;
 
     if (!outbound) {
       const id = Number(r.id ?? 0);

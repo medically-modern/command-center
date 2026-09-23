@@ -24,6 +24,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Loader2, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Play, Voicemail } from "lucide-react";
 import MessageBubble from "@/components/assignedPatients/MessageBubble";
+import WatchCallbackButton from "@/components/inboundCalls/WatchCallbackButton";
 import Composer from "@/components/assignedPatients/Composer";
 import { MessageAttachments } from "@/components/shared/MessageAttachments";
 import { useConversation } from "@/hooks/assignedPatients/useConversation";
@@ -157,10 +158,21 @@ function TimelineShell({
             </span>
           )}
         </div>
+        {/* The watch-callback bell the thread header has always carried
+            (§5.13) — a log row opens this view now, so it must come along
+            (§5.39f's lossless rule). */}
+        {active?.e164 && (
+          <div className="ml-auto shrink-0">
+            <WatchCallbackButton phone={active.e164} label={item.name} />
+          </div>
+        )}
         <button
           onClick={() => active?.e164 && onCall(active.e164)}
           disabled={!active?.e164 || calling}
-          className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[color:var(--mm-teal,theme(colors.teal.600))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[color:var(--mm-teal,theme(colors.teal.600))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50",
+            !active?.e164 && "ml-auto",
+          )}
         >
           {calling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
           Call

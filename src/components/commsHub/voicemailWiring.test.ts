@@ -53,9 +53,12 @@ describe("voicemail rows carry the right-click menu (Josh, 2026-09-15)", () => {
   it("opening a voicemail marks it heard, and the menu puts it back", () => {
     // Josh, 2026-09-15: "opening it marks it read, right clicking and marking
     // it unread puts it back on unread" — the same contract the fax list has.
-    const onSelect = page.match(/onSelect=\{\(phone\) => \{[\s\S]*?\n {14}\}\}/)?.[0] ?? "";
+    // One handler for every voicemail row — the Phone tab's and the VMs log's
+    // (COMMS_INBOX_PLAN.md §1.2) — so the two cannot drift apart.
+    const onSelect = page.match(/const openVoicemailRow = \(phone: string\) => \{[\s\S]*?\n {2}\};/)?.[0] ?? "";
     expect(onSelect).toMatch(/setSelectedVoicemail/);
     expect(onSelect).toMatch(/if \(vm && !vm\.read\) setVoicemailRead\(vm, true\)/);
+    expect(page.match(/onSelect=\{openVoicemailRow\}/g)?.length).toBe(2);
   });
 
   it("⚠️ a call that auto-opens one marks it heard ONCE, not on every render", () => {
@@ -80,7 +83,8 @@ describe("a call that left a voicemail opens it above the thread", () => {
     // `voicemailForCall` joins on the call's start time and its voicemail
     // verdict; a phone string carries neither.
     expect(panel).toMatch(/onSelectCall\(\{ phone: r\.phone, at: r\.at, voicemail: r\.voicemail \}\)/);
-    expect(page).toMatch(/onSelectCall=\{\(call\) => \{/);
+    expect(page).toMatch(/const openCallRow = \(call: PickedCall\) => \{\s*setDirectPerson\(""\);\s*setSelectedCall\(call\);/);
+    expect(page.match(/onSelectCall=\{openCallRow\}/g)?.length).toBe(2);
   });
 
   it("the detail pane stacks the message over the thread", () => {

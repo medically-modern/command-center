@@ -44,6 +44,7 @@ import {
   Printer,
   Search,
   User,
+  Voicemail,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -97,18 +98,21 @@ import type { StickyResolution } from "@/components/commsInbox/ResolveBar";
 import {
   flushCommsOutbox,
   invalidateInbox,
+  reportDial,
   useCommsConfig,
   useInboxBadge,
   useInboxItem,
   useInboxList,
+  useItemKeyForNumber,
 } from "@/hooks/commsInbox/useInbox";
-import { reportDialed, type InboxQuery } from "@/lib/commsInbox/api";
-import { isUnmatchedKey, type InboxRow } from "@/lib/commsInbox/rules";
+import type { InboxQuery } from "@/lib/commsInbox/api";
+import { isUnmatchedKey, type InboxItem, type InboxRow } from "@/lib/commsInbox/rules";
 import { defaultNumber, fillNumbers } from "@/lib/commsInbox/timeline";
 import { contactsFor } from "@/lib/patient/contacts";
+import type { CallLogFilter, TextLogFilter } from "@/lib/commsHub/logFilters";
 import { cn } from "@/lib/utils";
 
-type HubTab = "inbox" | "phone" | "text" | "fax";
+type HubTab = "inbox" | "phone" | "text" | "fax" | "calls" | "vms";
 
 const TABS: { id: HubTab; label: string; Icon: typeof Phone }[] = [
   { id: "phone", label: "Phone", Icon: Phone },
@@ -116,8 +120,22 @@ const TABS: { id: HubTab; label: string; Icon: typeof Phone }[] = [
   { id: "fax", label: "Fax", Icon: Printer },
 ];
 
-/** The Inbox rail — first, and only when the gateway has switched it on. */
-const INBOX_TAB: { id: HubTab; label: string; Icon: typeof Phone } = { id: "inbox", label: "Inbox", Icon: Inbox };
+/**
+ * The rails once the gateway switches the Inbox on — the mockup's order
+ * (COMMS_INBOX_PLAN.md §1.2): **Inbox · Fax · Texts · Calls · VMs**. Phone
+ * splits into its two logs, and every log row opens the same item detail as the
+ * Inbox. Off, the rail is `TABS` exactly as it was.
+ */
+const INBOX_TABS: { id: HubTab; label: string; Icon: typeof Phone }[] = [
+  { id: "inbox", label: "Inbox", Icon: Inbox },
+  { id: "fax", label: "Fax", Icon: Printer },
+  { id: "text", label: "Texts", Icon: MessageSquare },
+  { id: "calls", label: "Calls", Icon: Phone },
+  { id: "vms", label: "VMs", Icon: Voicemail },
+];
+
+/** A log rail — its rows open the item for their number once the Inbox is on. */
+const isLogTab = (t: HubTab) => t === "text" || t === "calls" || t === "vms";
 
 const INBOX_SEARCH_DEBOUNCE_MS = 300;
 
@@ -162,10 +180,6 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
     tabPicked.current = true;
     setTabState(t);
   }, []);
-  useEffect(() => {
-    if (inboxOn && !tabPicked.current) setTabState("inbox");
-    if (!inboxOn) setTabState((t) => (t === "inbox" ? "text" : t));
-  }, [inboxOn]);
   const [dialInput, setDialInput] = useState("");
   const [ringSettings, setRingSettings] = useState(false);
 
@@ -203,6 +217,34 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   const [phoneMode, setPhoneMode] = useState<PhoneMode>("calls");
   const [phoneQuery, setPhoneQuery] = useState("");
   const [missedOnly, setMissedOnly] = useState(false);
+  /** The logs' own filters once the Inbox is on (Josh's D4) — kept apart from
+   *  the Unread / Missed flags, which the switched-off hub still uses. */
+  const [textLog, setTextLog] = useState<TextLogFilter>("all");
+  const [callLog, setCallLog] = useState<CallLogFilter>("all");
+
+  /**
+   * The rail follows the switch. On: the Inbox is the default (unless the rep
+   * already chose a rail), and a rep on Phone lands on the log it was showing.
+   * Off: the Inbox and the two split logs fold back into Text and Phone.
+   * Read through refs, so the switch — not every click — is what runs this.
+   */
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const phoneModeRef = useRef(phoneMode);
+  phoneModeRef.current = phoneMode;
+  useEffect(() => {
+    const t = tabRef.current;
+    if (inboxOn) {
+      if (!tabPicked.current) setTabState("inbox");
+      else if (t === "phone") setTabState(phoneModeRef.current === "voicemail" ? "vms" : "calls");
+      return;
+    }
+    if (t === "inbox") setTabState("text");
+    else if (t === "calls" || t === "vms") {
+      setPhoneMode(t === "vms" ? "voicemail" : "calls");
+      setTabState("phone");
+    }
+  }, [inboxOn]);
   /**
    * The call row a rep picked, not just its number: `voicemailForCall` joins on
    * the call's own start time and on whether the log says it reached voicemail
@@ -259,10 +301,10 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
    */
   const dialNumber = useCallback(
     (phone: string) => {
-      if (commsConfig.enabled) reportDialed(phone);
+      reportDial(phone);
       return dial(phone);
     },
-    [commsConfig.enabled, dial],
+    [dial],
   );
 
   /* ── The Inbox (COMMS_INBOX_PLAN.md §1–§6) ────────────────────────────── */
@@ -284,10 +326,26 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   /** A patient found for an UNMATCHED item, before anything is written. */
   const [inboxFindPick, setInboxFindPick] = useState<DossierPick | null>(null);
   const [refreshSeq, setRefreshSeq] = useState(0);
+
+  /**
+   * The number a LOG rail's selection points at — a conversation, a call, a
+   * voicemail. Once the Inbox is on, that row opens the item the number files
+   * under (plan §1.2: *"Any log row opens the same item detail as the Inbox"*).
+   */
+  const logPhone = useMemo(() => {
+    if (tab === "text") return selectedConv?.phone || directNumber || "";
+    if (tab === "calls") return selectedCallPhone;
+    if (tab === "vms") return selectedVoicemail?.fromNumber || "";
+    return "";
+  }, [tab, selectedConv, directNumber, selectedCallPhone, selectedVoicemail]);
+  const logRail = inboxOn && isLogTab(tab);
+  const logItemKey = useItemKeyForNumber(logRail ? logPhone : "");
+  /** The item on screen, whichever rail opened it. */
+  const openKey = tab === "inbox" ? (inboxOn ? selectedKey : null) : logRail ? logItemKey.key : null;
   useEffect(() => {
     setActiveHmac("");
     setInboxFindPick(null);
-  }, [selectedKey]);
+  }, [openKey]);
 
   /**
    * The item just resolved. It stays in the list, greyed with its ✓, until the
@@ -313,10 +371,12 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
     },
     [releaseSticky],
   );
-  // Leaving the Inbox rail moves on too.
+  // Moving on releases it wherever it happens: another item in any rail, or a
+  // rail with nothing open. Re-opening the SAME item — from a log row, say —
+  // keeps its Undo.
   useEffect(() => {
-    if (tab !== "inbox") releaseSticky();
-  }, [tab, releaseSticky]);
+    if (stickyRef.current && stickyRef.current.key !== openKey) releaseSticky();
+  }, [openKey, releaseSticky]);
   // Opening Communications catches up anything a closed tab left uncopied, and
   // leaving the page copies whatever this one still holds.
   useEffect(() => {
@@ -330,7 +390,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   const inboxActiveTab = inboxOn && tab === "inbox";
   const inboxList = useInboxList({ ...inboxQuery, q: inboxQ, sticky: sticky?.key ?? "" }, inboxActiveTab);
   const inboxBadge = useInboxBadge(inboxOn);
-  const inboxItem = useInboxItem(inboxActiveTab ? selectedKey : null);
+  const inboxItem = useInboxItem(openKey);
   const item = inboxItem.item;
   const reloadItem = inboxItem.reload;
 
@@ -382,8 +442,10 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
 
   // Only the OPEN tab polls RingCentral.
   const texts = useTextInbox(tab === "text");
-  const calls = useCallLog(tab === "phone");
-  const voicemails = useVoicemails(tab === "phone");
+  const calls = useCallLog(tab === "phone" || tab === "calls");
+  // The Calls rail reads voicemail too: a call that left one marks it heard
+  // when opened, exactly as on the Phone tab (§5.28).
+  const voicemails = useVoicemails(tab === "phone" || tab === "calls" || tab === "vms");
   const faxes = useFaxList(tab === "fax");
   // ⚠️ Loaded only while a Sent/Failed view is chosen — the default view is
   // inbound, and this would otherwise be requests nobody asked for.
@@ -406,12 +468,12 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
    */
   const visibleKeys = useMemo(() => {
     if (tab === "text") return conversations.map((c) => c.key);
-    if (tab === "phone") {
+    if (tab === "phone" || tab === "calls" || tab === "vms") {
       return [
-        ...(calls.data ?? []).map((r) =>
+        ...(tab === "vms" ? [] : calls.data ?? []).map((r) =>
           contactKey((String(r.direction) === "Outbound" ? r.to : r.from)?.phoneNumber),
         ),
-        ...(voicemails.data ?? []).map((v) => contactKey(v.fromNumber)),
+        ...(tab === "calls" ? [] : voicemails.data ?? []).map((v) => contactKey(v.fromNumber)),
       ];
     }
     return [];
@@ -446,10 +508,10 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   /** The one number the dossier pane follows, whichever tab is open. */
   const selectedPhone = useMemo(() => {
     if (tab === "inbox") return inboxLookupNumber?.e164 || "";
-    if (tab === "text") return selectedConv?.phone || directNumber || "";
+    if (isLogTab(tab)) return logPhone;
     if (tab === "phone") return phoneMode === "voicemail" ? selectedVoicemail?.fromNumber || "" : selectedCallPhone;
     return "";
-  }, [tab, inboxLookupNumber, selectedConv, directNumber, phoneMode, selectedVoicemail, selectedCallPhone]);
+  }, [tab, inboxLookupNumber, logPhone, phoneMode, selectedVoicemail, selectedCallPhone]);
 
   /**
    * A patient the rep found through the profile pane's own search, because the
@@ -474,18 +536,31 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
    * considering.
    */
   const inboxCandidates = useMemo(() => {
+    if (!item) return [];
+    // A log row's own number IS this item's — it is how the item was found —
+    // so it fills in even for an unmatched one.
+    const phones = logRail && logPhone ? [logPhone] : [];
     const d = dossier.dossier;
-    if (tab !== "inbox" || !d || !item || isUnmatchedKey(item.key)) return [];
-    const phones = d.items.map((i) => i.phone).filter(Boolean);
-    const alt = contactsFor(d.items, d.active?.itemId)?.alternatePhoneRaw;
-    if (alt) phones.push(alt);
+    if ((tab === "inbox" || logRail) && d && !isUnmatchedKey(item.key)) {
+      phones.push(...d.items.map((i) => i.phone).filter(Boolean));
+      const alt = contactsFor(d.items, d.active?.itemId)?.alternatePhoneRaw;
+      if (alt) phones.push(alt);
+    }
     return phones;
-  }, [tab, dossier.dossier, item]);
+  }, [tab, logRail, logPhone, dossier.dossier, item]);
   const inboxNumbers = useMemo(() => (item ? fillNumbers(item.numbers, inboxCandidates) : []), [item, inboxCandidates]);
   const inboxActive = useMemo(() => {
     if (!item) return null;
-    return inboxNumbers.find((n) => n.hmac === activeHmac && !!n.e164) ?? defaultNumber(inboxNumbers, item.timeline);
-  }, [item, inboxNumbers, activeHmac]);
+    const chosen = inboxNumbers.find((n) => n.hmac === activeHmac && !!n.e164);
+    if (chosen) return chosen;
+    // Opened from a log row: reply on the number the rep clicked — a caregiver's
+    // alternate line is not the patient's primary.
+    if (logRail && logPhone) {
+      const clicked = inboxNumbers.find((n) => !!n.e164 && contactKey(n.e164) === contactKey(logPhone));
+      if (clicked) return clicked;
+    }
+    return defaultNumber(inboxNumbers, item.timeline);
+  }, [item, inboxNumbers, activeHmac, logRail, logPhone]);
   /**
    * Can Text for the inbox composer. ⚠️ It is the PRIMARY line's answer
    * (§5.31d) — it says nothing about the patient's other number, so it applies
@@ -770,6 +845,23 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
     setVoicemailRead(v, true);
   }, [callVoicemail, setVoicemailRead]);
 
+  /** A voicemail row — on the Phone tab and on the VMs log alike. */
+  const openVoicemailRow = (phone: string) => {
+    setDirectPerson("");
+    const vm = voicemailList.find((v) => contactKey(v.fromNumber) === contactKey(phone));
+    setSelectedVoicemail(vm ?? null);
+    // Opening it IS hearing it (Josh, 2026-09-15) — the same contract the fax
+    // list has. Only on a real click, so a right-click → unread on the row a rep
+    // is already looking at stays unread until they open it again.
+    if (vm && !vm.read) setVoicemailRead(vm, true);
+  };
+
+  /** A call row — on the Phone tab and on the Calls log alike. */
+  const openCallRow = (call: PickedCall) => {
+    setDirectPerson("");
+    setSelectedCall(call);
+  };
+
   /** Selecting a fax joins its number to a provider and their patients. Bound
    *  to the fax that was open when the lookup started, so clicking down the
    *  list can't paint one office's patients under another's header. */
@@ -878,6 +970,55 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
     }
   }, []);
 
+  /**
+   * The item detail, whichever rail opened it — ONE rendering, so the Inbox and
+   * a log row can never show the same item two ways.
+   */
+  const itemTimeline = (it: InboxItem) => (
+    <ItemTimeline
+      key={it.key}
+      item={it}
+      numbers={inboxNumbers}
+      active={inboxActive}
+      onActive={setActiveHmac}
+      onCall={(phone) => void dialNumber(phone)}
+      calling={!!inboxActive?.e164 && activeCall?.phone === inboxActive.e164}
+      mondayItemId={inboxMondayItemId}
+      canText={inboxCanText}
+      sticky={sticky}
+      onResolved={(r, note) => {
+        setSticky({ ...r, key: it.key, note });
+        invalidateInbox();
+        reloadItem();
+      }}
+      onUndone={() => {
+        stickyRef.current = null;
+        setSticky(null);
+        inboxChanged();
+      }}
+      onChanged={inboxChanged}
+      refreshSeq={refreshSeq}
+    />
+  );
+
+  /** What a log row showed before the Inbox existed — the fallback when the
+   *  Inbox can't be read, so a log never dead-ends. */
+  const legacyLogDetail = () =>
+    tab === "vms" ? (
+      selectedVoicemail ? <VoicemailDetail voicemail={selectedVoicemail} /> : null
+    ) : (
+      <>
+        {tab === "calls" && callVoicemail && <VoicemailDetail voicemail={callVoicemail} fill={false} />}
+        <ConversationThread
+          key={logPhone}
+          phone={logPhone}
+          patient={threadPatient}
+          onCall={() => void dialNumber(logPhone)}
+          calling={activeCall?.phone === logPhone}
+        />
+      </>
+    );
+
   return (
     <div className={cn(
       "flex flex-col",
@@ -947,18 +1088,23 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
       <div className="flex min-h-0 flex-1">
         {/* ── Tab rail ──────────────────────────────────────── */}
         <nav className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-border bg-card py-3">
-          {(inboxOn ? [INBOX_TAB, ...TABS] : TABS).map(({ id, label, Icon }) => {
+          {(inboxOn ? INBOX_TABS : TABS).map(({ id, label, Icon }) => {
             const active = tab === id;
             const badge =
               id === "inbox"
                 ? // The unresolved count, from the same gateway snapshot as the
                   // list's tabs and the header badge — never an unread count.
                   inboxBadge?.open ?? 0
-                : id === "text"
-                ? conversations.filter((c) => c.unread > 0).length
                 : id === "fax"
                   ? faxList.filter((f) => !f.read).length
-                  : voicemailList.filter((v) => !v.read).length;
+                  : // ⚠️ With the Inbox on, the logs carry no count: Unresolved
+                    // is the one "needs attention" number (Josh's D4). Fax keeps
+                    // its unread — a fax never opens an item.
+                    inboxOn
+                    ? 0
+                    : id === "text"
+                      ? conversations.filter((c) => c.unread > 0).length
+                      : voicemailList.filter((v) => !v.read).length;
             return (
               <button
                 key={id}
@@ -1039,6 +1185,8 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                 names={directoryNames}
                 naming={namingProgress}
                 onCompose={() => setComposing(true)}
+                logFilter={inboxOn ? textLog : undefined}
+                onLogFilter={inboxOn ? setTextLog : undefined}
               />
               {/* Reaching someone must never depend on them having texted
                   first, so a typed number and any name match are offered
@@ -1106,20 +1254,43 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                     ? contactKey(selectedCallPhone)
                     : null
               }
-              onSelect={(phone) => {
-                setDirectPerson("");
-                const vm = voicemailList.find((v) => contactKey(v.fromNumber) === contactKey(phone));
-                setSelectedVoicemail(vm ?? null);
-                // Opening it IS hearing it (Josh, 2026-09-15) — the same
-                // contract the fax list has. Only on a real click, so a
-                // right-click → unread on the row a rep is already looking at
-                // stays unread until they open it again.
-                if (vm && !vm.read) setVoicemailRead(vm, true);
-              }}
-              onSelectCall={(call) => {
-                setDirectPerson("");
-                setSelectedCall(call);
-              }}
+              onSelect={openVoicemailRow}
+              onSelectCall={openCallRow}
+              onSetVoicemailRead={setVoicemailRead}
+              query={phoneQuery}
+              onQuery={setPhoneQuery}
+              missedOnly={missedOnly}
+              onMissedOnly={setMissedOnly}
+              names={directoryNames}
+              naming={namingProgress}
+            />
+          )}
+
+          {/* The Calls and VMs LOGS, once the Inbox is on — Phone's two halves
+              as their own rails, with the log filters (Josh's D4). Same panel,
+              same rows, same downloads and heard/unheard; a row opens the
+              item. */}
+          {(tab === "calls" || tab === "vms") && (
+            <PhonePanel
+              mode={tab === "calls" ? "calls" : "voicemail"}
+              onMode={() => {}}
+              log={{ callFilter: callLog, onCallFilter: setCallLog }}
+              calls={calls.data}
+              voicemails={voicemailList}
+              loading={tab === "calls" ? calls.loading : voicemails.loading}
+              error={tab === "calls" ? calls.error : voicemails.error}
+              onReload={tab === "calls" ? calls.reload : voicemails.reload}
+              selectedKey={
+                tab === "vms"
+                  ? selectedVoicemail
+                    ? contactKey(selectedVoicemail.fromNumber)
+                    : null
+                  : selectedCallPhone
+                    ? contactKey(selectedCallPhone)
+                    : null
+              }
+              onSelect={openVoicemailRow}
+              onSelectCall={openCallRow}
               onSetVoicemailRead={setVoicemailRead}
               query={phoneQuery}
               onQuery={setPhoneQuery}
@@ -1173,33 +1344,48 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                 </div>
               )
             ) : (
-              <ItemTimeline
-                key={item.key}
-                item={item}
-                numbers={inboxNumbers}
-                active={inboxActive}
-                onActive={setActiveHmac}
-                onCall={(phone) => void dialNumber(phone)}
-                calling={!!inboxActive?.e164 && activeCall?.phone === inboxActive.e164}
-                mondayItemId={inboxMondayItemId}
-                canText={inboxCanText}
-                sticky={sticky}
-                onResolved={(r, note) => {
-                  setSticky({ ...r, key: item.key, note });
-                  invalidateInbox();
-                  reloadItem();
-                }}
-                onUndone={() => {
-                  stickyRef.current = null;
-                  setSticky(null);
-                  inboxChanged();
-                }}
-                onChanged={inboxChanged}
-                refreshSeq={refreshSeq}
+              itemTimeline(item)
+            ))}
+
+          {/* A LOG rail with the Inbox on: the row opens its number's item —
+              the same timeline, composer and resolve bar as the Inbox. If the
+              Inbox can't be read, the rep still gets the thread they clicked,
+              exactly as before the Inbox existed: a log must never dead-end. */}
+          {logRail &&
+            (!logPhone ? (
+              <HubIdle
+                title={tab === "calls" ? "Calls" : tab === "vms" ? "Voicemails" : "Texts"}
+                hint={
+                  tab === "calls"
+                    ? "Every call, inbound and outbound. Pick one to see the whole conversation with that person."
+                    : tab === "vms"
+                      ? "Pick a message to hear it with the whole conversation around it."
+                      : "Pick a conversation to see the whole thread — texts, calls and voicemails together."
+                }
               />
+            ) : inboxItem.moved ? (
+              <ItemMoved moved={inboxItem.moved} onOpen={() => logItemKey.reload()} />
+            ) : logItemKey.error || inboxItem.error ? (
+              <>
+                <div className="shrink-0 border-b border-amber-300/60 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                  The Inbox couldn&apos;t open this, so here is the thread on its own.{" "}
+                  <span className="opacity-75">{logItemKey.error || inboxItem.error}</span>{" "}
+                  <button onClick={() => (logItemKey.error ? logItemKey.reload() : reloadItem())} className="underline">
+                    Try again
+                  </button>
+                </div>
+                {legacyLogDetail()}
+              </>
+            ) : !item ? (
+              <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Opening…
+              </div>
+            ) : (
+              itemTimeline(item)
             ))}
 
           {tab === "text" &&
+            !logRail &&
             (selectedPhone ? (
               <ConversationThread
                 key={selectedPhone}
@@ -1316,20 +1502,37 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
               </p>
             </div>
           ) : (
-            <PatientDossierPanel
-              dossier={dossier.dossier}
-              people={dossier.people}
-              selected={dossier.selected}
-              onSelectPerson={dossier.selectPerson}
-              loading={dossier.loading}
-              error={dossier.error}
-              phone={selectedPhone || null}
-              picked={dossierPick}
-              onClearPick={() => setDossierPick(null)}
-              onPick={(row) =>
-                setDossierPick({ itemId: row.id, boardId: row.boardId, name: row.name, phone: row.phone })
-              }
-            />
+            <>
+              {/* A log row for a number on no board, once the rep has found who
+                  it is through the pane's own search: the same three ways out as
+                  the Inbox's (plan §6). Nothing is written until a button is
+                  pressed; without the Inbox this card never appears and the
+                  search stays find-without-writing, as it always was (§5.28). */}
+              {logRail && item && isUnmatchedKey(item.key) && dossierPick && dossier.dossier && inboxActive?.e164 && (
+                <AddNumberCard
+                  key={`${item.key}:${dossierPick.itemId}`}
+                  itemKey={item.key}
+                  number={inboxActive.e164}
+                  dossier={dossier.dossier}
+                  onLinked={() => logItemKey.reload()}
+                  onPickAgain={() => setDossierPick(null)}
+                />
+              )}
+              <PatientDossierPanel
+                dossier={dossier.dossier}
+                people={dossier.people}
+                selected={dossier.selected}
+                onSelectPerson={dossier.selectPerson}
+                loading={dossier.loading}
+                error={dossier.error}
+                phone={selectedPhone || null}
+                picked={dossierPick}
+                onClearPick={() => setDossierPick(null)}
+                onPick={(row) =>
+                  setDossierPick({ itemId: row.id, boardId: row.boardId, name: row.name, phone: row.phone })
+                }
+              />
+            </>
           )}
         </aside>
       </div>
