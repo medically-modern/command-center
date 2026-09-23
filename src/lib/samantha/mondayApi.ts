@@ -397,7 +397,10 @@ export const AUTH_READ_COLUMN_IDS = [
   COL.claimsStatus,
 ];
 
-const AUTH_GROUP_IDS = new Set([GROUPS.submitAuth, GROUPS.authOutstanding]);
+// Typed `Set<string>` on purpose: `groupId` arrives as a plain string, and a
+// Set inferred from the two literals refuses `.has(string)` at compile time
+// while accepting it perfectly at runtime.
+const AUTH_GROUP_IDS = new Set<string>([GROUPS.submitAuth, GROUPS.authOutstanding]);
 
 export interface MondayColumnValue {
   id: string;

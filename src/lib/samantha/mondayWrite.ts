@@ -380,8 +380,12 @@ export async function sendPatientToMonday(
           fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.required),
         });
       }
-    } else if (state.auth === "not-required" && context !== "submitAuth" && context !== "authOutstanding") {
-      // Skip when in submit-auth flow — leave non-auth-required results untouched
+    } else if (state.auth === "not-required" && context !== "submitAuth") {
+      // Skip when in submit-auth flow — leave non-auth-required results
+      // untouched. ⚠️ authOutstanding is excluded too, by the `context !==
+      // "authOutstanding"` guard this whole block sits inside — restating it
+      // here was dead code. If that outer guard ever stops excluding it, this
+      // branch needs its own check back.
       tasks.push({
         label: `Auth result: ${productId}`,
         columnId: authColumnId,

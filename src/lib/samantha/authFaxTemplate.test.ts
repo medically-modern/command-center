@@ -3,13 +3,16 @@ import { buildAuthFaxSubject, buildAuthFaxBody, titleCase } from "./authFaxTempl
 import type { Patient } from "./workflow";
 import type { ResolvedProduct } from "./hcpcRules";
 
+// A deliberately partial fixture — the fax template reads only these five
+// fields. Double cast because `Patient` has fourteen more required properties
+// that this test has no opinion about.
 const patient = {
   id: "1",
   name: "marcus feldman",
   dob: "07/22/1985",
   primaryInsurance: "Aetna",
   memberId1: "W123456789",
-} as Patient;
+} as unknown as Patient;
 
 const products = [
   { product: "insulin_pump", hcpc: "E0784" },

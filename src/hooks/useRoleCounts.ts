@@ -242,11 +242,17 @@ async function fetchBoardGroupIds(boardId: number, groupId: string): Promise<str
  * Used where counting needs a couple of column values (stage / escalation /
  * follow-up) — a fraction of the payload of the full-column fetchers.
  */
-interface LightItem {
+/** Ids plus the TEXT of the named columns. What a fetcher that asks for
+ *  `{ id text }` can honestly produce. */
+interface TextOnlyItem {
   id: string;
   cols: Record<string, string>;
+}
+
+interface LightItem extends TextOnlyItem {
   /** Raw `value` JSON per column id — for index-based status matching
-   *  (a status label can be renamed on the board; its index can't). */
+   *  (a status label can be renamed on the board; its index can't).
+   *  Only a fetcher that asks for `value` may claim this. */
   vals: Record<string, string>;
 }
 
@@ -322,19 +328,27 @@ async function fetchBoardGroupItemsLight(
 
 /** Board-wide light fetch by Stage Advancer INDEX — the DVS stage has no
  *  dedicated group, so its items are found by the status value alone.
- *  Mirrors both baseline generators (§5.8 counting contract). */
+ *  Mirrors both baseline generators (§5.8 counting contract).
+ *
+ *  ⚠️ Returns `TextOnlyItem`, NOT `LightItem`: this query asks for
+ *  `{ id text }` and deliberately not `value`, so there is no `vals` to build.
+ *  Its one caller is the DVS count, which is escalation-free by design (see
+ *  the `need("dvs")` block) and reads `cols` only. The narrower return type is
+ *  what stops a future caller handing these items to `isWcEscalated` /
+ *  `isMeshEscalated`, which would read `vals[...]` off `undefined` and throw.
+ *  Widen the query before you widen this type. */
 async function fetchBoardStageItemsLight(
   boardId: number,
   stageColId: string,
   stageIndex: number,
   columnIds: string[],
-): Promise<LightItem[]> {
+): Promise<TextOnlyItem[]> {
   const PAGE = 500;
   const token = getMondayToken();
   if (!token) return [];
   const itemFields = `id column_values(ids: $cols) { id text }`;
 
-  const toLight = (items: any[]): LightItem[] =>
+  const toLight = (items: any[]): TextOnlyItem[] =>
     items.map((i: any) => ({
       id: String(i.id),
       cols: Object.fromEntries(

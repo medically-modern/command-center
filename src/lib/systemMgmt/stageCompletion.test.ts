@@ -129,10 +129,8 @@ describe("completedStageUrl", () => {
   it("opens the completed ITEM in review mode, with Back still pointing home", () => {
     expect(
       completedStageUrl({
-        label: "MN",
         itemId: "111",
         boardId: MASHEKE,
-        boardName: "Medical Evaluation",
         route: "/evaluate",
       }),
     ).toBe("/evaluate?patientId=111&completedStage=18406060017&from=system-mgmt");
@@ -156,7 +154,7 @@ function patient(over: Partial<SystemPatient>): SystemPatient {
   return {
     id: "1", name: "Jane Doe", phone: "", dob: "", boardId: MASHEKE, boardName: "Medical Evaluation",
     groupId: MASHEKE_DONE, groupTitle: "Completed", roleRoute: "", pipelineStage: "Completed",
-    escalated: false, escalationText: "", escalationNotes: "", hasPage: false, isCompleted: true,
+    escalated: false, escalationText: "", escalationLevel: null, escalationNotes: "", hasPage: false, isCompleted: true,
     daysSinceStage: "", notes: "", stageAdvancerText: "Completed", nextActionDate: "",
     ...over,
   };

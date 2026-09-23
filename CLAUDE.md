@@ -10187,9 +10187,38 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   every writer — it cannot tell you the board, the column or the actor, and the message alone
   invites you to blame the nearest recent change. `error_data` in the failed rows names
   `column_id`, `column_name`, `column_type` and the exact value sent.
-- **CI's typecheck is a NO-OP.** `deploy.yml` runs `npx tsc --noEmit`, but the root tsconfig
-  is solution-style (`"files": []` + project references), which `--noEmit` does not follow —
-  it checks zero files and always exits 0. 23 real TS errors sit in the tree. Use `tsc -b`.
+- ✅ **CI's typecheck was a NO-OP until 2026-09-23 — now fixed, and the tree is at zero
+  errors.** `deploy.yml` ran `npx tsc --noEmit` against the solution-style root tsconfig
+  (`"files": []` + project references), which `--noEmit` does not follow: it loaded **zero**
+  files under `src/` and exited 0 for every commit up to that date. Measured, not inferred —
+  `npx tsc --noEmit --listFiles | grep -c /src/` returned `0`, and a file assigning a string
+  to a `number` passed it. The gate is **`npx tsc -b --force`** now (~26s cold; `--force` so a
+  cached `.tsbuildinfo` can never satisfy it), and the 14 errors that had accumulated behind
+  the no-op are fixed. ⚠️ **Never put `--noEmit` back** — it silently checks nothing.
+  ⚠️ **This gate is load-bearing, not hygiene.** At least two safety rules in this codebase
+  are deliberately enforced BY the type system and by nothing else: `SupplyLengthField`'s
+  required `options` prop (§5.31 — *"the guarantee moved into the type system where it cannot
+  rot"*) and `sosEntryComplete`'s required `sosDespiteAuth` argument (§5.32c — *"Making tsc
+  name every call site"*). Both were unenforced in CI for as long as the no-op stood. Verified
+  2026-09-23 by dropping that argument at one call site: the old command exited **0** and all
+  228 Insurance tests **passed**, while `tsc -b` caught it — the regression would have shipped
+  a Humana card reading **"◷ Auth required"** with Send greyed out and no stated reason, the
+  dead end §5.10 · §5.20 · §5.31c · §5.31f · §5.39d each record reversing.
+  ⚠️ It catches **signature and shape drift only** — a changed argument list, a renamed field,
+  a missing import. It would NOT have caught §5.31c's two-files-each-fine pair, §5.30f's
+  `protected_static` URL, §5.46's full label column or §5.31g's unwritten columns. The scan
+  tests remain the net for semantic drift.
+- **`strictNullChecks` is OFF** (`tsconfig.app.json`: `strict: false`), and it costs more than
+  it looks. Discriminated-union narrowing **requires** it, so `if (!r.ok) throw new
+  Error(r.reason)` cannot narrow to the error arm — six OOP estimator tests carry an explicit
+  `as OopEstimateError` cast for exactly that reason, marked to be dropped when it is turned
+  on. Measured 2026-09-23: enabling it costs **~15 errors**, of which two are false positives
+  (a defaults-first spread TS can't see as sparse; a `throw` guard it won't carry into a
+  closure), one is dead code (`PatientsSidebar`'s tab block — no caller passes
+  `showGroupTabs`), and the two worth a real look are `url: string | undefined` on file
+  attachments in `EvaluatePanel:1783` / `SendRequestPanel:214`. ⚠️ Worth weighing against the
+  fact that this codebase's most-repeated failure mode is a value reading blank with nothing
+  erroring — which is the class `strictNullChecks` exists to catch.
 - `README.md` points here; keep this file current as the architecture moves.
 
 ---

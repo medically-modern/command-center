@@ -1820,7 +1820,7 @@ function FileUploadCard({
     if (onAddRaw) onAddRaw(Array.from(fileList));
   };
 
-  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+  const onDrop = (e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     setIsDragOver(false);
     handleFiles(e.dataTransfer.files);

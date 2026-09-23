@@ -7,7 +7,11 @@
  * Subscription color_mm25cr82); the estimators zero OOP for anything but "None".
  */
 import { describe, it, expect } from "vitest";
-import { estimateOop } from "./oopEstimator";
+// ⚠️ `OopEstimateError` is imported for the cast below: the project compiles
+// with `strictNullChecks` off, and discriminated-union narrowing needs it, so
+// `if (!r.ok)` cannot narrow `r` to the error arm INSIDE the guard (it does
+// narrow after it). Drop the cast if strictNullChecks is ever turned on.
+import { estimateOop, type OopEstimateError } from "./oopEstimator";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 
 const NY_MEDICAID_SECONDARY_WITH_REAL_COSTS = {
@@ -25,7 +29,7 @@ describe("secondary NY Medicaid → $0 OOP", () => {
       ...NY_MEDICAID_SECONDARY_WITH_REAL_COSTS,
       primaryInsurance: "Cigna", // non-zero payer — only the secondary zeroes it
     });
-    if (!r.ok) throw new Error(r.reason);
+    if (!r.ok) throw new Error((r as OopEstimateError).reason);
     expect(r.patientOwes).toBe(0);
     expect(r.insurancePays).toBe(r.totalAllowed);
     expect(r.medicaidCovers).toBe(true);
@@ -35,7 +39,7 @@ describe("secondary NY Medicaid → $0 OOP", () => {
 
   it("welcome-call estimator: $0 with Medicare A&B primary (dual-eligible)", () => {
     const r = estimateOop(NY_MEDICAID_SECONDARY_WITH_REAL_COSTS);
-    if (!r.ok) throw new Error(r.reason);
+    if (!r.ok) throw new Error((r as OopEstimateError).reason);
     expect(r.patientOwes).toBe(0);
   });
 
@@ -54,7 +58,7 @@ describe("secondary NY Medicaid → $0 OOP", () => {
       primaryInsurance: "Cigna",
       secondaryInsurance: "Medicare Supplement",
     });
-    if (!r.ok) throw new Error(r.reason);
+    if (!r.ok) throw new Error((r as OopEstimateError).reason);
     expect(r.patientOwes).toBe(0);
     expect(r.medicaidCovers).toBe(true);
     expect(r.medicaidNote).toContain("Medicare Supplement");
@@ -76,7 +80,7 @@ describe("secondary NY Medicaid → $0 OOP", () => {
       primaryInsurance: "Cigna",
       secondaryInsurance: "None",
     });
-    if (!r.ok) throw new Error(r.reason);
+    if (!r.ok) throw new Error((r as OopEstimateError).reason);
     expect(r.medicaidCovers).toBe(false);
     expect(r.patientOwes).toBeGreaterThan(0);
   });

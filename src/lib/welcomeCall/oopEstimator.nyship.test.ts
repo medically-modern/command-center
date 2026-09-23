@@ -5,7 +5,11 @@
  * with the Railway financial backend.
  */
 import { describe, it, expect } from "vitest";
-import { estimateOop } from "./oopEstimator";
+// ⚠️ `OopEstimateError` is imported for the cast below: the project compiles
+// with `strictNullChecks` off, and discriminated-union narrowing needs it, so
+// `if (!r.ok)` cannot narrow `r` to the error arm INSIDE the guard (it does
+// narrow after it). Drop the cast if strictNullChecks is ever turned on.
+import { estimateOop, type OopEstimateError } from "./oopEstimator";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 
 const NYSHIP_WITH_REAL_COSTS = {
@@ -20,7 +24,7 @@ const NYSHIP_WITH_REAL_COSTS = {
 describe("NYSHIP $0 OOP", () => {
   it("welcome-call estimator forces $0 despite deductible/coinsurance", () => {
     const r = estimateOop(NYSHIP_WITH_REAL_COSTS);
-    if (!r.ok) throw new Error(r.reason);
+    if (!r.ok) throw new Error((r as OopEstimateError).reason);
     expect(r.patientOwes).toBe(0);
     expect(r.insurancePays).toBe(r.totalAllowed);
     expect(r.canCalculateCosts).toBe(true);
@@ -35,7 +39,7 @@ describe("NYSHIP $0 OOP", () => {
 
   it("a non-zero payer still computes real costs (rule didn't over-reach)", () => {
     const r = estimateOop({ ...NYSHIP_WITH_REAL_COSTS, primaryInsurance: "Cigna" });
-    if (!r.ok) throw new Error(r.reason);
+    if (!r.ok) throw new Error((r as OopEstimateError).reason);
     expect(r.patientOwes).toBeGreaterThan(0);
   });
 });

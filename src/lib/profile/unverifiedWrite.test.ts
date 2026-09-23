@@ -264,7 +264,10 @@ describe("write paths added for the mockup port", () => {
       dob: "01/02/1990",
       attemptCounter: 3,
       selfAdvocacy: "High",
-      ...({ followUp: "Follow Up", followUpDate: "2026-08-10" } as Record<string, never>),
+      // Double cast on purpose: passing these fields IS a type error, which is
+      // half the guard. The cast smuggles them past the compiler so the
+      // assertions below can prove the BUILDER drops them at runtime too.
+      ...({ followUp: "Follow Up", followUpDate: "2026-08-10" } as unknown as Record<string, never>),
     });
     const cols = columnsOf(everything);
     expect(cols).not.toContain(COL.followUp);
