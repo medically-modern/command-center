@@ -9970,6 +9970,20 @@ note is required), **Texted**, **No action needed**.
 half-built Inbox. ⚠️ **Plan §8's order is the rollout: ENABLED alone for a few business days, read
 `GET /comms/shadow-report`, THEN `COMMS_INBOX_UI=1`.**
 
+✅ **BOTH SWITCHES HAVE BEEN ON ON THE LIVE GATEWAY SINCE 2026-09-23, 7:20 PM ET** (Josh: *"turn it on
+fully so i can test"*). That skipped the shadow period above and the test call under *Not verified
+live* below. The epoch is **`2026-09-23T23:20:15.837Z`**: nothing before it opens an item, so the
+Inbox started empty.
+- ⚠️ **Only the TEST site draws it.** Prod's SPA has no Inbox code until a Sync, but the capture tick
+  and the `/comms/*` routes run on the shared gateway for both.
+- ⚠️ **The tick costs RingCentral about one HEAVY request a minute.** Every 60s it reads the
+  message store and the call log on the `background` tier. RingCentral's own `X-Rate-Limit-Group`
+  header reports the call log as **heavy**, the tightest group, which it shares with call-recording
+  downloads.
+- **Off switches:** any value other than `1` is off. `COMMS_INBOX_UI=0` brings the old screens back
+  and leaves the tick running; `COMMS_INBOX_ENABLED=0` turns everything off. Either change
+  redeploys the gateway.
+
 **The gateway** — `services/monday-gateway/commsInbox.mjs` + `commsInboxRules.mjs` (pure, tested),
 registered from `messaging.mjs`.
 - ⚠️⚠️ **It keeps NO copy of the events.** Texts, calls, voicemails and photos are already archived on
@@ -10189,7 +10203,7 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
   among them. ⚠️ A failed read draws no numbers. Never polled. It is still NOT the handoff's Reports
   page — Katie's tracker and the pipeline numbers stay unbuilt (§5.39b, §5.46b).
 
-**Not verified live — do these before `COMMS_INBOX_UI=1`:**
+**Not verified live — skipped when the switches went on (2026-09-23), and still worth doing:**
 - Phase 1's measurement: run `COMMS_INBOX_ENABLED=1` alone for a few business days and read
   `/comms/shadow-report` — items a day by kind, how many are unmatched, replies to automated texts,
   doctor offices and vendors (plan §9.3).
@@ -11514,7 +11528,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
 | A voicemail won't stay heard / unheard, or a call doesn't open the message it left | §5.28 — read state is RingCentral's `readStatus` (`applyMessageReadOverrides`, the same rule the fax list uses); the panel must render `voicemailList`, not `voicemails.data`. A call opens its message through `lib/commsHub/callVoicemail.ts`, a number-and-time match gated on the call log saying it reached voicemail — it fails closed, so "no voicemail shown" means no match in the window, and that window is **reasoned, not measured** (no token reaches RingCentral from here). `voicemailWiring.test.ts` scans both |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
-| The Inbox rail is missing / the hub looks exactly as it always did | §5.49 — two gateway switches, both OFF by default. `GET /comms/config` answers `{enabled, ui}`; the rail needs BOTH true. While that read is pending, or after it fails, the SPA deliberately draws the OLD screens — never a half-built Inbox. A failed read is asked again when a page that uses it next opens, no sooner than a minute later — not on a timer, so a tab left open stays on the old screens until then |
+| The Inbox rail is missing / the hub looks exactly as it always did | §5.49 — two gateway switches, both OFF by default and both ON on the live gateway since 2026-09-23. **Reload the tab**: the page reads the switch once. `GET /comms/config` answers `{enabled, ui}`; the rail needs BOTH true. While that read is pending, or after it fails, the SPA deliberately draws the OLD screens — never a half-built Inbox. A failed read is asked again when a page that uses it next opens, no sooner than a minute later — not on a timer, so a tab left open stays on the old screens until then |
 | A patient texted or called and no Inbox item opened | §5.49 — `GET /comms/inbox-health` (unauthenticated) first: a stale `lastCompleteAt` means the capture tick isn't completing, and `feedsOff` names any archive whose own kill switch (`SMS_/CALL_/VOICEMAIL_ARCHIVE_ENABLED=0`) turned that feed off. By design, nothing opens for: a fax, our own numbers, a call RingCentral marks `Blocked`, a call that connected, or anything before the epoch. A missed call that left a voicemail is ONE item, not two |
 | Mark resolved is refused (409), or Called won't save | §5.49 — resolving is a compare-and-set: the 409 names who resolved it first, or says a newer message arrived after what the rep was shown (`seenThrough`), or that the item `moved` to a patient record. Reopen and look again; never retry blind. *Called* without a note is a 400 by design |
 | A resolve note isn't in the patient's Monday notes | §5.49 — it is copied when the rep MOVES ON (opens another item, leaves the patient, closes the page), by the resolver's browser only; a closed tab is caught up the next time that rep opens Communications. An Undo before then leaves nothing on Monday, by design. *Left voicemail*, a resolution with no note, and a number on no board never copy. After 3 failed tries it shows as `failedMirrors` in `/comms/inbox-health` |
