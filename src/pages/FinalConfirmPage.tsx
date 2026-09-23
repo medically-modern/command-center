@@ -60,7 +60,7 @@ const FinalConfirmPage = () => {
   /** Which Oversight column a manager clicked in from (`?mv=`) — resolves the
    *  action bar and, from Final Decisions, the sidebar's proposed-stuck list. */
   const managerOrigin = managerOriginFromParams(searchParams);
-  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay, addPatient } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay, addPatient } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -130,32 +130,21 @@ const FinalConfirmPage = () => {
     refetch();
   };
 
+  /**
+   * Reset = "discard my local edits and show me what Monday holds". It writes
+   * NOTHING into the overlay.
+   *
+   * ⚠️ It used to `update()` an overlay patch of blanks after `clearOverlay` —
+   * the five Last Bill dates among them. The overlay is merged back over the
+   * board on every refetch, so those blanks outlived the "refetching from
+   * Monday" toast, and the send writes all five "<product> SoS Last Bill"
+   * columns unconditionally (a blank clears): Reset + Send erased every Last
+   * Bill date on the patient, which §5.32e forbids outright. `discardEdits`
+   * restores the board's own copy instead (`resetDiscardsEdits.test.ts`).
+   */
   const resetForNewPatient = () => {
     if (!selected) return;
-    clearOverlay(selected.id);
-    update(selected.id, {
-      phoneEdited: null,
-      emailEdited: null,
-      addressEdited: null,
-      addressLat: null,
-      addressLng: null,
-      clinicAddressEdited: null,
-      clinicAddressLat: null,
-      clinicAddressLng: null,
-      genderIndex: null,
-      secondaryInsuranceEdited: null,
-      secondaryInsuranceIndex: null,
-      memberId2Edited: null,
-      subscriptionTypeIndex: null,
-      infusionSet1Index: null,
-      infusionSet2Index: null,
-      orderHandlingIndex: null,
-      lastBillDateMonitor: "",
-      lastBillDateSensors: "",
-      lastBillDateIp: "",
-      lastBillDateInfusionSet: "",
-      lastBillDateCartridge: "",
-    } as Partial<Patient>);
+    discardEdits(selected.id);
     toast.success("Cleared local edits — refetching from Monday");
     refetch();
   };

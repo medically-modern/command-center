@@ -10739,6 +10739,35 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   Collection reads the same key** (`fetchDetail` applies it) and saves to Monday — so opening the
   patient on `/unverified-referrals` recovers them even before this deploys. Otherwise they went
   with the tab.
+- **Reset DISCARDS the rep's edits; it never WRITES an edit of its own — every stage page calls the
+  hook's `discardEdits`** (2026-09-23, found auditing for MM-1094's class). ⚠️⚠️ **Five Reset
+  buttons were a data-loss path.** Welcome Call, Final Confirm, Benefits, Submit Auth and Auth
+  Outstanding called `clearOverlay` and then `update(id, { …blanks })` to empty the form on screen —
+  and `update` writes the OVERLAY, which every refetch merges back over the board. So the blanks
+  outlived the toast's "refetching from Monday", and the next Send wrote them: the Insurance send
+  writes Call Reference Notes whenever `p.notes` is a string, so `notes: ""` replaced the column
+  every Insurance stage shares (and Add note then appended one line onto `""` and wrote THAT over
+  it); the Final Confirm send writes all five Last Bill dates unconditionally, so Reset → Send erased
+  every one — §5.32e's *"NEVER EVER should something be deleted"* through a button labelled Reset.
+  The other six (the five masheke stages, Subscription) called `clearOverlay` alone, which drops the
+  entry but changes nothing RENDERED — `patients` holds the MERGED record — so the discarded edits
+  stayed up until a refetch landed, masheke's `resetVersion` bump re-seeded the panel FROM them, and a
+  failed refetch made them permanent.
+  `discardEdits` is the one call that does the whole job: drop the overlay, forget it in storage, and
+  put the board's own copy back on screen synchronously from **`baseRef`** — the pre-overlay copy
+  every hook now keeps (Welcome Call's device from PR #57). ⚠️ **It is deliberately NOT
+  `clearOverlay`**, which runs after a SEND: restoring the pre-send board record there would flash
+  the old values on a patient who stays in the queue and read as a save that didn't take. Welcome
+  Call is the one exception, and aliases the two, because its send always advances the patient off
+  screen. ⚠️ masheke's copy is taken AFTER the NAD backfill and escalation self-heal, which mutate the
+  rows, and reverts all three lists (`patients`, `chaseViewerPatients`, `scheduledApptPatients`) —
+  Evaluate edits chase-stage patients opened from its sidebar folder. A patient with no base entry is
+  left alone: blanking would invent data. `pages/resetDiscardsEdits.test.ts` scans every
+  `resetForNewPatient` (eleven, pinned by name) for `discardEdits(` and against `update(` /
+  `clearOverlay(`; `hooks/discardEdits.test.tsx` holds all five hooks to restoring the board value
+  while the refetch hangs, when it fails, and across a reload after Save Progress. Both were verified
+  to fail on the old code. **A Reset that needs a field "emptied" is asking for the board's value —
+  which is what `discardEdits` already shows.**
 - **Toasts are TOP-CENTRE (`App.tsx`), and both other corners are ruled out by past bugs.**
   Bottom-right is where every stage page puts its primary action, so a toast landed on the button
   the rep presses next — adding a note on Evaluate popped "Note saved to Monday" over **Completed
@@ -11041,6 +11070,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A voicemail has no transcript | §5.47b — **that is the expected reading**, not a fault: transcription is a per-account RingCentral feature and it is not established that it is on here (§5.28). `archiveHealth` reports the count so the other explanation (the fetch is broken) is visible; nothing marks a row failed for want of one. A transcript that arrives LATE is still picked up — `transcript_uri` is refreshed on every scan |
 | A bulk download stopped part-way | §5.16 — `lib/callHistory/recordingDownload.ts`. The run is paced at ~24/min against `rcLimiter`'s 40-per-caller budget and retries a throttled file once; the toast reports how many failed. Closing the tab ends it — whatever already saved is kept |
 | A rep's edits "reset" every few seconds / fields go red on their own | §9 — the page is showing a DEEP-LINKED patient that is not in its queue, and its hook re-fetches that record every poll; the injected record must go through the overlay (`hooks/deepLinkOverlay.test.ts`). Compare the URL's `?patientId=` with the page's queue first — an out-of-queue patient is the only one this can happen to. A Comms Hub chip that opens the wrong page is `dossier.stepOpenHref` |
+| Notes, Last Bill dates or an order went blank after somebody pressed Reset and then Send / Reset "didn't clear" anything | §9 — every page's Reset calls the hook's `discardEdits`, which restores the board copy (`baseRef`) on screen and writes nothing. Before 2026-09-23 five pages `update()`d blanks into the overlay and the next Send wrote them to Monday. If it recurs, `resetDiscardsEdits.test.ts` should have failed; confirm a wipe from the gateway audit (`/audit.json?key=…&item=<id>&all=1`) — a blank write is the fingerprint, and it names the rep, where the board's activity log names only the shared service account (§7) |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
 | A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Since the 2026-09-03 cutover the six live notes columns are uncapped `text`, so this now means a column still `long_text` (Request Message `long_text_mm4cnw52`, the Escalation Notes, the two Insurance call logs) — `columnType.isCappedColumn` asks the board. Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |

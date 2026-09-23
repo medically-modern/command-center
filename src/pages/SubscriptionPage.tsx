@@ -37,7 +37,7 @@ const SubscriptionPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, clearOverlay, discardEdits, saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -83,7 +83,7 @@ const SubscriptionPage = () => {
 
   const resetForNewPatient = () => {
     if (!selected) return;
-    clearOverlay(selected.id);
+    discardEdits(selected.id);
     toast.success("Cleared local edits — refetching from Monday");
     refetch();
   };

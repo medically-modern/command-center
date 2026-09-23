@@ -33,7 +33,7 @@ const SendRequestPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("sendRequest", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("sendRequest", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -65,7 +65,7 @@ const SendRequestPage = () => {
   const resetForNewPatient = () => {
     if (!selected) return;
     clearEvalState(selected.id);
-    clearOverlay(selected.id);
+    discardEdits(selected.id);
     setResetVersion((v) => v + 1);
     toast.success("Reset — pulled fresh from Monday");
     refetch();

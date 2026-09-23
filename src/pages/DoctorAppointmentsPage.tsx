@@ -60,7 +60,7 @@ const DoctorAppointmentsPage = () => {
     error,
     refetch,
     update,
-    clearOverlay,
+    discardEdits,
     scheduledApptPatients,
   } = useMondayPatients("doctorAppointments", deepLinkedId);
 
@@ -104,7 +104,7 @@ const DoctorAppointmentsPage = () => {
   const resetForNewPatient = () => {
     if (!selected) return;
     clearEvalState(selected.id);
-    clearOverlay(selected.id);
+    discardEdits(selected.id);
     toast.success("Reset — pulled fresh from Monday");
     refetch();
   };

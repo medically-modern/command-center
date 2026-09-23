@@ -229,6 +229,13 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     setPatients((prev) => prev.map((p) => (p.id === id ? base : p)));
   }, []);
 
+  /** Reset's entry point — the name every stage page's Reset calls
+   *  (`resetDiscardsEdits.test.ts`). Here it IS `clearOverlay`: this stage's
+   *  send always advances the patient off screen, so restoring the board copy
+   *  after a send is never seen, and one function serves both. The other hooks
+   *  keep the two apart, because their sends can leave a patient in the queue. */
+  const discardEdits = clearOverlay;
+
 
   const saveOverlay = useCallback((id: string) => {
     const overlay = overlayRef.current.get(id);
@@ -254,5 +261,5 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     setPatients((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
-  return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay };
+  return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay };
 }

@@ -114,6 +114,12 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
   // local-session overlay so UI edits persist without re-fetching from Monday
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
 
+  // ⚠️ The board's OWN values, before any overlay is merged in — what
+  // `discardEdits` puts back on screen. Same device as the Welcome Call hook's
+  // `baseRef` (Greptile, PR #57): deleting an overlay entry does not change what
+  // is rendered, because `patients` holds the MERGED record.
+  const baseRef = useRef<Map<string, Patient>>(new Map());
+
   const mountedRef = useRef(true);
 
   // Patients hidden optimistically because a send advanced them out of this
@@ -148,6 +154,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       const ps = safeItems
         .map(mondayItemToPatient)
         .filter((p) => p.stageAdvancerText !== "DVS");
+      for (const p of ps) baseRef.current.set(p.id, p);
       const merged = ps.map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
 
       // If a specific patient was deep-linked but isn't in this group, fetch individually.
@@ -169,6 +176,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
           const item = await fetchItemById(injectedPatientId, useAuth);
           if (item) {
             const injected = mondayItemToPatient(item);
+            baseRef.current.set(injected.id, injected);
             merged.unshift(applyOverlay(injected, overlayRef.current.get(injected.id)));
           }
         } catch { /* ignore \u2014 patient may not be on this board */ }
@@ -221,6 +229,31 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
     removeOverlay(id);
   }, []);
 
+  /**
+   * Reset: drop this patient's local edits AND put the board's values back on
+   * screen, now — what the Reset button's toast has always promised.
+   *
+   * ⚠️ Reset used to call `clearOverlay` and then `update()` with blanks
+   * (`insurance: EMPTY_INSURANCE, notes: ""`) to empty the form on screen. But
+   * `update` writes the OVERLAY, which every refetch merges back over the board,
+   * so the blanks outlived the "refetching from Monday" they were paired with.
+   * The next Send wrote `notes: ""` over the shared Call Reference Notes column,
+   * and Add note appended one line onto `""` and replaced the whole column with
+   * it — every Insurance stage's history for that patient, gone.
+   *
+   * Separate from `clearOverlay`, which runs after a SEND: restoring the pre-send
+   * board record there would briefly show the old values on a patient who stays
+   * in the queue, and read as a save that didn't take. A patient with no base
+   * entry (never seen in a fetch) is left alone — blanking would invent data.
+   */
+  const discardEdits = useCallback((id: string) => {
+    overlayRef.current.delete(id);
+    removeOverlay(id);
+    const base = baseRef.current.get(id);
+    if (!base) return;
+    setPatients((prev) => prev.map((p) => (p.id === id ? base : p)));
+  }, []);
+
 
   const saveOverlay = useCallback((id: string) => {
     const overlay = overlayRef.current.get(id);
@@ -249,5 +282,5 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
     setPatients((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
-  return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay };
+  return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay };
 }

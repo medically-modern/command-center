@@ -63,7 +63,7 @@ const WelcomeCallPage = () => {
    *  action bar (lib/shared/stageActions) and — from Final Decisions — makes
    *  the sidebar list the proposed-stuck cohort that column counts. */
   const managerOrigin = managerOriginFromParams(searchParams);
-  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [followUpOpen, setFollowUpOpen] = useState(false);
   /* The Propose Stuck dialog is owned HERE because it has TWO triggers — the
      header's action bar and the End of Call button (Josh, 2026-09-14: "both
@@ -187,63 +187,26 @@ const WelcomeCallPage = () => {
   };
 
   /**
-   * Reset = "discard my local edits and show me what Monday holds".
+   * Reset = "discard my local edits and show me what Monday holds". It writes
+   * NOTHING into the overlay.
    *
-   * ⚠️ It must NOT install blank overrides for a column the send writes
-   * UNCONDITIONALLY, because the overlay is merged over the board's values on
-   * every refetch and the writer cannot tell that blank from a rep deliberately
-   * removing something. `clearOverlay` above already reverts every field to the
-   * board — the explicit blanks below only exist to empty fields on SCREEN, and
-   * for an always-written column that emptiness reaches Monday as a clear.
-   *
-   * So the always-written product columns are deliberately absent here:
-   *   · Monitor Qty — `coerceMonitorQty("")` is "0", pushed on every send, so a
-   *     Reset followed by a Send used to overwrite a real monitor sale with 0.
-   *   · Infusion Set 1/2 + their quantities — always written from 2026-09-10 so
-   *     that REMOVING a set actually clears the board (Brandon's ask). Blanking
-   *     them here would make Reset wipe the patient's whole infusion order.
-   * Both now come back from the board on reset, which is what Reset means.
-   * `resetPatchIsSafe.test.ts` fails the build if one is added back.
-   *
-   * Pump Qty stays blanked: its write is still guarded (`pumpQtyToWrite !== ""`),
-   * so the blank never reaches Monday. Make that write unconditional and it has
-   * to leave this list too.
+   * ⚠️ It used to follow `clearOverlay` with an `update()` of explicit blanks,
+   * to empty fields on SCREEN. But `update` writes the OVERLAY, and every
+   * refetch merges the overlay back over the board, so those blanks outlived the
+   * "refetching from Monday" they were paired with — and a column the send
+   * writes UNCONDITIONALLY cannot tell that blank from a rep removing something.
+   * Reset + Send therefore cleared real board values. It was fixed one column at
+   * a time (Monitor Qty and the infusion sets, Greptile on PR #57) while
+   * Medicare Prior Pump Date and Monitor Purchase Date — both always written —
+   * stayed in the patch, along with the SoS inputs the monitor date derives
+   * from (the 2026-09-23 audit). A list of columns that must stay out of the
+   * patch is a list that will be missed again, so there is no patch at all:
+   * `discardEdits` restores the board's own copy synchronously
+   * (`resetDiscardsEdits.test.ts` fails the build on any `update(` here).
    */
   const resetForNewPatient = () => {
     if (!selected) return;
-    clearOverlay(selected.id);
-    update(selected.id, {
-      callIntake: emptyIntake(),
-      cgmTypeIndex: null,
-      servingEdited: null,
-      servingIndexEdited: null,
-      primaryInsuranceEdited: null,
-      primaryInsuranceIndexEdited: null,
-      memberId1Edited: null,
-      secondaryInsuranceEdited: null,
-      secondaryInsuranceIndex: null,
-      memberId2Edited: null,
-      phoneEdited: null,
-      pumpQty: "",
-      medicarePriorPumpDate: "",
-      monitorPurchaseDate: "",
-      sosNeverBilledMonitor: false,
-      sosLastBillMonitor: "",
-      subscriptionType: "",
-      subscriptionTypeIndex: null,
-      welcomeCallText: "",
-      welcomeCallTextIndex: null,
-      orderHandling: "",
-      orderHandlingIndex: null,
-      advanceDecision: "",
-      advanceDecisionIndex: null,
-      addressEdited: null,
-      addressLat: null,
-      addressLng: null,
-      ipNextOrderDateEdited: null,
-      sensorsNextOrderDateEdited: null,
-      suppliesNextOrderDateEdited: null,
-    } as Partial<Patient>);
+    discardEdits(selected.id);
     toast.success("Cleared local edits — refetching from Monday");
     refetch();
   };
