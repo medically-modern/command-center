@@ -103,7 +103,7 @@
       },
       "perms": {
         "viewOthers": true,
-        "stageManager": true
+        "stageManager": false
       }
     },
     "katie@medicallymodern.com": {
