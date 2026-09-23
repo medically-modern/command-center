@@ -107,8 +107,20 @@ const OrdersPage = () => {
           says "—" until then rather than a false 0).
           ⚠️ The orders view keeps it: there the stale previous list IS on
           screen behind it, which is what the overlay exists to stop a rep
-          clicking. */}
-      <PageLoadingOverlay show={view === "orders" && initialLoading} label="Loading orders…" />
+          clicking.
+          ⚠️⚠️ **AND ONLY WITH NOTHING SELECTED** (Josh, 2026-09-23: *"this
+          takes 14 seconds to load and i can see it has the patient info via
+          hyper link"*). A rep arriving on `?orderId=` came for ONE order, and
+          that read is ONE item — it lands in about a second, while the list
+          behind it is ~1,480 rows over three sequential pages. The order was
+          therefore fully rendered and then covered by this overlay for another
+          thirteen seconds, which is exactly what his screenshot shows. There
+          is no stale list to protect a rep from here: the order on screen is
+          the freshly-read one, and the sidebar and the header chip both say
+          the list is still arriving. The landing keeps the overlay, because
+          the overview's counts really do need the whole board (`fetchOrders`
+          throws rather than return a partial list for the same reason). */}
+      <PageLoadingOverlay show={view === "orders" && initialLoading && !selectedId} label="Loading orders…" />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         {/* ⚠️ The order sidebar is the ORDERS view's search, and on Inventory
             it is a list of things this screen cannot open — Brandon's
@@ -151,6 +163,25 @@ const OrdersPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {/* ⚠️ The order list is ~1,480 rows over three sequential pages
+                    at Monday's 500 cap — cursor pagination, so the pages
+                    cannot run in parallel and this is simply slow (Josh,
+                    2026-09-23: *"show a loading icon in upper right until it's
+                    all there"*). With the overlay gone from the deep-link path
+                    this chip is the only thing saying the sidebar, the
+                    siblings strip and Inventory's open-order counts are still
+                    filling in. It carries the row count, because "loading" on
+                    its own does not say whether anything is left. */}
+                {(initialLoading || loading) && (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1.5 text-xs font-semibold"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {loadedRows ? `Loading orders… ${loadedRows.toLocaleString()}` : "Loading orders…"}
+                  </span>
+                )}
                 <div className="inline-flex rounded-lg bg-white/10 p-0.5" role="tablist" aria-label="View">
                   <ViewTab active={view === "orders"} onClick={() => setView("orders")} icon={<PackageSearch className="h-3.5 w-3.5" />} label="Orders" />
                   <ViewTab active={view === "stock"} onClick={() => setView("stock")} icon={<Boxes className="h-3.5 w-3.5" />} label="Inventory" />
@@ -223,16 +254,23 @@ const OrdersPage = () => {
                 </Card>
               ) : (
                 <>
-                  <OrderHeaderCard order={open} allOrders={orders} onSelect={select} onPlaced={() => void refetch(true)} />
+                  <OrderHeaderCard order={open} allOrders={orders} ordersLoaded={!initialLoading} onSelect={select} onPlaced={() => void refetch(true)} />
                   <OrderLinesCard order={open} skuRows={sku.rows} />
-                  {/* ⚠️ Renders for CASH PAY orders only (it returns null
+                  {/* ⚠️ Both cards key on the ORDER so their per-order state
+                      cannot survive a sidebar click (§9's notes-box rule) — and
+                      the keys are PREFIXED because they are siblings: two
+                      children of one parent carrying `key={open.id}` collide,
+                      and React warns that such children "may be duplicated
+                      and/or omitted". Found by rendering the page, not by
+                      reading it (§5.30d).
+                      ⚠️ Renders for CASH PAY orders only (it returns null
                       otherwise), and is deliberately NOT ability-gated — Josh,
                       2026-09-21: "No gate — any rep". Reading a patient their
                       total is the job; the manager-only control inside it is
                       the release, which is a different question. It sits under
                       "What was ordered" so the products are named once and
                       priced immediately below (§5.35's say-it-once rule). */}
-                  <CashPayCard key={open.id} order={open} skuRows={sku.rows} onChanged={() => void refetch(true)} />
+                  <CashPayCard key={`cash-${open.id}`} order={open} skuRows={sku.rows} onChanged={() => void refetch(true)} />
                   {/* ⚠️ The substitution pick IS the send — it emails Cardinal
                       (§5.35) — so `adjustOrders` gates the card rather than
                       greying the button: a Send that refuses after the press
@@ -241,7 +279,7 @@ const OrdersPage = () => {
                       withheld, which is the abilities rule (§5.39c: they unlock
                       buttons, they never hide information). */}
                   {canAdjustOrders && (
-                    <SubstitutionCard key={open.id} order={open} skuRows={sku.rows} onSent={() => void refetch(true)} />
+                    <SubstitutionCard key={`sub-${open.id}`} order={open} skuRows={sku.rows} onSent={() => void refetch(true)} />
                   )}
                   <NotesCard order={open} />
                   <OrderDetails order={open} />

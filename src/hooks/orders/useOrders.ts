@@ -46,7 +46,17 @@ export interface UseOrdersResult {
   orders: Order[];
   /** A visible (non-silent) list fetch is in flight. */
   loading: boolean;
-  /** This mount's first fetch has not landed — the blocking overlay. */
+  /**
+   * There is NOTHING to show yet — the blocking overlay.
+   *
+   * ⚠️ **Not "this mount's first fetch has not landed", which is what it used
+   * to mean and cost 14 seconds for nothing.** The list is ~1,480 orders over
+   * three sequential pages at Monday's 500 cap, so on a return visit within
+   * the session the overlay covered a list that was already on screen from
+   * `lastList` and at most a minute stale, and the poll was about to refresh
+   * it anyway. Seeded from the session copy: if we have rows, nothing is
+   * blocked and the sidebar's own `loading` says a fetch is running.
+   */
   initialLoading: boolean;
   /** Rows received so far by the fetch in flight — a count, for the sidebar. */
   loadedRows: number;
@@ -65,7 +75,7 @@ export interface UseOrdersResult {
 export function useOrders(injectedOrderId?: string | null): UseOrdersResult {
   const [orders, setOrders] = useState<Order[]>(lastList ?? []);
   const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(lastList === null);
   const [loadedRows, setLoadedRows] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(lastListAt);

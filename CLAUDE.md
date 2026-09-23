@@ -7301,6 +7301,96 @@ Files: `lib/patient/contactEdit.ts` (+ `contactEdit.test.ts`), `lib/commsHub/dos
 `lib/patient/patientScreen.ts`, `components/patient/TopBarContact.tsx` (+ `topBarWiring.test.ts`),
 `pages/PatientPage.tsx`, `pages/patient/redesign.css`.
 
+### 5.46h The header search hides a patient's own orders, and the Orders page stops waiting (Sep 2026)
+Josh, 2026-09-23, two notes from the floor. **No board change; app only.**
+
+**1. A name search returned one patient row and three of her orders.**
+*"this should not show anything more than one profile per a fix recently. whats going wrong
+here"* — then, once the rows were named: *"the data on those bottom 3 lines is already here in
+her view so its not necessary / all we need is subscriptions"*.
+
+⚠️⚠️ **THE THREE EXTRA ROWS WERE NEVER PATIENT PROFILES, WHICH IS WHY §5.42's FOLD LOOKED
+BROKEN AND WAS NOT.** They were New Order Board items — each carrying her name, an order date, a
+group and a CAH number — and `groupKeyFor` returns `order:<id>` for every one of them, on
+purpose: an order opens `/orders`, and a patient has one item per reorder (§5.35). The fold only
+ever covered PATIENT records, so it did exactly what it was written to do and the orders came
+through beside it.
+
+**`foldRedundantOrders`** (a second pass over `groupSearchHits`, + tests) drops an order hit whose
+patient is already a row on the same list. He is right that it is redundant: the patient screen's
+Orders tab lists every order on the board for that patient — number, date, type, items, status,
+shipped, delivered, each row a link (§5.45) — so an order rendered beside its own patient spends
+one of eight slots to repeat something one click away, and a patient with eight reorders crowds
+out everybody else who matched.
+⚠️⚠️ **A STANDALONE ORDER ROW STAYS, and that is why this is a second pass rather than a change
+to `groupKeyFor`.** Josh asked for CAH, PO and tracking-number search himself (§5.35) and the
+placeholder promises "order #": those queries match the order board and nothing else, so there is
+no patient hit to fold into and the order row is the only way through. Folding orders into the
+name bucket instead would also collapse three orders of one patient into ONE row, and a rep who
+pasted one CAH number would open whichever of the three sorted first.
+⚠️ **The test is a POSITIVE CONTRADICTION, not `sameHuman`'s agreement** — deliberately the
+opposite discipline from every other identity rule here. `sameHuman` fails closed because
+over-merging puts one patient's history under another's name; the only consequence of folding an
+order away is a row that does not render in one drop-down, with the Orders folder, `/orders` and
+the patient's own Orders tab all still on it, while the consequence of NOT folding is exactly the
+clutter reported. So the order folds unless a phone we hold for that patient contradicts it — two
+patients called Jamie Rivers, one with an order on another number, keep both rows. The order board
+carries no DOB (§5.44), so the phone is all there is to contradict with.
+⚠️ **System Management's search is untouched** — `groupSearchHits` has only ever had the one
+caller, and orders there live in their own folder, which is where Josh asked for them (§5.35).
+
+**2. `/orders?orderId=…` took fourteen seconds to show an order it already had.**
+*"this takes 14 seconds to load and i can see it has the patient info via hyper link"* ·
+*"deep dive into orders … make it faster, show a loading icon in upper right until it's all
+there"*. His screenshot is the whole diagnosis: the order card fully drawn — headline, timeline,
+tracking button, notes — greyed out under a *"Loading orders…"* overlay.
+
+⚠️⚠️ **TWO READS RUN IN PARALLEL AND THE PAGE BLOCKED ON THE WRONG ONE.** The DETAIL is
+`fetchOrderById`, one item, and lands in about a second. The LIST is ~1,480 rows over three
+sequential pages at Monday's 500 cap. `PageLoadingOverlay` is `fixed inset-0` and captures pointer
+events, and it keyed on `initialLoading`, which is the LIST — so the order the rep came for sat
+finished and unclickable for another thirteen seconds.
+- **The overlay now stands down once an order is selected** (`initialLoading && !selectedId`).
+  ⚠️ **The LANDING keeps it**, because there the overview's counts really do need the whole board
+  — which is also why `fetchOrders` throws rather than return the pages it got.
+- ⚠️ **`initialLoading` means "there is nothing to show", not "this mount's first fetch has not
+  landed"** — it is seeded `lastList === null` now. It was `true` on every mount, so a return
+  visit within the session blocked for fourteen seconds behind a list `lastList` had already
+  painted, at most a minute stale, with the poll about to refresh it.
+- **The header carries the chip he asked for**, with the row count: "loading" alone does not say
+  whether anything is left. Shown on Inventory too, where it explains the open-order column's
+  em dashes (§5.46b).
+- ⚠️ **"First Order" is withheld until the list lands.** The column is not maintained per item, so
+  `orderTypeLabel` can only suppress the claim once the patient's OTHER orders are known (§5.35) —
+  with an empty list nothing contradicts it, and it would have printed and then been taken back.
+  `OrderHeaderCard` takes `ordersLoaded`, defaulting true so every other caller is unchanged.
+
+⚠️ **The list itself is no faster and cannot easily be.** Monday caps `items_page` at 500 and its
+pagination is cursor-based, so the three pages cannot run in parallel; the slim set is already
+guarded by `listColumns.test.ts`, so trimming it means removing a feature. What changed is that
+nothing a rep came for waits on it. ⚠️ **Do NOT "fix" it by committing pages as they arrive** —
+`orders` feeds the overview's counts and the SKU tracker's open-order numbers, and a partial list
+renders those as facts (§5.30g's progressive read was safe precisely because that column had no
+counters on it).
+
+⚠️ **Found by rendering it** (§5.30d), and the render turned up one more thing: `CashPayCard` and
+`SubstitutionCard` are siblings that both carried **`key={open.id}`**, so React warned they "may
+be duplicated and/or omitted". The keys are prefixed (`cash-` / `sub-`) and still carry the order
+id, which is what makes a sidebar click drop a typed release reason (§9's notes-box rule).
+Measured at 1440×900 against an 8s list: at **t+2s** the order is readable with the chip in the
+header and no overlay, at **t+12s** the chip clears and the sidebar fills — no horizontal overflow
+at any point, and no console errors.
+
+**Keep-in-agreement:** `foldRedundantOrders` ⇄ `GlobalSearch`'s `rows` memo (grouped → folded →
+capped, in that order — the cap must fall on people) ⇄ `groupKeyFor`'s order carve-out, which is
+what leaves a standalone order row intact · `useOrders.initialLoading` ("nothing to show") ⇄ the
+overlay's `!selectedId` ⇄ `OrdersSidebar`'s skeleton ⇄ `SkuTrackerView`'s `ordersLoading` ⇄
+`OrderHeaderCard`'s `ordersLoaded`. Tests: `lib/shell/searchPeople.test.ts` (eight new, two
+verified to fail when the fold is reverted) and `components/orders/inventoryBlocking.test.ts`
+(five new, three verified to fail).
+Files: `lib/shell/searchPeople.ts`, `components/shell/GlobalSearch.tsx`,
+`hooks/orders/useOrders.ts`, `pages/OrdersPage.tsx`, `components/orders/OrderHeaderCard.tsx`.
+
 ### 5.30 Care Coordinator — "My Patients" (Sep 2026)
 
 ⚠️⚠️ **TWO DIFFERENT SCREENS SHOW WELCOME CALL DATA, AND A NOTE ABOUT ONE IS NOT A NOTE ABOUT THE
@@ -11052,11 +11142,14 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | A patient's search row still shows several times / "+N more records" is back | §5.46b — the fold is `searchPeople.sameHuman` (phone agrees, OR a phone is blank and the DOB agrees) inside a NAME bucket. Several rows for one patient means `SystemPatient.dob` came back blank for that board — check `BoardDef.dobColId` is still in `searchColumnIds`. ⚠️ Two rows with two DIFFERENT non-blank numbers are correct and deliberate (fail closed); so is a row with neither a phone nor a DOB |
+| A patient's ORDERS show as extra rows in the HEADER search | §5.46h — `foldRedundantOrders` drops an order hit whose patient is a row on the same list; they are not profiles, and the patient screen's Orders tab already lists every one. ⚠️ An order with NO patient on screen still stands alone, deliberately — a CAH, PO or tracking query matches the order board and nothing else (§5.35), so folding it would break the lookup Josh asked for. An order row beside its patient means the phones CONTRADICT (two same-named people), which is the one case it must not fold |
 | A search hit opens the wrong half of the record | §5.46b — `pickLead` scores the **Subscription** board above every pipeline bucket and `patientScreen.defaultView` reads the same fact, so the row and the screen agree. Keyed on the row EXISTING, never a status. An explicit `?view=` always wins |
 | The search dropdown shows rows and then changes them | §5.46b — correct: the NAME pass paints first and the loose + same-number passes land after it, which is why "Still looking…" sits under the rows. A row that only ever appears late is the same-number pass (§7), and it says so |
 | The Subscription profile shows the wrong facts, or a fact twice | §5.46b — the strip is `lib/patient/subscriptionOverview.ts` (Status · Next order · Subscription · First order) and is deliberately NOT `stageDetail`'s SUBSCRIPTION map, which keeps all six for the Comms Hub. A fact rendered twice means `FORM_SECTIONS` stopped matching that map's TITLES |
 | A rep without `editProfile` can change the subscription form | §5.46b — the guard is `inert` on the wrapper plus a no-op writer, and the Send bar is not rendered at all. `patientScreen.test.ts` pins all three |
-| Inventory locks the page for ~15s | §5.46b — `PageLoadingOverlay` must be `view === "orders" && initialLoading`; it is the ORDER BOARD's read, which Inventory only needs for the open-order column (and that says "—" until it lands, never 0) |
+| Inventory locks the page for ~15s | §5.46b — `PageLoadingOverlay` must be `view === "orders" && initialLoading && !selectedId`; it is the ORDER BOARD's read, which Inventory only needs for the open-order column (and that says "—" until it lands, never 0) |
+| An order opened from a link sits behind "Loading orders…" for ~14s | §5.46h — fixed 2026-09-23: the DETAIL read is one item and lands in ~1s, the LIST is ~1,480 rows over three sequential pages, and the overlay keyed on the LIST. It stands down whenever an order is selected; the header chip says the list is still arriving. If it recurs, check the overlay still carries `&& !selectedId` and that `initialLoading` is still seeded `lastList === null` — `inventoryBlocking.test.ts` scans both |
+| The order list itself is still slow | §5.46h — and largely irreducible: Monday caps `items_page` at 500 and pages by cursor, so three round trips cannot be parallelised, and the slim column set is guarded by `listColumns.test.ts`. ⚠️ **Do not commit pages as they arrive** — `orders` feeds the overview's counts and the SKU tracker's open-order numbers, and a partial list renders those as facts |
 | "Where did Daily Operations go?" | §5.46b — Reports & Metrics is deliberately blank now and Operations has **no door in the chrome**: go to `/system-mgmt?tab=operations`, or `/system-mgmt` and press the Operations tab. The settings-menu entry is COMMENTED OUT in `GlobalHeader` on Josh's word — uncomment it to put the door back, and `lossless.test.ts` fails if it returns quietly |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
 | A patient's ORDERS aren't in System Search, or an order turns up in another folder | §5.35 — `lib/systemMgmt/ordersSearch.ts`. The board rides `LIVE_SEARCH_BOARDS` (what the search box asks) and is deliberately absent from `BOARDS` (the patient registry — inbound-call lookup, the dossier, the gateway's mirrored directory, the snapshot); `searchBucket` returns `orders` FIRST, or every order files under Active with nothing erroring. An empty Orders folder under a chart pick or a stage filter is correct — those rows come from the snapshot |

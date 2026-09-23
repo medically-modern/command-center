@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { groupKeyFor, groupSearchHits, hitCaption, last10, pickLead, sameHuman } from "./searchPeople";
+import {
+  foldRedundantOrders,
+  groupKeyFor,
+  groupSearchHits,
+  hitCaption,
+  last10,
+  orderFoldsInto,
+  pickLead,
+  sameHuman,
+} from "./searchPeople";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 
 /**
@@ -254,5 +263,78 @@ describe("last10", () => {
     expect(last10("+1 (555) 555-0142")).toBe("5555550142");
     expect(last10("5555550142")).toBe("5555550142");
     expect(last10("")).toBe("");
+  });
+});
+
+describe("an order whose patient is already on screen is folded away", () => {
+  /** The reported case: a name search that returned her Subscription record
+   *  and three of her orders (Josh, 2026-09-23). */
+  const order = (id: string, over: Partial<SystemPatient> = {}) =>
+    row({ id, boardId: BOARD.orders.id, boardName: BOARD.orders.name, ...over });
+
+  const hits = (rows: SystemPatient[]) => foldRedundantOrders(groupSearchHits(rows));
+
+  it("⚠️ drops the orders and keeps the patient", () => {
+    const out = hits([
+      row({ id: "5001", boardId: 18407459988, boardName: "Subscription Board", pipelineStage: "Subscriptions" }),
+      order("9001"),
+      order("9002"),
+      order("9003"),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].lead.id).toBe("5001");
+  });
+
+  it("⚠️⚠️ an order with NO patient on screen still stands on its own", () => {
+    // A CAH / PO / tracking query matches the order board and nothing else
+    // (§5.35), so folding these away would break the lookup Josh asked for.
+    const out = hits([order("9001"), order("9002")]);
+    expect(out).toHaveLength(2);
+    expect(out.every((h) => h.bucket === "orders")).toBe(true);
+  });
+
+  it("⚠️ each order keeps its OWN row, so a pasted CAH number opens that order", () => {
+    const out = hits([order("9001"), order("9002"), order("9003")]);
+    expect(out.map((h) => h.lead.id)).toEqual(["9001", "9002", "9003"]);
+  });
+
+  it("⚠️ a different patient's order is NOT folded away by a same-named hit", () => {
+    // Two patients called JAMIE RIVERS, one of whom has an order. The phones
+    // contradict, so nothing may claim the order belongs to the row on screen.
+    const out = hits([
+      row({ id: "4001", boardId: BOARD.wc.id, phone: "5555550142" }),
+      order("9001", { phone: "5555559999" }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it("a blank phone on either side has nothing to contradict with, so it folds", () => {
+    // The order board carries no DOB (§5.44), so the phone is all there is —
+    // and the cost of folding is a row missing from ONE drop-down, with the
+    // Orders folder, /orders and the patient's Orders tab all still on it.
+    expect(orderFoldsInto(order("9001", { phone: "" }), groupSearchHits([row({ id: "4001", boardId: BOARD.wc.id })])[0])).toBe(true);
+    expect(orderFoldsInto(order("9001"), groupSearchHits([row({ id: "4001", boardId: BOARD.wc.id, phone: "" })])[0])).toBe(true);
+  });
+
+  it("a DIFFERENT name never folds, whatever the phone says", () => {
+    const out = hits([
+      row({ id: "4001", boardId: BOARD.wc.id, name: "ZARA WEST" }),
+      order("9001", { name: "JAMIE RIVERS" }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it("an order carrying a number the patient used to have still folds", () => {
+    const out = hits([
+      row({ id: "4001", boardId: BOARD.wc.id, phone: "5555550142", dob: "03/14/1958" }),
+      row({ id: "3001", boardId: BOARD.ins.id, phone: "5555550142", dob: "03/14/1958", isCompleted: true, groupTitle: "Complete" }),
+      order("9001", { phone: "5555550142" }),
+    ]);
+    expect(out).toHaveLength(1);
+  });
+
+  it("patients are untouched — this pass only ever removes ORDER rows", () => {
+    const before = groupSearchHits(SIX);
+    expect(foldRedundantOrders(before)).toEqual(before);
   });
 });

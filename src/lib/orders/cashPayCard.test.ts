@@ -141,7 +141,13 @@ describe("the cash pay link switch, and how the card is mounted", () => {
   });
 
   it("⚠️ keyed on the order, so a typed release reason can't follow a click", () => {
-    expect(page).toMatch(/<CashPayCard key=\{open\.id\}/);
+    // ⚠️ The key is PREFIXED because this card and `SubstitutionCard` are
+    // siblings: two children of one parent both carrying `key={open.id}`
+    // collide, and React warns they "may be duplicated and/or omitted".
+    // What matters here is unchanged — the key still carries `open.id`, so a
+    // sidebar click still remounts the card and drops the typed reason.
+    expect(page).toMatch(/<CashPayCard key=\{`cash-\$\{open\.id\}`\}/);
+    expect(page).toMatch(/<SubstitutionCard key=\{`sub-\$\{open\.id\}`\}/);
   });
 
   it("⚠️ the RELEASE is manager-only, which is the different question", () => {
