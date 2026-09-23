@@ -10062,6 +10062,16 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
   still offering Undo on, and that Undo was refused. A trigger during a running pass gets one more
   pass; one timer copies a note left behind once its window closes. ⚠️ A log row's key being looked
   up reads as a null open key for a moment, and is NOT moving on (`logKeyPending`).
+- ⚠️ **A pass that did not finish is tried again on `COPY_RETRY_MS`** (30s · 1m · 2m · 5m · 10m),
+  then left to the next trigger — the outbox could not be read, a copy failed, or its claim could
+  not be ASKED (`copyOne` → `"retry"`, which keeps the note moved-on; a claim somebody else holds is
+  still `"not-claimed"`). A rep sitting on one item presses nothing, so the timer is often the only
+  trigger, and a blip at that moment used to strand the note past its Undo window with the tab still
+  open (Greptile, PR #58). Only while there is known work — a note moved on from, or one waiting out
+  its window — so a tab with nothing to copy does not keep asking a gateway that is down; and a note
+  moved on from that the outbox no longer offers (copied elsewhere, undone, noteless, out of
+  attempts) is let go. ⚠️ A due time already PAST is what fired a failed pass: the retry must not be
+  scheduled on it, or the ladder is spent in five seconds.
 - ⚠️ **The lookup behind the copy is STRICT** (`fetchDossierItemsForPick(…, { strict: true })`): a
   board that did not answer throws and the copy is retried, where it used to read as "this patient
   has no live record" and record the copy as done with nowhere to put it.

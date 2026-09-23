@@ -417,8 +417,13 @@ let flushing: Promise<void> | null = null;
 let flushAgain = false;
 /** Resolutions this browser has MOVED ON from — copied now, whatever their age. */
 const released = new Set<string>();
-/** One timer, for the youngest note still inside its Undo window. */
+/** One timer, for the youngest note still inside its Undo window — or a retry. */
 let dueTimer: ReturnType<typeof setTimeout> | null = null;
+/** When the last pass that could read the outbox saw a note still inside its
+ *  Undo window come due. Infinity when it saw none. */
+let knownDue = Infinity;
+/** How far up `COPY_RETRY_MS` the failed passes in a row have climbed. */
+let retryStep = 0;
 
 /**
  * A note nobody has moved on from is copied only once Undo can no longer take
@@ -426,6 +431,27 @@ let dueTimer: ReturnType<typeof setTimeout> | null = null;
  * the gateway's, which is the clock `canUndo` reads.
  */
 export const COPY_UNCLAIMED_AFTER_MS = UNDO_WINDOW_MS + 2 * 60_000;
+
+/**
+ * A pass that did not finish — the outbox could not be read, or a copy failed —
+ * is tried again on this ladder, then left to the next trigger (moving on,
+ * opening Communications).
+ *
+ * ⚠️ It exists because the due TIMER is often the only trigger: a rep sitting
+ * on one item presses nothing, so a gateway blip at the moment the timer fired
+ * left a note uncopied past its Undo window with the tab still open (Greptile,
+ * PR #58). ⚠️ It is bounded because an outage is not a reason to keep asking —
+ * the note is safe in the log, and the gateway caps a copy at three attempts
+ * anyway (`MAX_MIRROR_ATTEMPTS`), so every rung here is either a blip recovered
+ * or one attempt closer to the health check saying so.
+ */
+export const COPY_RETRY_MS = [30_000, 60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000] as const;
+
+/** The next rung, or null once the ladder is spent. */
+function nextRetryDelay(): number | null {
+  if (retryStep >= COPY_RETRY_MS.length) return null;
+  return COPY_RETRY_MS[retryStep++];
+}
 
 /**
  * Copy this rep's uncopied resolve notes into the patients' Monday notes.
@@ -447,6 +473,11 @@ export const COPY_UNCLAIMED_AFTER_MS = UNDO_WINDOW_MS + 2 * 60_000;
  *
  * ⚠️ A failed copy never un-resolves anything — the note is safe in the log —
  * and the toast names the patient, because by then the rep is on the next item.
+ *
+ * ⚠️ A pass that did not finish is tried again on `COPY_RETRY_MS`, but only
+ * while there is known work — a note moved on from, or one waiting out its
+ * window — so a tab with nothing to copy does not keep asking a gateway that is
+ * down.
  */
 export function flushCommsOutbox(release?: string | null): Promise<void> {
   if (release) released.add(release);
@@ -458,22 +489,48 @@ export function flushCommsOutbox(release?: string | null): Promise<void> {
   flushing = (async () => {
     do {
       flushAgain = false;
+      // What this pass can speak for. A release that lands while it runs is
+      // left to the pass `flushAgain` adds.
+      const before = new Set(released);
       let pending: OutboxEntry[] = [];
       try {
         pending = await fetchOutbox();
       } catch {
-        return; // the next trigger asks again
+        if (released.size || Number.isFinite(knownDue)) {
+          const d = nextRetryDelay();
+          if (d !== null) {
+            const at = Date.now() + d;
+            // ⚠️ A due time already PAST is what fired this pass; taking it
+            // would retry in a second and spend the whole ladder in five.
+            scheduleDue(knownDue > Date.now() ? Math.min(knownDue, at) : at);
+          }
+        }
+        return;
       }
+      // Moved on from, but no longer offered: copied by another tab, undone,
+      // noteless, or out of attempts. Nothing is left to do for them — and
+      // keeping them would count as known work on every failed read.
+      const offered = new Set(pending.map((e) => e.resolutionId));
+      for (const id of before) if (!offered.has(id)) released.delete(id);
       const now = Date.now();
       let nextDue = Infinity;
+      let failed = false;
       for (const e of pending) {
         if (!released.has(e.resolutionId) && now - e.resolvedAt <= COPY_UNCLAIMED_AFTER_MS) {
           nextDue = Math.min(nextDue, e.resolvedAt + COPY_UNCLAIMED_AFTER_MS);
           continue;
         }
         const out = await copyOne(e.resolutionId);
-        // A failure stays "moved on", so the next trigger retries it at once.
-        if (out !== "failed") released.delete(e.resolutionId);
+        // A failure stays "moved on", so the retry copies it at once.
+        if (out === "failed" || out === "retry") failed = true;
+        else released.delete(e.resolutionId);
+      }
+      knownDue = nextDue;
+      if (failed) {
+        const d = nextRetryDelay();
+        if (d !== null) nextDue = Math.min(nextDue, Date.now() + d);
+      } else {
+        retryStep = 0;
       }
       scheduleDue(nextDue);
     } while (flushAgain);
@@ -541,12 +598,16 @@ async function reportDone(rid: string, to: string): Promise<boolean> {
 }
 
 /** Test seam. */
-export async function copyOne(resolutionId: string): Promise<"copied" | "skipped" | "failed" | "not-claimed"> {
+export async function copyOne(
+  resolutionId: string,
+): Promise<"copied" | "skipped" | "failed" | "not-claimed" | "retry"> {
   let claimed: OutboxEntry | null = null;
   try {
     claimed = await claimMirror(resolutionId);
   } catch {
-    return "not-claimed";
+    // The claim could not be ASKED — a blip, not "somebody else holds it". The
+    // note stays moved-on and is tried again (`COPY_RETRY_MS`).
+    return "retry";
   }
   if (!claimed) return "not-claimed";
 
@@ -625,4 +686,6 @@ export function __resetInboxStoresForTest(): void {
   released.clear();
   if (dueTimer) clearTimeout(dueTimer);
   dueTimer = null;
+  knownDue = Infinity;
+  retryStep = 0;
 }

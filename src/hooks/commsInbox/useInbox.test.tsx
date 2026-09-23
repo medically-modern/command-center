@@ -35,6 +35,8 @@ vi.mock("sonner", () => ({ toast: { error: (...a: unknown[]) => toastError(...a)
 
 import {
   __resetInboxStoresForTest,
+  COPY_RETRY_MS,
+  COPY_UNCLAIMED_AFTER_MS,
   copyOne,
   flushCommsOutbox,
   reportDial,
@@ -179,6 +181,91 @@ describe("⚠️⚠️ the Monday copy (plan §5.2–§5.4)", () => {
       api.fetchOutbox.mockResolvedValue([claimed({ resolvedAt: Date.now() - 60 * 60_000 })]);
       await vi.advanceTimersByTimeAsync(20 * 60_000);
       expect(api.claimMirror).toHaveBeenCalledWith(RID);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("⚠️⚠️ a failed read at the TIMER's moment is tried again on its own — nothing else would ask (Greptile, PR #58)", async () => {
+    vi.useFakeTimers();
+    try {
+      // A note inside its Undo window arms the timer…
+      api.fetchOutbox.mockResolvedValueOnce([claimed({ resolvedAt: Date.now() - 60_000 })]);
+      await flushCommsOutbox();
+      expect(api.claimMirror).not.toHaveBeenCalled();
+      // …the gateway blips exactly when it fires (C − 55s from now)…
+      api.fetchOutbox.mockRejectedValueOnce(new Error("503"));
+      api.fetchOutbox.mockResolvedValue([claimed({ resolvedAt: Date.now() - 60 * 60_000 })]);
+      api.claimMirror.mockResolvedValue(null);
+      await vi.advanceTimersByTimeAsync(COPY_UNCLAIMED_AFTER_MS - 50_000);
+      // ⚠️ …and the retry is NOT immediate: the due time that fired is past,
+      // and retrying on it would spend the ladder in a few seconds.
+      expect(api.fetchOutbox).toHaveBeenCalledTimes(2);
+      expect(api.claimMirror).not.toHaveBeenCalled();
+      // The first rung copies it, with nobody clicking anything.
+      await vi.advanceTimersByTimeAsync(COPY_RETRY_MS[0] + 10_000);
+      expect(api.claimMirror).toHaveBeenCalledWith(RID);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a claim that could not be ASKED keeps the note moved-on, and the retry copies it", async () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.clear();
+      // Still inside its window — but moved on from, so it is copied now.
+      api.fetchOutbox.mockResolvedValue([claimed({ resolvedAt: Date.now() - 60_000 })]);
+      api.claimMirror.mockRejectedValueOnce(new Error("gateway blip"));
+      api.claimMirror.mockResolvedValueOnce(claimed());
+      dossierApi.fetchDossierItemsForPick.mockResolvedValueOnce([liveItem()]);
+      await flushCommsOutbox(RID);
+      expect(dossierApi.appendNoteToRecord).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(COPY_RETRY_MS[0] + 10_000);
+      expect(dossierApi.appendNoteToRecord).toHaveBeenCalledTimes(1);
+      expect(api.reportMirrorDone).toHaveBeenCalledWith(RID, "18410804557:900");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("⚠️ the retries have an END — a lasting failure is left to the next trigger", async () => {
+    vi.useFakeTimers();
+    try {
+      api.fetchOutbox.mockResolvedValue([claimed({ resolvedAt: Date.now() - 60 * 60_000 })]);
+      api.claimMirror.mockRejectedValue(new Error("gateway blip"));
+      await flushCommsOutbox();
+      expect(api.claimMirror).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(3 * 60 * 60_000);
+      // One try, then one per rung.
+      expect(api.claimMirror).toHaveBeenCalledTimes(1 + COPY_RETRY_MS.length);
+    } finally {
+      vi.useRealTimers();
+      api.claimMirror.mockReset();
+    }
+  });
+
+  it("a tab with nothing to copy does not keep asking a gateway that is down", async () => {
+    vi.useFakeTimers();
+    try {
+      api.fetchOutbox.mockRejectedValue(new Error("503"));
+      await flushCommsOutbox();
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(api.fetchOutbox).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a note moved on from but no longer offered is let go — it is not known work for ever", async () => {
+    vi.useFakeTimers();
+    try {
+      api.fetchOutbox.mockResolvedValueOnce([]); // another tab copied it, or it was undone
+      await flushCommsOutbox(RID);
+      api.fetchOutbox.mockRejectedValue(new Error("503"));
+      await flushCommsOutbox();
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(api.fetchOutbox).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }
