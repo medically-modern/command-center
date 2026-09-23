@@ -259,6 +259,43 @@ worker self-hosted via Vite `?url` — *not* a CDN, so API/worker versions can't
 > times out and **rejects XML/HTML error bodies** — an expired Monday signed URL returns an S3
 > `AccessDenied` body as a 200, which would otherwise render as a blank "file" instead of an error.
 
+> ⚠⚠ **THE VIEWER OPENS BYTES FROM STRANGERS — KEEP pdfjs-dist PATCHED; THERE IS NO CONFIG
+> MITIGATION TO FALL BACK ON** (2026-09-23). These PDFs arrive **by fax from outside offices** —
+> anyone who knows the fax number can put a file in front of a rep — and `openFileViewer` is
+> reachable from eleven places (the fax inbox, both Chase panels, Confirm Receipt, Evaluate, the
+> order header, the intake pages). pdf.js shipped **GHSA-hq66-cqwq-w95j, "arbitrary JavaScript
+> execution upon opening a malicious PDF"**, patched in **6.2.108**; this app sat on **6.0.227**,
+> inside the vulnerable range. Fixed by bumping **`pdfjs-dist` → 6.3.289**, which is a
+> **lockfile-only** change: `package.json` already declared `^6.0.227`, and the jsDelivr base is
+> built from `pdfjs.version` at runtime, so the three asset dirs follow the version by themselves.
+> ⚠⚠ **DO NOT REACH FOR `isEvalSupported: false` — IT DOES NOT EXIST IN pdf.js 6.x.** It is the
+> obvious hardening to add here and it is dead config: measured across the shipped bundles, the
+> string appears **zero** times in 6.3.289's types, `pdf.mjs` and `pdf.worker.mjs`, **and zero times
+> in 6.0.227** — so it was already gone in the version that was vulnerable. `eval(` and
+> `new Function(` likewise appear **zero** times in either shipped bundle: upstream removed the eval
+> path, which is why the option went with it. Writing it costs a `TS2353` from the typecheck gate
+> (§10) and, worse, leaves a comment claiming a protection that is not there. **The version IS the
+> mitigation.** Watch `npm audit` for this package specifically — it is the only dependency in the
+> bundle that parses hostile input.
+> ⚠️ **Re-check the three CDN dirs after ANY pdfjs bump, with filenames that EXIST in that
+> version.** A probe for `standard_fonts/FoxitSans.pfb` 404s on 6.3.289 and means nothing — that
+> face is gone, sans is served by `LiberationSans-*.ttf`. A bad probe reads exactly like a missing
+> directory, and a missing directory is the blank-page failure above, which only logs a warning.
+> ⚠⚠ **pdf.js 6.x IMPOSES A BROWSER FLOOR, AND IT IS OLDER THAN THIS BUMP** (measured
+> 2026-09-23). The library calls **`Map.prototype.getOrInsertComputed`**, which shipped in
+> **Chrome 145 (Jan 2026), Firefox 144 and Safari 18.4**. Below that the viewer does not degrade,
+> it **throws** — `this[#methodPromises].getOrInsertComputed is not a function` — on
+> `getDocument`, i.e. on every file, not an edge case. **This is not a regression from 6.3.289**:
+> A/B'd in one browser (Chromium 141), **6.0.227, 6.2.108 and 6.3.289 fail identically**, and
+> 6.0.227 already carried 11 call sites. So every 6.x is equally floored and there is no older
+> version to retreat to. Current auto-updating browsers are all well past it; the exposure is a
+> rep on a pinned or long-unpatched browser, for whom **every** PDF errors. If that is ever
+> reported, the fix is their browser or a polyfill at the app entry — **not** a pdfjs downgrade.
+> ⚠️ A probe container will not settle this: this repo's Chromium is **141**, i.e. below the
+> floor, so an honest render test there needs the method polyfilled **in the probe page only**.
+> Verified that way after the bump: a standard-14 non-embedded-font PDF renders **2,738 ink
+> pixels** with the text layer intact and zero font/cmap/wasm warnings.
+
 ### 5.6 The Evaluate state machine — `lib/masheke/evalState.ts` (the densest domain logic)
 Local-only `EvalState` in localStorage, with **Monday as source of truth** for "Monday-backed"
 fields (Monday always wins on reload, even when blank). Produces: a validity rollup
@@ -10024,13 +10061,28 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 
 ## 10. Known risks / open items (don't rediscover these)
 
-- **Secrets in the public bundle (direct mode):** `VITE_MONDAY_API_TOKEN`, `VITE_GITHUB_PAT`, and
-  **hardcoded RingCentral client-secret + a long-lived JWT** (`lib/fax/ringcentralApi.ts`) ship in
-  the JS bundle. The gateway moves the Monday token server-side, but full secret removal ("Phase 1b")
-  also requires the GitHub Pages build to stop bundling the token. **Treat the RingCentral
-  credential as exposed** and rotate it; consider proxying RC through a service too.
-- **Subscription send (`lib/subscription/mondayWrite.ts`)** writes ~20 columns with retry but **no
-  read-back verification** (audit **H6**); confetti fires even on partial failure.
+- **Secrets in the public bundle — ONE is left, and this entry was two-thirds stale until
+  2026-09-23.** Re-measured that day: **`VITE_MONDAY_API_TOKEN` still ships** and is the only one
+  (`shared/mondayEndpoint.ts:83`), as the **direct-mode fallback** — with `VITE_MONDAY_GATEWAY_URL`
+  set it is never read, so a production build that omits it is the fix ("Phase 1b"). The other two
+  are DONE and must not be re-done:
+  ✅ **RingCentral** — the client secret and JWT left the bundle; every call goes through the
+  gateway's `/rc/<path>`, which holds them server-side (`lib/fax/ringcentralApi.ts` says so in its
+  header). The only RC value in `src/` is `VITE_RC_SMS_FROM`, the company's own published number.
+  **Do not go rotating an "exposed" RC credential — it is not in the bundle.**
+  ✅ **`VITE_GITHUB_PAT`** — gone from `src/` entirely. `access.json` now reads and writes through
+  the Cloudflare worker's `/gh-state`, which injects `env.GITHUB_PAT` server-side against an
+  allowlisted repo+file (`worker/src/index.js:389`).
+  ⚠️ §5.3's "bundled `VITE_GITHUB_PAT`" and §5.1's direct-mode note read as though all three
+  still ship; only the Monday one does.
+- ✅ **Audit finding H6 is FIXED — the Subscription send IS verified** (confirmed 2026-09-23).
+  `lib/subscription/mondayWrite.ts:215` runs the whole ~20-column write through
+  `executeWritesWithVerification` with `stageColumnId: []` (this board has no advancer, so Phase 3
+  writes nothing and every task is read-back verified), and throws on any failed column rather than
+  firing confetti. Routing through `verifiedWrite` is also what lets the gateway's `/send` fast path
+  collapse it into ONE `change_multiple_column_values`, which Monday requires — it rejects
+  concurrent mutations against one item. The code carries the same note by name. **Nothing to do
+  here; this bullet said otherwise for months.**
 - **Inline write ordering** in SendRequest/ConfirmReceipt/Chase panels and the **Escalation modal**
   (audit H1–H5, M2) can flip a trigger before sibling data is indexed.
 - **"Never billed" attestations** can't be un-set from the UI (code only writes when truthy).
