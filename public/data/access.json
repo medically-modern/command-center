@@ -104,7 +104,11 @@
       "perms": {
         "viewOthers": true,
         "stageManager": false
-      }
+      },
+      "homeView": [
+        "oversight",
+        "bars"
+      ]
     },
     "katie@medicallymodern.com": {
       "name": "katie",
