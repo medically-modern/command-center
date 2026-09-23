@@ -5399,8 +5399,9 @@ read-only, which §5.38 already provides and §5.39b already wires.
 test). `ABILITIES` / `HOME_VIEWS` on `accessStore` ⇄ `AbilitiesEditor`'s rendering ⇄ the three
 `useAccess` writers. `GlobalHeader`'s `ability:` fields ⇄ `hasAbility`. `HomeViewHost`'s two lazy
 imports ⇄ the real pages — never a local rebuild of either. `OPT_IN_ABILITIES` ⇄ the grants in
-`public/data/access.json` ⇄ `AbilitiesEditor`'s `locked` ⇄ the footer sentence naming the exception;
-`abilities.test.ts` reads the shipped file, so a lost grant fails the build rather than going quiet.
+`public/data/access.json` ⇄ `AbilitiesEditor`'s `locked` ⇄ the footer sentence naming the exception
+⇄ `abilities.test.ts`' `GRANT_RULE`, which says who may hold each opt-in ability and fails the build
+for one it does not classify (§5.39j).
 ⚠️ **The grant does NOT reach prod through a sync** — `sync-from-test.yml` preserves prod's own
 `access.json` (§8), deliberately, so on prod somebody ticks "View others' views" once on `/access`.
 Files: `lib/shell/abilities.ts` (+ tests), `lib/accessStore.ts` (`Ability` · `HomeView` · `perms` ·
@@ -6032,8 +6033,16 @@ silently), and a failed save toasts. `accessStore.poll.test.tsx` pins it.
 any Remove — it spreads now.
 ⚠️ **"Answer calls in the browser" is no longer its own section** — the **Answers calls** chip on
 each person's Abilities row is the one control onto `callAnswerers[]`, carrying the N/5 count.
-⚠️ `abilities.test.ts` checks opt-in grants are a SUBSET of Josh + Brandon, not an exact list:
-the file is edited live from this page, so an exact pin turned every revoke into a red deploy.
+⚠️ `abilities.test.ts` checks opt-in grants as a SUBSET, never an exact list: the file is edited
+live from this page, so an exact pin turned every revoke into a red deploy.
+⚠️⚠️ **And only where Josh has said who may hold the ability** (`GRANT_RULE`, 2026-09-23).
+`viewOthers` is Josh + Brandon ONLY (his 2026-09-18 words) and a grant to anybody else still fails
+the build. `stageManager` is `grantedOnAccessPage` — §5.41's "anyone else who needs it takes one
+tick on /access". The subset check first covered BOTH, so when Janelle was given Stage Manager at
+14:45 that day, every test-site deploy failed for two hours — the MM-1094 patient-data fix among
+them — until Josh confirmed the grant was deliberate. A deploy gate is the wrong place to police a
+decision an admin makes on a page built for making it. A third opt-in ability with no
+`GRANT_RULE` entry fails the build, so it cannot ship unclassified.
 
 ### 5.41 Reports & Metrics and Stage Manager get their own pages (Sep 2026)
 Josh, 2026-09-21, four asks in one message. **No board change; app only.**
@@ -6057,8 +6066,11 @@ The split is cheaper than the tab, not just tidier.
 (*"like communications"*), at `/stage-manager`.
 ⚠️⚠️ **It is OPT-IN, the second entry in `OPT_IN_ABILITIES`** (Josh, same day: *"make stage
 manager opt-in like viewothers"*) — so it is OFF for everybody, **managers included**, until
-somebody ticks it, and it is granted in the shipped `access.json` to **josh@ and brandon@** only.
-Anyone else who needs it takes one tick on `/access`. It passes both tests the carve-out requires
+somebody ticks it. It shipped granted to **josh@ and brandon@**; anyone else who needs it takes
+one tick on `/access`. ⚠️ **As of 2026-09-23 it is held by `janelle@` and by neither Josh nor
+Brandon** (Brandon unticked 14:42, Janelle ticked 14:45:10, Josh unticked 14:45:15) — Josh confirmed
+that was deliberate, so do not "restore" the original two. `abilities.test.ts` does not restrict who
+holds it (§5.39j). It passes both tests the carve-out requires
 (§5.39c): it is NEW, so nobody is silently narrowed out of something they had, and it is not a way
 out of anywhere — a person without it keeps every other tab. It is also the one ability whose
 screen **moves a patient**, by writing the Stage Advancer that every board automation fires on.
@@ -6802,7 +6814,8 @@ it is: a search over non-completed items on **Medical Evaluation and Insurance o
 (`MOVABLE_BOARD_IDS`), a target-stage picker from `STAGE_OPTIONS`, and `writeStageAdvancer` — a
 **bare, unverified write of the Stage Advancer**, the column every board automation fires on. It is
 the manual override for a patient in the wrong stage, plus a days-in-stage `PipelineChart` over
-that population. It is **opt-in** (`OPT_IN_ABILITIES`, §5.41), granted to josh@ and brandon@ only.
+that population. It is **opt-in** (`OPT_IN_ABILITIES`, §5.41), granted on `/access` — to Janelle
+as of 2026-09-23 (§5.41).
 ⚠️ Folding it into the patient screen means giving that screen a Stage Advancer write, which
 reverses §5.39's founding "writes nothing" promise a second time and needs its own ability gate,
 its own §9 advancer-no-op guard (`expectedText`) and its own tests. That is a decision, not a
