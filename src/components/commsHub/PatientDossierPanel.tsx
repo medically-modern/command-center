@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { DossierItem, PathStep, PatientDossier, StageNotes, StepState } from "@/lib/commsHub/dossier";
-import { stageNoteTrail, stagesCompleted } from "@/lib/commsHub/dossier";
+import { stageNoteTrail, stagesCompleted, stepOpenHref } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail, type RenderedField } from "@/lib/commsHub/stageDetail";
 import { appendNoteToRecord, type DossierPick } from "@/lib/commsHub/dossierApi";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
@@ -67,19 +67,11 @@ const STEP_HINT: Record<StepState, string> = {
   notReached: "Not reached yet",
 };
 
-/** Where a step chip navigates. A completed record opens in review mode, the
- *  same URL Search's completion badges build (§7) — banner on, advance off, so
- *  reading history can never re-advance a finished patient. */
-function stepHref(step: PathStep): string | null {
-  const { item, board, state } = step;
-  if (!item || !board.route) return null;
-  const params = new URLSearchParams({ patientId: item.itemId, from: "system-mgmt" });
-  if (state === "completed") params.set("completedStage", String(board.boardId));
-  return `${board.route}?${params.toString()}`;
-}
-
 function StepChip({ step }: { step: PathStep }) {
-  const href = stepHref(step);
+  // ⚠️ `stepOpenHref`, never `board.route`: a live record opens the page for
+  // its GROUP (MM-1094 — a Partial Leads patient was sent to /profile), and a
+  // completed one opens in review mode. See the rule's own comment.
+  const href = stepOpenHref(step);
   const body = (
     <span
       className={cn(

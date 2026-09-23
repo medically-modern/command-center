@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   buildDossier,
   dobKey,
@@ -8,6 +9,7 @@ import {
   splitByPerson,
   stageNoteTrail,
   stagesCompleted,
+  stepOpenHref,
   type DossierItem,
 } from "./dossier";
 import { PIPELINE_ORDER, pipelineIndex } from "./pipelineOrder";
@@ -129,6 +131,81 @@ describe("buildDossier", () => {
     ]);
     expect(d.name).toBe("Richard Devane");
     expect(d.phone).toBe("+13475550101");
+  });
+});
+
+describe("stepOpenHref — a chip opens the page for the record's GROUP (MM-1094)", () => {
+  const DTC = 18392794310;
+  const PARTIAL_LEADS = "group_mm5z87zt";
+  const stepOf = (d: ReturnType<typeof buildDossier>, boardId: number) =>
+    d.path.find((s) => s.board.boardId === boardId)!;
+
+  it("opens a Partial Leads patient on the intake page, not on /profile", () => {
+    // The incident: Profile Send Off is four roles on three pages, and the chip
+    // took the board's route for all of them — so a New Form — Partial Leads
+    // patient landed on /profile as an out-of-queue deep link.
+    const d = buildDossier([
+      item(PROFILE, { itemId: "900001", groupId: PARTIAL_LEADS, route: "/unverified-referrals" }),
+    ]);
+    const step = stepOf(d, PROFILE);
+    expect(step.state).toBe("active");
+    expect(stepOpenHref(step)).toBe(
+      "/unverified-referrals?patientId=900001&from=system-mgmt",
+    );
+  });
+
+  it("agrees with the pane's own 'Open on <board>' button for the live record", () => {
+    // That button builds `${active.route}?patientId=…&from=system-mgmt`. Two
+    // doors to one patient in one pane must not go to two pages.
+    const d = buildDossier([item(PROFILE, { itemId: "7", route: "/profile-cleanup" })]);
+    expect(stepOpenHref(stepOf(d, PROFILE))).toBe(
+      `${d.active!.route}?patientId=${encodeURIComponent(d.active!.itemId)}&from=system-mgmt`,
+    );
+  });
+
+  it("opens a COMPLETED record in review mode on the board's page, whatever its group route says", () => {
+    // Review mode (banner on, advance off) is wired on the canonical pages; the
+    // intake page has no such gate (§10), so a finished record must not be
+    // routed there by group.
+    const d = buildDossier([
+      item(PROFILE, { itemId: "9", isCompleted: true, route: "/unverified-referrals" }),
+      item(ME, { itemId: "10" }),
+    ]);
+    expect(stepOpenHref(stepOf(d, PROFILE))).toBe(
+      `/profile?patientId=9&from=system-mgmt&completedStage=${PROFILE}`,
+    );
+  });
+
+  it("opens a parked record on its own group's page", () => {
+    const d = buildDossier([
+      item(PROFILE, { itemId: "11", isStuck: true, groupTitle: "Stuck", route: "/profile" }),
+    ]);
+    const step = stepOf(d, PROFILE);
+    expect(step.state).toBe("parked");
+    expect(stepOpenHref(step)).toBe("/profile?patientId=11&from=system-mgmt");
+  });
+
+  it("falls back to the board's page when the record carries no route", () => {
+    const d = buildDossier([item(ME, { itemId: "12", route: "" })]);
+    expect(stepOpenHref(stepOf(d, ME))).toBe("/evaluate?patientId=12&from=system-mgmt");
+  });
+
+  it("links nowhere for a board with no page, or a stage the patient has not reached", () => {
+    const d = buildDossier([item(DTC, { itemId: "13", route: "" })]);
+    expect(stepOpenHref(stepOf(d, DTC))).toBeNull();
+    expect(stepOpenHref(stepOf(d, WC))).toBeNull();
+  });
+
+  it("is what the pane's chips actually use — never `board.route` directly", () => {
+    // Comments stripped first: the panel explains the very shortcut it must not
+    // take, and a scan that fails on its own prose can only be passed by
+    // deleting the explanation.
+    const panel = readFileSync("src/components/commsHub/PatientDossierPanel.tsx", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(panel).toMatch(/stepOpenHref\(step\)/);
+    expect(panel).not.toMatch(/function stepHref\b/);
+    expect(panel).not.toMatch(/board\.route/);
   });
 });
 

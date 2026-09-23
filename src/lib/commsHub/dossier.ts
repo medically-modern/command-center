@@ -215,6 +215,40 @@ export function buildDossier(items: DossierItem[]): PatientDossier {
   };
 }
 
+/**
+ * Where a step chip on the dossier's path opens.
+ *
+ * ⚠️ A record that is NOT finished opens the page for its GROUP, never the
+ * board's canonical page (MM-1094, 2026-09-23). Profile Send Off is four roles
+ * on three pages (§5.10 · §5.20), and the chip used to take `board.route` —
+ * `/profile`, Referral Intake — for every one of them. So a patient in
+ * *New Form — Partial Leads* opened on /profile, where she is not in the queue
+ * and exists only as a deep link: the wrong screen (its Save Progress is
+ * browser-only and its exits are Referral Intake's), and the one whose hook
+ * re-fetched a deep-linked patient every poll without the rep's edits — *"all
+ * fields keep resetting"*. `item.route` is the group-aware answer
+ * `dossierApi.routeFor` already gives the "Open on <board>" button in the same
+ * pane, and Search's `rowRouting` lands on the same page, so the doors agree.
+ *
+ * ⚠️ A COMPLETED record still opens on the board's canonical page with
+ * `completedStage` — the URL Search's completion badges build (§7). That is
+ * where review mode is wired (banner on, advance off), so reading history can
+ * never re-advance a finished patient. The intake page has no such gate (§10),
+ * which is exactly why a finished record must not be routed there by group.
+ */
+export function stepOpenHref(step: PathStep): string | null {
+  const { item, board, state } = step;
+  if (!item) return null;
+  const params = new URLSearchParams({ patientId: item.itemId, from: "system-mgmt" });
+  if (state === "completed") {
+    if (!board.route) return null;
+    params.set("completedStage", String(board.boardId));
+    return `${board.route}?${params.toString()}`;
+  }
+  const route = item.route || board.route;
+  return route ? `${route}?${params.toString()}` : null;
+}
+
 /** One stage's running notes, for the hub's "notes from every stage" list. */
 export interface StageNotes {
   boardId: number;

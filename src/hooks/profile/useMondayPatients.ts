@@ -278,8 +278,18 @@ export function useMondayPatients(
           const item = await fetchItemById(injectedId);
           if (item) {
             const injected = mondayItemToPatient(item);
+            // The snapshot takes the PRE-edit record; the list takes the edits.
             if (!receivedRef.current[injected.id]) receivedRef.current[injected.id] = injected;
-            merged.unshift(injected);
+            // ⚠️ Through the overlay like every group row above (MM-1094). This
+            // record is re-fetched on EVERY poll, so unshifting it raw replaced
+            // the rep's unsaved edits with Monday's copy every 15 seconds —
+            // every 4 while a Stedi check polls — and a field blank on the
+            // board came back red. The overlay still held the edits, so typing
+            // appeared to work and then "reset". Only a patient outside the
+            // page's own group reaches this line, which is why a queue patient
+            // never showed it. The masheke, samantha, welcomeCall and
+            // subscription hooks always merged it here.
+            merged.unshift(applyOverlay(injected));
           }
         } catch { /* ignore */ }
       }
@@ -310,9 +320,9 @@ export function useMondayPatients(
         setInitialLoading(false);
       }
     }
-    // Both deps are stable useCallbacks, so `refetch` stays stable — the poll
+    // Every dep is a stable useCallback, so `refetch` stays stable — the poll
     // interval and the groupKey effect below depend on that.
-  }, [applyOverlays, fetchDetail]);
+  }, [applyOverlays, applyOverlay, fetchDetail]);
 
   // Keyed on the group CONTENTS: a caller selecting several groups passes a new
   // array each render, and comparing references would re-fetch every time —
