@@ -77,6 +77,7 @@
         "editProfile": false
       },
       "homeView": [
+        "coordinator",
         "bars",
         "oversight"
       ]
