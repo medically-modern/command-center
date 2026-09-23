@@ -22,6 +22,7 @@
  * Required env:  CALLS_HEALTH_URL, NTFY_URL, NTFY_TOPIC
  * Optional env:  CALLS_WEBHOOK_URL        probe the handshake too (recommended)
  *                CALL_ARCHIVE_HEALTH_URL  also watch the call-recording archive
+ *                VOICEMAIL_ARCHIVE_HEALTH_URL  also watch the voicemail archive
  *                DRY_RUN=1                print, don't notify
  */
 
@@ -29,6 +30,7 @@ const {
   CALLS_HEALTH_URL,
   CALLS_WEBHOOK_URL,
   CALL_ARCHIVE_HEALTH_URL,
+  VOICEMAIL_ARCHIVE_HEALTH_URL,
   NTFY_URL,
   NTFY_TOPIC,
   DRY_RUN,
@@ -190,10 +192,19 @@ export function faults(health, { handshake, now = Date.now() }) {
  * an outage we have not established is the mirror image of the silence this
  * monitor exists to break.
  */
-export function archiveFaults(health) {
+export function archiveFaults(health, labels = {}) {
+  // ⚠️ One rule, two archives. Recordings and voicemail have the same failure
+  // modes, the same verdict source (`archiveHealth` on the gateway) and the
+  // same "a backlog is not a fault" discipline — so a second copy of this
+  // function would be two chances to get the one thing wrong that matters:
+  // paging for a working system, or staying quiet during a real outage. Only
+  // the WORDS differ, because a push that does not say which archive it is
+  // about is one somebody reads as whichever they recognise.
+  const noun = labels.noun || "call-archive";
+  const notArchived = labels.notArchived || "Call recordings are not being archived";
   const out = [];
   if (health === null) {
-    out.push("Could not reach the call-archive health check — this says nothing about the archive itself, only that we could not ask.");
+    out.push(`Could not reach the ${noun} health check — this says nothing about the archive itself, only that we could not ask.`);
     return out;
   }
   // ⚠️ Switched off ON PURPOSE is not a fault. The gateway keeps answering this
@@ -202,16 +213,49 @@ export function archiveFaults(health) {
   // wrong.
   if (health.enabled === false) return out;
   if (health.storeConfigured === false) {
-    out.push("The call archive has no object store configured, so nothing is being saved. Set the CALL_ARCHIVE_* variables on the gateway.");
+    out.push(`The ${noun} has no object store configured, so nothing is being saved. Set the CALL_ARCHIVE_* variables on the gateway.`);
     return out;
   }
   if (health.ok === false) {
     out.push(
-      `Call recordings are not being archived: ${health.reason || "reason not reported"}.` +
+      `${notArchived}: ${health.reason || "reason not reported"}.` +
         ` (${health.stored ?? 0} stored, ${health.pending ?? 0} pending, ${health.failed ?? 0} failed)`,
     );
   }
   return out;
+}
+
+/**
+ * Ask one archive how it is, and push if it says it is not ok.
+ *
+ * ⚠️ An unreachable health check is "could not check", never "the archive is
+ * broken" — `archiveFaults` draws that line and this only decides whether to
+ * wake somebody. ⚠️ A non-200 is treated the same as unreachable rather than
+ * being parsed: a 500 body is an error string, not a verdict, and reading it as
+ * one would invent a reason nobody wrote.
+ */
+async function watchArchive({ url, title, logName, labels }) {
+  if (!url) return;
+  let health = null;
+  try {
+    const res = await get(url);
+    if (res.ok) health = await res.json();
+    else console.error(`${logName} health returned ${res.status}`);
+  } catch (e) {
+    console.error(`${logName} health unreachable:`, e.message);
+  }
+  const problems = archiveFaults(health, labels);
+  if (problems.length) {
+    console.error(`${logName.toUpperCase()} PROBLEMS:\n` + problems.map((p) => ` - ${p}`).join("\n"));
+    await notify(title, problems.join("\n") + "\n\nCheck: " + url);
+    return;
+  }
+  if (health) {
+    console.log(
+      `${logName} OK — ${health.stored} stored, ${health.pending} pending, ` +
+        `${health.gone} gone, ${Math.round((health.bytes || 0) / 1e6)} MB`,
+    );
+  }
 }
 
 async function main() {
@@ -233,36 +277,28 @@ async function main() {
   const handshake = await handshakeOk(CALLS_WEBHOOK_URL);
   const problems = faults(health, { handshake });
 
-  // ⚠️ A SEPARATE notification, deliberately not folded into the call-stream
-  // one. They are different systems with different remedies and different
-  // urgencies — "no calls will arrive" is a now problem, "recordings are not
-  // being saved" is a today problem — and a single push carrying both is one
-  // somebody reads as whichever half they recognise. Skipped entirely when
-  // CALL_ARCHIVE_HEALTH_URL is unset, so this file behaves exactly as before
-  // until somebody points it at the archive.
-  if (CALL_ARCHIVE_HEALTH_URL) {
-    let archive = null;
-    try {
-      const res = await get(CALL_ARCHIVE_HEALTH_URL);
-      if (res.ok) archive = await res.json();
-      else console.error(`archive health returned ${res.status}`);
-    } catch (e) {
-      console.error("archive health unreachable:", e.message);
-    }
-    const archiveProblems = archiveFaults(archive);
-    if (archiveProblems.length) {
-      console.error("ARCHIVE PROBLEMS:\n" + archiveProblems.map((p) => ` - ${p}`).join("\n"));
-      await notify(
-        "Command Center: call recordings",
-        archiveProblems.join("\n") + "\n\nCheck: " + CALL_ARCHIVE_HEALTH_URL,
-      );
-    } else if (archive) {
-      console.log(
-        `Archive OK — ${archive.stored} stored, ${archive.pending} pending, ` +
-          `${archive.gone} gone, ${Math.round((archive.bytes || 0) / 1e6)} MB`,
-      );
-    }
-  }
+  // ⚠️ A SEPARATE notification per archive, deliberately not folded into the
+  // call-stream one and not folded into each other. They are different systems
+  // with different remedies and different urgencies — "no calls will arrive" is
+  // a now problem, "recordings are not being saved" is a today problem — and a
+  // single push carrying several is one somebody reads as whichever part they
+  // recognise. Each is skipped entirely when its URL is unset, so this file
+  // behaves exactly as before until somebody points it at one.
+  await watchArchive({
+    url: CALL_ARCHIVE_HEALTH_URL,
+    title: "Command Center: call recordings",
+    logName: "Call archive",
+    labels: { noun: "call-archive", notArchived: "Call recordings are not being archived" },
+  });
+  // ⚠️ Voicemail is the one with the TIGHTER clock: it lives in the ~30-day
+  // message store, not the 90-day recording system, so an outage here costs
+  // patient messages three times faster than the same outage costs recordings.
+  await watchArchive({
+    url: VOICEMAIL_ARCHIVE_HEALTH_URL,
+    title: "Command Center: voicemail",
+    logName: "Voicemail archive",
+    labels: { noun: "voicemail-archive", notArchived: "Voicemail is not being archived" },
+  });
 
   if (!problems.length) {
     console.log(

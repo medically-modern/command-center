@@ -216,4 +216,44 @@ describe("archiveFaults", () => {
   it("tolerates a health payload that reports no reason", () => {
     expect(archiveFaults({ ...ok, ok: false, reason: null })[0]).toMatch(/reason not reported/);
   });
+
+  /**
+   * ⚠️ ONE rule, TWO archives. Recordings and voicemail have the same failure
+   * modes, the same verdict source (`archiveHealth` on the gateway) and the
+   * same "a backlog is not a fault" discipline, so a second copy of
+   * archiveFaults would be two chances to get the one thing wrong that matters.
+   * Only the WORDS differ — because a push that does not say WHICH archive it
+   * is about is one somebody reads as whichever they recognise, and these two
+   * have very different remedies.
+   */
+  describe("the voicemail archive rides the same rule under its own name", () => {
+    const vmLabels = { noun: "voicemail-archive", notArchived: "Voicemail is not being archived" };
+
+    it("says voicemail, not call recordings", () => {
+      const f = archiveFaults({ ...ok, ok: false, reason: "last successful run was 9h ago" }, vmLabels);
+      expect(f).toHaveLength(1);
+      expect(f[0]).toMatch(/^Voicemail is not being archived/);
+      expect(f[0]).not.toMatch(/call recordings/i);
+      expect(f[0]).toMatch(/9h ago/);
+    });
+
+    it("names the voicemail archive when it cannot be reached", () => {
+      expect(archiveFaults(null, vmLabels)[0]).toMatch(/voicemail-archive health check/);
+    });
+
+    // ⚠️ Both archives share ONE bucket and one set of credentials, so the
+    // remedy really is the CALL_ARCHIVE_* variables even here. Saying anything
+    // else would send somebody looking for variables that do not exist.
+    it("still points at the shared CALL_ARCHIVE_* variables for a missing bucket", () => {
+      const f = archiveFaults({ ...ok, ok: false, storeConfigured: false }, vmLabels);
+      expect(f[0]).toMatch(/voicemail-archive/);
+      expect(f[0]).toMatch(/CALL_ARCHIVE_/);
+    });
+
+    it("keeps every quiet case quiet under the new labels too", () => {
+      expect(archiveFaults(ok, vmLabels)).toEqual([]);
+      expect(archiveFaults({ ...ok, pending: 300 }, vmLabels)).toEqual([]);
+      expect(archiveFaults({ ok: true, enabled: false }, vmLabels)).toEqual([]);
+    });
+  });
 });

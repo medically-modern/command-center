@@ -37,6 +37,7 @@ import { confirmSmsAccepted } from "./smsSend.mjs";
 import { registerSmsArchive, readArchivedConversation } from "./smsArchive.mjs";
 import { registerPatientDirectory } from "./patientDirectory.mjs";
 import { registerCallArchive } from "./callArchive.mjs";
+import { registerVoicemailArchive } from "./voicemailArchive.mjs";
 import { mergeConversation } from "./smsArchiveRules.mjs";
 
 export { toE164, phoneHmac };
@@ -158,6 +159,17 @@ export function registerMessaging({ app }) {
   // own tables, its own routes, RingCentral read on the `background` tier, and
   // it simply does not run when no bucket is configured. See callArchive.mjs.
   registerCallArchive({ app, pool, requireCaller });
+
+  // The same, for VOICEMAIL — which is not in the recording system at all. A
+  // voicemail is a message-store record, and this account's message store is a
+  // rolling ~30 days (§5.27), i.e. a clock three times tighter than the 90-day
+  // recording cliff, with a quieter failure: a purged recording still leaves
+  // its call-log row behind, while a purged voicemail leaves nothing, so "no
+  // message" and "a message we no longer have" become one answer. Registered on
+  // THIS pool for the same reason as the three above — it holds a patient's
+  // voice and, where the account produces one, a transcript of it. See
+  // voicemailArchive.mjs.
+  registerVoicemailArchive({ app, pool, requireCaller });
 
   /**
    * Send a text to a patient and record who sent it.
