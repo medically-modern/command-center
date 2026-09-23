@@ -10033,8 +10033,12 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
   leaving the patient is "moving on".
 - **Dial attribution**: every Call that dials through the softphone reports who dialed through ONE
   entry point, `reportDial`, which waits for the switch to be read rather than guessing. The whole
-  team is one RingCentral extension (§5.13b), so the call log cannot say. ⚠️ The `tel:` links in
-  `PatientContact` do not report — they hand off to the RingCentral app.
+  team is one RingCentral extension (§5.13b), so the call log cannot say. Three dialers today — the
+  hub, the Care Coordinator's `CallPatientDialog` and §5.30h's `DialPatientDialog` (which arrived on
+  `main` while this was being built and was wired in the merge). ⚠️ `inboxWiring.test.ts` finds
+  dialers by SCANNING `src/` for a dial call, not from a list, so a fourth that forgets to report
+  fails the build. ⚠️ The `tel:` links in `PatientContact` do not report — they hand off to the
+  RingCentral app; only the screens that pass `onCall` (§5.30h) dial in the page.
 - **The hub's right pane IS the patient screen** (plan §7, Josh's D3;
   `components/commsHub/HubPatientPane.tsx`). `PatientPage` was split into a route shell and
   `components/patient/PatientBody.tsx`, and both render the same body — its view state arrives as a

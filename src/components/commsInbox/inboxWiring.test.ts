@@ -24,6 +24,16 @@ const dirFiles = (dir: string) =>
     .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\./.test(f))
     .map((f) => join(dir, f));
 
+/** Every non-test source file under a directory, recursively. */
+const srcFiles = (dir: string): string[] =>
+  readdirSync(resolve(root, dir), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory()
+      ? srcFiles(join(dir, e.name))
+      : /\.(ts|tsx)$/.test(e.name) && !/\.test\./.test(e.name)
+        ? [join(dir, e.name)]
+        : [],
+  );
+
 const INBOX_SRC = [...dirFiles("src/components/commsInbox"), ...dirFiles("src/lib/commsInbox"), ...dirFiles("src/hooks/commsInbox")];
 const PAGE = code("src/pages/AssignedPatientsPage.tsx");
 
@@ -89,10 +99,25 @@ describe("the network (plan §4.6, §4.7)", () => {
     const dialNumber = PAGE.slice(PAGE.indexOf("const dialNumber = useCallback"), PAGE.indexOf("const dialNumber = useCallback") + 200);
     expect(dialNumber).toContain("reportDial(phone);");
     expect(PAGE).not.toMatch(/void dial\(/);
-    // The Care Coordinator's dialer too, before it dials.
-    const cc = code("src/components/careCoordinator/CallPatientDialog.tsx");
-    expect(cc.indexOf("reportDial(target.phone);")).toBeGreaterThan(-1);
-    expect(cc.indexOf("reportDial(target.phone);")).toBeLessThan(cc.indexOf("phone.dial(target.phone);"));
+    // ⚠️ EVERY file that dials, found by scanning — not a list of the ones we
+    // knew about. A dialer added later (the intake page's DialPatientDialog
+    // arrived that way, 2026-09-23) would otherwise place calls nobody is
+    // credited with, and nothing would error.
+    const DIAL = /(?:\.|\b)dial\(/;
+    const dialers = srcFiles("src")
+      .filter((f) => !f.startsWith("src/lib/softphone/"))
+      .filter((f) => DIAL.test(code(f)));
+    expect(dialers).toEqual(expect.arrayContaining([
+      "src/pages/AssignedPatientsPage.tsx",
+      "src/components/careCoordinator/CallPatientDialog.tsx",
+      "src/components/shared/DialPatientDialog.tsx",
+    ]));
+    for (const f of dialers) {
+      const c = code(f);
+      const report = c.indexOf("reportDial(");
+      expect(report, `${f} dials without reportDial`).toBeGreaterThan(-1);
+      expect(report, `${f} dials before it reports`).toBeLessThan(c.search(DIAL));
+    }
     // Only while the module is on — and never guessed before the switch is read.
     const store = code("src/hooks/commsInbox/useInbox.ts");
     const fn = store.slice(store.indexOf("export function reportDial("), store.indexOf("export function useCommsConfig"));

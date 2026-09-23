@@ -33,6 +33,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
+import { reportDial } from "@/hooks/commsInbox/useInbox";
 import { formatPhoneNice } from "@/components/masheke/mmKit";
 
 const STATUS_TEXT: Record<string, string> = {
@@ -59,6 +60,10 @@ export function DialPatientDialog({ open, phone: number, name, onClose, onLogAtt
   // polls an object-keyed effect is a call placed every poll.
   useEffect(() => {
     if (!open || !digits) return;
+    // Who dialed — the call log cannot say, the whole team is one RingCentral
+    // extension (§5.13b). Best-effort and only while the Communications inbox
+    // is on (§5.49); it never holds the dial up.
+    reportDial(number);
     phone.dial(number);
     // `phone.dial` is a stable store method; re-running on it would redial.
     // eslint-disable-next-line react-hooks/exhaustive-deps
