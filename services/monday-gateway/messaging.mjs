@@ -38,6 +38,7 @@ import { registerSmsArchive, readArchivedConversation } from "./smsArchive.mjs";
 import { registerPatientDirectory } from "./patientDirectory.mjs";
 import { registerCallArchive } from "./callArchive.mjs";
 import { registerVoicemailArchive } from "./voicemailArchive.mjs";
+import { registerMmsArchive } from "./mmsArchive.mjs";
 import { mergeConversation } from "./smsArchiveRules.mjs";
 
 export { toE164, phoneHmac };
@@ -170,6 +171,20 @@ export function registerMessaging({ app }) {
   // voice and, where the account produces one, a transcript of it. See
   // voicemailArchive.mjs.
   registerVoicemailArchive({ app, pool, requireCaller });
+
+  // And the PHOTOS. sms_archive above stores a message's attachment metadata
+  // and uris only — its own comment says "fetching the bytes is a separate
+  // job" — so a patient's insurance-card photo is recorded as having existed
+  // and not saved, on the same ~30-day clock. This is that job, and its failure
+  // is the quietest of the four: the TEXT survives here for ever, so the thread
+  // goes on saying a photo was attached, carrying a uri that 404s.
+  //
+  // ⚠️ Registered on THIS pool for the same reason as the four above, and it
+  // must be: these are photographs of insurance cards, carrying a patient's
+  // name, member id and payer. It is also the reason it is here at all rather
+  // than standing alone — its queue is sms_archive, which lives on this pool.
+  // See mmsArchive.mjs.
+  registerMmsArchive({ app, pool, requireCaller });
 
   /**
    * Send a text to a patient and record who sent it.

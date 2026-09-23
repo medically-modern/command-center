@@ -23,6 +23,7 @@
  * Optional env:  CALLS_WEBHOOK_URL        probe the handshake too (recommended)
  *                CALL_ARCHIVE_HEALTH_URL  also watch the call-recording archive
  *                VOICEMAIL_ARCHIVE_HEALTH_URL  also watch the voicemail archive
+ *                MMS_ARCHIVE_HEALTH_URL   also watch the MMS media archive
  *                DRY_RUN=1                print, don't notify
  */
 
@@ -31,6 +32,7 @@ const {
   CALLS_WEBHOOK_URL,
   CALL_ARCHIVE_HEALTH_URL,
   VOICEMAIL_ARCHIVE_HEALTH_URL,
+  MMS_ARCHIVE_HEALTH_URL,
   NTFY_URL,
   NTFY_TOPIC,
   DRY_RUN,
@@ -298,6 +300,17 @@ async function main() {
     title: "Command Center: voicemail",
     logName: "Voicemail archive",
     labels: { noun: "voicemail-archive", notArchived: "Voicemail is not being archived" },
+  });
+  // ⚠️ MMS media shares voicemail's ~30-day clock and has the QUIETEST failure
+  // of the three: a purged recording leaves its call-log row, a purged
+  // voicemail leaves nothing, and a purged photo leaves the TEXT — which goes
+  // on saying an image was attached, carrying a uri that 404s. Nothing else
+  // would ever report that, which is the whole reason this line exists.
+  await watchArchive({
+    url: MMS_ARCHIVE_HEALTH_URL,
+    title: "Command Center: MMS media",
+    logName: "MMS archive",
+    labels: { noun: "MMS-media-archive", notArchived: "Patient photos are not being archived" },
   });
 
   if (!problems.length) {

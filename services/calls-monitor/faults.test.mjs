@@ -256,4 +256,37 @@ describe("archiveFaults", () => {
       expect(archiveFaults({ ok: true, enabled: false }, vmLabels)).toEqual([]);
     });
   });
+
+  describe("and so does the MMS media archive", () => {
+    const mmsLabels = { noun: "MMS-media-archive", notArchived: "Patient photos are not being archived" };
+
+    it("says photos, not recordings and not voicemail", () => {
+      // ⚠️ A push that does not say WHICH archive it is about is one somebody
+      // reads as whichever they recognise — which, with three of them on one
+      // bucket, is how a real outage gets swiped away as the one already known.
+      const f = archiveFaults({ ...ok, ok: false, reason: "the last complete run was 9h ago" }, mmsLabels);
+      expect(f).toHaveLength(1);
+      expect(f[0]).toMatch(/^Patient photos are not being archived/);
+      expect(f[0]).not.toMatch(/call recordings|voicemail/i);
+      expect(f[0]).toMatch(/9h ago/);
+    });
+
+    it("names the MMS archive when it cannot be reached", () => {
+      expect(archiveFaults(null, mmsLabels)[0]).toMatch(/MMS-media-archive health check/);
+    });
+
+    it("still points at the shared CALL_ARCHIVE_* variables for a missing bucket", () => {
+      const f = archiveFaults({ ...ok, ok: false, storeConfigured: false }, mmsLabels);
+      expect(f[0]).toMatch(/MMS-media-archive/);
+      expect(f[0]).toMatch(/CALL_ARCHIVE_/);
+    });
+
+    it("keeps every quiet case quiet, a backlog included", () => {
+      // A backfill looks exactly like a backlog, and this archive starts with
+      // one: every photo sms_archive already holds is enqueued on the first run.
+      expect(archiveFaults(ok, mmsLabels)).toEqual([]);
+      expect(archiveFaults({ ...ok, pending: 4000 }, mmsLabels)).toEqual([]);
+      expect(archiveFaults({ ok: true, enabled: false }, mmsLabels)).toEqual([]);
+    });
+  });
 });

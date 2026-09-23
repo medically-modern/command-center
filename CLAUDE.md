@@ -2673,10 +2673,12 @@ the last one finishes gets a fresh full scan every time. Both guards, not either
 incident (§10) was a runaway **authenticated** client. Point `services/calls-monitor` at the health
 route.
 
-**Not covered: MMS media.** Attachment bytes live on RingCentral and purge with the message, so
-the archive stores the attachment **metadata and uris only** — a patient's insurance-card photo
-(§5.5) is recorded as having existed, not saved. Fetching the bytes through `/rc/fetch` into
-object storage is a separate job.
+✅ **MMS media is archived from 2026-09-23 — §5.47c.** This table still stores the attachment
+**metadata and uris only**, and that has not changed: the bytes live in the bucket, keyed by
+`(message, attachment)` in `mms_archive`, and `attachments` here is what that job reads its queue
+FROM. ⚠️ **Do not write archive state back into this column** — the upsert above ends
+`attachments = EXCLUDED.attachments`, so anything put there is replaced wholesale by the next
+nightly reconcile and every photo is re-downloaded for ever.
 
 ⚠️ **Starting this recovers nothing.** Everything before 2026-08-01 was already gone when the
 archive was written. Every day it is not running is ~140 more texts purged.
@@ -9207,9 +9209,153 @@ written, and every day it is not running is ~2.6 more patient messages purged.
 6. `registerVoicemailArchive` is called from **`messaging.mjs`**, never `index.mjs`, so it lands on
    the messaging pool (pinned by a test).
 
-**Still not archived:** **MMS media** — a patient's insurance-card photo. §5.27 records that the
-SMS archive stores attachment metadata and URIs only, so the bytes still purge with the message.
-Same module shape, same bucket, when wanted.
+✅ **MMS media — the last piece — landed 2026-09-23, see §5.47c.**
+
+### 5.47c MMS media — the photos, and the quietest gap of the four (Sep 2026)
+Josh, 2026-09-23: *"do the mms media archive too"* — the piece §5.27 named when it built
+`sms_archive` (*"Not covered: MMS media … fetching the bytes is a separate job"*) and §5.47b
+named again on the way past. Built: `services/monday-gateway/mmsArchive.mjs` +
+`mmsArchiveRules.mjs` (pure, tested), into the **same `call-recordings` bucket** under an `mms/`
+prefix, with the index on the messaging Postgres. **No board change; gateway only.**
+
+⚠️⚠️ **THIS IS THE QUIETEST FAILURE OF THE FOUR, AND THE ONE THAT LOOKS MOST LIKE SUCCESS.** A
+purged call recording leaves its call-log row behind, so the call is visible with no audio. A
+purged voicemail leaves nothing, so at least there is no false record. A purged **photo** leaves
+the TEXT — `sms_archive` is keep-forever, so the thread goes on saying an image was attached,
+carrying a uri that 404s. Nothing anywhere says the image itself is gone.
+
+**And it is not a minor category.** The intake form's whole insurance step is built around a
+patient answering with a photo of their card (§5.23 — "a card photo is now the WHOLE answer"), the
+Care Coordinator page renders that photo AS the insurance answer for the patients whose carrier is
+on the card and nowhere else (§5.30f: **18 of the 20** live "Photo of card" rows have a BLANK
+General Insurance), and a rep asking for a card by text gets it back as an MMS.
+
+⚠️⚠️ **THERE IS NO RINGCENTRAL SCAN, AND THAT IS EARNED RATHER THAN CUT.** `callArchive` and
+`voicemailArchive` each open with a metadata pass over RingCentral because they are the only thing
+that knows their records exist. This one is not: `sms_archive` already reconciles the whole 35-day
+window daily and already records every media part as `{id, contentType, uri}`
+(`smsArchiveRules.mediaAttachments`, whose own comment says the uri is kept "so a later job can
+fetch the bytes"). So the enqueue is **one SQL statement against a table we own**, and the module
+is drain-only.
+What that buys is not the requests. An enqueue that cannot be shed, throttled or truncated removes
+three of the four failure modes the archives beside it spend real machinery on — there is no page
+ceiling, so no `truncated` verdict and no shed-scan-versus-shed-drain distinction to get wrong.
+⚠️ What it costs is one coupling, named and pinned: **if `mediaAttachments` ever stops recording
+attachments, this archive goes silently empty**, with no scan of its own to notice.
+
+⚠️⚠️ **AND THE STATE CANNOT LIVE IN `sms_archive.attachments`.** The obviously cheaper design is a
+flag inside that JSONB column. It would be destroyed within a day: that table's upsert ends
+`attachments = EXCLUDED.attachments`, replacing the column wholesale on every reconcile —
+deliberately, so a message's late delivery verdict can be corrected (§5.27). Archive state written
+there is silently overwritten and every photo is re-downloaded for ever. Hence a table of our own,
+seeded FROM that column. ⚠️ Which is also why the enqueue **may never write `media_state`**: it is
+reading a column that says a photo was attached, not one that says we saved it.
+
+**Same non-negotiables as §5.47 and §5.47b**, pinned by `mmsArchiveRules.test.mjs` (58 tests;
+**fourteen protections each verified to fail when removed**): the messaging pool
+(`ASSIGNMENTS_DATABASE_URL`) and never the audit pool — **do not move this table**, and
+`registerMmsArchive` is called from `messaging.mjs` for that reason with a test pinning it · HMAC
++ last4, never the number · **oldest-first** drain (the oldest unarchived photo is closest to
+deletion) · the object written **before** the row is marked stored · a **429 never burns an
+attempt** · every presigned URL audited to `mms_archive_access` · the health route survives the
+kill switch · the forced run authenticated **and** rate-floored · the presign self-check a ranged
+**GET**, never a HEAD · staleness measured on runs that were not shed.
+
+⚠️⚠️ **THE KEY IS THE (MESSAGE, ATTACHMENT) PAIR.** One MMS can carry several parts, and the upload
+is idempotent by key precisely so a retry overwrites rather than duplicating — so a key naming only
+the message would have the second part silently overwrite the first. ⚠️ The attachment id falls
+back to the last path segment of the uri, which for the documented shape
+(`/message-store/{id}/content/{attachmentId}`) IS the attachment id; without it a part whose `id`
+did not survive into the JSONB would be unkeyable and therefore silently unarchivable.
+
+⚠️⚠️ **`extensionFor` IS THE ONE SHARED RULE THAT IS *NOT* RE-USED, AND RE-USING IT WOULD BE A
+BUG.** It returns **"mp3" for anything it does not recognise** — correct when every input is a call
+recording and every unknown is some audio codec, and catastrophic here: it would name a patient's
+insurance-card photo `.mp3`. `extensionForMedia` maps the shapes an MMS actually carries,
+**delegates `audio/*` to it** so the two cannot disagree about the one family they share, and falls
+back to **`bin`, never a guess** — an unknown type saved as `.bin` is honest and still openable by
+anyone who reads `content_type`; one saved as `.jpg` is a lie that spreads. Every other shared rule
+(`nextAudioState`, `isOfficeHours`, `last10`/`last4`, `windowStart`) is re-exported **by identity**,
+and a test asserts they are the same objects.
+
+⚠️⚠️ **"A 200 IS NOT MEDIA" COULD NOT BE THE `/^audio\//` TEST THE OTHER TWO USE** — MMS media is
+images, video and vCards, so an audio check would reject every single real attachment. The trap is
+the same though, and real: RingCentral and the storage in front of it can hand back an XML or HTML
+error body **with a 200 status** (the `fetchAssetBytes` trap, §5.5), and an archive that stores
+those has lost the photo AND reported success. `looksLikeMedia` is made precise by something the
+other two archives do not have — **we already know what to expect**, because `sms_archive` recorded
+the part's own `contentType`. Empty body ⇒ never; the response type agrees with what was recorded ⇒
+media; a named error shape ⇒ not media; anything else ⇒ media.
+⚠️ That last branch is **permissive on purpose, and the asymmetry is the argument**: a stored error
+page is a visible, fixable row with its size and type in `last_error`, where a discarded photo is
+gone in thirty days. ⚠️ `text/vcard` is why the error list names types exactly rather than rejecting
+everything under `text/` — a shared contact card is real MMS media.
+
+⚠️ **The enqueue window (`ENQUEUE_DAYS`, 45) is LONGER than the SMS archive's own 35** and must
+stay so: a message enters `sms_archive` at the very edge of ITS window, so an enqueue bounded at the
+same number could miss a row by hours. It is bounded at all only because `sms_archive` is
+keep-forever — an unbounded enqueue would re-walk every text we have ever stored, hourly, for ever.
+⚠️ Nothing is LOST at the far edge: a part is written to the queue once and the **drain reads that
+table**, so it keeps being retried long after its message drops out of the window. The window
+decides what gets NOTICED, not what gets finished.
+
+**Routes:** `GET /mms/archive-health` (**unauthenticated**, counts and timestamps only — the
+`/calls/archive-health` posture) · `POST /mms/archive-run` (authenticated **and** rate-floored) ·
+`GET /mms/media?messageId=[&attachmentId=]` (302 presigned, `?mode=proxy` to stream) · `POST
+/mms/archive/query` (also the batched "do we hold these"). Auth is a Google employee **or** the
+SAME `CALL_ARCHIVE_SERVICE_TOKEN` — all three archives answer the one question *"may this service
+read archived patient media"*, so a second token would be a second secret to rotate for no
+additional boundary.
+⚠️ **`attachmentId` is OPTIONAL and that is a real affordance**: most MMS carry one part, and a
+caller holding only a message id would otherwise be at a dead end. Several stored parts answers
+**400 listing them**, so the passing move is on screen rather than left to be guessed (§5.10 ·
+§5.20 · §5.31c's dead-end rule).
+⚠️ A miss **reports the `mediaState`** rather than flattening to a bare 404 — "RingCentral never
+gave us the bytes", "it was purged before we got there" and "it is queued, come back shortly" are
+three answers with three different next moves.
+
+⚠️ **No allowlist change was needed** — `rcAllowlist.fetchUrlAllowed` already permits
+`/message-store/\d+/content/`, which is the shape an MMS attachment and a voicemail attachment
+share. That also means they are the **same rate-limit group**, so the first live run of either
+settles `MEDIA_GAP_MS` for both: `noteRateLimitGroup` logs `X-Rate-Limit-Group` once per path
+shape. Until then it sits at the call archive's HEAVY pace (6.5s), because being slower than
+necessary costs nothing at this volume and being faster costs 429s on the line that carries live
+patient texting.
+
+⚠️ **Retention is keep-forever**, matching §5.47 and §5.47b: no prune job, no retention variable,
+and that is the decision rather than an oversight. ⚠️ **No new Railway variable is needed** — it
+rides the existing `CALL_ARCHIVE_*` bucket credentials, and every `MMS_ARCHIVE_*` var is an
+optional tuning knob plus the `MMS_ARCHIVE_ENABLED=0` kill switch. The boot run is offset to
+**210s** (recordings 90s, voicemail 150s) so a redeploy does not fire three passes at once.
+⚠️ **There is deliberately no backfill script**: the enqueue picks up every photo already in
+`sms_archive`'s window on its first run, so the backlog IS the queue and oldest-first drains it
+against the cliff.
+
+⚠️ **Every SQL string in `mmsArchive.mjs` is a JS template literal, so no backticks may appear
+inside one — comments included.** `callArchive.mjs` and `voicemailArchive.mjs` carry the same
+warning; §5.47b records that one earning it the hard way. ⚠️ The test for it now asks **Node to
+parse the file** (`node --check`) rather than scanning for backticks inside SQL-looking literals —
+the first version could not see the one thing it was for, because a stray backtick makes the
+literal stop matching the pattern, so the scan silently skipped it and passed.
+
+⚠️ **Starting this recovers nothing** beyond what `sms_archive`'s current window still holds. Every
+photo whose message has already aged out was gone before this was written, and every day it is not
+running is more of them.
+
+**Keep-in-agreement:**
+1. `smsArchiveRules.mediaAttachments` (the queue's SOURCE) ⇄ `enqueueFromSmsArchive`. **This is the
+   coupling that replaces a RingCentral scan** — if that function stops recording attachments, or
+   stops recording their `uri`, this archive goes silently empty.
+2. `smsArchive.upsertSql`'s `attachments = EXCLUDED.attachments` ⇄ the decision to keep state in
+   `mms_archive`. Nothing may write archive state into that JSONB column.
+3. `mmsArchiveRules.extensionForMedia` ⇄ `callArchiveRules.extensionFor` — **deliberately
+   different**, and delegating for `audio/*` only. A test pins that they are not the same function
+   AND that they agree on audio.
+4. `MEDIA_GAP_MS` ⇄ whatever group `X-Rate-Limit-Group` reports for message-store content ⇄
+   `voicemailArchiveRules.AUDIO_GAP_MS`, which is the same path shape and therefore the same budget.
+5. `ENQUEUE_DAYS` > `smsArchiveRules.WINDOW_DAYS`, pinned by a test.
+6. `registerMmsArchive` is called from **`messaging.mjs`**, never `index.mjs`, so it lands on the
+   messaging pool (pinned by a test).
 
 ### 5.48 Cash Pay — a patient with no insurance, priced and charged (Sep 2026)
 Brandon's handoff, 2026-08-18, after Janelle could not move **Debbie Hinze**: 90 days of t:slim
@@ -10643,6 +10789,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A recording is in the archive but the Command Center won't play it | §5.47 — the chain is `useArchivedAudio` → `hasPlayableAudio` (draws the button) → `recordingSource` (picks archive over RingCentral) → `archivedPlaybackUrl` (presigned). ⚠️ If the button is simply ABSENT, the render gate has gone back to `c.recording`, which is false for every purged call — `archivedRecordings.test.ts` should have failed |
 | Another service needs call metadata (who called, when) | §5.47 — `POST /calls/archive/query` with a Google identity or `CALL_ARCHIVE_SERVICE_TOKEN`. ⚠️ It answers `last4`, never the number: send the number you already hold and it hashes it, the `/directory/lookup` posture |
 | "Are we saving VOICEMAIL too?" / a voicemail we should have is missing | §5.47b — yes, since 2026-09-23. `GET /voicemail/archive-health` on the gateway (unauthenticated). ⚠️ Its clock is **~30 days**, not 90, and a purged voicemail leaves NO surviving row — so "no message" and "a message we no longer have" look identical unless the archive caught it. `ok:false` with *no successful run* means the job has never completed one; a **pending** backlog is normal |
+| "Where did that patient's PHOTO go?" / a thread says an image was attached and it will not open | §5.47c — `GET /mms/archive-health` on the gateway (unauthenticated). ⚠️ This is the quietest of the four: `sms_archive` is keep-forever, so the TEXT survives saying a photo was attached while the uri 404s — the record looks complete and is not. A **pending** backlog is normal (the first run enqueues everything `sms_archive` already holds); `ok:false` with *no successful run* means the job has never completed one |
+| An archived photo by message id, from the app or another service | §5.47c — `GET /mms/media?messageId=` (302 presigned, `?mode=proxy` to stream, `&attachmentId=` when a message has several parts — it answers **400 listing them** rather than guessing) and `POST /mms/archive/query` (also the batched "do we hold these"). Same `CALL_ARCHIVE_SERVICE_TOKEN`, same `last4`-never-the-number posture |
+| An archived file downloads with the wrong extension | §5.47c — `extensionForMedia`, and ⚠️ **never** `callArchiveRules.extensionFor`, which returns `"mp3"` for anything it does not recognise. A `.bin` is correct and deliberate for an unfamiliar type; a photo named `.mp3` means the audio rule leaked in. It delegates `audio/*` to that one, so the two cannot disagree about audio |
+| The MMS archive is empty and nothing is erroring | §5.47c — its queue is **`sms_archive.attachments`**, not RingCentral, so start there: if `smsArchiveRules.mediaAttachments` stopped recording parts (or their `uri`), this goes silently empty with no scan of its own to notice. Then check `ENQUEUE_DAYS` still exceeds the SMS window, and that nothing writes archive state back into that JSONB column — the SMS upsert replaces it wholesale every night |
 | A voicemail's audio, or its transcript, from another service | §5.47b — `GET /voicemail/audio?messageId=` (302 presigned, `?mode=proxy` to stream) and `POST /voicemail/archive/query` (also the batched "do we hold these"; pass `messageIds` and it is not date-bounded). Same `CALL_ARCHIVE_SERVICE_TOKEN`, same `last4`-never-the-number posture |
 | A voicemail has no transcript | §5.47b — **that is the expected reading**, not a fault: transcription is a per-account RingCentral feature and it is not established that it is on here (§5.28). `archiveHealth` reports the count so the other explanation (the fetch is broken) is visible; nothing marks a row failed for want of one. A transcript that arrives LATE is still picked up — `transcript_uri` is refreshed on every scan |
 | A bulk download stopped part-way | §5.16 — `lib/callHistory/recordingDownload.ts`. The run is paced at ~24/min against `rcLimiter`'s 40-per-caller budget and retries a throttled file once; the toast reports how many failed. Closing the tab ends it — whatever already saved is kept |
