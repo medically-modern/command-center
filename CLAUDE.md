@@ -5266,12 +5266,14 @@ menu** (Josh, 2026-09-18, three asks in one message). **No board change; app onl
   the handoff (§5.39b has the board id and the list). ⚠️ `shellRemovals
   .test.ts` scans the **TABS array**, not the file, precisely because the Manage menu links there —
   a whole-file scan would fail on the door and read as though the tab had come back.
-- ⚠️⚠️ **`fetchAccess` REBUILDS THE CONFIG FROM A WHITELIST OF KEYS, so a top-level field missing
-  from it is saved to the file and then thrown away by the next 10s poll.** `admins` was exactly
+- ⚠️⚠️ **`fetchAccess` REBUILT THE CONFIG FROM A WHITELIST OF KEYS, so a top-level field missing
+  from it was saved to the file and then thrown away by the next 10s poll.** `admins` was exactly
   that when §5.39c shipped: the toggle wrote GitHub correctly and the list vanished seconds later,
   with nothing erroring — a setting that will not stick and does not say why. `perms` and `homeView`
-  survived only because they ride INSIDE `processors`. Anything new at the top level goes in that
-  read too; `abilities.test.ts` scans it.
+  survived only because they ride INSIDE `processors`. Since 2026-09-23 the read carries every
+  top-level key the file has (§5.39j), so an unknown one is no longer deleted by a write — but the
+  app still only sees a key NORMALISED in that read, so anything new at the top level goes there
+  too; `abilities.test.ts` scans it.
 
 **Still not built, deliberately:** the widened global search (member id, doctor name/phone,
 insurance name — DOB landed 2026-09-21, §5.44). ✅ The Subscription Profile | Orders tabs landed
@@ -6042,8 +6044,36 @@ serves the PREVIOUS access.json for a while after a PUT, so the poll put a just-
 Now a poll result is DROPPED while a save is pending, if any edit happened while it was in flight,
 or within `WRITE_QUIET_MS` (30s) of our own last save. Saves are serialised and always write the
 LATEST config (two quick clicks can't land out of order), the save no longer runs inside a state
-updater, a stale poll no longer overwrites `cachedSha` (which made the next save 409 and fail
-silently), and a failed save toasts. `accessStore.poll.test.tsx` pins it.
+updater, a stale poll never replaces the file snapshot the next save is built on (it used to
+overwrite the sha, which made the next save 409 and fail silently), and a failed save toasts.
+`accessStore.poll.test.tsx` pins it.
+⚠️⚠️ **A SHA CONFLICT IS A MERGE, NEVER A RE-SEND** (2026-09-23; Greptile on
+medically-modern/command-center-test PR #58). A 409 was retried by re-reading only the SHA and
+PUTting this browser's whole config again, so a role, ability, manager or answering slot another
+admin saved in between was overwritten and vanished from both screens, with nothing erroring.
+Reproduced before fixing with two isolated copies of the module over a fake of GitHub's sha rule:
+browser A's tick was gone from the file once B's retry landed. A save now carries its EDITS.
+`useAccess` holds `fileRef` (what the file held at its sha — the pair is only ever set together,
+from one read or one successful write) and `pendingRef` (every edit not yet known to be in the
+file), and the screen is always the edits re-run on the file. On a conflict it re-reads, re-runs
+every pending edit — ones made while the save was out included — shows the merge, and writes again
+(same 0 / 1.5s / 3s backoff, four PUTs at most). The sha is what makes it safe: a PUT that lands
+was built on the file it replaced.
+- ⚠️ An edit is a pure `config → config` that says what the admin MEANT. `toggleProcessorRole`
+  resolves on/off against the screen at click time and saves a SET: replayed as a toggle over
+  another admin's identical click, it would undo both. A new writer must be a set, too.
+- ⚠️ **Removal wins.** The role, ability, home-view and demotion writers CREATE a processor entry,
+  so replayed onto a file where another admin removed that person they would bring them back —
+  with an entry `resolveAccess` reads as a sign-in. `editPerson` refuses them instead.
+- ⚠️ A refused edit — that, or the fifth answering slot filled by the other admin first — is
+  TOASTED once the write lands, never a chip quietly unticking.
+- ⚠️ The merge PUTs even when it adds nothing: the sha is what proves the re-read was not stale.
+  GitHub accepts an unchanged file (12 of 227 "Update access config" commits in the history change
+  nothing) and it keeps its blob sha, so no one else's save is upset.
+- ⚠️ A re-read that 404s is re-created from this browser's view — never merged onto an empty
+  config, which would drop every manager and put the company into bootstrap mode.
+- ⚠️ `fetchAccess` carries every top-level key the file has before normalising the named ones, so a
+  write never drops a key this build does not know. The app still only SEES a key read there.
 ⚠️ `configWithoutEmail` rebuilt the config from three keys and wiped `admins[]` for everybody on
 any Remove — it spreads now.
 ⚠️ **"Answer calls in the browser" is no longer its own section** — the **Answers calls** chip on
@@ -11392,7 +11422,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Stage Manager / Operations / Oversight are missing from System Management | §5.39f — they were commented out on 2026-09-18 and **restored the same day**; all three tabs are live and the header's **Manage ▾** menu opens each one. Missing again ⇒ `lossless.test.ts` should have failed. ⚠️ No Manage button at all means `access.type !== "manager"` — it is manager-gated, not admin-gated |
 | A manager tool has no way in / somebody asks where a page went | §5.39f — `components/shell/lossless.test.ts` is the door list, and the rule is Josh's: *"the ui is the re-write not the function, function should be lossless"*. Check Brandon's own mockup in `_reference/brandon-redesign/` before concluding the redesign cut it — his header carries the Manage menu that was missed. A route that still answers is NOT a door |
 | A search row opens "No board record was found for this item" | §5.39f — a search row is the only pick with an id and **no name**, so `fetchDossierItemsForPick` must resolve it by id (`fetchDossierItemById`) before looking for the trail. ⚠️ Monday's `items(ids:)` is board-agnostic, so that read refuses a `?board=` mismatch rather than rendering one board's item through another's column map; `dossierPickById.test.ts` pins both halves |
-| A setting ticked on `/access` reverts a few seconds later | §5.39c — `fetchAccess` rebuilds the config from a whitelist, so a top-level key it does not name is written to GitHub and dropped by the next 10s poll. `admins` did this. `perms`/`homeView` are safe because they sit inside `processors` |
+| A setting ticked on `/access` reverts a few seconds later | §5.39j first — a poll that lands inside a save's quiet window must be dropped, or GitHub's stale copy puts the chip back. Then §5.39c — a top-level key the app reads must be normalised in `fetchAccess`, or the app never sees it (`admins` did this). `perms`/`homeView` are safe because they sit inside `processors` |
+| Another admin's change on `/access` vanished when somebody else saved | §5.39j — a sha conflict must MERGE: re-read the file and re-run the pending edits on it, never re-send this browser's whole config. A merge that refuses an edit (the person was removed; the answering slots filled) toasts |
 | "Let me see what a processor sees" / the Viewing dropdown is missing or shows me myself | §5.39c — the dropdown needs **`viewOthers`, which is OPT-IN**: granted to josh@ and brandon@ only, and a manager does **not** get it for being a manager. Missing dropdown ⇒ check `perms.viewOthers === true` on that person's **processor** entry (a pure manager with no processor entry cannot hold it). Dropdown present but the screen does not change ⇒ that is the `<Index />` bug, fixed 2026-09-18; the borrow must render `ProcessorView` with the borrowed profile. A stale `?viewing=` says so in amber rather than quietly showing you yourself. The grant does not cross a prod sync — tick it once on prod's `/access` |
 | A fax doesn't match an office, or "view fax is broken" | §5.39c — `/fax` is the combined bar; `/fax-inbox` and the Comms Fax tab still exist beside it. The join strips `@rcfax.com` via `faxDigits` and reads BOTH the patient boards and the Doctor Database; an unmatched number usually means the office sent from a different line than the one we fax to (§5.28, audited clean). A blank viewer means the attachment URI went in without `fetchFaxBlobUrl` |
 | A header tab opens the wrong thing / "where is Reports & Metrics?" | §5.39b — every tab points at an EXISTING page, and Reports & Metrics points at `/system-mgmt?tab=operations` deliberately (Josh, 2026-09-18). ⚠️ The real `#/reports` — Katie's tracker embedded (board `18425649613`) plus numbers computed from our own data — IS specified in the handoff and is UNBUILT (§5.39b); every number in it is a §5.8 counting-contract change |

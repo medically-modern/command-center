@@ -1,4 +1,4 @@
-import { withAbility, withAdmin, withHomeView } from "@/lib/shell/abilities";
+import { HOME_VIEW_LABEL, withAbility, withAdmin, withHomeView } from "@/lib/shell/abilities";
 /**
  * Per-email access control, persisted to the repo (public/data/access.json)
  * via the GitHub Contents API (same cross-device sync pattern as the rest), so it syncs
@@ -230,15 +230,22 @@ export function resolveAccess(email: string, cfg: AccessConfig): Access {
   return { type: "none" };
 }
 
-let cachedSha: string | null = null;
+/** What access.json held at `sha`. The pair is only ever set TOGETHER, from one
+ *  read or one successful write, because every save is built on it: GitHub
+ *  accepts a PUT only while `sha` is still the file's current one, so a save
+ *  that lands is a save whose `data` really was the file it replaced. */
+interface AccessFile {
+  data: AccessConfig;
+  sha: string | null;
+}
 
 /**
- * ⚠️ Does NOT touch `cachedSha` — the caller decides whether this read is one
- * to believe. GitHub's contents API can answer a GET with the PREVIOUS version
- * for several seconds after a PUT; a poll that stored that stale sha made the
- * next save 409, and the edit silently failed (§5.39j).
+ * ⚠️ Decides nothing — the caller decides whether this read is one to believe.
+ * GitHub's contents API can answer a GET with the PREVIOUS version for several
+ * seconds after a PUT; a poll that stored that stale sha made the next save
+ * 409, and the edit silently failed (§5.39j).
  */
-async function fetchAccess(): Promise<{ data: AccessConfig; sha: string | null }> {
+async function fetchAccess(): Promise<AccessFile> {
   const res = await fetch(`${ACCESS_URL}&t=${Date.now()}`, {
     cache: "no-store",
   });
@@ -248,47 +255,117 @@ async function fetchAccess(): Promise<{ data: AccessConfig; sha: string | null }
   if (!res.ok) throw new Error(`GitHub fetch failed: ${res.status}`);
   const json = await res.json();
   const parsed = JSON.parse(atob(json.content));
+  const raw = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   return {
     data: {
-      managers: parsed.managers ?? [],
-      processors: parsed.processors ?? {},
+      // ⚠️⚠️ **EVERY TOP-LEVEL KEY THE FILE CARRIES, named below or not.** A save
+      // writes back the config it read, so a key this read dropped was deleted
+      // from the file by the next save from this browser — including the merge
+      // after a conflict, which is the one write that exists to keep other
+      // people's changes. The keys below are NORMALISED on top of that; a key
+      // this build has never heard of is carried through untouched.
+      ...raw,
+      managers: raw.managers ?? [],
+      processors: raw.processors ?? {},
       // Absent on a file written before 2026-09-14 (and on prod until its own
       // admin sets one): nobody is assigned, nobody is rung. Never inferred.
-      callAnswerers: Array.isArray(parsed.callAnswerers) ? parsed.callAnswerers : [],
-      // ⚠️⚠️ **THIS READ IS A WHITELIST, so a key missing from it is written by
-      // `saveAccess` and then THROWN AWAY by the next 10s poll.** `admins` was
-      // exactly that when it shipped (2026-09-18): the toggle wrote the file
-      // correctly and the list vanished a few seconds later, with nothing
-      // erroring — a setting that will not stick and does not say why.
-      // `perms` and `homeView` are safe only because they ride INSIDE
-      // `processors`. Anything new at the TOP level has to be added here too.
-      admins: Array.isArray(parsed.admins) ? parsed.admins.filter((a: unknown) => typeof a === "string") : undefined,
+      callAnswerers: Array.isArray(raw.callAnswerers) ? raw.callAnswerers : [],
+      // ⚠️⚠️ **A TOP-LEVEL KEY THE APP READS HAS TO BE NORMALISED HERE.** `admins`
+      // shipped (2026-09-18) when this read was a strict whitelist: the toggle
+      // wrote the file correctly and the list vanished a few seconds later, with
+      // nothing erroring — a setting that will not stick and does not say why.
+      // The spread above now keeps an unnamed key in the FILE, but the app still
+      // only sees a key typed and read here. `perms` and `homeView` ride INSIDE
+      // `processors`, so they need nothing.
+      admins: Array.isArray(raw.admins) ? raw.admins.filter((a: unknown) => typeof a === "string") : undefined,
     },
     sha: json.sha,
   };
 }
 
-async function saveAccess(data: AccessConfig): Promise<void> {
-  const body = (sha: string | null) => ({
-    message: "Update access config",
-    content: btoa(JSON.stringify(data, null, 2)),
-    ...(sha ? { sha } : {}),
-    branch: BRANCH,
+function putAccess(data: AccessConfig, sha: string | null): Promise<Response> {
+  return fetch(ACCESS_URL, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: "Update access config",
+      content: btoa(JSON.stringify(data, null, 2)),
+      ...(sha ? { sha } : {}),
+      branch: BRANCH,
+    }),
   });
-  const put = (sha: string | null) =>
-    fetch(ACCESS_URL, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body(sha)) });
-  let res = await put(cachedSha);
-  // ⚠️ A conflict means our sha is behind. Re-read it and retry — a few times,
-  // because the re-read itself can come back stale for a moment after a PUT.
-  for (let attempt = 0; attempt < 3 && (res.status === 409 || res.status === 422); attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
-    const latest = await fetchAccess();
-    cachedSha = latest.sha;
-    res = await put(cachedSha);
+}
+
+/** GitHub refusing a PUT because the file moved on: 409 for a sha that is no
+ *  longer current, 422 for no sha on a file that exists. */
+const isShaConflict = (status: number) => status === 409 || status === 422;
+
+/** Re-reads after a conflict. The first is immediate, the rest back off,
+ *  because the re-read itself can come back stale for a moment after a PUT. */
+const MAX_CONFLICT_RETRIES = 3;
+
+/** Do these two configs serialise to the same file? */
+function sameConfig(a: AccessConfig, b: AccessConfig): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * One admin action as a pure `config → config` function.
+ *
+ * ⚠️⚠️ **IT MAY BE RE-RUN ON A NEWER CONFIG THAN THE ONE IT WAS CLICKED ON** —
+ * that is how a save merges with another admin's (see `useAccess`). So it must
+ * say what the admin MEANT, "turn X on", never "flip X": re-run as a toggle on
+ * top of another admin's identical click, it would undo both.
+ *   · the same object back → nothing to change, it is already so
+ *   · `null` → refused on this config (e.g. the answering slots are full)
+ */
+type AccessEdit = (cfg: AccessConfig) => AccessConfig | null;
+
+interface PendingEdit {
+  seq: number;
+  apply: AccessEdit;
+  /** What to tell the admin when a merge refuses it, given the config it was
+   *  refused on. */
+  refusal?: (cfg: AccessConfig) => string;
+}
+
+const REFUSED_FALLBACK =
+  "Another admin changed access at the same time, so one of your changes no longer applied. Check it and try again.";
+
+/** Run edits, in order, on top of `base`. A refused one changes nothing and
+ *  leaves the sentence that says why. */
+function replayEdits(base: AccessConfig, edits: readonly PendingEdit[]): { config: AccessConfig; refusals: string[] } {
+  let config = base;
+  const refusals: string[] = [];
+  for (const edit of edits) {
+    const next = edit.apply(config);
+    if (next) config = next;
+    else refusals.push(edit.refusal?.(config) ?? REFUSED_FALLBACK);
   }
-  if (!res.ok) throw new Error(`Access save failed: ${res.status}`);
-  const json = await res.json();
-  cachedSha = json.content?.sha ?? cachedSha;
+  return { config, refusals };
+}
+
+/** Somebody on the /access page at all — a manager, a processor, or both. */
+function isPerson(cfg: AccessConfig, email: string): boolean {
+  const e = norm(email);
+  return (cfg.managers || []).some((m) => norm(m) === e) || Object.keys(cfg.processors || {}).some((k) => norm(k) === e);
+}
+
+/** Set (never toggle — see `AccessEdit`) one role on a person, creating their
+ *  processor profile when there is none, so a pure manager can be given roles
+ *  and become dual. Removing a role also prunes its filter/order so stale
+ *  settings don't linger. */
+function withProcessorRole(cfg: AccessConfig, email: string, roleId: string, on: boolean): AccessConfig {
+  const e = norm(email);
+  const pk = Object.keys(cfg.processors).find((k) => norm(k) === e) || e;
+  const cur = cfg.processors[pk] ?? { name: e.split("@")[0], roles: [] };
+  if (cur.roles.includes(roleId) === on) return cfg;
+  const next: ProcessorProfile = { ...cur, roles: on ? [...cur.roles, roleId] : cur.roles.filter((r) => r !== roleId) };
+  if (!on) {
+    if (cur.roleFilters) { const rf = { ...cur.roleFilters }; delete rf[roleId]; next.roleFilters = rf; }
+    if (cur.roleOrder) { const ro = { ...cur.roleOrder }; delete ro[roleId]; next.roleOrder = ro; }
+  }
+  return { ...cfg, processors: { ...cfg.processors, [pk]: next } };
 }
 
 /**
@@ -315,13 +392,29 @@ export function useAccess() {
   const pendingSaves = useRef(0);
   const lastWriteAt = useRef(0);
   const saveChain = useRef<Promise<void>>(Promise.resolve());
+  /* ⚠️⚠️ **A SHA CONFLICT IS A MERGE, NEVER A RE-SEND.** A 409 used to be
+     retried by re-reading only the SHA and PUTting this browser's whole config
+     again, so whatever another admin had saved in between — a role, an
+     ability, a manager, an answering slot — was overwritten, and it vanished
+     from both screens with nothing erroring (Greptile on
+     medically-modern/command-center-test PR #58).
+     So a save carries its EDITS, not a config. `file` is what access.json held
+     at `file.sha`; `pending` is every edit made here that the file is not yet
+     known to hold; and what is on screen is always `pending` re-run on `file`.
+     A save writes exactly that. On a conflict it re-reads the file, re-runs
+     `pending` on what is there now — the screen shows the merge straight away —
+     and writes again. The sha is what makes it safe: GitHub accepts the PUT only
+     while the file still is `file`, so a write that lands merged everything. */
+  const fileRef = useRef<AccessFile>({ data: config, sha: null });
+  const pendingRef = useRef<PendingEdit[]>([]);
+  const nextSeq = useRef(1);
 
   useEffect(() => {
     let mounted = true;
     const load = async (initial: boolean) => {
       const gen = editGen.current;
       try {
-        const { data, sha } = await fetchAccess();
+        const file = await fetchAccess();
         if (!mounted) return;
         const stale =
           !initial &&
@@ -329,9 +422,14 @@ export function useAccess() {
             pendingSaves.current > 0 ||
             Date.now() - lastWriteAt.current < WRITE_QUIET_MS);
         if (stale) return;
-        cachedSha = sha;
-        configRef.current = data;
-        setConfig(data);
+        fileRef.current = file;
+        // A poll lands only when no save is pending, so an edit still listed is
+        // one whose save FAILED (and said so): the file is the truth, as it
+        // always was. The first load keeps them — they were made before it
+        // answered, and their save will merge them onto this file.
+        if (!initial) pendingRef.current = [];
+        configRef.current = replayEdits(file.data, pendingRef.current).config;
+        setConfig(configRef.current);
       } catch (e) {
         if (initial) console.error("Failed to load access config:", e);
       } finally {
@@ -346,21 +444,64 @@ export function useAccess() {
     };
   }, []);
 
+  /** Write every pending edit onto the file, merging on a conflict. */
+  const flush = useCallback(async () => {
+    for (let attempt = 0; ; attempt++) {
+      const edits = pendingRef.current.slice();
+      if (edits.length === 0) return; // an earlier save already wrote them
+      const file = fileRef.current;
+      const { config: body, refusals } = replayEdits(file.data, edits);
+      // ⚠️ Written even when the merge left nothing of ours to add (another
+      // admin made the same change, or ours was refused): the sha is how GitHub
+      // confirms `file` really is the file, and every decision above was made
+      // against it. A re-read can be stale; skipping the write would trust it.
+      // An unchanged file keeps its blob sha, so nobody else's save is upset.
+      const res = await putAccess(body, file.sha);
+      if (res.ok) {
+        // A write that landed is never reported as failed over its receipt.
+        const json = await res.json().catch(() => ({}));
+        fileRef.current = { data: body, sha: json.content?.sha ?? file.sha };
+        // Edits made while this save was out stay pending, for the next one.
+        const upTo = edits[edits.length - 1].seq;
+        pendingRef.current = pendingRef.current.filter((e) => e.seq > upTo);
+        // Refused on the file that was actually written, not a guess: say so
+        // rather than let a ticked chip quietly untick.
+        for (const msg of new Set(refusals)) toast.error(msg);
+        return;
+      }
+      if (!isShaConflict(res.status) || attempt >= MAX_CONFLICT_RETRIES) {
+        throw new Error(`Access save failed: ${res.status}`);
+      }
+      // The file moved on. Re-read it and re-run every pending edit on it —
+      // including any made while this save was out — then write that.
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
+      const latest = await fetchAccess();
+      // ⚠️ A file that has vanished is not an empty config to merge onto:
+      // re-create it from ours rather than write our few edits over nothing.
+      fileRef.current = latest.sha === null ? { data: file.data, sha: null } : latest;
+      configRef.current = replayEdits(fileRef.current.data, pendingRef.current).config;
+      setConfig(configRef.current);
+    }
+  }, []);
+
   /* ⚠️ The save is a SIDE EFFECT and lives outside the state updater — React
      may run an updater twice (StrictMode), which sent every change twice.
      Saves are SERIALISED and each writes the LATEST config, so two quick clicks
      can never land out of order and have the older one overwrite the newer. */
-  const mutate = useCallback((fn: (prev: AccessConfig) => AccessConfig) => {
+  const mutate = useCallback((apply: AccessEdit, refusal?: (cfg: AccessConfig) => string) => {
     const prev = configRef.current;
-    const next = fn(prev);
-    if (next === prev) return;
+    const next = apply(prev);
+    // Refused, or nothing to change. Neither is recorded: a click that changed
+    // nothing here must not be replayed over another admin's save later.
+    if (!next || next === prev || sameConfig(next, prev)) return;
     configRef.current = next;
+    pendingRef.current.push({ seq: nextSeq.current++, apply, refusal });
     editGen.current += 1;
     lastWriteAt.current = Date.now();
     setConfig(next);
     pendingSaves.current += 1;
     saveChain.current = saveChain.current
-      .then(() => saveAccess(configRef.current))
+      .then(() => flush())
       .catch((e) => {
         console.error("Failed to save access:", e);
         toast.error("Couldn't save that access change. Refresh the page and try again.");
@@ -369,7 +510,30 @@ export function useAccess() {
         pendingSaves.current -= 1;
         lastWriteAt.current = Date.now();
       });
-  }, []);
+  }, [flush]);
+
+  /**
+   * An edit to somebody already on the page.
+   *
+   * ⚠️⚠️ **REMOVAL WINS.** Several of the writers below CREATE a processor
+   * entry when there is none (a role, an ability, a home view, a demotion), so
+   * re-run on a file where another admin has since REMOVED the person, they
+   * would bring that person back — with an entry, which `resolveAccess` reads
+   * as permission to sign in. Removing somebody is a decision about access;
+   * a chip ticked a second earlier by an admin who had not seen it must not
+   * quietly undo it. So the merge refuses the edit, and says why.
+   */
+  const editPerson = useCallback((email: string, apply: AccessEdit, refused?: string) => {
+    const e = norm(email);
+    if (!e) return;
+    mutate(
+      (cfg) => (isPerson(cfg, e) ? apply(cfg) : null),
+      (cfg) =>
+        isPerson(cfg, e)
+          ? refused ?? REFUSED_FALLBACK
+          : `${e} was removed by another admin at the same time, so your change to them wasn't saved.`,
+    );
+  }, [mutate]);
 
   /** Add to managers WITHOUT touching any processor profile — a person can be
    *  both (manager view on login, still listed/assigned as a processor). */
@@ -403,7 +567,7 @@ export function useAccess() {
   const setManager = useCallback((email: string, isManager: boolean) => {
     const e = norm(email);
     if (!e) return;
-    mutate((prev) => {
+    editPerson(e, (prev) => {
       const has = prev.managers.some((m) => norm(m) === e);
       let managers = prev.managers;
       if (isManager && !has) managers = [...prev.managers, e];
@@ -419,7 +583,7 @@ export function useAccess() {
         processors: { ...prev.processors, [e]: { name: e.split("@")[0], roles: [] } },
       };
     });
-  }, [mutate]);
+  }, [editPerson]);
 
   const removeEmail = useCallback((email: string) => {
     mutate((prev) => configWithoutEmail(prev, email));
@@ -428,14 +592,21 @@ export function useAccess() {
   /**
    * Give (or take back) a person's browser-answering slot. Returns false —
    * and writes nothing — when the five are already taken. Checked against the
-   * config on screen for the answer, and again against the latest state on
-   * write, so two managers editing at once cannot land a sixth between them.
+   * config on screen for the answer, and again against the FILE when a
+   * conflicting save is merged, so two managers editing at once cannot land a
+   * sixth between them: the one whose save lands second is refused, and told.
    */
   const setCallAnswerer = useCallback((email: string, on: boolean): boolean => {
     if (!withCallAnswerer(configRef.current, email, on)) return false;
-    mutate((prev) => withCallAnswerer(prev, email, on) ?? prev);
+    editPerson(
+      email,
+      (prev) => withCallAnswerer(prev, email, on),
+      on
+        ? `Another admin filled the last of the ${MAX_CALL_ANSWERERS} browser-answering slots at the same time, so ${norm(email)} wasn't added.`
+        : undefined,
+    );
     return true;
-  }, [mutate]);
+  }, [editPerson]);
 
   /** Add a processor profile WITHOUT removing a manager flag — supports dual. */
   const addProcessor = useCallback((email: string, name: string) => {
@@ -452,38 +623,33 @@ export function useAccess() {
 
   const setProcessorName = useCallback((email: string, name: string) => {
     const e = norm(email);
-    mutate((prev) => {
+    editPerson(e, (prev) => {
       const pk = Object.keys(prev.processors).find((k) => norm(k) === e);
       if (!pk) return prev;
       return { ...prev, processors: { ...prev.processors, [pk]: { ...prev.processors[pk], name } } };
     });
-  }, [mutate]);
+  }, [editPerson]);
 
   /** Toggle a role on/off. Creates the processor profile if missing (so a pure
    *  manager can be given roles and become dual). Removing a role also prunes
-   *  its filter/order so stale settings don't linger. */
+   *  its filter/order so stale settings don't linger.
+   *  ⚠️ The toggle is resolved HERE, against the config on screen, into "on" or
+   *  "off" — the saved edit is a SET (see `AccessEdit`), so a merge re-running
+   *  it on top of another admin's identical click leaves the role as both meant. */
   const toggleProcessorRole = useCallback((email: string, roleId: string) => {
     const e = norm(email);
     if (!e) return;
-    mutate((prev) => {
-      const pk = Object.keys(prev.processors).find((k) => norm(k) === e) || e;
-      const cur = prev.processors[pk] ?? { name: e.split("@")[0], roles: [] };
-      const had = cur.roles.includes(roleId);
-      const roles = had ? cur.roles.filter((r) => r !== roleId) : [...cur.roles, roleId];
-      const next: ProcessorProfile = { ...cur, roles };
-      if (had) {
-        if (cur.roleFilters) { const rf = { ...cur.roleFilters }; delete rf[roleId]; next.roleFilters = rf; }
-        if (cur.roleOrder) { const ro = { ...cur.roleOrder }; delete ro[roleId]; next.roleOrder = ro; }
-      }
-      return { ...prev, processors: { ...prev.processors, [pk]: next } };
-    });
-  }, [mutate]);
+    const cur = configRef.current.processors;
+    const pk = Object.keys(cur).find((k) => norm(k) === e);
+    const on = !(pk && cur[pk].roles.includes(roleId));
+    editPerson(e, (prev) => withProcessorRole(prev, e, roleId, on));
+  }, [editPerson]);
 
   /** Set (or clear, when blank) the number RingCentral rings to reach this
    *  person on a click-to-call. See ProcessorProfile.phoneNumber. */
   const setProcessorPhone = useCallback((email: string, phone: string) => {
     const e = norm(email);
-    mutate((prev) => {
+    editPerson(e, (prev) => {
       const pk = Object.keys(prev.processors).find((k) => norm(k) === e);
       if (!pk) return prev;
       const cur = prev.processors[pk];
@@ -493,24 +659,24 @@ export function useAccess() {
       else delete next.phoneNumber;
       return { ...prev, processors: { ...prev.processors, [pk]: next } };
     });
-  }, [mutate]);
+  }, [editPerson]);
 
   /** Set the escalation filter for one of a processor's roles. */
   const setRoleFilter = useCallback((email: string, roleId: string, filter: RoleFilter) => {
     const e = norm(email);
-    mutate((prev) => {
+    editPerson(e, (prev) => {
       const pk = Object.keys(prev.processors).find((k) => norm(k) === e);
       if (!pk) return prev;
       const cur = prev.processors[pk];
       const roleFilters = { ...(cur.roleFilters ?? {}), [roleId]: filter };
       return { ...prev, processors: { ...prev.processors, [pk]: { ...cur, roleFilters } } };
     });
-  }, [mutate]);
+  }, [editPerson]);
 
   /** Set (or clear, when null/NaN) the SOP order number for one role. */
   const setRoleOrder = useCallback((email: string, roleId: string, order: number | null) => {
     const e = norm(email);
-    mutate((prev) => {
+    editPerson(e, (prev) => {
       const pk = Object.keys(prev.processors).find((k) => norm(k) === e);
       if (!pk) return prev;
       const cur = prev.processors[pk];
@@ -519,25 +685,32 @@ export function useAccess() {
       else roleOrder[roleId] = order;
       return { ...prev, processors: { ...prev.processors, [pk]: { ...cur, roleOrder } } };
     });
-  }, [mutate]);
+  }, [editPerson]);
 
   /* ── Brandon's abilities model (§5.39c) ─────────────────────────────────
      All three write through the pure helpers in `lib/shell/abilities`, which
      own the defaults-ON rule and the "everyone keeps at least one view" refusal.
      ⚠️ A helper returning null means the change was REFUSED (no such processor,
-     or it would have removed somebody's last home view) — the caller must not
-     write `prev` back as though it succeeded. */
+     or it would have removed somebody's last home view). `mutate` records
+     nothing for it, and a merge that meets the refusal says so rather than
+     writing `prev` back as though it succeeded. */
   const setAbility = useCallback((email: string, ability: Ability, on: boolean) => {
-    mutate((prev) => withAbility(prev, email, ability, on) ?? prev);
-  }, [mutate]);
+    editPerson(email, (prev) => withAbility(prev, email, ability, on));
+  }, [editPerson]);
 
   const setHomeView = useCallback((email: string, view: HomeView, on: boolean) => {
-    mutate((prev) => withHomeView(prev, email, view, on) ?? prev);
-  }, [mutate]);
+    editPerson(
+      email,
+      (prev) => withHomeView(prev, email, view, on),
+      on
+        ? undefined
+        : `${HOME_VIEW_LABEL[view]} stayed on for ${norm(email)} — another admin changed their home views at the same time, and turning it off would have left them none.`,
+    );
+  }, [editPerson]);
 
   const setAdmin = useCallback((email: string, on: boolean) => {
-    mutate((prev) => withAdmin(prev, email, on));
-  }, [mutate]);
+    editPerson(email, (prev) => withAdmin(prev, email, on));
+  }, [editPerson]);
 
   return {
     config,

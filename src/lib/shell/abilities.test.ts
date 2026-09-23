@@ -392,18 +392,25 @@ describe("⚠️ the admin page's exception sentence is derived, not typed", () 
 
 
 /**
- * ⚠️ `fetchAccess` rebuilds the config from a WHITELIST of keys, so a top-level
- * field it does not name is saved to the file and then dropped by the next 10s
- * poll — the setting reverts a few seconds after it is ticked, and nothing
- * errors. `admins` shipped that way. This scans the read for every top-level
- * key the model has, so the next one added cannot repeat it.
+ * ⚠️ `fetchAccess` used to rebuild the config from a WHITELIST of keys, so a
+ * top-level field it did not name was saved to the file and then dropped by the
+ * next 10s poll — the setting reverted a few seconds after it was ticked, and
+ * nothing errored. `admins` shipped that way. The read now carries every key
+ * the file has, but the app still only sees a key it NORMALISES there, so this
+ * scans the read for every top-level key the model has.
  */
 describe("⚠️ every top-level access field survives the read-back", () => {
   it("fetchAccess carries admins, not just managers/processors/callAnswerers", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const src = readFileSync(join(__dirname, "..", "accessStore.ts"), "utf8");
-    const read = src.slice(src.indexOf("async function fetchAccess"), src.indexOf("async function saveAccess"));
+    // ⚠️ Both ends must be FOUND: a missing end marker slices to the end of the
+    // file, and the scan then passes on keys named anywhere below the read.
+    const start = src.indexOf("async function fetchAccess");
+    const end = src.indexOf("function putAccess", start);
+    expect(start, "fetchAccess moved — point this scan at it").toBeGreaterThanOrEqual(0);
+    expect(end, "the function after fetchAccess moved — point the scan's end at it").toBeGreaterThan(start);
+    const read = src.slice(start, end);
     for (const key of ["managers", "processors", "callAnswerers", "admins"]) {
       expect(read, `fetchAccess drops \`${key}\``).toContain(`${key}:`);
     }
