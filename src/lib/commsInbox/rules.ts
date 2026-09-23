@@ -112,6 +112,7 @@ export interface ItemState {
   waitMs: number;
   over: boolean;
   reopened: boolean;
+  lastInbound: { at: number; kind: InboxKind; preview: string } | null;
   previewKind: InboxKind | "";
   preview: string;
   lastResolution: InboxResolution | null;
@@ -314,6 +315,34 @@ export function sanitizeNote(note: string): string {
 }
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** What opened an item, in words. */
+export const KIND_LABEL: Record<InboxKind, string> = {
+  text: "Text",
+  missed: "Missed call",
+  voicemail: "Voicemail",
+};
+
+/**
+ * The name a row or an item shows. An unmatched caller is *Unknown caller
+ * ···1234* — the list never holds a full number (plan §4.8); the RingCentral
+ * caller-ID name is deliberately not stored either.
+ */
+export function rowName(r: { name: string; numbers: { last4: string }[] }): string {
+  const { name, tail } = rowNameParts(r);
+  return tail ? `${name} ${tail}` : name;
+}
+
+/**
+ * The same name in two parts, so a narrow row can truncate the WORDS and keep
+ * the digits: for an unknown caller the last four are the only thing that
+ * tells two rows apart, and an ellipsis is exactly what would eat them.
+ */
+export function rowNameParts(r: { name: string; numbers: { last4: string }[] }): { name: string; tail: string } {
+  if (r.name) return { name: r.name, tail: "" };
+  const last4 = r.numbers.find((n) => n.last4)?.last4;
+  return { name: "Unknown caller", tail: last4 ? `···${last4}` : "" };
+}
 
 /* ── keys ───────────────────────────────────────────────────────────────── */
 

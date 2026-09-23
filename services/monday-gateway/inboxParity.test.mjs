@@ -181,3 +181,20 @@ describe("the constants the browser mirrors — src/lib/commsInbox/rules.ts", ()
     expect(spa.OVER_AFTER_MS).toBe(gw.OVER_AFTER_MS);
   });
 });
+
+describe("the failed-text verdict — gateway mirror vs the SPA's smsDelivery.ts", () => {
+  // ⚠️ A drift here fails in the harmful direction: a text RingCentral gave up
+  // on would be offered as "Texted — Confirm", resolving an item on a message
+  // the patient never received (CLAUDE.md §5.5).
+  const STATUSES = [
+    "SendingFailed", "DeliveryFailed", " SendingFailed ", "Delivered", "Sent", "Queued", "Received",
+    "sendingfailed", "Failed", "SendingFailedX", "", undefined, null,
+  ];
+  it("agrees on every status, including ones neither side names", async () => {
+    const gw = await import("./commsInboxRules.mjs");
+    const spa = await import("../../src/lib/shared/smsDelivery.ts");
+    for (const s of STATUSES) {
+      expect(gw.textFailed(s), JSON.stringify(s)).toBe(spa.smsDeliveryState(s ?? undefined) === "failed");
+    }
+  });
+});

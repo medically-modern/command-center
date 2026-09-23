@@ -13,6 +13,8 @@ import {
   formatWait,
   formatWhen,
   isUnmatchedKey,
+  rowName,
+  rowNameParts,
   sanitizeNote,
   whoShort,
 } from "./rules";
@@ -150,5 +152,15 @@ describe("formatting", () => {
   it("isUnmatchedKey", () => {
     expect(isUnmatchedKey("n:" + "a".repeat(64))).toBe(true);
     expect(isUnmatchedKey("p:18410804557:123")).toBe(false);
+  });
+
+  it("an unknown caller's digits ride separately, so a narrow row keeps them", () => {
+    expect(rowNameParts({ name: "", numbers: [{ last4: "" }, { last4: "0199" }] })).toEqual({
+      name: "Unknown caller",
+      tail: "···0199",
+    });
+    expect(rowName({ name: "", numbers: [{ last4: "0199" }] })).toBe("Unknown caller ···0199");
+    expect(rowName({ name: "", numbers: [] })).toBe("Unknown caller");
+    expect(rowNameParts({ name: "Jane Sample", numbers: [{ last4: "0199" }] })).toEqual({ name: "Jane Sample", tail: "" });
   });
 });

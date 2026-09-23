@@ -266,6 +266,20 @@ export function joinInbound(events) {
 
 const dirOf = (d) => (String(d ?? "") === "Outbound" ? "out" : "in");
 
+/**
+ * RingCentral's terminal FAILURE statuses for a text — a mirror of
+ * `src/lib/shared/smsDelivery.ts` FAILED_STATUSES, pinned by
+ * `inboxParity.test.mjs`. Everything else (Queued, Sent, Delivered, Received,
+ * a status nobody has seen) is NOT failed: STATUS decides, and an unknown one
+ * is pending, never a failure (CLAUDE.md §5.5).
+ */
+export const FAILED_TEXT_STATUSES = Object.freeze(["SendingFailed", "DeliveryFailed"]);
+
+/** Did RingCentral give up on this text? */
+export function textFailed(status) {
+  return FAILED_TEXT_STATUSES.includes(String(status ?? "").trim());
+}
+
 /** An `sms_archive` row. `sentBy` is joined in by the caller (senderFor). */
 export function textEvent(row, sentBy = "") {
   const attachments = Array.isArray(row?.attachments) ? row.attachments : [];
@@ -729,7 +743,13 @@ export function itemState({ events = [], resolutions = [], now = Date.now(), epo
           // from the same line; without this a patient asking "when does my
           // order ship?" would get "Texted 9:00 AM — Confirm" off a robot's
           // reorder link.
-          (e.kind === "text" && !!e.sentBy),
+          // ⚠️ And never one RingCentral gave up on. An accepted text is not a
+          // delivered one (CLAUDE.md §5.5): a text to a landline flips to
+          // SendingFailed seconds later, and "Texted — Confirm" would resolve
+          // the item on a message the patient never got. The capture tick
+          // re-reads the last two hours every minute, so the late verdict
+          // reaches this row within about a minute of RingCentral's.
+          (e.kind === "text" && !!e.sentBy && !textFailed(e.status)),
       )
       .sort(byAt);
     const s = candidates[candidates.length - 1];

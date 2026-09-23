@@ -1,28 +1,26 @@
 /**
  * One SMS conversation: the message history, a composer that sends from the MM
- * number, and click-to-call via RingOut.
+ * number, and click-to-call.
  *
- * Two guards worth knowing about:
- *  - **Opt-out.** If the patient has texted STOP (or another CTIA keyword) the
- *    composer is disabled. RingCentral only auto-honors opt-out on High Volume
- *    SMS, and we send through plain /sms, so nothing upstream stops this.
- *  - **RingOut `from`.** The rep is rung on their own number. Without one
- *    configured we fall back to the MM main number and say so, because that
- *    rings the main line rather than this person.
+ * The state, the opt-out guard and the late-delivery recheck live in
+ * `useConversation`; the composer and the Can Text block in `Composer`; a text
+ * bubble in `MessageBubble`. They were extracted (COMMS_INBOX_PLAN.md §4.6) so
+ * the Communications inbox's timeline renders the same guards rather than a
+ * copy of them — this component still renders exactly what it did before.
+ *
+ * ⚠️ The opt-out rule is in `Composer`: if the patient has texted STOP (or
+ * another CTIA keyword) the composer is disabled. RingCentral only auto-honors
+ * opt-out on High Volume SMS, and we send through plain /sms, so nothing
+ * upstream stops this.
  */
-import { MessageAttachments } from "@/components/shared/MessageAttachments";
-import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Loader2, Phone, Send, ShieldOff } from "lucide-react";
-import { toast } from "sonner";
-import { mmPhoneNumber } from "@/lib/fax/ringcentralApi";
-import { fetchConversation, sendMessage, type ConversationMessage } from "@/lib/assignedPatients/messagingApi";
-import { consentState } from "@/lib/assignedPatients/optOut";
+import { useEffect, useRef } from "react";
+import { Loader2, Phone } from "lucide-react";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
-import { fmtPhone, senderColor, senderName } from "@/lib/assignedPatients/format";
+import { fmtPhone } from "@/lib/assignedPatients/format";
 import WatchCallbackButton from "@/components/inboundCalls/WatchCallbackButton";
-import SmsDeliveryNote from "@/components/shared/SmsDeliveryNote";
-import { useDeliveryRecheck } from "@/hooks/useDeliveryRecheck";
-import { cn } from "@/lib/utils";
+import { useConversation } from "@/hooks/assignedPatients/useConversation";
+import Composer from "./Composer";
+import MessageBubble from "./MessageBubble";
 
 interface Props {
   phone: string;
@@ -36,95 +34,19 @@ interface Props {
    * ⚠️ **OPT-IN: absent means `"unknown"`, which is today's behaviour exactly**
    * — the three call sites that pass nothing are byte-identical. Only the
    * patient screen reads that column, and only the Subscription and Welcome
-   * Call boards carry it.
-   *
-   * ⚠️ **A blank column is UNKNOWN, never a No** (§5.31d) — the composer is
-   * blocked only on an explicit No, because blank means nobody has asked and
-   * blocking on it would silence texting for the whole board.
-   *
-   * ⚠️ It BLOCKS rather than warning, which is §5.31d's call for the same
-   * column one screen over: RingCentral accepts a text to a landline and only
-   * flips it to `SendingFailed` seconds later (§5.5), so a click-through
-   * warning buys a green toast and a patient who heard nothing.
+   * Call boards carry it. The rule itself is `Composer`'s.
    */
   canText?: "yes" | "no" | "unknown";
 }
 
 export default function ConversationThread({ phone, patient, onCall, calling, canText }: Props) {
-  const [messages, setMessages] = useState<ConversationMessage[]>([]);
-  // Whether we saw the WHOLE thread. Consent can't be inferred from a partial
-  // one, so this gates the composer alongside the messages themselves.
-  //
-  // ⚠️ Starts FALSE and is reset to false on every phone change and every failed
-  // load. Starting true meant an empty message list read as "complete history,
-  // no STOP found" — so the composer was live during the load, and stayed live
-  // after a load that failed outright. Not knowing must never look like consent.
-  const [historyComplete, setHistoryComplete] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
+  const conversation = useConversation(phone, patient?.itemId);
+  const { messages, loading, error } = conversation;
   const bottomRef = useRef<HTMLDivElement>(null);
-  // A delivery failure lands seconds AFTER the send resolves — see the hook.
-  const recheck = useDeliveryRecheck();
-
-  /** ⚠️ Explicit No only — see the prop's note. */
-  const textingOff = canText === "no";
-
-  const load = async (showSpinner: boolean) => {
-    if (showSpinner) setLoading(true);
-    try {
-      const thread = await fetchConversation(phone);
-      setMessages(thread.messages);
-      setHistoryComplete(thread.complete);
-      setError(null);
-    } catch (e) {
-      // A history we couldn't read is a history we can't clear for sending.
-      setHistoryComplete(false);
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    let alive = true;
-    // ⚠️ A recheck armed for the previous number would paint that
-    // conversation into this one.
-    recheck.cancel();
-    setMessages([]);
-    setHistoryComplete(false);
-    void (async () => {
-      if (alive) await load(true);
-    })();
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
-
-  const consent = consentState(messages, historyComplete);
-
-  const send = async () => {
-    const text = draft.trim();
-    if (!text || sending || consent.optedOut || textingOff) return;
-    setSending(true);
-    try {
-      await sendMessage({ to: phone, text, mondayItemId: patient?.itemId || undefined });
-      setDraft("");
-      await load(false);
-      // This first read shows it Queued; the failure, if any, arrives later.
-      recheck.schedule(() => load(false));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSending(false);
-    }
-  };
 
   return (
     <section className="flex-1 flex flex-col min-h-0 min-w-0">
@@ -160,132 +82,12 @@ export default function ConversationThread({ phone, patient, onCall, calling, ca
         ) : messages.length === 0 ? (
           <p className="py-16 text-center text-sm text-muted-foreground">No messages yet.</p>
         ) : (
-          messages.map((m) => (
-            <div
-              key={m.id}
-              className={cn("flex flex-col", m.direction === "Outbound" ? "items-end" : "items-start")}
-            >
-              {/* Sender name ABOVE the bubble, and the bubble tinted per sender,
-                  so a long thread can be scanned for "who sent what" without
-                  reading every label. Colour is derived from the email, so one
-                  person is the same colour everywhere. */}
-              {m.direction === "Outbound" && m.sentBy && (
-                <span className="text-[10px] font-medium text-muted-foreground mb-0.5 mr-1">
-                  {senderName(m.sentBy)}
-                </span>
-              )}
-              <div
-                className={cn(
-                  "max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow-sm",
-                  m.direction !== "Outbound"
-                    ? "bg-card border border-border"
-                    : m.sentBy
-                      ? `${senderColor(m.sentBy)} text-white`
-                      : "bg-primary text-primary-foreground",
-                )}
-              >
-                <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                <MessageAttachments attachments={m.attachments} />
-                <p
-                  className={cn(
-                    "text-[10px] mt-0.5",
-                    m.direction === "Outbound" ? "text-white/70" : "text-muted-foreground",
-                  )}
-                >
-                  {m.time ? new Date(m.time).toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
-                  {/* Sends made outside the Command Center (or before this
-                      tracking existed) have no sender on record — say so rather
-                      than leaving the reader to guess. */}
-                  {m.direction === "Outbound" && !m.sentBy ? " · sent outside Command Center" : ""}
-                </p>
-              </div>
-              {/* A text RingCentral could not deliver. Outside the bubble on
-                  purpose: inside a sender-tinted bubble the red is unreadable,
-                  and this is the one line in the thread a rep has to act on. */}
-              <SmsDeliveryNote
-                direction={m.direction}
-                messageStatus={m.messageStatus}
-                deliveryError={m.deliveryError}
-                className="max-w-[75%]"
-              />
-            </div>
-          ))
+          messages.map((m) => <MessageBubble key={m.id} m={m} />)
         )}
         <div ref={bottomRef} />
       </div>
 
-      {consent.optedOut || textingOff ? (
-        <div
-          className={cn(
-            "shrink-0 border-t border-border px-4 py-3 flex items-start gap-2 text-sm",
-            // A pending check is not an accusation — only style it as a block
-            // once we actually know something. ⚠️ `Can Text = No` IS something
-            // we know, so it never wears the pending look, however the STOP
-            // check is going.
-            consent.unknown && loading && !textingOff
-              ? "bg-muted/40 text-muted-foreground"
-              : "bg-destructive/10 text-destructive",
-          )}
-        >
-          {consent.unknown && loading && !textingOff ? (
-            <Loader2 className="h-4 w-4 shrink-0 mt-0.5 animate-spin" />
-          ) : (
-            <ShieldOff className="h-4 w-4 shrink-0 mt-0.5" />
-          )}
-          {/* ⚠️ A STOP reply outranks the column: it is the patient's own
-              words, where Can Text is a rep's note about the line. */}
-          {textingOff && !consent.optedOut ? (
-            <span>
-              This patient&apos;s <b>Can Text</b> is set to <b>No</b> on their board record, so
-              texting is blocked here. Call them instead, or change it on the stage page.
-            </span>
-          ) : !consent.unknown ? (
-            <span>
-              This patient replied <b>{(consent.keyword || "stop").toUpperCase()}</b>
-              {consent.since ? ` on ${new Date(consent.since).toLocaleDateString("en-US")}` : ""} and is opted out of
-              texts. Call them instead — texting is blocked.
-            </span>
-          ) : loading ? (
-            <span>Checking whether this patient has opted out of texts…</span>
-          ) : error ? (
-            <span>
-              This conversation didn't load, so we can't confirm whether the patient has opted out of texts. Texting is
-              blocked until it does — hit Refresh, or call them instead.
-            </span>
-          ) : (
-            <span>
-              This conversation is too long to load in full, so we can't confirm whether the patient has opted out of
-              texts. Texting is blocked rather than risk messaging someone who asked us to stop — call them instead.
-            </span>
-          )}
-        </div>
-      ) : (
-        <div className="shrink-0 border-t border-border bg-card p-3">
-          <div className="flex items-end gap-2">
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-              rows={2}
-              placeholder={`Text from ${fmtPhone(mmPhoneNumber())}…`}
-              className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-            />
-            <button
-              onClick={() => void send()}
-              disabled={!draft.trim() || sending}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-            >
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Send
-            </button>
-          </div>
-        </div>
-      )}
+      <Composer conversation={conversation} canText={canText} />
     </section>
   );
 }

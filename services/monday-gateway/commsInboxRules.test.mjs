@@ -318,6 +318,20 @@ describe("itemState — the suggestion", () => {
     const human = text(A, TUE_9AM + H, { dir: "out", body: "Ships Friday", sentBy: "katie@medicallymodern.com" });
     expect(itemState({ events: [opened, human], now: TUE_9AM + 2 * H }).suggestion.how).toBe("texted");
   });
+  it("⚠️ a text RingCentral gave up on never suggests Texted — the patient never got it", () => {
+    const failed = text(A, TUE_9AM + H, {
+      dir: "out", sentBy: "katie@medicallymodern.com", status: "SendingFailed", deliveryError: "SMS-RC-410",
+    });
+    expect(itemState({ events: [opened, failed], now: TUE_9AM + 2 * H }).suggestion).toBeNull();
+    // An OLDER text that did go through still qualifies.
+    const ok = text(A, TUE_9AM + 30 * MIN, { dir: "out", sentBy: "katie@medicallymodern.com", status: "Delivered" });
+    expect(itemState({ events: [opened, ok, failed], now: TUE_9AM + 2 * H }).suggestion.at).toBe(ok.at);
+    // ⚠️ An in-flight or unknown status is NOT a failure (§5.5).
+    for (const status of ["Queued", "Sent", "", "SomethingNew"]) {
+      const t = text(A, TUE_9AM + H, { dir: "out", sentBy: "katie@medicallymodern.com", status });
+      expect(itemState({ events: [opened, t], now: TUE_9AM + 2 * H }).suggestion.how, status).toBe("texted");
+    }
+  });
   it("replies from BEFORE the item opened don't count", () => {
     const old = text(A, TUE_9AM - H, { dir: "out", sentBy: "katie@medicallymodern.com" });
     expect(itemState({ events: [old, opened], now: TUE_9AM + H }).suggestion).toBeNull();
@@ -533,6 +547,21 @@ describe("buildInbox + filterInbox", () => {
     expect(filterInbox(items, { view: "open", type: "missed" }).rows.map((i) => i.key)).toEqual([`n:${U}`]);
     expect(filterInbox(items, { view: "all", sort: "recent" }).rows[0].key).toBe(sticky);
     expect(badgeCounts(items)).toEqual({ open: 3, over: 1 });
+  });
+
+  it("⚠️ the row just resolved keeps its PLACE in Longest waiting, not just its presence", () => {
+    // Waiting since 11 PM Tuesday; resolved at noon Wednesday. Its sticky wait
+    // runs to NOW like every open row's, so it sits between the 30h and the 10h
+    // rows rather than dropping to the bottom as the rep's eye leaves it.
+    const events = [text(A, TUE_9AM), call(U, TUE_9AM + 20 * H), text("d".repeat(64), TUE_9AM + 25 * H)];
+    const done = text("e".repeat(64), TUE_9AM + 14 * H);
+    const r = res("e".repeat(64), "texted", TUE_9AM + 27 * H, { coversThrough: done.at, itemId: "" });
+    const items = buildInbox({ events: [...events, done], resolutions: r, targets, now });
+    const sticky = `n:${"e".repeat(64)}`;
+    const keys = filterInbox(items, { view: "open", sticky }).rows.map((i) => i.key);
+    expect(keys).toEqual(["p:18407459988:2001", sticky, `n:${U}`, `n:${"d".repeat(64)}`]);
+    // Once the rep opens something else, it goes.
+    expect(filterInbox(items, { view: "open" }).rows.map((i) => i.key)).not.toContain(sticky);
   });
 
   it("search: a name, a last-four hint, or a whole number by its hash only", () => {

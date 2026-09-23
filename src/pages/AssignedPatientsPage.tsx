@@ -11,6 +11,13 @@
  *   Text  — the conversation list, with an Unread filter and read/unread
  *   Fax   — inbound faxes, joined to the sending office and ITS patients
  *
+ * …and, when the gateway switches it on (`COMMS_INBOX_UI`), a fourth rail FIRST
+ * and the default: the **Inbox** — the Unresolved queue (COMMS_INBOX_PLAN.md).
+ * Every inbound text, missed call and voicemail opens an item for the patient
+ * until a person marks it resolved, saying how. ⚠️ Additive: with the switch
+ * off nothing on this page changes, and the three rails stay exactly as they
+ * were either way (plan §8).
+ *
  * Whatever is selected in any of the three resolves to one phone number, and
  * that number drives the third pane: the patient's profile path and notes
  * (`PatientDossierPanel`). That pane is the reason the hub exists — a missed
@@ -30,6 +37,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   BellRing,
+  Inbox,
+  Loader2,
   MessageSquare,
   Phone,
   Printer,
@@ -81,15 +90,36 @@ import {
   useTextInbox,
   useVoicemails,
 } from "@/hooks/commsHub/useHubData";
+import InboxList from "@/components/commsInbox/InboxList";
+import ItemTimeline, { ItemMoved } from "@/components/commsInbox/ItemTimeline";
+import AddNumberCard from "@/components/commsInbox/AddNumberCard";
+import type { StickyResolution } from "@/components/commsInbox/ResolveBar";
+import {
+  flushCommsOutbox,
+  invalidateInbox,
+  useCommsConfig,
+  useInboxBadge,
+  useInboxItem,
+  useInboxList,
+} from "@/hooks/commsInbox/useInbox";
+import { reportDialed, type InboxQuery } from "@/lib/commsInbox/api";
+import { isUnmatchedKey, type InboxRow } from "@/lib/commsInbox/rules";
+import { defaultNumber, fillNumbers } from "@/lib/commsInbox/timeline";
+import { contactsFor } from "@/lib/patient/contacts";
 import { cn } from "@/lib/utils";
 
-type HubTab = "phone" | "text" | "fax";
+type HubTab = "inbox" | "phone" | "text" | "fax";
 
 const TABS: { id: HubTab; label: string; Icon: typeof Phone }[] = [
   { id: "phone", label: "Phone", Icon: Phone },
   { id: "text", label: "Text", Icon: MessageSquare },
   { id: "fax", label: "Fax", Icon: Printer },
 ];
+
+/** The Inbox rail — first, and only when the gateway has switched it on. */
+const INBOX_TAB: { id: HubTab; label: string; Icon: typeof Phone } = { id: "inbox", label: "Inbox", Icon: Inbox };
+
+const INBOX_SEARCH_DEBOUNCE_MS = 300;
 
 /**
  * @param embedded  Rendered INSIDE another page's chrome — System Management's
@@ -118,7 +148,24 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   // for a hardcoded route.
   const { goBack } = useBackNavigation();
 
-  const [tab, setTab] = useState<HubTab>("text");
+  /**
+   * Is the Inbox switched on (`COMMS_INBOX_UI` on the gateway)? Off — and while
+   * the switch is being read — this page is exactly what it was before the
+   * inbox existed.
+   */
+  const commsConfig = useCommsConfig();
+  const inboxOn = commsConfig.ui;
+  const [tab, setTabState] = useState<HubTab>("text");
+  /** The rep chose a tab: the Inbox arriving as the default must not undo it. */
+  const tabPicked = useRef(false);
+  const setTab = useCallback((t: HubTab) => {
+    tabPicked.current = true;
+    setTabState(t);
+  }, []);
+  useEffect(() => {
+    if (inboxOn && !tabPicked.current) setTabState("inbox");
+    if (!inboxOn) setTabState((t) => (t === "inbox" ? "text" : t));
+  }, [inboxOn]);
   const [dialInput, setDialInput] = useState("");
   const [ringSettings, setRingSettings] = useState(false);
 
@@ -204,6 +251,135 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
 
   const { call: activeCall, error: callError, dismissError, dial, hangup, toggleMute } = useWebPhone();
 
+  /**
+   * Every Call on this page reports who dialed (COMMS_INBOX_PLAN.md §4.6) — the
+   * call log cannot say, because the whole team is one RingCentral extension
+   * (§5.13b). Best-effort and only while the inbox module is on; a dial is
+   * never held up by it.
+   */
+  const dialNumber = useCallback(
+    (phone: string) => {
+      if (commsConfig.enabled) reportDialed(phone);
+      return dial(phone);
+    },
+    [commsConfig.enabled, dial],
+  );
+
+  /* ── The Inbox (COMMS_INBOX_PLAN.md §1–§6) ────────────────────────────── */
+
+  const [inboxQuery, setInboxQuery] = useState<Omit<InboxQuery, "q" | "sticky">>({
+    view: "open",
+    type: "",
+    sort: "wait",
+  });
+  const [inboxSearch, setInboxSearch] = useState("");
+  const [inboxQ, setInboxQ] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setInboxQ(inboxSearch), INBOX_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [inboxSearch]);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  /** Which of the patient's numbers the rep is replying on — "" = the default. */
+  const [activeHmac, setActiveHmac] = useState("");
+  /** A patient found for an UNMATCHED item, before anything is written. */
+  const [inboxFindPick, setInboxFindPick] = useState<DossierPick | null>(null);
+  const [refreshSeq, setRefreshSeq] = useState(0);
+  useEffect(() => {
+    setActiveHmac("");
+    setInboxFindPick(null);
+  }, [selectedKey]);
+
+  /**
+   * The item just resolved. It stays in the list, greyed with its ✓, until the
+   * rep opens another item — that is where Undo lives (plan §1.1 rule 7).
+   *
+   * ⚠️⚠️ **Releasing it is when its note is copied to Monday** (plan §5.4, Josh's
+   * D5). Monday notes are append-only, so the copy waits until Undo is no
+   * longer offered: an Undo before then leaves nothing on the patient's record.
+   */
+  const [sticky, setSticky] = useState<StickyResolution | null>(null);
+  const stickyRef = useRef<StickyResolution | null>(null);
+  stickyRef.current = sticky;
+  const releaseSticky = useCallback(() => {
+    if (!stickyRef.current) return;
+    stickyRef.current = null;
+    setSticky(null);
+    void flushCommsOutbox();
+  }, []);
+  const openItem = useCallback(
+    (key: string | null) => {
+      if (stickyRef.current && stickyRef.current.key !== key) releaseSticky();
+      setSelectedKey(key);
+    },
+    [releaseSticky],
+  );
+  // Leaving the Inbox rail moves on too.
+  useEffect(() => {
+    if (tab !== "inbox") releaseSticky();
+  }, [tab, releaseSticky]);
+  // Opening Communications catches up anything a closed tab left uncopied, and
+  // leaving the page copies whatever this one still holds.
+  useEffect(() => {
+    if (!commsConfig.enabled) return;
+    void flushCommsOutbox();
+    return () => {
+      void flushCommsOutbox();
+    };
+  }, [commsConfig.enabled]);
+
+  const inboxActiveTab = inboxOn && tab === "inbox";
+  const inboxList = useInboxList({ ...inboxQuery, q: inboxQ, sticky: sticky?.key ?? "" }, inboxActiveTab);
+  const inboxBadge = useInboxBadge(inboxOn);
+  const inboxItem = useInboxItem(inboxActiveTab ? selectedKey : null);
+  const item = inboxItem.item;
+  const reloadItem = inboxItem.reload;
+
+  /**
+   * The open item follows its list row: when the row changes (a new message, a
+   * resolution by somebody else, a Left voicemail) the item and its live thread
+   * are read again. The list polls; the item never polls on its own.
+   */
+  const selectedRow = useMemo(
+    () => inboxList.data?.rows.find((r) => r.key === selectedKey) ?? null,
+    [inboxList.data, selectedKey],
+  );
+  const rowSig = selectedRow
+    ? [selectedRow.lastAt, selectedRow.open, selectedRow.lastResolution?.resolutionId ?? "", selectedRow.attempts.length].join("|")
+    : "";
+  const lastRowSig = useRef<{ key: string | null; sig: string }>({ key: null, sig: "" });
+  useEffect(() => {
+    const prev = lastRowSig.current;
+    lastRowSig.current = { key: selectedKey, sig: rowSig };
+    if (!rowSig || prev.key !== selectedKey || !prev.sig || prev.sig === rowSig) return;
+    reloadItem();
+    setRefreshSeq((n) => n + 1);
+  }, [rowSig, selectedKey, reloadItem]);
+
+  const inboxChanged = useCallback(() => {
+    invalidateInbox();
+    reloadItem();
+    setRefreshSeq((n) => n + 1);
+  }, [reloadItem]);
+
+  /** The number the profile pane looks the patient up by — the gateway's own. */
+  const inboxLookupNumber = useMemo(() => (item ? defaultNumber(item.numbers, item.timeline) : null), [item]);
+  /**
+   * How the profile pane finds the patient for an item:
+   *  · a matched item whose number the gateway could not read → by the record
+   *    itself (its board and item);
+   *  · an UNMATCHED item the rep has found somebody for → that pick;
+   *  · otherwise by the number, which is what shows the household switcher
+   *    for a line two patients share (plan §4.4, §7 job 1).
+   */
+  const inboxPick: DossierPick | null = useMemo(() => {
+    if (!item) return null;
+    if (isUnmatchedKey(item.key)) return inboxFindPick;
+    if (item.itemId && item.boardId && !inboxLookupNumber?.e164) {
+      return { itemId: item.itemId, boardId: item.boardId, name: item.name, phone: "" };
+    }
+    return null;
+  }, [item, inboxFindPick, inboxLookupNumber]);
+
   // Only the OPEN tab polls RingCentral.
   const texts = useTextInbox(tab === "text");
   const calls = useCallLog(tab === "phone");
@@ -269,10 +445,11 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
 
   /** The one number the dossier pane follows, whichever tab is open. */
   const selectedPhone = useMemo(() => {
+    if (tab === "inbox") return inboxLookupNumber?.e164 || "";
     if (tab === "text") return selectedConv?.phone || directNumber || "";
     if (tab === "phone") return phoneMode === "voicemail" ? selectedVoicemail?.fromNumber || "" : selectedCallPhone;
     return "";
-  }, [tab, selectedConv, directNumber, phoneMode, selectedVoicemail, selectedCallPhone]);
+  }, [tab, inboxLookupNumber, selectedConv, directNumber, phoneMode, selectedVoicemail, selectedCallPhone]);
 
   /**
    * A patient the rep found through the profile pane's own search, because the
@@ -284,7 +461,46 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   const [dossierPick, setDossierPick] = useState<DossierPick | null>(null);
   useEffect(() => setDossierPick(null), [selectedPhone]);
 
-  const dossier = useDossier(selectedPhone, dossierPick?.name || directPerson, dossierPick);
+  const dossier = useDossier(
+    selectedPhone,
+    tab === "inbox" ? item?.name || "" : dossierPick?.name || directPerson,
+    tab === "inbox" ? inboxPick : dossierPick,
+  );
+
+  /**
+   * The item's numbers, with any the gateway couldn't read filled in from THIS
+   * patient's own records (a unique last four only — `fillNumbers`). Never for
+   * an unmatched item: the profile pane there is somebody the rep is only
+   * considering.
+   */
+  const inboxCandidates = useMemo(() => {
+    const d = dossier.dossier;
+    if (tab !== "inbox" || !d || !item || isUnmatchedKey(item.key)) return [];
+    const phones = d.items.map((i) => i.phone).filter(Boolean);
+    const alt = contactsFor(d.items, d.active?.itemId)?.alternatePhoneRaw;
+    if (alt) phones.push(alt);
+    return phones;
+  }, [tab, dossier.dossier, item]);
+  const inboxNumbers = useMemo(() => (item ? fillNumbers(item.numbers, inboxCandidates) : []), [item, inboxCandidates]);
+  const inboxActive = useMemo(() => {
+    if (!item) return null;
+    return inboxNumbers.find((n) => n.hmac === activeHmac && !!n.e164) ?? defaultNumber(inboxNumbers, item.timeline);
+  }, [item, inboxNumbers, activeHmac]);
+  /**
+   * Can Text for the inbox composer. ⚠️ It is the PRIMARY line's answer
+   * (§5.31d) — it says nothing about the patient's other number, so it applies
+   * only when that is the number being texted. Blank is unknown, never a No.
+   */
+  const inboxCanText = useMemo(() => {
+    const d = dossier.dossier;
+    if (!d || !item || isUnmatchedKey(item.key) || !inboxActive?.e164) return undefined;
+    if (contactKey(d.active?.phone || d.phone) !== contactKey(inboxActive.e164)) return undefined;
+    return contactsFor(d.items, d.active?.itemId)?.canText;
+  }, [dossier.dossier, item, inboxActive]);
+  /** An outbound text is tied to the patient's live record — never, for an
+   *  unmatched item, to somebody the rep is only considering. */
+  const inboxMondayItemId =
+    item && !isUnmatchedKey(item.key) ? dossier.dossier?.active?.itemId ?? item.itemId ?? null : null;
 
   /**
    * The dossier's live record, in the shape `ConversationThread` wants.
@@ -692,7 +908,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                 value={dialInput}
                 onChange={(e) => setDialInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && dialTarget) void dial(dialTarget);
+                  if (e.key === "Enter" && dialTarget) void dialNumber(dialTarget);
                 }}
                 placeholder="Call any number…"
                 aria-label="Call any number"
@@ -700,7 +916,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
               />
             </div>
             <button
-              onClick={() => dialTarget && void dial(dialTarget)}
+              onClick={() => dialTarget && void dialNumber(dialTarget)}
               disabled={!dialTarget || !!activeCall}
               title={dialTarget ? `Call ${fmtPhone(dialTarget)}` : "Enter a full phone number"}
               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-40 disabled:hover:bg-emerald-500"
@@ -731,10 +947,14 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
       <div className="flex min-h-0 flex-1">
         {/* ── Tab rail ──────────────────────────────────────── */}
         <nav className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-border bg-card py-3">
-          {TABS.map(({ id, label, Icon }) => {
+          {(inboxOn ? [INBOX_TAB, ...TABS] : TABS).map(({ id, label, Icon }) => {
             const active = tab === id;
             const badge =
-              id === "text"
+              id === "inbox"
+                ? // The unresolved count, from the same gateway snapshot as the
+                  // list's tabs and the header badge — never an unread count.
+                  inboxBadge?.open ?? 0
+                : id === "text"
                 ? conversations.filter((c) => c.unread > 0).length
                 : id === "fax"
                   ? faxList.filter((f) => !f.read).length
@@ -761,7 +981,31 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
         </nav>
 
         {/* ── List pane ─────────────────────────────────────── */}
-        <aside className="flex w-80 shrink-0 flex-col border-r border-border bg-card">
+        <aside
+          className={cn(
+            "flex w-80 shrink-0 flex-col border-r border-border bg-card",
+            // The Inbox row carries a name, a stage pill and a wait on one
+            // line — Brandon's list is 400px, given where there is room.
+            tab === "inbox" && "xl:w-[25rem]",
+          )}
+        >
+          {tab === "inbox" && (
+            <InboxList
+              data={inboxList.data}
+              stale={inboxList.stale}
+              loading={inboxList.loading}
+              error={inboxList.error}
+              onReload={inboxList.reload}
+              query={{ ...inboxQuery, sticky: sticky?.key ?? "" }}
+              onQuery={(patch) => setInboxQuery((q) => ({ ...q, ...patch }))}
+              search={inboxSearch}
+              onSearch={setInboxSearch}
+              selectedKey={selectedKey}
+              stickyKey={sticky?.key ?? ""}
+              onSelect={(row: InboxRow) => openItem(row.key)}
+            />
+          )}
+
           {tab === "text" && composing && (
             <NewTextPanel
               query={composeQuery}
@@ -907,13 +1151,61 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
 
         {/* ── Detail pane ───────────────────────────────────── */}
         <section className="flex min-w-0 flex-1 flex-col border-r border-border">
+          {tab === "inbox" &&
+            (!selectedKey ? (
+              <HubIdle
+                title="Inbox"
+                hint="Every inbound text, missed call and voicemail lands here until someone marks it resolved."
+              />
+            ) : inboxItem.moved ? (
+              <ItemMoved moved={inboxItem.moved} onOpen={(k) => openItem(k)} />
+            ) : !item ? (
+              inboxItem.error ? (
+                <div className="m-4 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  {inboxItem.error}{" "}
+                  <button onClick={reloadItem} className="underline">
+                    Try again
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Opening…
+                </div>
+              )
+            ) : (
+              <ItemTimeline
+                key={item.key}
+                item={item}
+                numbers={inboxNumbers}
+                active={inboxActive}
+                onActive={setActiveHmac}
+                onCall={(phone) => void dialNumber(phone)}
+                calling={!!inboxActive?.e164 && activeCall?.phone === inboxActive.e164}
+                mondayItemId={inboxMondayItemId}
+                canText={inboxCanText}
+                sticky={sticky}
+                onResolved={(r, note) => {
+                  setSticky({ ...r, key: item.key, note });
+                  invalidateInbox();
+                  reloadItem();
+                }}
+                onUndone={() => {
+                  stickyRef.current = null;
+                  setSticky(null);
+                  inboxChanged();
+                }}
+                onChanged={inboxChanged}
+                refreshSeq={refreshSeq}
+              />
+            ))}
+
           {tab === "text" &&
             (selectedPhone ? (
               <ConversationThread
                 key={selectedPhone}
                 phone={selectedPhone}
                 patient={threadPatient}
-                onCall={() => void dial(selectedPhone)}
+                onCall={() => void dialNumber(selectedPhone)}
                 calling={activeCall?.phone === selectedPhone}
               />
             ) : (
@@ -938,7 +1230,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
                   key={selectedCallPhone}
                   phone={selectedCallPhone}
                   patient={threadPatient}
-                  onCall={() => void dial(selectedCallPhone)}
+                  onCall={() => void dialNumber(selectedCallPhone)}
                   calling={activeCall?.phone === selectedCallPhone}
                 />
               </>
@@ -971,7 +1263,49 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
               Command Center profile
             </p>
           </div>
-          {tab === "fax" ? (
+          {tab === "inbox" ? (
+            !item ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+                <User className="h-7 w-7 text-muted-foreground/50" />
+                <p className="max-w-[26ch] text-xs text-muted-foreground">Open an item to see the patient profile.</p>
+              </div>
+            ) : inboxPick && dossier.loading ? (
+              <div className="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Looking them up…
+              </div>
+            ) : (
+              <>
+                {/* An unmatched number, once the rep has found who it is: the
+                    three ways out, over the profile they would be writing to. */}
+                {isUnmatchedKey(item.key) && inboxFindPick && dossier.dossier && inboxActive?.e164 && (
+                  <AddNumberCard
+                    key={`${item.key}:${inboxFindPick.itemId}`}
+                    itemKey={item.key}
+                    number={inboxActive.e164}
+                    dossier={dossier.dossier}
+                    onLinked={(k) => openItem(k)}
+                    onPickAgain={() => setInboxFindPick(null)}
+                  />
+                )}
+                <PatientDossierPanel
+                  dossier={dossier.dossier}
+                  people={dossier.people}
+                  selected={dossier.selected}
+                  onSelectPerson={dossier.selectPerson}
+                  loading={dossier.loading}
+                  error={dossier.error}
+                  phone={inboxActive?.e164 || dossier.dossier?.phone || null}
+                  picked={isUnmatchedKey(item.key) ? inboxFindPick : null}
+                  onClearPick={isUnmatchedKey(item.key) ? () => setInboxFindPick(null) : undefined}
+                  onPick={
+                    isUnmatchedKey(item.key)
+                      ? (row) => setInboxFindPick({ itemId: row.id, boardId: row.boardId, name: row.name, phone: row.phone })
+                      : undefined
+                  }
+                />
+              </>
+            )
+          ) : tab === "fax" ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
               <Printer className="h-7 w-7 text-muted-foreground/50" />
               <p className="max-w-[26ch] text-xs text-muted-foreground">
