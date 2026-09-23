@@ -73,7 +73,7 @@
       "roleFilters": {},
       "perms": {
         "viewOthers": true,
-        "stageManager": true
+        "stageManager": false
       },
       "homeView": [
         "coordinator",
