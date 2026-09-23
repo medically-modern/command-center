@@ -5915,6 +5915,22 @@ Files: `lib/shell/{viewAs,homeProfile,abilities}.ts`,
 `lib/accessStore.ts`, `App.tsx` (+ `viewAsScope.test.ts`, `homeViewBorrow.test.tsx`,
 `abilities.test.ts`, `shellRemovals.test.ts`, `lossless.test.ts`, `patientScreen.test.ts`).
 
+### 5.39j The Access page: local edits win over the poll (Sep 2026)
+Josh, 2026-09-23: *"when i click something it shows briefly assigned and then i have to click it
+again"*. `useAccess` polled GitHub every 10s and `setConfig`'d whatever came back — and GitHub
+serves the PREVIOUS access.json for a while after a PUT, so the poll put a just-ticked chip back.
+Now a poll result is DROPPED while a save is pending, if any edit happened while it was in flight,
+or within `WRITE_QUIET_MS` (30s) of our own last save. Saves are serialised and always write the
+LATEST config (two quick clicks can't land out of order), the save no longer runs inside a state
+updater, a stale poll no longer overwrites `cachedSha` (which made the next save 409 and fail
+silently), and a failed save toasts. `accessStore.poll.test.tsx` pins it.
+⚠️ `configWithoutEmail` rebuilt the config from three keys and wiped `admins[]` for everybody on
+any Remove — it spreads now.
+⚠️ **"Answer calls in the browser" is no longer its own section** — the **Answers calls** chip on
+each person's Abilities row is the one control onto `callAnswerers[]`, carrying the N/5 count.
+⚠️ `abilities.test.ts` checks opt-in grants are a SUBSET of Josh + Brandon, not an exact list:
+the file is edited live from this page, so an exact pin turned every revoke into a red deploy.
+
 ### 5.41 Reports & Metrics and Stage Manager get their own pages (Sep 2026)
 Josh, 2026-09-21, four asks in one message. **No board change; app only.**
 
