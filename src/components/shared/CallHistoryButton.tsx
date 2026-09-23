@@ -86,9 +86,19 @@ function CallIcon({ call }: { call: PatientCall }) {
   );
 }
 
-export function CallHistoryButton({ phone, display, label = "Calls", icon, count }: {
+export function CallHistoryButton({ phone, display, who, label = "Calls", icon, count }: {
   phone?: string;
   display?: string;
+  /**
+   * Whose history this is, shown in the dialog title before the number
+   * (Brandon, 2026-09-22: *"when you open call log — also show the patient's
+   * name on top, not just their phone number"*).
+   *
+   * ⚠️ The number STAYS beside it rather than being replaced: a patient with
+   * two numbers on file needs to know which one is on screen. Omitted — every
+   * header that has not opted in — the title reads exactly as before.
+   */
+  who?: string;
   /** The trigger's text and icon. The Care Coordinator dashboard passes
    *  "Call Log" + a list icon (Brandon, 2026-09-14); everywhere else keeps
    *  "Calls" and the phone. */
@@ -281,7 +291,7 @@ export function CallHistoryButton({ phone, display, label = "Calls", icon, count
         <DialogHeader className="px-4 py-3 border-b">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Phone className="h-4 w-4 text-[color:var(--mm-teal)]" />
-            Call history{display ? ` · ${display}` : ""}
+            {who?.trim() || "Call history"}{display ? ` · ${display}` : ""}
           </DialogTitle>
           {!loading && !err && calls.length > 0 && (
             <p className="text-xs text-muted-foreground">

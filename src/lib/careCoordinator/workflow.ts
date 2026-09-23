@@ -77,8 +77,6 @@ const ME_ESCALATION_FINAL = 2;
 export const CHASE_STAGES = ["Confirm Receipt", "Chase Clinicals"] as const;
 export type ChaseStage = (typeof CHASE_STAGES)[number];
 
-/** The intake form's automated nudges are exactly two (§5.24). */
-export const MAX_AUTO_TEXTS = 2;
 
 /* ── Records — the slim shapes the reads produce ─────────────── */
 
@@ -145,6 +143,9 @@ export interface IntakeLead {
   stediError: string;
   stediActive: string;
   stediPlanName: string;
+  /** The eligibility check's network answer, exactly as Stedi wrote it —
+   *  `Unknown` included (§5.20). Blank when no check has run. */
+  stediInNetwork: string;
 }
 
 export interface ChaseItem {
@@ -611,6 +612,8 @@ export interface ReviewEntry<T> {
    *  this dashboard can see is blocking them. ⚠️ NEVER read an empty string as
    *  "ready to advance" — see `intakeBlocker`. */
   blocker: string;
+  /** The payer's own words behind `blocker`, for the line's `title`. */
+  blockerDetail?: string;
 }
 
 export interface IntakeContext extends BucketContext {
@@ -621,11 +624,21 @@ export interface IntakeContext extends BucketContext {
   calendly?: CalendlyLookup;
 }
 
-/** Automated nudges actually sent — the form's 30-minute and 24-hour texts,
- *  clamped as the backend clamps them (§5.24). */
-export function autoTexts(lead: Pick<IntakeLead, "dropOffAttempt">): number {
-  return Math.min(toCount(lead.dropOffAttempt), MAX_AUTO_TEXTS);
-}
+
+
+/* ⚠️ **`autoTexts` AND `welcomeCallTexts` WERE DELETED ON 2026-09-22, and the
+ * counters they fed are now real RingCentral counts** (Brandon: *"i don't
+ * think the call/text counters are working ... these icons should be showing
+ * outgoing texts/calls"*). They read the Drop-off Attempt column — which moves
+ * only for the intake form's two automated nudges, so a rep's own text left it
+ * at 0 — and the Welcome Call Text trigger as a 0-or-1. Both were correct
+ * about their own columns and neither was a count of texts, which is what the
+ * card was read as saying.
+ *
+ * They are deleted rather than left exported, because an unused rule with
+ * green tests is the §5.31b trap in reverse: it reads as live and invites
+ * being wired back. `contactState.textsOut` / `textsIn` are what the card
+ * shows now. MAX_AUTO_TEXTS went with them. */
 
 /** "Completed" / "Partial" from the GROUP the form left the row in — not the
  *  Drop-off Step, which deliberately keeps saying where the PATIENT stopped
@@ -718,7 +731,22 @@ export function intakeBlocker(
   // ⚠️ `stediRanCleanly` treats ANY error text as a failed run, whatever else
   // came back — a failure means the identifiers did not match, not that the
   // patient is ineligible, so it is never a verdict about coverage.
-  if (err) return `Benefits check failed — ${err}`;
+  //
+  // ⚠️ **THE PAYER'S OWN REASON IS DELIBERATELY NOT IN THE SENTENCE ANY MORE**
+  // (Brandon, 2026-09-22: *"shorten 'Benefits check failed — Incorrect
+  // information — verify the patient's details, or run Insurance Discovery /
+  // the Eligibility Agent in the Stedi portal. | AAA 73 — Invalid/Missing
+  // Subscriber/Insured Name (Please Correct and Resubmit)' to just 'Benefits
+  // check failed'"*). Stedi returns its guidance and the raw AAA code in one
+  // string, which on a card is four lines of a rep-facing runbook rendered
+  // where a coordinator is deciding who to ring — long enough that the cards
+  // below it stop being scannable, which is what a triage column is for.
+  //
+  // ⚠️ It is NOT dropped: `intakeBlockerDetail` returns it, and the card hangs
+  // it off the line's `title`, so the reason is one hover away and the profile
+  // page still prints it in full. Losing the AAA code entirely would take the
+  // one thing that says WHICH identifier did not match.
+  if (err) return "Benefits check failed";
 
   const active = (lead.stediActive ?? "").trim();
   if (!active && !(lead.stediPlanName ?? "").trim()) return "Benefits check hasn't run";
@@ -735,6 +763,52 @@ export function intakeBlocker(
   if (pumpInPlay && !(lead.ipCoveragePath ?? "").trim()) return "Insulin Pump Coverage Path not chosen";
 
   return "";
+}
+
+/**
+ * The long form of whatever `intakeBlocker` just said, or "" when there is no
+ * more to say. Today only the failed benefits check has a longer form — the
+ * payer's guidance plus its AAA code, which the card carries as a `title`
+ * rather than on screen (see `intakeBlocker`).
+ */
+export function intakeBlockerDetail(
+  lead: Pick<IntakeLead, "stediError">,
+): string {
+  return (lead.stediError ?? "").trim();
+}
+
+/**
+ * Every lead the Patient Intake column can actually RENDER, from a bucketing
+ * it has already done.
+ *
+ * ⚠️ **THIS IS WHAT THE FACET FILTER'S OPTIONS ARE DERIVED FROM, and getting
+ * it wrong was a live bug** (Brandon, 2026-09-22: *"the filters on intake
+ * should only be filtering from the list — the filters look like it's taking
+ * from all of them (e.g. in equity type, there's 1686 for not set)"*). The
+ * options were counted over the RAW board read, ~1,754 rows, of which ~1,697
+ * are the 8/25 SNJ import this function has just excluded — so the control
+ * offered values belonging to rows it could never show, and its biggest count
+ * was a population that is not on the screen.
+ *
+ * ⚠️ It is derived from the BUCKETS rather than re-deriving the exclusions,
+ * because a second copy of "which leads appear" is the §5.9 keep-in-agreement
+ * trap: the two would drift and the filter would quietly start offering, or
+ * hiding, the wrong rows. Escalated patients are absent for the same reason
+ * they are absent from the column — they are a manager's, and `intakeBuckets`
+ * only counts them.
+ *
+ * ⚠️ The caller must pass buckets built from the list with **no facet
+ * selection applied**, or choosing one value makes the others vanish and there
+ * is no way to widen the selection again (§5.30e).
+ */
+export function bucketedLeads(b: IntakeBuckets): IntakeLead[] {
+  return [
+    ...b.scheduledToday.map((e) => e.item),
+    ...b.scheduledFuture.map((e) => e.item),
+    ...b.unscheduledToday.map((e) => e.item),
+    ...b.unscheduledFuture.map((e) => e.item),
+    ...b.reviewProfile.map((e) => e.item),
+  ];
 }
 
 export function intakeBuckets(leads: IntakeLead[], ctx: IntakeContext): IntakeBuckets {
@@ -781,7 +855,10 @@ export function intakeBuckets(leads: IntakeLead[], ctx: IntakeContext): IntakeBu
        through to Unscheduled → Future — which is where "ring them tomorrow"
        belongs. On 2026-09-18 exactly 1 of the 27 rows here had an attempt. */
     if (attempts === 0 && needsProfileReview(lead)) {
-      reviewProfile.push({ item: lead, waitingMs: waited, blocker: intakeBlocker(lead) });
+      reviewProfile.push({
+        item: lead, waitingMs: waited,
+        blocker: intakeBlocker(lead), blockerDetail: intakeBlockerDetail(lead),
+      });
       continue;
     }
 
@@ -911,11 +988,7 @@ export function welcomeCallFlags(item: WelcomeCallItem): WelcomeCallFlags {
   return { firstTimePump: isFirstTimePumpUser(item), crossSell: isCrossSell(item) };
 }
 
-/** The one board fact about texts on this board: 1 once the Welcome Call
- *  Text trigger has been pressed, else 0 (Josh, 2026-09-14). */
-export function welcomeCallTexts(item: Pick<WelcomeCallItem, "welcomeCallText">): number {
-  return (item.welcomeCallText ?? "").trim() ? 1 : 0;
-}
+
 
 /**
  * Welcome-call bookings by invitee email, from the gateway's Calendly window

@@ -2209,7 +2209,17 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
         />
 
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border flex-none">
+          {/* ⚠️ `sticky top-0` ON TOP OF `flex-none`, and it is belt and braces
+              (Brandon, 2026-09-22: *"when i scroll down in the profile view,
+              the black top banner with the back arrow disappears until i
+              scroll all the way up"*). In this file's own layout it cannot
+              scroll — it is a `flex-none` child of an `h-screen
+              overflow-hidden` column whose panes scroll internally — so the
+              cause is an ancestor scrolling instead, which the global shell's
+              own height maths can produce. Sticky pins it in that case and is
+              a no-op in this one, so it is right either way rather than
+              right if a diagnosis is. */}
+          <header className="sticky top-0 z-30 bg-gradient-navy text-navy-foreground border-b border-sidebar-border flex-none">
             <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               {/* Same shape as Verified Referrals' header (ProfilePage), which
                   is also what the mockup's own chrome note specifies: back
@@ -3595,7 +3605,19 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                         press at the end of every successful call. What the rep
                         does on a normal call is advance them or log the attempt;
                         everything else is the exception. */}
+                    {/* ⚠️ **ONE ROW AGAIN FROM 2026-09-22, but not the row it
+                        was** (Brandon: *"lets have Advance and log call attempt
+                        on the left side, then save and finish later and propose
+                        stuck on the right side - all on one row"*). The version
+                        this replaces stacked the pairs; the version BEFORE that
+                        was four equal thirds, and the note below says why that
+                        was wrong. Both of his rules are kept: one row, and
+                        Propose Stuck still does not carry the weight of the
+                        button a rep presses at the end of every good call — it
+                        is in the right-hand group, which sizes to its content
+                        and stays a size down. */}
                     <div className="exit-row">
+                     <div className="exit-group">
                       {/* Info Collection's exit, and the main button on the
                           page — so it leads the row and keeps the green (Josh,
                           2026-08-19). It saves the left pane on the way through:
@@ -3622,8 +3644,8 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       >
                         Log call attempt
                       </button>
-                    </div>
-                    <div className="exit-row alt">
+                     </div>
+                     <div className="exit-group alt">
                       {/* THE Monday write for the left pane. Renamed from "Save
                           to Monday" and stripped of the green (Josh,
                           2026-08-19) — this one parks the patient, it doesn't
@@ -3658,6 +3680,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                           Propose Stuck
                         </button>
                       )}
+                     </div>
                     </div>
                     {/* Two footnotes, two blocks — not one dot-joined line,
                         which read as a single run-on sentence. The Save

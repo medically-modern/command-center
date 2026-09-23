@@ -77,8 +77,39 @@ const ITEM_FIELDS = `id name created_at group { id } column_values(ids: $cols) {
  */
 export type PageReport = (rows: number) => void;
 
+/**
+ * Called with everything read SO FAR, each time a page lands.
+ *
+ * ⚠️ **ONLY EVER SAFE ON A COLD LOAD, and the hook is what enforces that**
+ * (Brandon, 2026-09-22: *"any way to improve loading on the patient intake
+ * side?"*). Patient Intake is ~1,754 rows, and Monday caps `items_page` at
+ * 500 — so Partial Leads alone is four SEQUENTIAL round trips before
+ * `Promise.all` resolves and anything at all reaches the screen. Handing the
+ * page each batch turns that into rows appearing after the first.
+ *
+ * ⚠️ It is a partial list, so it must never be committed over a list that is
+ * already on screen: a background poll doing this would visibly shrink the
+ * column to page one and then grow back. `useBoardPoll` streams only while it
+ * has no data, and the load bar is up for the whole of it, which is what stops
+ * a short list reading as "those patients are done" (§9).
+ *
+ * ⚠️ It is NEVER cached. `useBoardPoll` remembers only a run that completed,
+ * for the same reason `fetchGroup` throws rather than returning the pages it
+ * got.
+ */
+export type BatchReport<T> = (soFar: T[]) => void;
+
+/** `fetchGroup`, plus the raw rows of each page as it lands. */
+async function fetchGroupStreaming(
+  boardId: string | number, groupId: string, cols: string[],
+  onPage?: PageReport, onRaw?: (rows: RawItem[]) => void,
+): Promise<RawItem[]> {
+  return fetchGroup(boardId, groupId, cols, onPage, onRaw);
+}
+
 async function fetchGroup(
   boardId: string | number, groupId: string, cols: string[], onPage?: PageReport,
+  onRaw?: (rows: RawItem[]) => void,
 ): Promise<RawItem[]> {
   const first = await gql<{ boards: { items_page: PageResult }[] }>(
     `query ($boardId: ID!, $cols: [String!]) {
@@ -94,6 +125,7 @@ async function fetchGroup(
   const page = first.boards?.[0]?.items_page;
   const all: RawItem[] = [...(page?.items ?? [])];
   onPage?.(page?.items?.length ?? 0);
+  if (page?.items?.length) onRaw?.(page.items);
   let cursor = page?.cursor ?? null;
   while (cursor) {
     const next = await gql<{ next_items_page: PageResult }>(
@@ -104,6 +136,7 @@ async function fetchGroup(
     );
     all.push(...(next.next_items_page?.items ?? []));
     onPage?.(next.next_items_page?.items?.length ?? 0);
+    if (next.next_items_page?.items?.length) onRaw?.(next.next_items_page.items);
     cursor = next.next_items_page?.cursor ?? null;
   }
   return all;
@@ -182,6 +215,18 @@ const INTAKE_COLS: string[] = [
   // `profile/intakeUnlock.evaluateUnlock` and must stay so.
   PROFILE_COL.stediErrorDescription, PROFILE_COL.stediEligibilityActive,
   PROFILE_COL.stediPlanName,
+  // ⚠️ **THE IN-NETWORK ANSWER, VERBATIM** (Brandon, 2026-09-22: *"biggest
+  // concern is that the In-Network isn't working properly — Masani will have
+  // no idea which patients to pass through"*; Josh, same day: *"we should
+  // display whatever stedi came back with"*). It lived on the profile page and
+  // nowhere on this dashboard, so the fact a coordinator triages by was one
+  // navigation away from the queue she triages in.
+  //
+  // ⚠️ It BLOCKS NOTHING and must not start to. `evaluateUnlock` dropped it as
+  // a condition on 2026-08-25 (§5.20) because Original Medicare has no network
+  // and the column comes back the literal string `Unknown` — a gate on it
+  // stranded patients on something that could never pass. This is a readout.
+  PROFILE_COL.stediInNetwork,
 ];
 
 function toIntakeLead(item: RawItem): IntakeLead {
@@ -227,6 +272,7 @@ function toIntakeLead(item: RawItem): IntakeLead {
     stediError: text(item, PROFILE_COL.stediErrorDescription),
     stediActive: text(item, PROFILE_COL.stediEligibilityActive),
     stediPlanName: text(item, PROFILE_COL.stediPlanName),
+    stediInNetwork: text(item, PROFILE_COL.stediInNetwork),
   };
 }
 
@@ -236,9 +282,22 @@ function toIntakeLead(item: RawItem): IntakeLead {
  * report as "page N of this group". Partial Leads alone is ~1,718 rows, i.e.
  * four sequential pages of its own, which is where the wait actually is.
  */
-export async function fetchIntakeLeads(onPage?: PageReport): Promise<IntakeLead[]> {
+export async function fetchIntakeLeads(
+  onPage?: PageReport, onBatch?: BatchReport<IntakeLead>,
+): Promise<IntakeLead[]> {
+  // Everything mapped so far, shared by the three groups running in parallel.
+  // ⚠️ Appended to, never rebuilt, so a batch is always a PREFIX of the final
+  // list — a caller committing one can only ever be showing fewer rows, never
+  // different ones.
+  const soFar: IntakeLead[] = [];
   const pages = await Promise.all(
-    INTAKE_GROUP_IDS.map((g) => fetchGroup(PROFILE_BOARD_ID, g, INTAKE_COLS, onPage)),
+    INTAKE_GROUP_IDS.map((g) =>
+      fetchGroupStreaming(PROFILE_BOARD_ID, g, INTAKE_COLS, onPage, (rows) => {
+        if (!onBatch) return;
+        for (const r of rows) soFar.push(toIntakeLead(r));
+        onBatch([...soFar]);
+      }),
+    ),
   );
   return pages.flat().map(toIntakeLead);
 }

@@ -626,9 +626,25 @@ export function DaysInStagePill({ value }: { value?: string }) {
 export function PatientContact({
   phone, textPrefill, textOpen, onTextOpenChange, onTextSent, hideCallHistory,
   textTone, callHistoryLabel, callHistoryIcon, callHistoryCount,
-  patientName, showCopy,
+  patientName, showCopy, onCall,
 }: {
   phone?: string;
+  /**
+   * Ring them HERE instead of handing the number to the operating system.
+   *
+   * ⚠️ **OPT-IN, and only the Care Coordinator card passes it** (Brandon,
+   * 2026-09-22: *"when i make a call it takes me out of command center"*).
+   * Absent — which is every other header in the app — this renders the
+   * `tel:` anchor it always has, byte for byte, so nothing else moves. The
+   * dashboard passes it because a coordinator works a queue and a call that
+   * navigates away loses their place in it.
+   *
+   * ⚠️ It becomes a <button>, not an anchor with a click handler: an anchor
+   * whose href is a live `tel:` still hands off on a middle-click, a
+   * long-press or "open in new tab", which is the one behaviour this exists
+   * to stop.
+   */
+  onCall?: () => void;
   /**
    * Who the number belongs to, shown in the text composer's title bar before
    * the number (Brandon, 2026-09-17: "when we open up the text box, let's have
@@ -681,14 +697,19 @@ export function PatientContact({
   const tel = (phone ?? "").replace(/[^\d+]/g, "");
   if (!tel) return <span className="text-base text-muted-foreground">No phone on file</span>;
   const display = formatPhoneNice(phone);
+  const callClass =
+    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90 bg-[color:var(--mm-teal)]";
   return (
     <span className="inline-flex items-center gap-2">
-      <a
-        href={`tel:${tel}`}
-        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90 bg-[color:var(--mm-teal)]"
-      >
-        <Phone className="h-3.5 w-3.5 shrink-0" /> {display}
-      </a>
+      {onCall ? (
+        <button type="button" onClick={onCall} className={callClass}>
+          <Phone className="h-3.5 w-3.5 shrink-0" /> {display}
+        </button>
+      ) : (
+        <a href={`tel:${tel}`} className={callClass}>
+          <Phone className="h-3.5 w-3.5 shrink-0" /> {display}
+        </a>
+      )}
       <TextCompose
         tel={tel}
         display={display}
@@ -704,6 +725,7 @@ export function PatientContact({
         <CallHistoryButton
           phone={tel}
           display={display}
+          who={patientName}
           label={callHistoryLabel}
           icon={callHistoryIcon}
           count={callHistoryCount}

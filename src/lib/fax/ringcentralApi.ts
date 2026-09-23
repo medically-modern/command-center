@@ -624,19 +624,34 @@ export async function fetchInboundFaxesAll(
   return out;
 }
 
+/**
+ * One message type's whole window, and whether we reached the end of it.
+ *
+ * ⚠️ `truncated` is reported HERE rather than derived from the row count by
+ * the caller, because `activityTruncated` compares against
+ * `ACTIVITY_RECORD_LIMIT` — the CALL read's cap (6 x 100) — while this read
+ * runs at `perPage: 250`. Measuring a 1,500-row ceiling against a 600-row
+ * constant reports truncation on an ordinary week, and the count it withholds
+ * is the one a coordinator is reading. The loop already knows the answer: it
+ * ran out of pages without ever seeing a short one.
+ */
 async function messageStoreAll(
   messageType: string,
   days: number,
   perPage: number,
-): Promise<Array<Record<string, unknown>>> {
+): Promise<{ records: Array<Record<string, unknown>>; truncated: boolean }> {
   const dateFrom = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
   const out: Array<Record<string, unknown>> = [];
+  let truncated = true;
   for (let page = 1; page <= ACTIVITY_MAX_PAGES; page++) {
     const records = await messageStorePage(messageType, dateFrom, perPage, page);
     out.push(...records);
-    if (records.length < perPage) break; // a short page is the last page
+    if (records.length < perPage) {
+      truncated = false; // a short page is the last page
+      break;
+    }
   }
-  return out;
+  return { records: out, truncated };
 }
 
 /**
@@ -655,18 +670,28 @@ async function messageStoreAll(
  * never having replied — but if that read fails, degrading to "we missed one
  * photo reply" is strictly better than the whole column going blank.
  */
-export async function fetchRecentMessageActivity({
+export async function fetchRecentMessageActivityDetailed({
   days = 7,
   perPage = 250,
-}: { days?: number; perPage?: number } = {}): Promise<Array<Record<string, unknown>>> {
+}: { days?: number; perPage?: number } = {}): Promise<{
+  records: Array<Record<string, unknown>>;
+  truncated: boolean;
+}> {
   const sms = await messageStoreAll("SMS", days, perPage);
-  let mms: Array<Record<string, unknown>> = [];
+  let mms: { records: Array<Record<string, unknown>>; truncated: boolean } = { records: [], truncated: false };
   try {
     mms = await messageStoreAll("MMS", days, perPage);
   } catch {
     /* see the header — a missing MMS page must not blank the whole column */
   }
-  return [...sms, ...mms];
+  return { records: [...sms.records, ...mms.records], truncated: sms.truncated || mms.truncated };
+}
+
+/** The records alone, for callers with nothing to say about completeness. */
+export async function fetchRecentMessageActivity(
+  opts: { days?: number; perPage?: number } = {},
+): Promise<Array<Record<string, unknown>>> {
+  return (await fetchRecentMessageActivityDetailed(opts)).records;
 }
 
 /**

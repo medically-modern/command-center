@@ -58,11 +58,12 @@ import { cn } from "@/lib/utils";
 
 import { useBoardPoll } from "@/hooks/careCoordinator/useBoardPoll";
 import { useCalendlyBookings } from "@/hooks/careCoordinator/useCalendlyBookings";
+import { CallPatientDialog, type CallTarget } from "@/components/careCoordinator/CallPatientDialog";
 import {
   fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUPS, INTAKE_FORM_GROUP_IDS, NOTES_COLUMN,
 } from "@/lib/careCoordinator/mondayApi";
 import {
-  intakeBuckets, nextUp, summarize, toScheduledCall, welcomeCallBuckets,
+  bucketedLeads, intakeBuckets, nextUp, summarize, toScheduledCall, welcomeCallBuckets,
   type CalendlyLookup, type Horizon, type IntakeLead, type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
 import { EMPTY_SELECTION, matchesFacets, type FacetSelection } from "@/lib/careCoordinator/intakeFilter";
@@ -170,10 +171,41 @@ export default function CareCoordinatorPage() {
    */
   const contacts = useContactStates(true);
 
+  /**
+   * The patient the coordinator is on the phone with, or null.
+   *
+   * ⚠️ Held by the PAGE rather than the card so exactly one call dialog can be
+   * open at a time, and so it survives the card re-rendering under it on a
+   * poll. Cleared on close, which is also what discards the draft note — §9's
+   * notes-box rule: a note typed for one patient must never be one press from
+   * the next one's chart.
+   */
+  const [callTarget, setCallTarget] = useState<CallTarget | null>(null);
+
   const ctx = useMemo(() => ({ today, nowMinutes, nowMs }), [today, nowMinutes, nowMs]);
   const intakeB = useMemo(
     () => intakeBuckets(intakeLeads, { ...ctx, formGroupIds: INTAKE_FORM_GROUP_IDS, calendly: intakeCalendly }),
     [intakeLeads, ctx, intakeCalendly],
+  );
+
+  /**
+   * The population the FILTER's options are counted over — every lead this
+   * column can render, with no facet selection applied.
+   *
+   * ⚠️ **NOT `allIntakeLeads`, and that was the bug** (Brandon, 2026-09-22:
+   * *"the filters look like it's taking from all of them (e.g. in equity type,
+   * there's 1686 for not set)"*). 1,686 is the 8/25 SNJ import, which
+   * `intakeBuckets` excludes — so every option was counted over rows the
+   * column could never show, and the largest number in the control described a
+   * population that is not on the screen.
+   *
+   * ⚠️ It buckets the UNFILTERED list, deliberately paying for a second fold:
+   * counting over the filtered one makes a chosen facet's other values vanish,
+   * and then there is no way to widen the selection again (§5.30e).
+   */
+  const facetPopulation = useMemo(
+    () => bucketedLeads(intakeBuckets(allIntakeLeads, { ...ctx, formGroupIds: INTAKE_FORM_GROUP_IDS, calendly: intakeCalendly })),
+    [allIntakeLeads, ctx, intakeCalendly],
   );
   const welcomeB = useMemo(
     () => welcomeCallBuckets(welcome.data ?? [], ctx, bookings.byEmail),
@@ -223,8 +255,23 @@ export default function CareCoordinatorPage() {
       notes: notes.get(itemId),
       reached: contacts.states ? { byText: !!state?.reachedByText, byCall: !!state?.reachedByCall } : undefined,
       callCount: contacts.states && !contacts.truncated ? (state?.calls ?? 0) : undefined,
+      /* ⚠️ Present only once the read has landed, and ZEROES when it has but
+         this patient is not in it — that is the honest reading: the window
+         held nothing for them. Before it lands there are no rows at all,
+         because four zeroes would be a claim nobody has touched them. */
+      contact: contacts.states
+        ? {
+            callsOut: state?.callsOut ?? 0,
+            callsIn: state?.callsIn ?? 0,
+            textsOut: state?.textsOut ?? 0,
+            textsIn: state?.textsIn ?? 0,
+            callsClipped: contacts.truncated,
+            textsClipped: contacts.textsTruncated,
+          }
+        : undefined,
+      onCall: setCallTarget,
     };
-  }, [contacts.states, contacts.truncated]);
+  }, [contacts.states, contacts.truncated, contacts.textsTruncated]);
   // ⚠️ The strip reads the UNFILTERED list on purpose. It is the day's
   // schedule, not a view of this column, and the mirror rows are also what
   // give a Calendly intake booking its monday item id — narrowing them would
@@ -303,11 +350,16 @@ export default function CareCoordinatorPage() {
           </div>
 
           {/* The summary — an overview, not pills (Brandon, 2026-09-14). */}
-          <dl className="ml-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:ml-8 sm:grid-cols-4" aria-label="Summary">
+          {/* ⚠️ Three stats, not four — "Overdue" is gone (Brandon, 2026-09-22:
+              "get rid of the 0 overdue on top in the banner"). It read 0 for
+              essentially everybody, because an unscheduled lead is only
+              overdue once a follow-up DATE has passed and almost none of this
+              column has one. `summarize` still computes it, so nothing about
+              the rule moved and putting the stat back is one line. */}
+          <dl className="ml-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:ml-8 sm:grid-cols-3" aria-label="Summary">
             <Stat label="Total in pipeline" value={summary.total} strong />
             <Stat label="Patient Intake" value={summary.intake.total} />
             <Stat label="Welcome Call" value={summary.welcome.total} />
-            <Stat label="Overdue" value={summary.overdue} warn={summary.overdue > 0} />
           </dl>
 
           <div className="ml-auto flex items-center gap-1.5">
@@ -362,18 +414,25 @@ export default function CareCoordinatorPage() {
             notice={<IntakeBookingsNotice bookings={intakeBookings} />}
             controls={
               <IntakeFilter
-                leads={allIntakeLeads}
+                leads={facetPopulation}
                 groups={INTAKE_FORM_GROUPS}
                 selection={facets}
                 onChange={setFacets}
                 onClearAll={() => setFacets(EMPTY_SELECTION)}
                 shown={intakeLeads.length}
-                total={allIntakeLeads.length}
+                total={facetPopulation.length}
               />
             }
           >
-            {intake.loading && <Skeleton />}
-            {!intake.loading && (
+            {/* ⚠️ The skeleton goes the moment there is ANYTHING to show, not
+                when the read settles. Patient Intake streams its pages on a
+                cold load (`useBoardPoll`'s batch callback), so gating on
+                `loading` alone would keep the skeleton up for all four round
+                trips and throw the first three away. The load bar above stays
+                for the whole read, which is what says the list is still
+                growing. */}
+            {intake.loading && !intake.data && <Skeleton />}
+            {intake.data && (
               <ColumnLists
                 horizon={intakeHorizon}
                 scheduledToday={intakeB.scheduledToday.map((e) => (
@@ -427,6 +486,16 @@ export default function CareCoordinatorPage() {
           </PipelineColumn>
         </div>
       </main>
+
+      {/* ⚠️ Keyed on the patient, so the draft note cannot survive a change of
+          patient — §9's notes-box rule, which this codebase records costing a
+          note filed against the wrong chart. */}
+      <CallPatientDialog
+        key={callTarget?.itemId ?? "none"}
+        target={callTarget}
+        onClose={() => setCallTarget(null)}
+        onLogged={() => { void intake.refetch(); void welcome.refetch(); }}
+      />
     </div>
   );
 }

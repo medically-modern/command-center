@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  attemptLabel, autoTexts, chaseBuckets, chaseRoute, classifyBooking, columnSummary, daysBetween,
+  attemptLabel, chaseBuckets, chaseRoute, classifyBooking, columnSummary, daysBetween,
   daysInPipeline, dueLabel, followUpHorizon, formatDaysSince, formatWait, formCompletion,
   intakeBuckets, isFormLead, latestAttempt, liveBooking, methodLabel, nextUp, overdueCount,
-  shortMonthDay, summarize, toCount, toScheduledCall, waitingMs, welcomeCallBuckets, welcomeCallTexts,
+  shortMonthDay, summarize, toCount, toScheduledCall, waitingMs, welcomeCallBuckets,
   READY_AFTER_HOURS,
   type ChaseItem, type IntakeLead, type WelcomeCallItem,
 } from "./workflow";
@@ -31,7 +31,7 @@ const lead = (over: Partial<IntakeLead> = {}): IntakeLead => ({
   insuranceProvidedVia: "Entered manually", insuranceOther: "",
   providedDoctorName: "Dr. Provided", providedClinicPhone: "5555550100",
   ipCoveragePath: "", cgmCoveragePath: "Insulin",
-  hasInsuranceCard: false, stediError: "", stediActive: "Yes", stediPlanName: "Test Plan",
+  hasInsuranceCard: false, stediError: "", stediActive: "Yes", stediPlanName: "Test Plan", stediInNetwork: "",
   ...over,
 });
 
@@ -171,7 +171,7 @@ describe("chase display helpers", () => {
   });
 });
 
-describe("liveBooking / isFormLead / formCompletion / autoTexts", () => {
+describe("liveBooking / isFormLead / formCompletion", () => {
   it("parses the Calendly mirror and drops canceled bookings", () => {
     expect(liveBooking({ scheduledCallTime: "2026-09-08 14:30", bookingStatus: "Scheduled" }))
       .toEqual({ date: "2026-09-08", time: "14:30:00" });
@@ -188,11 +188,6 @@ describe("liveBooking / isFormLead / formCompletion / autoTexts", () => {
     expect(formCompletion({ groupId: GROUPS.completed }, GROUPS)).toBe("Completed");
     expect(formCompletion({ groupId: GROUPS.partial }, GROUPS)).toBe("Partial");
     expect(formCompletion({ groupId: "group_mm6c3rhb" }, GROUPS)).toBeNull();
-  });
-  it("auto texts are the two nudges, clamped as the backend clamps them", () => {
-    expect(autoTexts({ dropOffAttempt: "" })).toBe(0);
-    expect(autoTexts({ dropOffAttempt: "1" })).toBe(1);
-    expect(autoTexts({ dropOffAttempt: "7" })).toBe(2);
   });
 });
 
@@ -424,11 +419,6 @@ describe("welcomeCallBuckets — the right column", () => {
     ], ctx);
     expect(b.withManager).toBe(2);
     expect(b.unscheduledToday.map((e) => e.item.id)).toEqual(["done"]);
-  });
-
-  it("the text count is the Welcome Call Text trigger — 0 or 1", () => {
-    expect(welcomeCallTexts({ welcomeCallText: "" })).toBe(0);
-    expect(welcomeCallTexts({ welcomeCallText: "Send" })).toBe(1);
   });
 });
 

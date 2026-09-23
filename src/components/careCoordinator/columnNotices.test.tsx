@@ -121,7 +121,13 @@ describe("the column header cannot drift between the two columns", () => {
    */
   it("names BOTH green signals — the card edge and the counters", () => {
     expect(col).toContain("Green edge");
-    expect(col).toContain("Green count");
+    // ⚠️ The counters stopped being board columns on 2026-09-22 and became
+    // real RingCentral counts, split into an outbound row and an inbound one
+    // (§5.30 / PatientCard's `contact`). The legend has to say what each row
+    // COUNTS — the old "Green count = they answered or texted back" described
+    // the colour of a number that meant something else entirely.
+    expect(col).toContain("Top row");
+    expect(col).toContain("Green row");
   });
 });
 

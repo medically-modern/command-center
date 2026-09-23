@@ -221,3 +221,77 @@ describe("reached — the high-water facts (Brandon, 2026-09-17)", () => {
     expect(m.get(K)?.calls).toBe(1);
   });
 });
+
+/**
+ * The four directional counts — what the Care Coordinator card's two rows
+ * print (Brandon, 2026-09-22).
+ *
+ * ⚠️ The population this replaced was a pair of BOARD columns: the Attempt
+ * Counter, which only moves when a rep presses *Log call attempt*, and the
+ * Drop-off Attempt, which only moves for the intake form's two automated
+ * nudges. That is why Katelyn Matias read `1` beside a call log holding three
+ * calls and why a rep's own text read `0`. These count the real thing.
+ */
+describe("directional counts (Brandon, 2026-09-22)", () => {
+  it("splits calls and texts by direction, and `calls` stays the total", () => {
+    const m = buildContactStates(
+      [
+        sms("Outbound", "2026-09-01T10:00:00Z"),
+        sms("Outbound", "2026-09-02T10:00:00Z"),
+        sms("Inbound", "2026-09-03T10:00:00Z"),
+      ],
+      [
+        call("Outbound", "2026-09-01T11:00:00Z"),
+        call("Outbound", "2026-09-02T11:00:00Z"),
+        call("Outbound", "2026-09-03T11:00:00Z"),
+        call("Inbound", "2026-09-04T11:00:00Z"),
+      ],
+    );
+    const s = m.get(K)!;
+    expect(s.callsOut).toBe(3);
+    expect(s.callsIn).toBe(1);
+    expect(s.textsOut).toBe(2);
+    expect(s.textsIn).toBe(1);
+    // ⚠️ `calls` is the pair's sum and is NOT derived in the view — the
+    // `Call Log (N)` chip beside these means "calls with this number", both
+    // directions, and two readings of one fact is how they drift.
+    expect(s.calls).toBe(s.callsOut + s.callsIn);
+  });
+
+  it("counts every message, not just the newest — the lane rule is separate", () => {
+    // Three outbound then one inbound: the LANE is "they texted us and nobody
+    // replied", and the counts still hold all four.
+    const m = buildContactStates(
+      [
+        sms("Outbound", "2026-09-01T10:00:00Z"),
+        sms("Outbound", "2026-09-01T11:00:00Z"),
+        sms("Outbound", "2026-09-01T12:00:00Z"),
+        sms("Inbound", "2026-09-02T10:00:00Z"),
+      ],
+      [],
+    );
+    expect(m.get(K)?.text).toBe("awaitingOurReply");
+    expect(m.get(K)?.textsOut).toBe(3);
+    expect(m.get(K)?.textsIn).toBe(1);
+  });
+
+  it("an unanswered outbound call still counts — the count is not `reachedByCall`", () => {
+    // ⚠️ These answer different questions and the card renders both: the
+    // number says how often we rang, the green emphasis says they picked up.
+    // A count alone cannot express an answered call.
+    const m = buildContactStates([], [call("Outbound", "2026-09-01T11:00:00Z", { result: "No Answer" })]);
+    expect(m.get(K)?.callsOut).toBe(1);
+    expect(m.get(K)?.reachedByCall).toBe(false);
+  });
+
+  it("keeps one number's counts off another's", () => {
+    const m = buildContactStates(
+      [sms("Outbound", "2026-09-01T10:00:00Z"), sms("Outbound", "2026-09-01T10:00:00Z", OTHER)],
+      [call("Inbound", "2026-09-01T11:00:00Z", {}, OTHER)],
+    );
+    expect(m.get(K)?.textsOut).toBe(1);
+    expect(m.get(K)?.callsIn).toBe(0);
+    expect(m.get(contactKey(OTHER))?.textsOut).toBe(1);
+    expect(m.get(contactKey(OTHER))?.callsIn).toBe(1);
+  });
+});

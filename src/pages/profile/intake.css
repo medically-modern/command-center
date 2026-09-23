@@ -364,9 +364,18 @@
    min-width:0 lets a narrow pane shrink the columns instead, with the verbs
    wrapping INSIDE their buttons. */
 .pf-root .exit-row {
-  display:flex; gap:10px; margin-top:14px;
+  display:flex; gap:10px 18px; margin-top:14px; align-items:center; flex-wrap:wrap;
 }
-.pf-root .exit-row > .btn { flex:1 1 0; min-width:0; justify-content:center }
+/* The two groups: the everyday pair on the left, the alternatives on the right
+   (Brandon, 2026-09-22 — see the JSX). ⚠️ The left group takes the space and
+   the right one sizes to its content, so "Advance" stays the widest thing in
+   the row however long the other labels get. On a narrow pane the row wraps
+   and the alternatives drop to their own line, which is the graceful version
+   of running out of room rather than four squeezed buttons. */
+.pf-root .exit-group { display:flex; gap:10px; min-width:0; flex:1 1 320px }
+.pf-root .exit-group > .btn { flex:1 1 0; min-width:0; justify-content:center }
+.pf-root .exit-group.alt { flex:0 1 auto; justify-content:flex-end; margin-left:auto }
+.pf-root .exit-group.alt > .btn { flex:0 1 auto }
 
 /* ⚠️ THE SECOND ROW — Save and Finish Later + Propose Stuck (Brandon,
    2026-09-17: "'Advance' and 'Log Call Attempt' are the main 2 buttons at the
@@ -378,8 +387,12 @@
    `.btn` sets its own padding and font and a single override reads as an
    accident later. They stay equal columns with each other so the pair still
    lines up under the pair above. */
-.pf-root .exit-row.alt { margin-top:8px }
-.pf-root .exit-row.alt > .btn {
+/* ⚠️ Smaller is still the point, and it is still stated three ways rather than
+   one — less padding, a smaller type size and no flex growth — because `.btn`
+   sets its own padding and font and a single override reads as an accident
+   later. What changed on 2026-09-22 is only WHERE they sit: the pair moved from
+   its own row beneath to the right-hand end of the same row. */
+.pf-root .exit-group.alt > .btn {
   padding:7px 12px; font-size:.82rem; font-weight:700;
 }
 /* Below the row: two footnotes, two blocks. The Save caption and the attempt

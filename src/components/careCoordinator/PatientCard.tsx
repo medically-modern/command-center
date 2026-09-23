@@ -39,7 +39,10 @@
  */
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CalendarPlus, ChevronDown, ChevronUp, MessageSquare, Phone } from "lucide-react";
+import {
+  AlertTriangle, ArrowDownLeft, ArrowUpRight, CalendarPlus, ChevronDown, ChevronUp,
+  MessageSquare, Phone,
+} from "lucide-react";
 
 import { PatientContact } from "@/components/masheke/mmKit";
 import {
@@ -118,7 +121,18 @@ export function PillRow({ slots, variant, actions }: {
                         type="button"
                         onClick={action.onClick}
                         title={action.title}
-                        className="max-w-full rounded-full underline decoration-dotted underline-offset-2 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        /* ⚠️ `inline-flex`, not the default inline-block, and
+                           it is the alignment fix Brandon reported (2026-09-22:
+                           "whenever there's a photoupload pill, the insurance
+                           sub-text drops lower than the others"). A button
+                           establishes a line box, and that box's strut is sized
+                           from the BUTTON's inherited font — the card's ~14px —
+                           while the `Pill` inside it is 11px. The extra leading
+                           sits under the pill and pushes this slot's caption
+                           below every other slot's. A flex container has no
+                           strut, so the button is exactly as tall as the pill
+                           and the caption row re-registers. */
+                        className="inline-flex max-w-full rounded-full underline decoration-dotted underline-offset-2 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {pill}
                       </button>
@@ -200,9 +214,69 @@ function NotesLine({ label, notes }: { label: string; notes: string | undefined 
   );
 }
 
+/**
+ * One direction's pair of counts.
+ *
+ * ⚠️ A clipped window prints an em dash, never the number it has. The
+ * account-wide read is page-capped, so a busy week comes back short and the
+ * count would be quietly low — and a coordinator reads a number on a card as
+ * fact. Withholding is §5.30e's rule for `Call Log (N)`, applied to the same
+ * data. Calls and texts are clipped independently: two reads, two ceilings.
+ */
+function ContactCountRow({ dir, calls, texts, callsClipped, textsClipped, highlight = null }: {
+  dir: "out" | "in";
+  calls: number;
+  texts: number;
+  callsClipped?: boolean;
+  textsClipped?: boolean;
+  highlight?: "call" | null;
+}) {
+  const inbound = dir === "in";
+  const Arrow = inbound ? ArrowDownLeft : ArrowUpRight;
+  const what = inbound ? "from this patient" : "to this patient";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5",
+        inbound ? "font-semibold text-[color:var(--mm-green)]" : "text-muted-foreground",
+      )}
+    >
+      <Arrow className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+      <span className="sr-only">{inbound ? "Inbound" : "Outbound"}:</span>
+      <span
+        className={cn("inline-flex items-center gap-0.5", highlight === "call" && "font-semibold text-[color:var(--mm-green)]")}
+        title={
+          callsClipped
+            ? `Too many calls on the line this week to count ${what} reliably`
+            : highlight === "call"
+              ? `${calls} call${calls === 1 ? "" : "s"} ${what} — and they answered one`
+              : `${calls} call${calls === 1 ? "" : "s"} ${what}`
+        }
+      >
+        <Phone className="h-3.5 w-3.5" aria-hidden />
+        <span className="sr-only">calls</span>
+        {callsClipped ? "—" : calls}
+      </span>
+      <span
+        className="inline-flex items-center gap-0.5"
+        title={
+          textsClipped
+            ? `Too many texts on the line this week to count ${what} reliably`
+            : `${texts} text${texts === 1 ? "" : "s"} ${what}`
+        }
+      >
+        <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+        <span className="sr-only">texts</span>
+        {textsClipped ? "—" : texts}
+      </span>
+    </span>
+  );
+}
+
 export function PatientCard({
-  name, attempted, nextUp = false, doctor, clinic, when, pills, pillActions, variant, attempts, texts,
-  phone, notes, notesLabel, openHref, openLabel, onBookingLink, reached, callCount, blocker,
+  name, attempted, nextUp = false, doctor, clinic, network, when, pills, pillActions, variant, contact,
+  phone, notes, notesLabel, openHref, openLabel, onBookingLink, onCall, reached, callCount, blocker,
+  blockerDetail, inSystem = false,
 }: {
   name: string;
   /** Has anybody rung them yet? Green edge when true, gray when false. */
@@ -211,6 +285,21 @@ export function PatientCard({
   nextUp?: boolean;
   doctor?: string;
   clinic?: string;
+  /**
+   * What the eligibility check said about the network, printed VERBATIM.
+   *
+   * ⚠️ **VERBATIM IS THE SPECIFICATION** (Josh, 2026-09-22: *"we should
+   * display whatever stedi came back with"*). The board's own `Unknown` is a
+   * real answer — Original Medicare has no network, so fee-for-service
+   * patients come back exactly that — and substituting our own word for it
+   * loses what the payer actually said AND hides the day the column grows a
+   * new vocabulary (§5.20's `networkLabel`, same rule, same reason).
+   *
+   * ⚠️ It blocks nothing, here or anywhere. It was a gate once, on a condition
+   * that could never pass for a whole population, and removing it is what
+   * unstranded them.
+   */
+  network?: string;
   /** The right-hand time or "N days". */
   when: ReactNode;
   /** One entry per labelled column; a blank string renders the em dash. */
@@ -222,8 +311,29 @@ export function PatientCard({
   pillActions?: PillActions;
   /** Which column this card is in — picks the slot list and the pill colours. */
   variant: PillVariant;
-  attempts: number;
-  texts: number;
+  /**
+   * The two counter rows — what we sent them, and what they sent us.
+   *
+   * ⚠️ **THIS REPLACED A PAIR OF BOARD COLUMNS AND DOES NOT MEAN THE SAME
+   * THING** (Brandon, 2026-09-22). The card used to print the **Attempt
+   * Counter** and the **Drop-off Attempt** columns, i.e. calls a rep had
+   * pressed *Log call attempt* for and the intake form's two automated
+   * nudges — so a patient rung three times read `1`, and a rep's own text
+   * read `0`. These are real RingCentral counts from the shared window
+   * (`contactState.callsOut` and friends).
+   *
+   * ⚠️ `undefined` renders NOTHING rather than zeroes: the read has not
+   * landed (or cannot be made in a build with no gateway), and four zeroes
+   * would be a claim that nobody has touched this patient.
+   */
+  contact?: {
+    callsOut: number; callsIn: number; textsOut: number; textsIn: number;
+    /** The call window came back at its page cap, so its numbers are floors.
+     *  Withheld rather than shown low — §5.30e's rule for `Call Log (N)`. */
+    callsClipped?: boolean;
+    /** The same for the text window, which has its own, different ceiling. */
+    textsClipped?: boolean;
+  };
   phone: string;
   /** This patient's running history, already fetched in the column's batch.
    *  `undefined` while the batch is still out. */
@@ -233,6 +343,22 @@ export function PatientCard({
   openHref: string;
   openLabel: string;
   onBookingLink: () => void;
+  /**
+   * Ring them without leaving the page (Brandon, 2026-09-22: *"when i make a
+   * call it takes me out of command center"*). Absent — for anybody the
+   * browser softphone is not assigned to — leaves `PatientContact`'s ordinary
+   * `tel:` handoff in place, which is what every other header in the app does.
+   */
+  onCall?: () => void;
+  /**
+   * The duplicate check matched this person to a patient we already serve.
+   *
+   * ⚠️ Read from **Dup Check Result**, never the Already In System column, for
+   * the population this card serves — see `lib/profile/dupCheckFlag.ts`, whose
+   * whole header is why. The caller ORs in the flag column for the Completed
+   * group, where the check does write it.
+   */
+  inSystem?: boolean;
   /**
    * Have we actually got through to this patient in the last week?
    *
@@ -255,9 +381,14 @@ export function PatientCard({
    * "nothing we can see", which is a different claim.
    */
   blocker?: string;
+  /** The long form of `blocker` — the payer's own guidance and AAA code —
+   *  carried as the line's `title` rather than on screen. See
+   *  `workflow.intakeBlocker` for why it is not in the sentence. */
+  blockerDetail?: string;
 }) {
   const doctorLine = [doctor?.trim() && `Doctor: ${doctor.trim()}`, clinic?.trim() && `Clinic: ${clinic.trim()}`]
     .filter(Boolean).join(" · ");
+  const net = network?.trim() ?? "";
   return (
     <article
       className={cn(
@@ -276,51 +407,113 @@ export function PatientCard({
               {name}
             </Link>
           </h4>
+          {/* ⚠️ ORANGE, not the rose the blocker below uses. Brandon wrote
+              "a red ... orange pill" and did not settle it; on this card rose
+              now means "something is wrong and blocks the advance", and this
+              is neither — it is a routing fact, and the patient is still
+              workable. */}
+          {inSystem && (
+            <span
+              title="The duplicate check matched this person to a patient we already have"
+              className="mt-1 inline-block rounded-full border border-orange-400 bg-orange-100 px-2 py-[2px] text-[10.5px] font-semibold uppercase tracking-wide text-orange-950 dark:border-orange-500/50 dark:bg-orange-950/50 dark:text-orange-100"
+            >
+              Already in System
+            </span>
+          )}
           {doctorLine && <div className="mt-0.5 text-xs text-muted-foreground">{doctorLine}</div>}
+          {/* Only once a check has run — a blank column means nobody has asked
+              yet, and "In network: —" on every unworked lead is a row of em
+              dashes that teaches a coordinator to stop reading the line. */}
+          {net && (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              In network: <span className="font-medium text-foreground">{net}</span>
+            </div>
+          )}
         </div>
         {when}
       </div>
 
-      {/* ⚠️ Amber, not rose: every one of these is an ORDINARY next step a rep
-          takes on the profile page (re-run the check, ring about the plan,
-          pick a path), not evidence anything is wrong — §5.17's severity rule.
-          Rose here would out-rank the escalations that are somebody's problem. */}
+      {/* ⚠️ **ROSE FROM 2026-09-22, REVERSING THE AMBER THIS SHIPPED WITH**
+          (Brandon, on the benefits-check line: *"have it be red"*). The note
+          it replaces argued §5.17's severity rule — amber for an ordinary next
+          step, rose for evidence something is wrong — and the argument was
+          sound for a blocker like a missing coverage path. It lost on the
+          population: the blocker a coordinator actually sees is a benefits
+          check that FAILED, and Savannah French sat behind two failed runs
+          nobody noticed. Rose is what gets read.
+
+          ⚠️ It is still not an escalation. An escalated patient is not on this
+          card at all — they are in the column's manager count and worked from
+          Oversight — so nothing here is being out-ranked. */}
       {blocker?.trim() && (
-        <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11.5px] leading-snug text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+        <div className="mt-2 flex items-start gap-1.5 rounded-md border border-rose-300 bg-rose-50 px-2 py-1.5 text-[11.5px] font-medium leading-snug text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
           <AlertTriangle className="mt-[1px] h-3.5 w-3.5 shrink-0" aria-hidden />
-          <span className="min-w-0">{blocker.trim()}</span>
+          <span className="min-w-0" title={blockerDetail?.trim() || undefined}>{blocker.trim()}</span>
         </div>
       )}
 
-      {/* ⚠️ The counters take a FIXED width so the pill grid is the same width
-          on every card. Left to size themselves, a two-digit attempt count
-          would shift every column on that one row. */}
-      <div className="mt-2 flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <PillRow slots={pills} variant={variant} actions={pillActions} />
+      {/* ⚠️ **TWO ROWS: WHAT WE SENT, THEN WHAT THEY SENT** (Brandon,
+          2026-09-22: *"these icons should be showing outgoing texts/calls. we
+          should then show incoming calls/texts below it, in green. we should
+          add an icon to make it clear that top row is outbound, and bottom row
+          is inbound"*). The arrow is that icon, and it carries the whole
+          meaning of the row — without it two identical phone/message pairs
+          stacked on top of each other say nothing.
+
+          ⚠️ The width is FIXED so the pill grid beside it is the same width on
+          every card; left to size themselves, a two-digit count would shift
+          every pill column on that one row. It grew from 4.75rem to 6.5rem
+          with the second row's arrow.
+
+          ⚠️ Nothing here says "this week", deliberately (Josh, 2026-09-22) —
+          seven days is all the shared account-wide read can reach, and a
+          qualifier on every number would cost more attention than it buys. */}
+      {/* ⚠️ **THE COUNTERS GET THEIR OWN LINE, ABOVE THE PILLS — MEASURED, not
+          preferred.** They sat to the RIGHT of the pill grid while they were a
+          single row of two small numbers. Two rows with a direction arrow need
+          104px (their natural width, measured in a browser at the 1024
+          breakpoint), against the 76px the old single row took — and the pill
+          area is a FIXED grid whose whole purpose is that captions register
+          card to card. Taking 28px out of it clipped three of the four pills
+          to "C…", "P…", "I…", which is the one thing that grid exists to
+          prevent. A line of its own costs ~18px of card height and gives the
+          pills their full width back.
+
+          ⚠️ ABOVE the pills rather than below, so the pill row still ends the
+          block and the notes line below it reads as the next thing. */}
+      {/* ⚠️ STACKED — outbound on top, inbound underneath (Brandon, 2026-09-22:
+          *"these icons should be showing outgoing texts/calls. we should then
+          show incoming calls/texts below it, in green"*). Side by side on one
+          line is more compact and was tried first; it is not what he asked
+          for, and the two rows read as one run of numbers when they share a
+          line. */}
+      {contact && (
+        <div className="mt-2 flex flex-col items-end gap-0.5 text-xs tabular-nums">
+          <ContactCountRow
+            dir="out"
+            calls={contact.callsOut}
+            texts={contact.textsOut}
+            callsClipped={contact.callsClipped}
+            textsClipped={contact.textsClipped}
+            /* ⚠️ The emphasis stays on the OUTBOUND phone and is not the same
+               fact as a number: `reachedByCall` means they PICKED UP one of
+               ours, which no count on this card can express (an outbound call
+               that rang out counts identically). The inbound row needs no such
+               marker — every number in it is them. */
+            highlight={reached?.byCall ? "call" : null}
+          />
+          <ContactCountRow
+            dir="in"
+            calls={contact.callsIn}
+            texts={contact.textsIn}
+            callsClipped={contact.callsClipped}
+            textsClipped={contact.textsClipped}
+          />
         </div>
-        <span className="flex w-[4.75rem] shrink-0 items-center justify-end gap-3 pt-0.5 text-xs tabular-nums">
-          <span
-            className={cn("inline-flex items-center gap-1", reached?.byCall ? "font-semibold text-[color:var(--mm-green)]" : "text-muted-foreground")}
-            title={reached?.byCall
-              ? "Call attempts — a call with this number connected in the last week"
-              : "Call attempts logged by reps"}
-          >
-            <Phone className="h-3.5 w-3.5" aria-hidden />
-            <span className="sr-only">Call attempts{reached?.byCall ? ", reached" : ""}</span>
-            {attempts}
-          </span>
-          <span
-            className={cn("inline-flex items-center gap-1", reached?.byText ? "font-semibold text-[color:var(--mm-green)]" : "text-muted-foreground")}
-            title={reached?.byText
-              ? "Automated texts — this patient has texted us back in the last week"
-              : "Automated texts sent to this patient"}
-          >
-            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
-            <span className="sr-only">Texts{reached?.byText ? ", they replied" : ""}</span>
-            {texts}
-          </span>
-        </span>
+      )}
+
+      <div className="mt-2">
+        <PillRow slots={pills} variant={variant} actions={pillActions} />
       </div>
 
       <div className="mt-3 border-t pt-2.5">
@@ -336,7 +529,11 @@ export function PatientCard({
           <button
             type="button"
             onClick={onBookingLink}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+            /* Lighter and more transparent than the solid sky-600 it was
+               (Brandon, 2026-09-22). It is one of three controls on this row
+               and the least urgent of them, so it stops competing with Call
+               and Text for the eye while staying plainly a button. */
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-500/15 px-3 py-1.5 text-sm font-semibold text-sky-800 hover:bg-sky-500/25 dark:border-sky-500/40 dark:text-sky-200"
           >
             <CalendarPlus className="h-3.5 w-3.5" aria-hidden />
             Booking Link

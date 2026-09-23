@@ -31,7 +31,7 @@ import {
   RC_VIA_GATEWAY,
   activityTruncated,
   fetchRecentCallActivity,
-  fetchRecentMessageActivity,
+  fetchRecentMessageActivityDetailed,
   mmPhoneNumber,
 } from "@/lib/fax/ringcentralApi";
 import {
@@ -57,6 +57,16 @@ export interface ContactStatesState {
    * news" and errs toward ringing somebody we have already reached.
    */
   truncated: boolean;
+  /**
+   * The same question for the TEXT window, answered separately.
+   *
+   * ⚠️ Separate because the two reads have different ceilings — calls page at
+   * 100 and texts at 250 — so one flag covering both would either withhold a
+   * text count on an ordinary week or claim a call count we cannot stand
+   * behind. The text read reports its own (`fetchRecentMessageActivityDetailed`);
+   * the call read is measured against `ACTIVITY_RECORD_LIMIT` as before.
+   */
+  textsTruncated: boolean;
 }
 
 /**
@@ -75,7 +85,7 @@ export const CONTACT_WINDOW_DAYS = 7;
  */
 const TTL_MS = 300_000;
 
-const EMPTY: ContactStatesState = { states: null, loading: false, error: null, truncated: false };
+const EMPTY: ContactStatesState = { states: null, loading: false, error: null, truncated: false, textsTruncated: false };
 
 let snapshot: ContactStatesState = EMPTY;
 let fetchedAt = 0;
@@ -113,18 +123,19 @@ function refresh(): Promise<void> {
   emit({ ...snapshot, loading: true });
   // Both reads are awaited together rather than fired and forgotten — rule 3.
   inflight = Promise.all([
-    fetchRecentMessageActivity({ days: CONTACT_WINDOW_DAYS }),
+    fetchRecentMessageActivityDetailed({ days: CONTACT_WINDOW_DAYS }),
     fetchRecentCallActivity({ days: CONTACT_WINDOW_DAYS }),
   ])
     .then(([messages, calls]) => {
       fetchedAt = Date.now();
       emit({
-        states: buildContactStates(messages as RcMessageRecord[], calls, {
+        states: buildContactStates(messages.records as RcMessageRecord[], calls, {
           ownNumbers: [mmPhoneNumber()],
         }),
         loading: false,
         error: null,
         truncated: activityTruncated(calls),
+        textsTruncated: messages.truncated,
       });
     })
     .catch((e: unknown) => {
@@ -138,6 +149,7 @@ function refresh(): Promise<void> {
         // Keep whatever the last good read said about completeness; this one
         // said nothing at all.
         truncated: snapshot.truncated,
+        textsTruncated: snapshot.textsTruncated,
       });
     })
     .finally(() => {

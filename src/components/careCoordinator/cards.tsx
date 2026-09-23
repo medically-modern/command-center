@@ -31,11 +31,13 @@ import { openFileViewer } from "@/components/shared/FileViewerModal";
 import type { PillActions } from "./PatientCard";
 import { fetchInsuranceCardAsset, INTAKE_FORM_GROUPS } from "@/lib/careCoordinator/mondayApi";
 import {
-  autoTexts, formCompletion, formatDaysSince, shortMonthDay, welcomeCallTexts,
+  formCompletion, formatDaysSince, shortMonthDay,
   type IntakeLead, type ReviewEntry, type ScheduledEntry, type UnscheduledEntry,
   type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
+import { isAlreadyInSystemResult } from "@/lib/profile/dupCheckFlag";
 import { PatientCard } from "./PatientCard";
+import type { CallTarget } from "./CallPatientDialog";
 
 /**
  * What the two columns share once the column itself has done the batched work.
@@ -51,9 +53,94 @@ export interface CardExtras {
   notes: string | undefined;
   reached?: { byText: boolean; byCall: boolean };
   callCount?: number;
+  /**
+   * The four real counts behind the card's two counter rows, from the same
+   * account-wide read. ⚠️ `undefined` renders no rows at all — see
+   * `PatientCard`'s own note on why four zeroes would be a claim.
+   */
+  contact?: {
+    callsOut: number; callsIn: number; textsOut: number; textsIn: number;
+    callsClipped?: boolean; textsClipped?: boolean;
+  };
+  /**
+   * Ring them in the page, and open the log-the-attempt pop-up.
+   *
+   * ⚠️ The card builds the target rather than the page, because only the card
+   * knows which BOARD this patient is on — the two columns keep separate
+   * attempt counters, follow-up dates and notes columns, and a target built
+   * one place for both is how an attempt gets written against the wrong one.
+   * Absent leaves `PatientContact`'s ordinary `tel:` handoff.
+   */
+  onCall?: (target: CallTarget) => void;
 }
 
 const FROM = "from=care-coordinator";
+
+/** The board's own attempt counter, floored at 0 — one per column. */
+function attemptsOf(lead: IntakeLead): number {
+  const n = Number(lead.attemptCounter);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+}
+
+function welcomeAttemptsOf(item: WelcomeCallItem): number {
+  const n = Number(item.callAttempts);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+}
+
+/**
+ * The card's Call handler, or undefined when the page supplied none.
+ *
+ * ⚠️ The CARD builds the target, not the page, because only the card knows
+ * which board this patient is on — the two columns keep separate attempt
+ * counters, follow-up dates and notes columns, and one target shape built in
+ * one place for both is how an attempt gets written against the wrong board.
+ *
+ * ⚠️ A patient with no number gets no handler at all, so `PatientContact`
+ * falls back to its own "No phone on file" — a Call button that opens a dialog
+ * which then cannot dial is worse than no button.
+ */
+function callHandler(
+  extras: CardExtras, column: CallTarget["column"],
+  item: { id: string; name: string; phone: string }, attempts: number, openHref: string,
+): (() => void) | undefined {
+  const raise = extras.onCall;
+  if (!raise || !item.phone.trim()) return undefined;
+  return () => raise({ column, itemId: item.id, name: item.name, phone: item.phone, attempts, openHref });
+}
+
+/**
+ * Has anybody rung this patient yet — the card's green left edge.
+ *
+ * ⚠️ **THE UNION OF TWO SOURCES, AND BOTH HALVES EARN THEIR PLACE** (Brandon,
+ * 2026-09-22: *"is the green border on the left working for welcome call too?
+ * doesn't seem like it. that green border is if we've done an outbound call to
+ * them yet"*). It was the board's attempt counter alone, which is a record of
+ * somebody pressing *Log call attempt* — so a patient rung three times without
+ * the button being pressed read as never contacted, and on Welcome Call, where
+ * almost nothing writes that column, the edge was gray on everybody.
+ *
+ * The RingCentral half is the literal answer to his question and fixes both.
+ * The board half STAYS because it is the only one that reaches past the shared
+ * window: a patient called a fortnight ago has no RingCentral evidence left,
+ * and dropping their edge back to gray would say we had never tried.
+ */
+function calledOut(attempts: number, extras: CardExtras): boolean {
+  return attempts > 0 || (extras.contact?.callsOut ?? 0) > 0;
+}
+
+/**
+ * Does the duplicate check say we already have this person?
+ *
+ * ⚠️ **THE VERDICT COLUMN LEADS, NOT THE FLAG** — `lib/profile/dupCheckFlag.ts`
+ * is the whole argument: on a PARTIAL lead the check is deliberately flag-only
+ * and never writes Already In System, because writing it trips the board
+ * automation that empties this very queue. So reading the flag alone would
+ * hide the pill from most of the population it exists for. The flag is ORed in
+ * for the Completed group, where the check does file it.
+ */
+function inSystem(lead: IntakeLead): boolean {
+  return isAlreadyInSystemResult(lead.dupCheckResult) || lead.alreadyInSystem.trim() === "Yes";
+}
 
 /** The right-hand time for a scheduled box: `x:xx` today, `MM/DD x:xx` otherwise. */
 function ScheduledWhen<T>({ entry, muted }: { entry: ScheduledEntry<T>; muted: boolean }) {
@@ -100,20 +187,21 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
   entry: ScheduledEntry<IntakeLead>; nextUp: boolean; onBookingLink: (lead: IntakeLead) => void; extras: CardExtras;
 }) {
   const lead = entry.item;
-  const attempts = Number(lead.attemptCounter) > 0 ? Math.trunc(Number(lead.attemptCounter)) : 0;
+  const attempts = attemptsOf(lead);
   return (
     <PatientCard
       name={lead.name}
       variant="intake"
-      attempted={attempts > 0}
+      attempted={calledOut(attempts, extras)}
       nextUp={nextUp}
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
+      network={lead.stediInNetwork}
       when={<ScheduledWhen entry={entry} muted={entry.when === "today-passed"} />}
       pills={intakePills(lead, false)}
       pillActions={insurancePillAction(lead)}
-      attempts={attempts}
-      texts={autoTexts(lead)}
+      inSystem={inSystem(lead)}
+      contact={extras.contact}
       phone={lead.phone}
       notes={extras.notes}
       notesLabel="Profile Send Off notes"
@@ -121,6 +209,7 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       callCount={extras.callCount}
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake"
+      onCall={callHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
       onBookingLink={() => onBookingLink(lead)}
     />
   );
@@ -134,14 +223,15 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
     <PatientCard
       name={lead.name}
       variant="intake"
-      attempted={entry.attempts > 0}
+      attempted={calledOut(entry.attempts, extras)}
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
+      network={lead.stediInNetwork}
       when={<DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
       pillActions={insurancePillAction(lead)}
-      attempts={entry.attempts}
-      texts={autoTexts(lead)}
+      inSystem={inSystem(lead)}
+      contact={extras.contact}
       phone={lead.phone}
       notes={extras.notes}
       notesLabel="Profile Send Off notes"
@@ -149,6 +239,7 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       callCount={extras.callCount}
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake — log the attempt there"
+      onCall={callHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
       onBookingLink={() => onBookingLink(lead)}
     />
   );
@@ -247,20 +338,22 @@ export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
   entry: ReviewEntry<IntakeLead>; today: string; onBookingLink: (lead: IntakeLead) => void; extras: CardExtras;
 }) {
   const lead = entry.item;
-  const attempts = Number(lead.attemptCounter) > 0 ? Math.trunc(Number(lead.attemptCounter)) : 0;
+  const attempts = attemptsOf(lead);
   return (
     <PatientCard
       name={lead.name}
       variant="intake"
-      attempted={attempts > 0}
+      attempted={calledOut(attempts, extras)}
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
+      network={lead.stediInNetwork}
       when={<DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
       pillActions={insurancePillAction(lead)}
+      inSystem={inSystem(lead)}
       blocker={entry.blocker}
-      attempts={attempts}
-      texts={autoTexts(lead)}
+      blockerDetail={entry.blockerDetail}
+      contact={extras.contact}
       phone={lead.phone}
       notes={extras.notes}
       notesLabel="Profile Send Off notes"
@@ -268,6 +361,7 @@ export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
       callCount={extras.callCount}
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake — review and advance"
+      onCall={callHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
       onBookingLink={() => onBookingLink(lead)}
     />
   );
@@ -309,19 +403,18 @@ export function WelcomeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
   entry: ScheduledEntry<WelcomeCallItem>; nextUp: boolean; onBookingLink: (item: WelcomeCallItem) => void; extras: CardExtras;
 }) {
   const item = entry.item;
-  const attempts = Number(item.callAttempts) > 0 ? Math.trunc(Number(item.callAttempts)) : 0;
+  const attempts = welcomeAttemptsOf(item);
   return (
     <PatientCard
       name={item.name}
       variant="welcome"
-      attempted={attempts > 0}
+      attempted={calledOut(attempts, extras)}
       nextUp={nextUp}
       doctor={item.doctorName}
       clinic={welcomeClinic(item)}
       when={<ScheduledWhen entry={entry} muted={entry.when === "today-passed"} />}
       pills={welcomePills(item)}
-      attempts={attempts}
-      texts={welcomeCallTexts(item)}
+      contact={extras.contact}
       phone={item.phone}
       notes={extras.notes}
       notesLabel="Welcome Call notes"
@@ -329,6 +422,7 @@ export function WelcomeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       callCount={extras.callCount}
       openHref={welcomeHref(item)}
       openLabel="Open on Welcome Call"
+      onCall={callHandler(extras, "welcome", item, welcomeAttemptsOf(item), welcomeHref(item))}
       onBookingLink={() => onBookingLink(item)}
     />
   );
@@ -342,13 +436,12 @@ export function WelcomeUnscheduledCard({ entry, today, onBookingLink, extras }: 
     <PatientCard
       name={item.name}
       variant="welcome"
-      attempted={entry.attempts > 0}
+      attempted={calledOut(entry.attempts, extras)}
       doctor={item.doctorName}
       clinic={welcomeClinic(item)}
       when={<DaysSince createdAt={item.createdAt} today={today} />}
       pills={welcomePills(item)}
-      attempts={entry.attempts}
-      texts={welcomeCallTexts(item)}
+      contact={extras.contact}
       phone={item.phone}
       notes={extras.notes}
       notesLabel="Welcome Call notes"
@@ -356,6 +449,7 @@ export function WelcomeUnscheduledCard({ entry, today, onBookingLink, extras }: 
       callCount={extras.callCount}
       openHref={welcomeHref(item)}
       openLabel="Open on Welcome Call — log the attempt there"
+      onCall={callHandler(extras, "welcome", item, welcomeAttemptsOf(item), welcomeHref(item))}
       onBookingLink={() => onBookingLink(item)}
     />
   );

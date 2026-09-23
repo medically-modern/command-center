@@ -3744,6 +3744,161 @@ Files: `lib/careCoordinator/{workflow,pills,mondayApi}.ts` (+ `intakeBlocker.tes
 `components/masheke/mmKit.tsx`, `components/welcomeCall/PatientActivityCard.tsx`,
 `components/copyPhoneScope.test.ts`, `pages/CareCoordinatorPage.tsx`.
 
+### 5.30g Brandon's 2026-09-22 notes on the Masani dashboard
+Seventeen notes, and two of his diagnoses were wrong in ways that changed the work — both worth
+reading before touching anything here. **No board change; one write added, and one change in
+another repo.**
+
+⚠️⚠️ **THE CALL AND TEXT COUNTERS WERE NEVER RINGCENTRAL COUNTS.** *"I don't think the call/text
+counters are working. For example, Katelyn Matias it says 1, but when you click the call log, it
+shows we called 3x … actually what i think it might be doing is incoming calls/texts."* They were
+**board columns**: the phone icon was **Attempt Counter** / **Call Attempts**, which move only when
+a rep presses *Log call attempt*, and the text icon was **Drop-off Attempt** clamped to 2 (the
+intake form's two automated nudges, §5.24) / the **Welcome Call Text** trigger as a 0-or-1. Not
+inbound, not outbound — a record of button presses. That is the whole of all three reports:
+Katelyn's `1` was one logged attempt beside three real calls; Esteban's `1` against a call log of 0
+is a logged attempt whose call fell outside the shared 7-day window; Evan's text was rep-sent and
+no rep text has ever moved that counter. Only the COLOUR was RingCentral (green once
+`reachedByText`/`reachedByCall`), which is why it looked half-wired.
+
+**So they are real counts now, in two rows** — `contactState.callsOut · callsIn · textsOut ·
+textsIn`, folded out of the same account-wide read the green icons already used. Outbound on top
+(muted), inbound below (green), each led by an **arrow** — his ask, and load-bearing: two identical
+phone/message pairs stacked say nothing without it.
+⚠️ **Nothing says "this week"** (Josh, 2026-09-22: *"no need to explicitly say its this week ill
+tell him thats all thats possible"*). Seven days is all the shared read reaches.
+⚠️ **`calls` stays the pair's SUM** and is not re-derived in the view — the `Call Log (N)` chip
+beside these means both directions, and two readings of one fact is how they drift.
+⚠️ **The green emphasis on the outbound phone is NOT the count.** `reachedByCall` means they PICKED
+UP one of ours, which no number here can express (a call that rang out counts identically).
+⚠️ **A clipped window prints an em dash, never the number it has** — §5.30e's rule for
+`Call Log (N)`, applied to the same data. **Calls and texts are clipped INDEPENDENTLY and the
+ceilings differ**: the call read pages at 100 (`ACTIVITY_RECORD_LIMIT` = 600) and the text read at
+250 (1,500 per type). Measuring texts against the call constant reports truncation on an ordinary
+week — ~1,000 texts — and withholds a number a coordinator is reading, so
+`fetchRecentMessageActivityDetailed` reports its own.
+⚠️ `autoTexts` and `welcomeCallTexts` were **DELETED**, not left exported: an unused rule with green
+tests reads as live and invites being wired back (§5.31b's trap in reverse).
+⚠️⚠️ **THE COUNTERS MOVED TO THEIR OWN LINE, ABOVE THE PILLS — measured, not preferred.** Two rows
+with an arrow need **104px** against the old single row's 76px, and the pill area is a FIXED grid
+whose entire purpose is that captions register card to card. Beside the pills they clipped three of
+the four to `C…`, `P…`, `I…` (pill area 273px at the 1024 breakpoint). On their own line the pills
+get **385px** back. Re-measure before moving them back.
+
+⚠️⚠️ **IN-NETWORK IS NOT ON THIS DASHBOARD AT ALL, AND THE COLUMN HAS NEVER CARRIED A REAL "NO".**
+*"Biggest concern is that the In-Network isn't working properly — Masani will have no idea which
+patients to pass through."* It renders on the intake PROFILE page, and `text_mm1xehx8` is written by
+`stedi-monday-integration`: §5.20's board scan found **Yes ×2 and Unknown ×9 across 500 rows**,
+because Original Medicare has no network. So it was never a UI bug. Josh, same day: *"we should
+display whatever stedi came back with"* — the value is now a line under the doctor/clinic line on
+intake cards, **VERBATIM**, `Unknown` included, and blank when no check has run (an em dash on every
+unworked lead is a row of dashes that teaches a coordinator to stop reading the line).
+⚠️ It **blocks nothing** and must not start to: it was a gate once, on a condition a whole population
+could never pass, and removing it is what unstranded them.
+⚠️ One column added to a ~1,754-row read — §5.30f's warning applies; the argument is that this was
+the top item on the list.
+
+**The rest, in his order:**
+- **The blocker is one sentence and ROSE.** *"Shorten … to just 'Benefits check failed' and have it
+  be red."* Stedi returns its guidance and the raw AAA code as one string — four lines of runbook on
+  a triage card. ⚠️ It is **not dropped**: `intakeBlockerDetail` returns it and the card hangs it off
+  the line's `title`, so the code naming WHICH identifier failed is one hover away. ⚠️ Rose reverses
+  §5.30f's amber, which argued §5.17's severity rule correctly and lost on the population: the
+  blocker a coordinator actually meets is a check that FAILED. Nothing is out-ranked — an escalated
+  patient is not on this card at all.
+- ⚠️⚠️ **The "Already in System" pill reads DUP CHECK RESULT, not the flag.** On a PARTIAL lead the
+  duplicate check is deliberately flag-only and never writes Already In System, because writing it
+  trips automation 7922049614 and empties this queue (§5.21). Reading the flag alone hides the pill
+  from most of its own population. The flag is ORed in for the Completed group, where the check does
+  file it. ⚠️ **Orange, not rose** — he wrote *"a red … orange pill"* and settled neither; rose now
+  means "blocks the advance" on this card and this is a routing fact.
+- **The call log names the patient** — `CallHistoryButton` gained an opt-in `who`; the number stays
+  beside it, because a patient with two numbers on file needs to know which one is on screen.
+- **The Booking Link is lighter** — a bordered `bg-sky-500/15`, the least urgent of three controls
+  on its row.
+- ⚠️ **The photo-upload pill's caption dropped 7px, MEASURED.** A `<button>` establishes a line box
+  whose strut is sized from the BUTTON's inherited ~14px font while the `Pill` inside it is 11px;
+  the extra leading sits under the pill. `inline-flex` has no strut. Measured in a browser: captions
+  at 113/**120**/114/113/113 before, 113/113/114/113/113 after — and the plain-label card was never
+  affected, which is what made it look like an insurance-pill bug.
+- **The navy header is `sticky top-0`** — ⚠️ belt and braces. In this page's own layout it cannot
+  scroll (a `flex-none` child of an `h-screen overflow-hidden` column whose panes scroll
+  internally), so the cause is an ancestor scrolling, which the global shell's height maths can
+  produce. Sticky is right either way rather than right if a diagnosis is.
+- **The exit row is ONE row, two groups** — Advance + Log call attempt left, Save and Finish Later +
+  Propose Stuck right. ⚠️ This reverses §5.30e's stacked pair, which was Brandon's own 9/17 ask, and
+  keeps its reasoning: the right group sizes to content and stays a size down, so Propose Stuck
+  never carries the weight of the button pressed at the end of every good call. Measured at 900px
+  (one 44px row) and 520px (wraps to two, 87px, nothing squashed).
+- ⚠️ **The filter counted rows the column never draws.** *"(e.g. in equity type, theres' 1686 for
+  not set)"* — 1,686 is the 8/25 SNJ import. `facetOptions` was fed the raw ~1,754-row read;
+  it now gets `bucketedLeads(intakeBuckets(allIntakeLeads, …))`, i.e. what the column can
+  render. ⚠️ Derived from the BUCKETS rather than re-deriving the exclusions — a second copy of
+  "which leads appear" is the §5.9 trap. ⚠️ Still bucketed with **no facet selection applied**, or
+  choosing one value makes the others vanish (§5.30e).
+- **"0 overdue" left the banner**; `summarize` still computes it, so putting it back is one line.
+- ⚠️ **The green edge is the UNION of a logged attempt and a real outbound call.** *"Is the green
+  border on the left working for welcome call too? Doesn't seem like it."* The code was wired; the
+  COLUMN is what almost nothing writes there. The board half stays because the RingCentral window is
+  seven days and a patient called a fortnight ago would drop back to gray, saying we had never tried.
+
+⚠️⚠️ **LOGGING AN ATTEMPT IS THE FIRST WRITE THIS DASHBOARD MAKES.** *"When i make a call it takes
+me out of command center … in the pop-up there should be 2 buttons: Open Profile, Log Call Attempt
+(with notes)"*; Josh: *"yes masani is one of them, add it"*. §5.30's read-only line was deliberate,
+so it is crossed the narrowest way: **`lib/careCoordinator/callAttempt.ts` calls the stage pages'
+OWN writers** (`profile/unverifiedWrite.logContactAttempt` + `appendIntakeNote`, or
+`welcomeCall/mondayWrite`'s three) and contains no mutation. Nothing else moves — no advancer, no
+escalation, no group. ⚠️ The intake **Follow Up STATUS is still never written**, only the date
+(§5.10's one-way door). ⚠️ The Welcome Call notes base is **re-read immediately before appending**:
+monday has no compare-and-set and this dashboard memoises notes per column load.
+- **The call itself dials in the browser** (`CallPatientDialog` → `useWebPhone`). ⚠️ It needs no
+  answerer privileges — `softphone.doDial` calls `ensureRegistered()` regardless of `enabled`,
+  raising a registration for the call — so this works for anybody; Masani being one of the five
+  (§5.13b) only means hers is already warm. ⚠️ **No `<CallOverlay>` here**: one is mounted app-wide
+  by `IncomingCallHost` and `softphoneRules.test.ts` pins that callers must not mount their own.
+  ⚠️ `PatientContact`'s `onCall` is **opt-in and only this card passes it** — absent, every other
+  header keeps its `tel:` anchor byte for byte. It becomes a `<button>`, not an anchor with a
+  handler: a live `tel:` href still hands off on a middle-click or a long-press.
+- ⚠️ The dialog is **keyed on the patient** and dials once per ITEM, not per render — on a polling
+  dashboard a render-keyed effect is a call placed every minute.
+
+**Loading** — *"Any way to improve loading on the patient intake side?"* Patient Intake is ~1,754
+rows and monday caps a page at 500, so it is **four sequential round trips** before `Promise.all`
+resolves. `fetchIntakeLeads` now hands each page up as it lands (`BatchReport`) and the column
+paints after the first.
+⚠️ **Partials are committed ONLY on a cold load** (`coldRef`, not `data === null`, which is stale
+inside the closure). A background poll doing this would visibly shrink the column to page one and
+grow back, several times an hour.
+⚠️ **Nothing partial is cached or measured** — `lastGood` and the remembered total are still written
+only after a run that COMPLETED, so a half-read can neither seed the next mount nor become a
+denominator. ⚠️ The skeleton drops on the first rows, not on `loading`, or the first three pages are
+thrown away; the load bar stays up for the whole read and is what says the number is still climbing.
+
+**The one thing in another repo:** ⚠️ a card arriving through the insurance follow-up link was
+invisible — a monday FILE column changing moves nothing, and this dashboard reads that column's
+PRESENCE to draw the "Photo upload" pill, so a patient who uploads an hour after being rung looks
+unchanged. `dtc-mm-form-H7eG34s` `server/src/intakeNote.js` appends one stamped line to Profile Send
+Off Notes on an `insurance-card` upload. ⚠️ **The stamp matches `lib/shared/noteStamp.ts` exactly**,
+because both write that column and its readers parse the shape; ET, never the container's zone
+(Railway runs UTC, so an evening upload would land on the wrong day); no initials, because nobody
+typed it. ⚠️ Insurance only — the `cgm` link is minted by a rep mid-conversation, so somebody is
+already watching for that file. ⚠️ That repo's `main` **auto-deploys** (`dtc-mm-form-api`), unlike
+this one.
+
+**Not done: the carrier dropdown on the photo pill** (*"assign a general insurance from a
+drop-down"*) — Josh skipped it, and §5.30f has the standing reason: General Insurance is a **Stedi
+input**, so setting it from a photo with no member ID and no re-run sets the next eligibility check
+up to fail on a payer nobody verified.
+
+**Keep-in-agreement:** `contactState`'s four counts ⇄ `useContactStates`' two clip flags ⇄
+`CardExtras.contact` ⇄ `ContactCountRow` ⇄ **the column legend's two lines** (`PipelineColumn`) ·
+`intakeBlocker` (the sentence) ⇄ `intakeBlockerDetail` (the `title`) ⇄ `ReviewEntry.blockerDetail` ·
+`cards.inSystem` ⇄ `profile/dupCheckFlag.isAlreadyInSystemResult` · `cards.calledOut`'s two halves ·
+`bucketedLeads` ⇄ `facetOptions`' input ⇄ `intakeBuckets`' exclusion order · `callAttempt.ts` ⇄ the
+four existing writers it calls, and no fifth · `intakeNote.js`'s stamp ⇄ `shared/noteStamp.ts`.
+Tests: `careCoordinator/masaniNotes.test.ts` (15, eight verified to fail before the change),
+`contactState.test.ts`'s directional block, and `dtc-mm-form`'s `test-intake-note.mjs`.
+
 ### 5.31 Welcome Call order rules — caps, 75 days, and "can we send a monitor?" (Sep 2026)
 Four decisions from Brandon's 2026-09-09 notes, landed together because they all key off
 Primary Insurance or the Same-or-Similar columns. **No board change; app only.**
@@ -7039,7 +7194,7 @@ OTHER** (Josh, 2026-09-18, after exactly this mix-up undid a fix). Name the scre
 | what it is | the form that gathers the order and advances the stage | a read-only queue of who to ring |
 | writes | the whole Welcome Call send (§5.31) | **nothing** — every exit deep-links to a stage page |
 | files | `components/welcomeCall/*` · `lib/welcomeCall/*` | `components/careCoordinator/*` · `lib/careCoordinator/*` |
-| its notes | §5.31 · §5.31b · §5.31c · §5.31f | §5.30 · §5.30b–e |
+| its notes | §5.31 · §5.31b · §5.31c · §5.31f | §5.30 · §5.30b–g |
 
 The dashboard's right-hand column **reads Welcome Call columns**, which is what makes the two easy
 to conflate — but it is a card in a list, not the stage page, and all they share is the low-level
@@ -10573,6 +10728,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient is in the wrong Today / Future grouping on the Care Coordinator dashboard | §5.30 — `workflow.followUpHorizon` (unscheduled: the follow-up DATE; blank = Today) and `classifyBooking` (scheduled: the booking's ET day). Intake's date is written by *Log call attempt*, Welcome Call's by +1 — both through `lib/careCoordinator/followUp.ts`. A Welcome Call patient in "Scheduled" with no booking on the board is right: welcome calls live in Calendly only, read through `POST /calendly/patients` |
 | The Care Coordinator's Welcome Call column says it couldn't check Calendly | §5.30 — `useWelcomeCallBookings` → gateway `POST /calendly/patients`; check `GET /calendly/patient/health`, then dtc-mm-form's `/api/calendly/health`. While it shows, every patient falls to Unscheduled and the notice is the only thing saying so — never read that as "nobody is booked" |
 | Patient Intake takes ages to load / the load bar reads wrong | §5.30 — it is 1,754 rows in four sequential Monday pages and that is inherent; the bar is `lib/careCoordinator/loadProgress.ts`. A bar with no percentage is CORRECT on a first-ever visit (Monday reports no total, so the denominator is remembered from the last complete run); one stuck at 99% means the fetch has not resolved, not that the maths is off |
+| A call/text counter on a Care Coordinator card disagrees with the call log | §5.30g — they are **real RingCentral counts** since 2026-09-22 (`contactState.callsOut` and friends), two rows, outbound on top and inbound in green below. Before that they were BOARD columns — logged attempts and the form's two automated nudges — which is what every "the counters aren't working" report was. A number replaced by an em dash means that window came back at its page cap and the count would be low; calls and texts clip independently |
+| "In network" is missing, or says Unknown | §5.30g — it is on the intake card from 2026-09-22, printed **VERBATIM** from `text_mm1xehx8`. `Unknown` is the correct answer for Original Medicare (no network), and across 500 rows the column has never held a real "No" — so a blank or an Unknown is upstream (`stedi-monday-integration`), not a UI bug. It blocks nothing and must not start to |
+| The intake filter offers values for patients that never appear | §5.30g — `facetOptions` must be fed `bucketedLeads(intakeBuckets(allIntakeLeads, …))`, never the raw read: ~1,697 of ~1,754 rows are the 8/25 SNJ import the column excludes. Still bucketed with NO facet selection applied, or choosing one value hides the others |
+| The "Already in System" pill is missing on a duplicate | §5.30g — it reads **Dup Check Result**, never Already In System: on a partial lead the check is flag-only by design (§5.21), so the flag is blank for most of the population the pill exists for |
+| A pill's caption sits lower than its neighbours | §5.30g — that slot's pill is a `<button>` (the photo-upload one) and needs `inline-flex`. A button's line-box strut is sized from the card's ~14px font against an 11px pill; measured at 7px of drop |
 | The Care Coordinator dashboard shows a patient it shouldn't, or hides one it should | §5.30 — `lib/careCoordinator/workflow.ts` (`intakeBuckets` / `chaseBuckets` / `welcomeCallBuckets`, tested); a patient a rep has already worked is in **Review Profile**, not excluded (§5.30f). ⚠️ The "Not shown: …" footers that used to name every exclusion were **deleted 2026-09-17** on Brandon's ask, so `intakeBuckets.excluded` is computed and rendered nowhere — read it in a test or a console, not on screen. The page never writes, so nothing here can have moved a patient |
 | The dashboard's two columns' section bars don't line up | §5.30c — a per-column header-height difference, four times now. The legend and the intake filter each get their **own** row (`min-h-[30px]`, drawn even when empty) and the header stacks on `min-[1500px]:flex-row`, never `flex-wrap`; `IntakeFilter`'s group is `flex-nowrap overflow-x-auto`. ⚠️ Reproduce at **1100, 1280 and 1440** — at 1600 the header fits on one line and both columns look right whatever is broken, which is how the 2026-09-16 pass measured it correct |
 | Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |

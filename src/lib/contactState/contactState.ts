@@ -108,6 +108,39 @@ export interface ContactState {
    * set. Never render this without checking.
    */
   calls: number;
+
+  /* ── How many, each way ────────────────────────────────────────
+   *
+   * ⚠️ **THESE REPLACE A BOARD COUNTER AND DO NOT MEAN THE SAME THING**
+   * (Brandon, 2026-09-22: *"i don't think the call/text counters are working
+   * ... what i think it might be doing is incoming calls/texts"*). What the
+   * Care Coordinator card used to count was the **Attempt Counter** column —
+   * calls a rep had pressed *Log call attempt* for — and the **Drop-off
+   * Attempt** column, which moves only for the intake form's two automated
+   * nudges (§5.24). Neither has ever been a count of calls or texts: Katelyn
+   * Matias read `1` beside a call log holding three real calls, and a patient
+   * a rep had texted by hand read `0`.
+   *
+   * These are the real thing, from the same account-wide window every other
+   * field here is folded out of. ⚠️ Which means they are bounded by that
+   * window — a call made eight days ago is not in them — and the caller must
+   * decide what to say about that. The card deliberately says nothing (Josh,
+   * 2026-09-22: *"no need to explicitly say it's this week, i'll tell him
+   * that's all that's possible"*).
+   *
+   * ⚠️ `calls` above is **`callsOut + callsIn`** and stays, because the
+   * `Call Log (N)` chip beside these means "calls with this number", both
+   * directions. Deriving one from the other in the view is what lets them
+   * drift; both are computed here from the same loop. */
+
+  /** Calls WE placed to this number in the window. */
+  callsOut: number;
+  /** Calls this number placed to US in the window, answered or not. */
+  callsIn: number;
+  /** Texts WE sent to this number in the window — rep-sent and automated alike. */
+  textsOut: number;
+  /** Texts this number sent US in the window. */
+  textsIn: number;
 }
 
 /**
@@ -192,6 +225,16 @@ export function buildContactStates(
   const reachedText = new Set<string>();
   const reachedCall = new Set<string>();
   const callCount = new Map<string, number>();
+  /** number → [outbound, inbound], for calls and for texts. */
+  const callsByDir = new Map<string, [number, number]>();
+  const textsByDir = new Map<string, [number, number]>();
+
+  /** Bump one side of a two-slot tally, creating it if this is the first. */
+  const bump = (m: Map<string, [number, number]>, key: string, outbound: boolean) => {
+    const cur = m.get(key) ?? [0, 0];
+    cur[outbound ? 0 : 1] += 1;
+    m.set(key, cur);
+  };
 
   for (const r of messages) {
     if (!TEXT_TYPES.has(String(r.type ?? "").toLowerCase())) continue;
@@ -204,10 +247,15 @@ export function buildContactStates(
     // message. Ordering these two the other way round would make "they have
     // replied" mean "their reply was the last thing that happened", which is
     // the lane rule this is deliberately not.
-    if (!isOutbound(r.direction)) reachedText.add(key);
+    const outboundText = isOutbound(r.direction);
+    // Counted for EVERY text, before the newest-wins guard below — the same
+    // reasoning as `reachedText`: a count is a fact about the window, not
+    // about which message happened to be last.
+    bump(textsByDir, key, outboundText);
+    if (!outboundText) reachedText.add(key);
     const prev = latestText.get(key);
     if (prev && prev.at >= at) continue;
-    latestText.set(key, { at, iso: String(r.creationTime), outbound: isOutbound(r.direction) });
+    latestText.set(key, { at, iso: String(r.creationTime), outbound: outboundText });
   }
 
   for (const r of calls) {
@@ -221,6 +269,7 @@ export function buildContactStates(
     // reasoning as the texts above. ⚠️ `reachedByCall` is OUTBOUND-only; see
     // the field's own note.
     callCount.set(key, (callCount.get(key) ?? 0) + 1);
+    bump(callsByDir, key, outbound);
     if (outbound && callConnected(r)) reachedCall.add(key);
 
     const prev = latestCall.get(key);
@@ -251,6 +300,8 @@ export function buildContactStates(
     const reachedByText = reachedText.has(key);
     const reachedByCall = reachedCall.has(key);
     const calls = callCount.get(key) ?? 0;
+    const [callsOut, callsIn] = callsByDir.get(key) ?? [0, 0];
+    const [textsOut, textsIn] = textsByDir.get(key) ?? [0, 0];
     // ⚠️ This used to drop an entry whose `text` and `call` lanes were both
     // null — the case where the only thing in the window was an inbound call
     // somebody answered. That was right while the lanes were all this map
@@ -269,6 +320,10 @@ export function buildContactStates(
       reachedByText,
       reachedByCall,
       calls,
+      callsOut,
+      callsIn,
+      textsOut,
+      textsIn,
     });
   }
   return out;

@@ -74,7 +74,7 @@ export interface BoardPoll<T> {
  *   indeterminate — it will never invent one.
  */
 export function useBoardPoll<T>(
-  fetcher: (onPage?: (rows: number) => void) => Promise<T>,
+  fetcher: (onPage?: (rows: number) => void, onBatch?: (soFar: T) => void) => Promise<T>,
   intervalMs: number,
   totalKey?: string,
 ): BoardPoll<T> {
@@ -106,6 +106,9 @@ export function useBoardPoll<T>(
   // second read of a 1,700-row group.
   const inflight = useRef<Promise<void> | null>(null);
   const alive = useRef(true);
+  /** Nothing is on screen yet, so a partial list is an improvement rather than
+   *  a flicker. Cleared by the first commit of any kind. */
+  const coldRef = useRef(!seed);
 
   const run = useCallback(() => {
     if (inflight.current) return inflight.current;
@@ -118,16 +121,42 @@ export function useBoardPoll<T>(
 
     inflight.current = (async () => {
       try {
-        const next = await fetcher((rows) => {
-          if (!alive.current) return;
-          // Accumulate only: the intake read runs three groups in parallel and
-          // their pages interleave, so a report is "N more rows", never a
-          // position.
-          live = { ...live, loaded: live.loaded + rows, pages: live.pages + 1 };
-          if (show) setProgress(live);
-        });
+        const next = await fetcher(
+          (rows) => {
+            if (!alive.current) return;
+            // Accumulate only: the intake read runs three groups in parallel and
+            // their pages interleave, so a report is "N more rows", never a
+            // position.
+            live = { ...live, loaded: live.loaded + rows, pages: live.pages + 1 };
+            if (show) setProgress(live);
+          },
+          /**
+           * ⚠️ **PARTIAL RESULTS ARE COMMITTED ONLY ON A COLD LOAD** (Brandon,
+           * 2026-09-22: *"any way to improve loading on the patient intake
+           * side?"*). Patient Intake is four sequential Monday pages, so
+           * waiting for the whole read means a skeleton for all of it; this
+           * puts the first page on screen and grows the list under the load
+           * bar, which is up for the whole cold load and is what says the
+           * number is still climbing.
+           *
+           * ⚠️ `coldRef` — NOT `data === null`, which would be stale inside
+           * this closure — is what stops a background poll doing it. Committing
+           * page one over a list already on screen would visibly shrink the
+           * column to a third of itself and then grow back, several times an
+           * hour, which is worse than the wait it saves.
+           *
+           * ⚠️ Nothing here touches `lastGood` or the remembered total. Both
+           * are written below, after a run that COMPLETED, so a partial can
+           * never be seeded into the next mount or become a denominator.
+           */
+          (soFar) => {
+            if (!alive.current || !coldRef.current) return;
+            setData(soFar);
+          },
+        );
         if (!alive.current) return;
         setData(next);
+        coldRef.current = false;
         setError(null);
         const at = Date.now();
         setLastOkAt(at);

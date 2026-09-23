@@ -18,7 +18,7 @@
  * says where they are (Oversight's manager columns).
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, MessageSquare, Phone } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, MessageSquare, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   progressLabel, progressPercent, type LoadProgress,
@@ -223,12 +223,27 @@ export function PipelineColumn({
       <div className="mb-2 space-y-0.5 text-[11px] leading-snug text-muted-foreground">
         <p className="flex items-center gap-1.5">
           <i className="inline-block h-3.5 w-1 shrink-0 rounded-sm bg-[color:var(--mm-green)]" aria-hidden />
-          Green edge = a call has been attempted
+          Green edge = we have called them
+        </p>
+        {/* ⚠️ The counters STOPPED being board columns on 2026-09-22 and this
+            line moved with them (Brandon: *"we should add an icon to make it
+            clear that top row is outbound, and bottom row is inbound"*). They
+            used to be the Attempt Counter and the automated-nudge counter, so
+            the old wording — "they answered or texted back" — described the
+            COLOUR of a number that meant something else entirely. Both rows
+            now say what they count, and the arrows are what tell them apart:
+            two identical phone/message pairs stacked say nothing on their own. */}
+        <p className="flex items-center gap-1.5">
+          <ArrowUpRight className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+          <Phone className="h-3 w-3 shrink-0" aria-hidden />
+          <MessageSquare className="h-3 w-3 shrink-0" aria-hidden />
+          Top row = calls and texts we sent
         </p>
         <p className="flex items-center gap-1.5">
+          <ArrowDownLeft className="h-3 w-3 shrink-0 text-[color:var(--mm-green)] opacity-70" aria-hidden />
           <Phone className="h-3 w-3 shrink-0 text-[color:var(--mm-green)]" aria-hidden />
           <MessageSquare className="h-3 w-3 shrink-0 text-[color:var(--mm-green)]" aria-hidden />
-          Green count = they answered or texted back this week
+          Green row = calls and texts they sent us
         </p>
       </div>
       {/* Always drawn, floor and all, even with nothing in it — see `controls`. */}

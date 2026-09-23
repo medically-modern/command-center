@@ -44,7 +44,7 @@ const intake = (over: Partial<IntakeLead>): IntakeLead => ({
   referralSource: "Patient", alreadyInSystem: "", followUp: "", followUpDate: "", dupCheckResult: "", state: "NY",
   generalInsurance: "Anthem", insuranceProvidedVia: "Entered manually", insuranceOther: "", calendlyEventUri: "",
   providedDoctorName: "Dr. Okafor", providedClinicPhone: "5555550100", ipCoveragePath: "", cgmCoveragePath: "Insulin",
-  hasInsuranceCard: false, stediError: "", stediActive: "Yes", stediPlanName: "Test Plan",
+  hasInsuranceCard: false, stediError: "", stediActive: "Yes", stediPlanName: "Test Plan", stediInNetwork: "",
   ...over,
 });
 const wc = (over: Partial<WelcomeCallItem>): WelcomeCallItem => ({
@@ -104,8 +104,13 @@ vi.mock("@/hooks/useContactStates", () => ({
     loading: false,
     error: null,
     truncated: false,
+    textsTruncated: false,
     states: new Map([
-      ["3475550101", { text: "weRepliedLast", call: "weCalledThem", textAt: "", callAt: "", voicemail: false, reachedByText: true, reachedByCall: true, calls: 3 }],
+      ["3475550101", {
+        text: "weRepliedLast", call: "weCalledThem", textAt: "", callAt: "", voicemail: false,
+        reachedByText: true, reachedByCall: true, calls: 3,
+        callsOut: 2, callsIn: 1, textsOut: 4, textsIn: 2,
+      }],
     ]),
   }),
 }));
@@ -264,10 +269,17 @@ describe("CareCoordinatorPage", () => {
     expect(card).toHaveTextContent(/3 days/);
     expect(card).not.toHaveTextContent(/waiting/);
     // Counts, buttons.
-    // ⚠️ The counters go GREEN once we have got through (Brandon, 2026-09-17).
-    // The fixture's number has both, so both titles read the reached wording.
-    expect(within(card).getByTitle(/a call with this number connected/)).toHaveTextContent("0");
-    expect(within(card).getByTitle(/has texted us back/)).toHaveTextContent("2");
+    // ⚠️⚠️ **THE COUNTERS ARE REAL RINGCENTRAL COUNTS FROM 2026-09-22, in two
+    // rows** (Brandon: *"i don't think the call/text counters are working …
+    // these icons should be showing outgoing texts/calls. we should then show
+    // incoming calls/texts below it, in green"*). They used to be the board's
+    // Attempt Counter and the automated-nudge counter, which is why a patient
+    // rung three times read `1`. The fixture's number has 2 out / 1 in calls
+    // and 4 out / 2 in texts, and each number is titled by its direction.
+    expect(within(card).getByTitle("2 calls to this patient — and they answered one")).toHaveTextContent("2");
+    expect(within(card).getByTitle("4 texts to this patient")).toHaveTextContent("4");
+    expect(within(card).getByTitle("1 call from this patient")).toHaveTextContent("1");
+    expect(within(card).getByTitle("2 texts from this patient")).toHaveTextContent("2");
     // `Call Log (3)` — the count comes from the same shared read, never a
     // per-card fetch (§5.16: the call log is rate-limited and opens on click).
     expect(within(card).getByRole("button", { name: /Call Log \(3\)/ })).toBeInTheDocument();
@@ -281,6 +293,10 @@ describe("CareCoordinatorPage", () => {
       .toHaveAttribute("href", "/unverified-referrals?patientId=ready&from=care-coordinator");
     // ⚠️ The copy-number button went with them (Josh, 2026-09-17).
     expect(within(card).queryByRole("button", { name: /Copy phone/ })).toBeNull();
+    // ⚠️ The In-Network readout renders only once a check has run — this
+    // fixture's column is blank, so the line is absent rather than an em dash
+    // (Josh, 2026-09-22: "display whatever stedi came back with").
+    expect(within(card).queryByText(/In network:/)).toBeNull();
 
     // A scheduled card shows the time; the booked one is "up next" (darker).
     const booked = within(intakeCol).getByText("Marcus Delaney").closest("article")!;
@@ -304,10 +320,13 @@ describe("CareCoordinatorPage", () => {
       expect(pill.className).toContain("border-border");
     }
     expect(wcCard).toHaveTextContent("Doctor: Dr. Kaminski · Clinic: 1 Main St, Albany, NY 12207");
-    // ⚠️ This patient's number is NOT in the contact-state fixture, so both
-    // counters stay neutral and say the plain thing. A number we know nothing
-    // about must never read as "we have not reached them" — that is a claim.
-    expect(within(wcCard).getByTitle("Automated texts sent to this patient")).toHaveTextContent("1");
+    // ⚠️ This patient's number is NOT in the contact-state fixture, so every
+    // count on this card is a real ZERO — the read covers the whole account,
+    // so a number absent from it genuinely had no calls and no texts in the
+    // window. That is an answer, not a gap. (The case that shows no number at
+    // all is a read that came back CLIPPED; `truncated` is false here.)
+    expect(within(wcCard).getByTitle("0 calls to this patient")).toHaveTextContent("0");
+    expect(within(wcCard).getByTitle("0 texts from this patient")).toHaveTextContent("0");
     // ⚠️ `Call Log (0)`, not a bare "Call Log". The shared read covers the whole
     // ACCOUNT, so a number missing from it really has had no calls this week —
     // that is an answer, not a gap, and every card carries one once the read

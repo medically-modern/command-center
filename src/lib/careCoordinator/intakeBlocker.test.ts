@@ -14,7 +14,7 @@
  * site — the dashboard may be narrower than the checklist, never different.
  */
 import { describe, it, expect } from "vitest";
-import { intakeBlocker, needsProfileReview } from "./workflow";
+import { intakeBlocker, intakeBlockerDetail, needsProfileReview } from "./workflow";
 
 const facts = (over: Partial<Parameters<typeof intakeBlocker>[0]> = {}) => ({
   stediError: "", stediActive: "Yes", stediPlanName: "Anthem PPO",
@@ -27,10 +27,23 @@ describe("intakeBlocker", () => {
     // Savannah's real row: the error is present AND the plan came back. A
     // failed run means the identifiers did not match, so it can never be read
     // as "this patient is ineligible".
-    expect(intakeBlocker(facts({
-      stediError: "Incorrect information — verify the patient's details. | AAA 73 — Invalid/Missing Subscriber/Insured Name",
-      stediActive: "", stediPlanName: "",
-    }))).toMatch(/^Benefits check failed — /);
+    const err = "Incorrect information — verify the patient's details. | AAA 73 — Invalid/Missing Subscriber/Insured Name";
+    expect(intakeBlocker(facts({ stediError: err, stediActive: "", stediPlanName: "" })))
+      .toBe("Benefits check failed");
+  });
+
+  /**
+   * ⚠️ The payer's reason is SHORTENED OUT OF THE SENTENCE, NOT DROPPED
+   * (Brandon, 2026-09-22). Stedi returns its guidance and the raw AAA code as
+   * one string, which on a card is four lines of runbook where a coordinator
+   * is deciding who to ring. `intakeBlockerDetail` is what the card hangs off
+   * the line's `title`, so the code that says WHICH identifier did not match
+   * is one hover away rather than gone.
+   */
+  it("keeps the payer's own reason as the detail", () => {
+    const err = "Incorrect information | AAA 73 — Invalid/Missing Subscriber/Insured Name";
+    expect(intakeBlockerDetail({ stediError: err })).toBe(err);
+    expect(intakeBlockerDetail({ stediError: "" })).toBe("");
   });
 
   it("nothing back at all is 'hasn't run', not 'inactive'", () => {
