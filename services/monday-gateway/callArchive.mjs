@@ -277,6 +277,31 @@ async function upsertRows(pool, rows) {
 }
 
 /**
+ * Hand RingCentral call-log records to the archive.
+ *
+ * ⚠️ THE one path into call_archive's metadata — the hourly scan below and the
+ * Communications inbox's minute-by-minute capture (commsInbox.mjs) both come
+ * through here, so the upsert's rule that a scan may only ever move `none` →
+ * `pending` holds whoever is scanning. Pass `view=Detailed` records: the legs
+ * are what the missed-call verdict reads.
+ *
+ * @returns {Promise<{written: number, rows: object[]}>} `rows` carry the
+ *   counterparty in the clear for the caller's in-memory use only.
+ */
+export async function archiveCallRecords({ pool, records }) {
+  const rows = [];
+  for (const rec of records ?? []) {
+    const row = toCallRow(rec);
+    if (!row) continue;
+    // A blank or unhashable number is not a reason to drop the call — an
+    // internal or blocked-caller row is still a call somebody may ask about.
+    rows.push({ ...row, phoneHmac: row.phone ? phoneHmac(row.phone) || null : null });
+  }
+  const written = rows.length ? await upsertRows(pool, rows) : 0;
+  return { written, rows };
+}
+
+/**
  * Page the call log over a window and upsert a row per call.
  *
  * ⚠️ `background` tier on purpose: this is bulk work with nobody waiting, so it
@@ -340,15 +365,7 @@ async function scanCallLog({ pool, days, now, stats }) {
     stats.pages = page;
     stats.seen += records.length;
 
-    const rows = [];
-    for (const rec of records) {
-      const row = toCallRow(rec);
-      if (!row) continue;
-      // A blank or unhashable number is not a reason to drop the call — an
-      // internal or blocked-caller row is still a call somebody may ask about.
-      rows.push({ ...row, phoneHmac: row.phone ? phoneHmac(row.phone) || null : null });
-    }
-    stats.rowsWritten += await upsertRows(pool, rows);
+    stats.rowsWritten += (await archiveCallRecords({ pool, records })).written;
 
     if (records.length < PAGE_SIZE) return;
     // Hitting the ceiling means the window held more than we read, i.e. the

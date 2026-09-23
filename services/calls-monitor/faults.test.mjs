@@ -7,10 +7,11 @@ import { beforeAll, describe, expect, it } from "vitest";
  */
 let faults;
 let archiveFaults;
+let inboxFaults;
 beforeAll(async () => {
   // Stops index.mjs from running a live check on import.
   process.env.CALLS_MONITOR_TEST = "1";
-  ({ faults, archiveFaults } = await import("./index.mjs"));
+  ({ faults, archiveFaults, inboxFaults } = await import("./index.mjs"));
 });
 
 const healthy = {
@@ -288,5 +289,38 @@ describe("archiveFaults", () => {
       expect(archiveFaults({ ...ok, pending: 4000 }, mmsLabels)).toEqual([]);
       expect(archiveFaults({ ok: true, enabled: false }, mmsLabels)).toEqual([]);
     });
+  });
+});
+
+describe("inboxFaults — the Communications inbox", () => {
+  const ok = { ok: true, enabled: true, stale: false, truncated: false, reason: null, warnings: [] };
+
+  it("is quiet when the gateway says the inbox is healthy", () => {
+    expect(inboxFaults(ok)).toEqual([]);
+  });
+
+  it("⚠️ never pages on WARNINGS — a note waiting to be copied to Monday is safe where it is", () => {
+    expect(inboxFaults({ ...ok, warnings: ["3 note(s) waiting to be copied to Monday, the oldest 30h"] })).toEqual([]);
+  });
+
+  it("switched off on purpose is not a fault", () => {
+    expect(inboxFaults({ ok: true, enabled: false, reason: "switched off" })).toEqual([]);
+  });
+
+  it("pages when the capture tick has stopped, and says why", () => {
+    const f = inboxFaults({ ...ok, ok: false, reason: "the last complete capture tick was 14 minutes ago" });
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatch(/not seeing new texts and calls/);
+    expect(f[0]).toMatch(/14 minutes ago/);
+  });
+
+  it("⚠️ unreachable is 'could not check', never 'the inbox is broken'", () => {
+    const f = inboxFaults(null);
+    expect(f[0]).toMatch(/Could not reach the Communications inbox health check/);
+    expect(f[0]).toMatch(/says nothing about the inbox itself/);
+  });
+
+  it("a not-ok with no reason says so rather than inventing one", () => {
+    expect(inboxFaults({ ...ok, ok: false, reason: null })[0]).toMatch(/reason not reported/);
   });
 });

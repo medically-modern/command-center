@@ -1,0 +1,358 @@
+/**
+ * The Communications inbox module's guarantees — the ones that cannot be seen
+ * on screen when they break.
+ *
+ * Two kinds of test, the convention every archive beside this one uses:
+ *  · BEHAVIOUR, against a fake express app and a fake pool: what the routes do
+ *    with the module switched off, and that every route but two refuses an
+ *    anonymous caller before touching the database;
+ *  · SOURCE SCANS, for properties that are structural rather than behavioural —
+ *    which pool it lands on, that no list/count/resolve path can reach
+ *    RingCentral, that no table can hold a phone number, that the archives keep
+ *    one writer each.
+ */
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
+import { HOWS, RESOLVING_HOWS } from "./commsInboxRules.mjs";
+
+// The two archives that reach the S3 client cannot resolve under the root test
+// run (the gateway's deps are installed in services/monday-gateway only — see
+// vitest.config.ts). The inbox only ever calls their record upserts, so those
+// are all that is stood in for; nothing here tests the archives themselves.
+vi.mock("./callArchive.mjs", () => ({ archiveCallRecords: vi.fn(async () => ({ written: 0, rows: [] })) }));
+vi.mock("./voicemailArchive.mjs", () => ({ archiveVoicemailRecords: vi.fn(async () => ({ written: 0, rows: [] })) }));
+
+const DIR = resolve(process.cwd(), "services/monday-gateway");
+const read = (f) => readFileSync(resolve(DIR, f), "utf8");
+const SRC = read("commsInbox.mjs");
+
+/** Strip // and block comments, so a scan reads code and not the prose that
+ *  explains why the code must not do the thing being scanned for. */
+function code(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+}
+
+/**
+ * A function's source, by name — from its declaration to the closing brace at
+ * the SAME indent. The file is prettier-formatted, so indentation is a reliable
+ * end marker where brace counting is not (regex literals and SQL carry braces).
+ */
+function fnBody(name) {
+  const m = new RegExp(`\\n( *)(?:export )?(?:async )?function ${name}\\(`).exec(SRC);
+  if (!m) throw new Error(`no function ${name}`);
+  const indent = m[1];
+  const end = SRC.indexOf(`\n${indent}}\n`, m.index + 1);
+  if (end < 0) throw new Error(`no end for ${name}`);
+  return code(SRC.slice(m.index, end + indent.length + 2));
+}
+
+/** One route handler's source: \`  app.get("/x", async (req, res) => {\` … \`  });\`. */
+function routeBody(method, path) {
+  const marker = `\n  app.${method}("${path}",`;
+  // Past the kill-switch block, which registers every path once as a 503.
+  const from = SRC.indexOf("/* ── the list and the badge");
+  const start = SRC.indexOf(marker, from);
+  if (start < 0) throw new Error(`no route ${method} ${path}`);
+  const end = SRC.indexOf("\n  });", start + 1);
+  return code(SRC.slice(start, end + 6));
+}
+
+/* ── a fake express app and pool ─────────────────────────────────────────── */
+
+function fakeApp() {
+  const routes = new Map();
+  const add = (method) => (path, handler) => routes.set(`${method} ${path}`, handler);
+  return { routes, get: add("GET"), post: add("POST"), all: add("ALL") };
+}
+function fakeRes() {
+  return {
+    statusCode: 200,
+    body: undefined,
+    status(c) {
+      this.statusCode = c;
+      return this;
+    },
+    json(b) {
+      this.body = b;
+      return this;
+    },
+  };
+}
+async function call(app, method, path, req = {}) {
+  const h = app.routes.get(`${method} ${path}`) ?? app.routes.get(`ALL ${path}`);
+  if (!h) throw new Error(`not registered: ${method} ${path}`);
+  const res = fakeRes();
+  await h({ headers: {}, query: {}, body: {}, ...req }, res);
+  return res;
+}
+
+const PROTECTED = [
+  ["GET", "/comms/inbox"],
+  ["GET", "/comms/inbox/count"],
+  ["GET", "/comms/item"],
+  ["POST", "/comms/state"],
+  ["POST", "/comms/resolve"],
+  ["POST", "/comms/undo"],
+  ["POST", "/comms/note"],
+  ["GET", "/comms/outbox"],
+  ["POST", "/comms/mirror"],
+  ["POST", "/comms/link"],
+  ["POST", "/comms/dialed"],
+  ["GET", "/comms/sla"],
+  ["GET", "/comms/shadow-report"],
+  ["POST", "/comms/tick"],
+];
+
+/* ── switched off ────────────────────────────────────────────────────────── */
+
+describe("with COMMS_INBOX_ENABLED unset — the default", () => {
+  let app;
+  beforeAll(async () => {
+    vi.resetModules();
+    delete process.env.COMMS_INBOX_ENABLED;
+    const mod = await import("./commsInbox.mjs");
+    app = fakeApp();
+    mod.registerCommsInbox({ app, pool: { query: async () => ({ rows: [] }) } });
+  });
+
+  it("tells the SPA there is no Inbox to show", async () => {
+    expect((await call(app, "GET", "/comms/config")).body).toEqual({ enabled: false, ui: false });
+  });
+
+  it("⚠️⚠️ the health route SURVIVES the kill switch and reads 'off, on purpose'", async () => {
+    const res = await call(app, "GET", "/comms/inbox-health");
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, enabled: false });
+    expect(res.body.reason).toMatch(/switched off/);
+  });
+
+  it("every other route answers 503, never a 404 that reads as a broken deploy", async () => {
+    for (const [method, path] of PROTECTED) {
+      const res = await call(app, method, path);
+      expect(res.statusCode, `${method} ${path}`).toBe(503);
+      expect(res.body.enabled).toBe(false);
+    }
+  });
+});
+
+/* ── switched on ─────────────────────────────────────────────────────────── */
+
+describe("with COMMS_INBOX_ENABLED=1", () => {
+  let app;
+  let queries = 0;
+  const saved = { ...process.env };
+  const pool = {
+    query: async () => {
+      queries += 1;
+      return { rows: [] };
+    },
+    connect: async () => {
+      throw new Error("no transactions in this test");
+    },
+  };
+
+  beforeAll(async () => {
+    vi.resetModules();
+    process.env.COMMS_INBOX_ENABLED = "1";
+    process.env.PHONE_HMAC_PEPPER = "test-pepper";
+    const mod = await import("./commsInbox.mjs");
+    app = fakeApp();
+    mod.registerCommsInbox({ app, pool });
+    // Let the boot's schema + epoch queries settle before counting.
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  afterAll(() => {
+    for (const k of ["COMMS_INBOX_ENABLED", "PHONE_HMAC_PEPPER"]) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it("registers every route", () => {
+    for (const [method, path] of PROTECTED) expect(app.routes.has(`${method} ${path}`), `${method} ${path}`).toBe(true);
+    expect(app.routes.has("GET /comms/inbox-health")).toBe(true);
+    expect(app.routes.has("GET /comms/config")).toBe(true);
+  });
+
+  it("⚠️ refuses an anonymous caller on EVERY route but config and health — before any database read", async () => {
+    for (const [method, path] of PROTECTED) {
+      const before = queries;
+      const res = await call(app, method, path, { body: { key: "n:" + "a".repeat(64), how: "texted" } });
+      expect(res.statusCode, `${method} ${path}`).toBe(401);
+      expect(queries, `${method} ${path} read the database before checking who is asking`).toBe(before);
+    }
+  });
+
+  it("the health route is NOT ok on an empty run ledger — a tick that never ran must not read healthy", async () => {
+    const res = await call(app, "GET", "/comms/inbox-health");
+    expect(res.body).toMatchObject({ ok: false, enabled: true, reason: "no complete capture tick recorded yet" });
+  });
+});
+
+/* ── which pool ──────────────────────────────────────────────────────────── */
+
+describe("⚠️ PHI: the inbox lives on the MESSAGING pool", () => {
+  it("is registered from messaging.mjs", () => {
+    expect(code(read("messaging.mjs"))).toMatch(/registerCommsInbox\(\{ app, pool \}\)/);
+  });
+  it("and never from index.mjs, whose pool is the no-PHI audit database", () => {
+    expect(read("index.mjs")).not.toMatch(/commsInbox/);
+  });
+});
+
+/* ── no phone number in the clear ────────────────────────────────────────── */
+
+describe("⚠️ PHI: no table here can hold a phone number", () => {
+  const schema = SRC.slice(SRC.indexOf("export const SCHEMA = `"), SRC.indexOf("`;", SRC.indexOf("export const SCHEMA = `")));
+  const columns = [...schema.matchAll(/^\s{2}([a-z_0-9]+)\s+[A-Z]/gm)].map((m) => m[1]);
+
+  it("reads the schema's columns", () => {
+    expect(columns).toContain("phone_hmac");
+    expect(columns).toContain("covers_through");
+  });
+  it("every number column is an HMAC or a last-four hint", () => {
+    const suspicious = columns.filter((c) => /phone|e164|number|digits/.test(c) && !/_hmac$/.test(c));
+    expect(suspicious).toEqual([]);
+  });
+  it("a number from the browser is hashed before anything else touches it", () => {
+    const c = code(SRC);
+    expect(c).toMatch(/phoneHmac\(req\.body\?\.number\)/);
+    expect(c).toMatch(/phoneHmac\(req\.body\.anchorNumber\)/);
+    expect(c).toMatch(/raw\.map\(\(n\) => phoneHmac\(n\)\)/);
+    // With the hashed uses and the one truthiness test removed, nothing else
+    // may read a number out of a request body.
+    const rest = c
+      .replace(/phoneHmac\(req\.body\?\.number\)/g, "")
+      .replace(/phoneHmac\(req\.body\.anchorNumber\)/g, "")
+      .replace(/req\.body\?\.anchorNumber \?/g, "");
+    expect(rest).not.toMatch(/req\.body\??\.(number|anchorNumber|phone)\b/);
+  });
+  it("the live lookup's cache stores the last four, never the number it asked about", () => {
+    const body = fnBody("lookupUnknown");
+    expect(body).toMatch(/e164\.slice\(-4\)/);
+    expect(body).not.toMatch(/\[\s*h,\s*e164,/);
+  });
+});
+
+/* ── no RingCentral on the hot paths ─────────────────────────────────────── */
+
+describe("⚠️ no RingCentral read on the list, the badge or a resolve (INCIDENT_2026-08-20)", () => {
+  const RC = /rcApiFetch|rcMediaFetch|resolveNumbers|captureTick/;
+
+  it("none of the read helpers the list and the count are built from", () => {
+    for (const f of ["computeSnapshot", "snapshot", "loadInboundForList", "loadOutbound", "attributed", "loadTargets", "numbersForKey", "loadOpening", "loadGroupAll"]) {
+      expect(fnBody(f), f).not.toMatch(RC);
+    }
+  });
+
+  it("none of the routes but the two that exist to", () => {
+    for (const [method, path] of PROTECTED) {
+      if (path === "/comms/item" || path === "/comms/tick") continue;
+      expect(routeBody(method.toLowerCase(), path), `${method} ${path}`).not.toMatch(RC);
+    }
+  });
+
+  it("opening ONE item may resolve its numbers — an interactive read, on open, never on render", () => {
+    expect(fnBody("resolveNumbers")).toMatch(/tier: "interactive"/);
+    expect(routeBody("get", "/comms/item")).toMatch(/itemPayload/);
+  });
+
+  it("the tick reads on the BACKGROUND tier and never retries a refusal hot", () => {
+    const body = fnBody("readWindow");
+    expect(body).toMatch(/tier: "background"/);
+    expect(body).toMatch(/status === 429\)\s*\{\s*stats\.shed = true;\s*return records;/);
+  });
+
+  it("⚠️ the tick asks for the call log's LEGS — the missed-call verdict reads them", () => {
+    expect(code(SRC)).toMatch(/call-log\?view=Detailed&dateFrom=/);
+  });
+
+  it("⚠️ and the message store with NO messageType — the multi-value filter 400s on this account", () => {
+    expect(code(SRC)).toMatch(/message-store\?dateFrom=\$\{since\}/);
+    expect(code(SRC)).not.toMatch(/messageType=/);
+  });
+});
+
+/* ── one writer per archive ──────────────────────────────────────────────── */
+
+describe("⚠️ each archive keeps exactly one writer", () => {
+  const c = code(SRC);
+  it("nothing here writes an archive's table directly", () => {
+    expect(c).not.toMatch(/INSERT INTO (sms_archive|call_archive|voicemail_archive|mms_archive|patient_directory|sent_messages)\b/i);
+    expect(c).not.toMatch(/UPDATE (sms_archive|call_archive|voicemail_archive|mms_archive|patient_directory|sent_messages)\b/i);
+    expect(c).not.toMatch(/DELETE FROM (sms_archive|call_archive|voicemail_archive|mms_archive|patient_directory|sent_messages)\b/i);
+  });
+  it("records reach them through the archives' own upserts", () => {
+    const tick = fnBody("captureTick");
+    expect(tick).toMatch(/archiveTextRecords\(/);
+    expect(tick).toMatch(/archiveCallRecords\(/);
+    expect(tick).toMatch(/archiveVoicemailRecords\(/);
+  });
+  it("and the tick honours each archive's kill switch", async () => {
+    const { feedsOff } = await import("./commsInbox.mjs");
+    expect(feedsOff({})).toEqual([]);
+    expect(feedsOff({ SMS_ARCHIVE_ENABLED: "0", VOICEMAIL_ARCHIVE_ENABLED: "0" })).toEqual(["texts", "voicemails"]);
+    expect(feedsOff({ CALL_ARCHIVE_ENABLED: "0" })).toEqual(["calls"]);
+    expect(feedsOff({ SMS_ARCHIVE_ENABLED: "1" })).toEqual([]);
+    const tick = fnBody("captureTick");
+    expect(tick).toMatch(/feedsOff\(\)/);
+    expect(tick).toMatch(/off\.has\("calls"\)/);
+  });
+});
+
+/* ── the SQL mirrors of JS rules ─────────────────────────────────────────── */
+
+describe("⚠️ the list query's two pre-filters can never drop what the JS rules would open", () => {
+  it("the answered-call filter reads the rules' OWN label list — never a second copy", () => {
+    const body = fnBody("loadInboundForList");
+    expect(body).toMatch(/CONNECTED_RESULT_LABELS/);
+    expect(body).not.toMatch(/'accepted'|'answered'|'connected'/i);
+  });
+  it("the cover CTE counts exactly the resolving ways — left_vm is an attempt, undone is nothing", () => {
+    expect(HOWS.filter((h) => h !== "left_vm")).toEqual(RESOLVING_HOWS);
+    const cte = SRC.slice(SRC.indexOf("const COVER_CTE"), SRC.indexOf("`;", SRC.indexOf("const COVER_CTE")));
+    expect(cte).toMatch(/undone_at IS NULL/);
+    expect(cte).toMatch(/how <> 'left_vm'/);
+    expect(cte).toMatch(/max\(covers_through\)/);
+  });
+});
+
+/* ── the resolve ─────────────────────────────────────────────────────────── */
+
+describe("⚠️ a resolve is a compare-and-set under a lock", () => {
+  const body = routeBody("post", "/comms/resolve");
+  it("locks every number of the item, in a fixed order, inside one transaction", () => {
+    expect(body).toMatch(/\.sort\(\)/);
+    expect(body).toMatch(/BEGIN/);
+    expect(body).toMatch(/pg_advisory_xact_lock/);
+  });
+  it("re-reads the item UNDER the lock and asks planResolve before writing", () => {
+    const lock = body.indexOf("pg_advisory_xact_lock");
+    const read = body.indexOf("loadOpening(client");
+    const plan = body.indexOf("planResolve(");
+    const insert = body.indexOf("INSERT INTO comms_resolutions");
+    expect(lock).toBeGreaterThan(0);
+    expect(read).toBeGreaterThan(lock);
+    expect(plan).toBeGreaterThan(read);
+    expect(insert).toBeGreaterThan(plan);
+  });
+  it("writes one row per number with ONE resolution id", () => {
+    expect(body).toMatch(/const rid = crypto\.randomUUID\(\);\s*for \(const n of numbers\)/);
+  });
+  it("attributes the row to the VERIFIED caller, never to anything the body claims", () => {
+    expect(body).toMatch(/who,\s*\n?\s*target\?\.itemId/);
+    expect(body).not.toMatch(/req\.body\??\.(by|resolvedBy|email)/);
+  });
+});
+
+/* ── template-literal SQL ────────────────────────────────────────────────── */
+
+describe("⚠️ SQL in template literals", () => {
+  it("both files parse — a stray backtick inside SQL ends the literal early", () => {
+    for (const f of ["commsInbox.mjs", "commsInboxRules.mjs", "messaging.mjs"]) {
+      expect(() => execFileSync(process.execPath, ["--check", resolve(DIR, f)], { stdio: "pipe" }), f).not.toThrow();
+    }
+  });
+});

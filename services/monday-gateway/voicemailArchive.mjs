@@ -285,6 +285,31 @@ async function upsertRows(pool, rows) {
 }
 
 /**
+ * Hand RingCentral message-store records to the archive.
+ *
+ * ⚠️ THE one path into voicemail_archive's metadata — the hourly scan below and
+ * the Communications inbox's minute-by-minute capture (commsInbox.mjs) both
+ * come through here, so the scan-may-only-move-`none`-→-`pending` rule holds
+ * whoever is scanning. Records of any type may be passed; anything that is not
+ * a voicemail is ignored.
+ *
+ * @returns {Promise<{written: number, rows: object[]}>} `rows` carry the
+ *   counterparty in the clear for the caller's in-memory use only.
+ */
+export async function archiveVoicemailRecords({ pool, records }) {
+  const rows = [];
+  for (const rec of records ?? []) {
+    const row = toVoicemailRow(rec);
+    if (!row) continue;
+    // A blank or unhashable number is not a reason to drop the voicemail — a
+    // blocked or withheld caller still left a message somebody may ask about.
+    rows.push({ ...row, phoneHmac: row.phone ? phoneHmac(row.phone) || null : null });
+  }
+  const written = rows.length ? await upsertRows(pool, rows) : 0;
+  return { written, rows };
+}
+
+/**
  * Page the message store over the window and upsert a row per voicemail.
  *
  * ⚠️ `background` tier on purpose: this is bulk work with nobody waiting, so it
@@ -348,15 +373,7 @@ export async function scanMessageStore({ pool, now, stats }) {
     stats.pages = page;
     stats.seen += records.length;
 
-    const rows = [];
-    for (const rec of records) {
-      const row = toVoicemailRow(rec);
-      if (!row) continue;
-      // A blank or unhashable number is not a reason to drop the voicemail — a
-      // blocked or withheld caller still left a message somebody may ask about.
-      rows.push({ ...row, phoneHmac: row.phone ? phoneHmac(row.phone) || null : null });
-    }
-    stats.rowsWritten += await upsertRows(pool, rows);
+    stats.rowsWritten += (await archiveVoicemailRecords({ pool, records })).written;
 
     if (records.length < PAGE_SIZE) return;
     // Hitting the ceiling means the window held more than we read, i.e. the

@@ -54,6 +54,7 @@ import {
   directoryHealth,
   prunePlan,
   toDirectoryRows,
+  toE164 as toE164Rule,
   phoneColIdsFor,
 } from "./patientDirectoryRules.mjs";
 
@@ -79,6 +80,12 @@ CREATE TABLE IF NOT EXISTS patient_directory (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS patient_directory_last4_idx ON patient_directory (last4);
+-- The item's Monday group, for the Communications inbox's stage pill (a
+-- Subscription patient in "Not Active Patients" reads Inactive). Added
+-- 2026-09-23; rows written before then read NULL until the next daily run.
+-- NOTE: this whole SCHEMA is a JS template literal, so no backticks in it.
+ALTER TABLE patient_directory ADD COLUMN IF NOT EXISTS group_id TEXT;
+CREATE INDEX IF NOT EXISTS patient_directory_item_idx ON patient_directory (board_id, monday_item_id);
 
 -- One row per reconcile. A job that silently stopped running is the failure
 -- this module exists to prevent, and an empty directory with no run history
@@ -103,7 +110,7 @@ const EVERY_MS = Math.max(Number(process.env.PATIENT_DIRECTORY_EVERY_HOURS) || 2
  *  gateway redeploys on every push to main, and without this a busy afternoon
  *  of deploys would each trigger a full board scan. */
 const MIN_GAP_MS = Math.max(Number(process.env.PATIENT_DIRECTORY_MIN_GAP_HOURS) || 6, 0) * 3600_000;
-/** Rows per INSERT. 6 columns, so 200 rows is 1,200 bind parameters — well
+/** Rows per INSERT. 7 columns, so 200 rows is 1,400 bind parameters — well
  *  under Postgres' 65535 cap, and one round trip instead of two hundred. */
 const CHUNK = 200;
 /** Floor between FORCED reconciles, for the same reason the archive has one:
@@ -137,13 +144,13 @@ async function callMonday(query, variables) {
 const FIRST_PAGE = `
   query ($board: [ID!], $cols: [String!], $limit: Int!) {
     boards (ids: $board) {
-      items_page (limit: $limit) { cursor items { id name column_values (ids: $cols) { id text } } }
+      items_page (limit: $limit) { cursor items { id name group { id } column_values (ids: $cols) { id text } } }
     }
   }`;
 const NEXT_PAGE = `
   query ($cursor: String!, $cols: [String!], $limit: Int!) {
     next_items_page (limit: $limit, cursor: $cursor) {
-      cursor items { id name column_values (ids: $cols) { id text } }
+      cursor items { id name group { id } column_values (ids: $cols) { id text } }
     }
   }`;
 
@@ -178,19 +185,100 @@ async function scanBoard(board) {
   return { rows, pages, truncated };
 }
 
+/**
+ * "Whose number is this?" asked of MONDAY, for numbers the directory doesn't
+ * know yet — a patient created this morning is absent from a copy refreshed
+ * nightly. Used by the Communications inbox's capture tick (commsInbox.mjs),
+ * which has the number in the clear at capture time and caches the answer
+ * against the HMAC, so the list never has to do this on a request.
+ *
+ * The same batched `any_of` shape the browser's fallback uses
+ * (`dossierApi.fetchDirectoryNames`), with one difference that matters here:
+ * it also asks the ALTERNATE phone columns, because a caregiver ringing from
+ * their own number is exactly who the inbox needs to fold into the patient.
+ *
+ * ⚠️ `any_of` is an EXACT match and these boards store both digit shapes
+ * (§5.28), so each number is asked in three spellings. ⚠️ Returns `{ok}`: a
+ * failed read and a batch of genuine misses look identical in the data, and
+ * the caller CACHES misses — reporting a failure as "nobody" would freeze those
+ * numbers as unmatched.
+ *
+ * @param {string[]} numbers E.164, at most 50.
+ * @returns {Promise<{ok: boolean, rows: Map<string, object>}>} phone_hmac → best row
+ */
+export async function lookupNumbersLive(numbers) {
+  const rows = new Map();
+  if (!TOKEN || !hashingConfigured()) return { ok: false, rows };
+  const wanted = new Map();
+  for (const n of numbers ?? []) {
+    const e164 = toE164Rule(n);
+    if (e164) wanted.set(phoneHmac(e164), e164);
+    if (wanted.size >= 50) break;
+  }
+  if (!wanted.size) return { ok: true, rows };
+  const values = [...wanted.values()].flatMap((e) => {
+    const d = e.replace(/\D/g, "").slice(-10);
+    return [d, `1${d}`, `+1${d}`];
+  });
+
+  // One alias per (board, phone column): a rule set ANDs its rules, so asking
+  // two columns in one alias would match nobody (§5.31d).
+  const varDefs = ["$vals: CompareValue!", "$limit: Int!"];
+  const variables = { vals: values, limit: Math.min(500, wanted.size * 6 + 20) };
+  const parts = [];
+  const aliases = [];
+  DIRECTORY_BOARDS.forEach((b, i) => {
+    phoneColIdsFor(b).forEach((col, j) => {
+      const a = `b${i}_${j}`;
+      varDefs.push(`$${a}: ID!`, `$${a}c: ID!`, `$${a}cc: [String!]`);
+      variables[a] = String(b.boardId);
+      variables[`${a}c`] = col;
+      variables[`${a}cc`] = phoneColIdsFor(b);
+      parts.push(
+        `${a}: boards (ids: [$${a}]) {
+           items_page (limit: $limit, query_params: { rules: [{ column_id: $${a}c, compare_value: $vals, operator: any_of }] }) {
+             items { id name group { id } column_values (ids: $${a}cc) { id text } }
+           }
+         }`,
+      );
+      aliases.push({ alias: a, board: b });
+    });
+  });
+
+  let data;
+  try {
+    data = await callMonday(`query (${varDefs.join(", ")}) { ${parts.join("\n")} }`, variables);
+  } catch (e) {
+    console.error("directory live lookup failed:", (e && e.message) || e);
+    return { ok: false, rows };
+  }
+  const found = [];
+  for (const { alias, board } of aliases) {
+    for (const bd of data?.[alias] ?? []) {
+      for (const it of bd?.items_page?.items ?? []) {
+        for (const r of toDirectoryRows(it, board, phoneHmac)) {
+          if (wanted.has(r.phoneHmac)) found.push(r);
+        }
+      }
+    }
+  }
+  for (const r of collapseRows(found)) rows.set(r.phoneHmac, r);
+  return { ok: true, rows };
+}
+
 export function upsertSql(count) {
-  const cols = 6;
+  const cols = 7;
   const tuples = [];
   for (let i = 0; i < count; i++) {
     const b = i * cols;
-    tuples.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},now())`);
+    tuples.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},now())`);
   }
   // ⚠️ DO UPDATE, not DO NOTHING: a patient who was renamed, or who moved to a
   // later board, must overwrite the older row. DO NOTHING would pin whatever
   // name the directory happened to see first, forever.
   return (
     `INSERT INTO patient_directory
-       (phone_hmac, last4, name, monday_item_id, board_id, board_name, updated_at)
+       (phone_hmac, last4, name, monday_item_id, board_id, board_name, group_id, updated_at)
      VALUES ${tuples.join(",")}
      ON CONFLICT (phone_hmac) DO UPDATE SET
        name           = EXCLUDED.name,
@@ -198,6 +286,7 @@ export function upsertSql(count) {
        monday_item_id = EXCLUDED.monday_item_id,
        board_id       = EXCLUDED.board_id,
        board_name     = EXCLUDED.board_name,
+       group_id       = EXCLUDED.group_id,
        updated_at     = now()`
   );
 }
@@ -223,7 +312,7 @@ async function upsertRows(pool, rows) {
   for (let i = 0; i < rows.length; i += CHUNK) {
     const slice = rows.slice(i, i + CHUNK);
     const args = [];
-    for (const r of slice) args.push(r.phoneHmac, r.last4, r.name, r.mondayItemId, r.boardId, r.boardName);
+    for (const r of slice) args.push(r.phoneHmac, r.last4, r.name, r.mondayItemId, r.boardId, r.boardName, r.groupId ?? null);
     const res = await pool.query(upsertSql(slice.length), args);
     written += res.rowCount || 0;
   }
