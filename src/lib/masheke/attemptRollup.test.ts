@@ -102,7 +102,7 @@ describe("returnAttemptReset", () => {
 
   it("does nothing for Doctor Appointments — its counter is the notes, not columns", () => {
     // The reset there is the "[Returned to queue" stamp, which every return now
-    // writes (apptOutreach.RESET_MARKERS).
+    // writes (apptOutreach.isResetLine).
     expect(returnAttemptReset("doctor-appointments")).toBeNull();
   });
 

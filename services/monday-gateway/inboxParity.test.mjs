@@ -169,3 +169,15 @@ describe("the call → voicemail join — gateway mirror vs the SPA's callVoicem
     expect(VOICEMAIL_BEFORE_CALL_MS).toBe(spa.VOICEMAIL_BEFORE_CALL_MS);
   });
 });
+
+describe("the constants the browser mirrors — src/lib/commsInbox/rules.ts", () => {
+  it("agree with the gateway's, so the screen and the server draw the same lines", async () => {
+    const gw = await import("./commsInboxRules.mjs");
+    const spa = await import("../../src/lib/commsInbox/rules.ts");
+    expect(spa.HOW_LABEL).toEqual(gw.HOW_LABEL);
+    expect(spa.UNDO_WINDOW_MS).toBe(gw.UNDO_WINDOW_MS);
+    expect(spa.LATE_COPY_AFTER_MS).toBe(gw.LATE_COPY_AFTER_MS);
+    expect(spa.NOTE_MAX).toBe(gw.NOTE_MAX);
+    expect(spa.OVER_AFTER_MS).toBe(gw.OVER_AFTER_MS);
+  });
+});

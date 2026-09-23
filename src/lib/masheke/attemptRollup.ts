@@ -124,7 +124,7 @@ export function buildAttemptRollup(input: AttemptRollupInput): AttemptRollup {
  *  - `null` — Doctor Appointments and every non-ME stage. Doctor Appointments
  *    keeps no attempt columns at all: its counter is the attempt LINES in the
  *    notes, reset by the `[Returned to queue` stamp that every return now
- *    writes (`apptOutreach.RESET_MARKERS`).
+ *    writes (`apptOutreach.isResetLine`).
  *
  * Nothing is lost by clearing: the columns are folded into the MN Workflow
  * Notes in the same all-or-nothing mutation first.

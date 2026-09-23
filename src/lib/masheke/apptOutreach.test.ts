@@ -365,6 +365,35 @@ describe("the counter resets on re-entry and on a manager's return", () => {
     const notes = [attempt(1), entry, attempt(2), attempt(3)].join("\n");
     expect(apptAttemptCount(p({ mnEvalNotes: notes }))).toBe(2);
   });
+
+  // ⚠️⚠️ COMMS_INBOX_PLAN.md §5.5: the reset used to be an unanchored
+  // `includes`, so any line MENTIONING either phrase reset the counter and
+  // handed the rep unlimited retries. Only the stamps that write them count.
+  it("⚠️ a note that merely MENTIONS a marker does not reset the counter", async () => {
+    const { apptAttemptCount, isResetLine } = await import("./apptOutreach");
+    const hostile = [
+      "[Sep 23, 2026, 2:10 PM] Evaluate: office says Provider requires a new visit —JH",
+      "[Sep 23, 2026, 2:11 PM] Chase Clinicals: they said [Returned to queue last week —JH",
+      "spoke to the office — Provider requires a new visit before they sign",
+      "8/3/26, 1:38 PM · Chase · Provider requires a new visit, per Dana —JH",
+    ];
+    for (const h of hostile) expect(isResetLine(h), h).toBe(false);
+    const notes = [attempt(1), attempt(2), ...hostile, attempt(3)].join("\n");
+    expect(apptAttemptCount(p({ mnEvalNotes: notes }))).toBe(3);
+  });
+
+  it("still resets on the two real stamps, including the older entry-stamp wording", async () => {
+    const { isResetLine } = await import("./apptOutreach");
+    expect(isResetLine(entry)).toBe(true);
+    expect(isResetLine(returned)).toBe(true);
+    expect(isResetLine("  " + returned + "  ")).toBe(true);
+    // Before ", none scheduled" was added to the stamp.
+    expect(isResetLine("7/30/26, 2:00 PM · Patient Doctor Appointment · Provider requires a new visit —JH")).toBe(true);
+    // Its siblings from the same writer are NOT resets.
+    expect(
+      isResetLine("8/1/26, 9:00 AM · Patient Doctor Appointment · Scheduled appointment date 2026-08-20 (from Chase) · ok —JH"),
+    ).toBe(false);
+  });
 });
 
 describe("the 3-attempt cap is a REP guardrail only", () => {
