@@ -20,12 +20,13 @@
  *      Texts | Calls column, which the hub replaces with the thread.
  *   3. **Every stage's notes** — `LiveNotes` → `stageNoteTrail`, collapsed.
  *   4. **Find-a-patient** when the number is on no board — `dossierPaneFallback`
- *      → `DossierSearch` — and the *Found by search* banner after a pick.
+ *      (its own module, shared with the old pane) → `DossierSearch` — and the
+ *      *Found by search* banner after a pick.
  *   5. **The per-stage call detail** (`stageDetail.ts`, Welcome Call's wide one
  *      included) — the Onboarding view's snapshot cards, drawn BEFORE the
  *      embedded tool here (`embedded`), so they are what a rep on a call sees
  *      first rather than what is left after a whole read-only form.
- *   Plus *Open Profile Page* (`profilePageHref`) in the pane's header.
+ *   Plus *Open Profile Page* (`lib/patient/profileHref.ts`) in the pane's header.
  *
  * ⚠️ **Additive first**: the hub renders this only while the Inbox is switched
  * on. Off, the pane is `PatientDossierPanel`, untouched (plan §8).
@@ -46,29 +47,13 @@ import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 import { PatientBody, type PatientViewParams } from "@/components/patient/PatientBody";
-import {
-  FoundBySearchBanner,
-  HouseholdSwitcher,
-  LiveNotes,
-  dossierPaneFallback,
-} from "@/components/commsHub/PatientDossierPanel";
+import { FoundBySearchBanner, HouseholdSwitcher, LiveNotes } from "@/components/commsHub/PatientDossierPanel";
+import { dossierPaneFallback } from "@/components/commsHub/dossierPaneFallback";
 import type { PatientDossier } from "@/lib/commsHub/dossier";
 import type { DossierPick } from "@/lib/commsHub/dossierApi";
-import { anchorItem } from "@/lib/patient/infoStrip";
+import { profilePageHref } from "@/lib/patient/profileHref";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 import "@/pages/patient/redesign.css";
-
-/**
- * Where *Open Profile Page* goes: the live record, or — for a patient whose
- * records are all finished or stuck — the one the patient screen would anchor
- * on. Any of a patient's records opens the same screen (it builds the whole
- * trail from whichever it is given), and it carries the BOARD because a Monday
- * item id alone does not say which board it is on (§5.39).
- */
-export function profilePageHref(dossier: PatientDossier | null): string | null {
-  const item = anchorItem(dossier);
-  return item ? `/patient/${encodeURIComponent(item.itemId)}?board=${item.boardId}` : null;
-}
 
 /** The pane's header — the mockup's *Patient Profile* + *Open Profile Page*. */
 export function HubPatientPaneHeader({ dossier }: { dossier: PatientDossier | null }) {

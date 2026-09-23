@@ -43,7 +43,8 @@ vi.mock("@/components/patient/PatientBody", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import HubPatientPane, { profilePageHref } from "./HubPatientPane";
+import HubPatientPane from "./HubPatientPane";
+import { profilePageHref } from "@/lib/patient/profileHref";
 
 function it_(over: Partial<DossierItem> & { itemId: string; boardId: number; name: string }): DossierItem {
   return {
@@ -235,6 +236,11 @@ describe("wiring — the five jobs come WITH the embedded screen (plan §7, Josh
     // …and the old pane renders the same pieces, so the two cannot drift.
     for (const piece of ["<HouseholdSwitcher", "<LiveNotes", "dossierPaneFallback(", "<FoundBySearchBanner"]) {
       expect(OLD, piece).toContain(piece);
+    }
+    // ONE copy of the non-profile states: both panes import it, neither defines it.
+    for (const src of [PANE, OLD]) {
+      expect(src).toContain('import { dossierPaneFallback } from "');
+      expect(src).not.toMatch(/function dossierPaneFallback\b/);
     }
   });
 
