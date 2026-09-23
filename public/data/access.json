@@ -130,7 +130,10 @@
       "name": "janelle",
       "roles": [
         "doctorAppointments"
-      ]
+      ],
+      "perms": {
+        "stageManager": true
+      }
     },
     "masani@medicallymodern.com": {
       "name": "Masani",
