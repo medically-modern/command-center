@@ -2687,8 +2687,8 @@ archive was written. Every day it is not running is ~140 more texts purged.
 ### 5.28 The Communications Hub, and the manager sidebars' contact marks (Sep 2026)
 > ⚠️ **A v2 of this hub — the "Unresolved queue" (Brandon + Katie, 2026-09-22) — is PLANNED, NOT
 > BUILT.** It replaces unread with a shared resolved/unresolved state kept on the gateway. Plan,
-> diff and open questions: [`COMMS_INBOX_PLAN.md`](COMMS_INBOX_PLAN.md). Nothing below describes
-> it yet.
+> diff and Josh's decisions (every question answered 2026-09-23):
+> [`COMMS_INBOX_PLAN.md`](COMMS_INBOX_PLAN.md). Nothing below describes it yet.
 
 Two halves of one ask (Josh, 2026-09-01): *"a rep can see the full context without having to go
 back and forth"*. Everything a patient does to reach the MM line — call, voicemail, text, fax —

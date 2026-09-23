@@ -5,10 +5,10 @@
 > detailed plan for building this and ask any questions on anything that is unclear / seems
 > destructive"*
 
-**Status: DRAFT — nothing is built.** Josh answered the five destructive items on 2026-09-23 (§9.1).
-Four questions are still open (§9.2); everything else has a stated default (§9.3). When a phase
-ships, record it in CLAUDE.md (a new §5 section, the way §5.47 recorded the call archive) and mark it
-here.
+**Status: DRAFT — nothing is built.** Josh answered every question on 2026-09-23: the five
+destructive items and the four follow-ups (§9.1). Nothing is open; the defaults in §9.3 stand unless
+he changes one. When a phase ships, record it in CLAUDE.md (a new §5 section, the way §5.47 recorded
+the call archive) and mark it here.
 
 **Source.** Brandon's `command-center-mockup-REAL-DATA_2.html` (7.7 MB). The spec is the script
 block headed *"COMMUNICATIONS v2 — the Unresolved queue (Brandon + Katie, 2026-09-22)"*, plus the
@@ -17,6 +17,9 @@ Reports override and the patient-screen hook after it.
 - ⚠️ v2 is in **neither** the 9/18 handoff doc (rev 34) **nor** the sample-data mockup in
   `_reference/`. Both predate it. The mockup's code and the comments inside it are the whole spec.
   This doc quotes the rules so nobody has to open the PHI file to learn what was asked.
+
+**Section numbers.** §0–§11, and §5.1–§5.10 under Inline notes, are this plan's own. Anything else
+(§5.12 and up) is CLAUDE.md, and where a number could be either, the text says *CLAUDE.md*.
 
 ---
 
@@ -37,12 +40,24 @@ of this build is a **gateway module** on the messaging Postgres pool that:
 
 The hub list, the header badge, the patient screen and Reports all read from it.
 
+**Where it is saved — everything for a number in one place** (§4.9 has the full map).
+- **One database:** the gateway's messaging Postgres, which already archives every text, call,
+  voicemail and photo. The audio and photos sit beside it in the `call-recordings` bucket. Every
+  table is keyed by the number's hash, never the number itself.
+- **What's new is small:** `comms_resolutions` holds each resolution with its inline note, and
+  `comms_links` holds "this number is that patient".
+- **One route, `/comms/item`, makes it one timeline.** It reads all of it for the patient's numbers
+  and returns texts, calls, voicemails you can play, and resolutions with their notes, in time order.
+  That is the mockup's single timeline.
+- **The note also goes to Monday** — into the patient's notes when the rep moves on (§9.1 D5), so the
+  rep who opens their stage page tomorrow reads it too.
+
 **Most of the UI exists already.**
 - Today's Text and Phone tabs *are* the mockup's Texts / Calls / VMs logs.
 - The thread, the dossier pane and the find-a-patient search are all built.
 
-**New:** the Inbox list, one timeline per patient, the resolve bar with its inline notes, the header
-badge, and the SLA card.
+**New:** the Inbox list, one timeline per patient, the resolve bar with its inline notes and a *Left
+voicemail* button, the header badge, and the SLA card.
 
 **Build order is additive-first (§8).** The Inbox is *added* as a new default rail, and the current
 Phone / Text / Fax rails stay exactly as they are until the team has used it. The destructive items
@@ -71,7 +86,7 @@ were each decided explicitly (§9.1); nothing else destructive is in the plan.
    *Confirm*. It never resolves anything on its own.
 6. **Left VM.** The header comment says it *"logs an attempt and keeps it open (the 24h clock keeps
    running)"*. ⚠️ **It is not built in the mockup.** There is no button, and its attempts state is
-   read but never written. Open question — §9.2 Q2.
+   read but never written. **Decided: we build it, as a fourth button (§9.1 D6).**
 7. **Undo.** A row you just resolved stays in the list, greyed with a ✓ ("sticky"), until you open
    another item. While it is sticky, *Undo* puts it back on the unresolved list.
 8. **Everyone works the same list.** The manager summary strip was removed in v2.1. *Unresolved* and
@@ -165,22 +180,22 @@ has an open item. If they have none, it shows their last resolution.
 | Calls log (All / Inbound / Outbound / Missed) | Phone tab (Today / All / Missed; recordings play + ⤓ + *Download N*; archive playback §5.47) | **PARTIAL** — Inbound/Outbound is new; our recordings go further than the mockup |
 | VMs log | Phone → Voicemail (transcripts, heard/unheard, a call opening the voicemail it left). Since 2026-09-23 the audio and transcripts are also archived (§5.47b) | **HAVE** — ours does more |
 | Fax rail | Fax tab (views, sending office + its patients, read/unread) | **HAVE** — v2 doesn't change it |
-| One timeline per item: texts + calls + VMs + resolution dividers | Separate pieces: `ConversationThread`, `VoicemailDetail`, call rows. A call that left a voicemail stacks the VM above the thread | **MISSING** — a new component built from the existing pieces |
-| Composer under the timeline | `ConversationThread`'s composer: opt-out guard, delivery-failure note (§5.5), MMS, Can Text | **HAVE** — reuse it, never copy it |
+| One timeline per item: texts + calls + VMs + resolution dividers | Separate pieces: `ConversationThread`, `VoicemailDetail`, call rows. A call that left a voicemail stacks the VM above the thread. Texts, calls, recordings, voicemails and photos are all archived (§5.27, §5.47, §5.47b, §5.47c), but nothing puts them on one timeline | **MISSING** — a new component built from the existing pieces, read from the archives (§4.9) |
+| Composer under the timeline | `ConversationThread`'s composer: opt-out guard, delivery-failure note (CLAUDE.md §5.5), MMS, Can Text | **HAVE** — reuse it, never copy it |
 | Resolve bar: wait + Called(note) / Texted / No action; suggestion; sticky + Undo; optional note | — | **MISSING** |
-| Left VM (logs an attempt, stays open) | — (the mockup doesn't build it either) | **UNCLEAR** (§9.2 Q2) |
+| Left VM (logs an attempt, stays open) | — (the mockup doesn't build it either) | **MISSING — built as a fourth button, playing the recording of the call it was left on** (§4.4, §9.1 D6) |
 | Right pane = the patient screen's main column + Open Profile Page | `PatientDossierPanel`: stage path, writable notes, every stage's notes, per-stage call detail, household switcher, find-without-writing, Open profile page | **DIFFERENT** — swap approved, carrying all five jobs (§7, §9.1 D3) |
 | Unmatched → find → **add the number to the patient** (alternate or primary) | `DossierSearch` finds and shows the profile and **writes nothing** — deliberately (§5.28) | **NEW WRITE — approved** (§6, §9.1 D1) |
 | `Mine \| All patients` | No per-patient owner exists anywhere. §5.13 and §5.30 record *no ownership* | **NOT BUILT** (§9.1 D2) |
 | Header badge = unresolved count | No badge at all (`DIFF_2026-09-22.md` §1 already lists it missing) | **MISSING** |
 | Patient screen: compact resolve bar | `PatientCommsColumn` (Texts thread, Calls button, alternate-number switch, Recent notes) | **MISSING** |
-| Reports: Communications SLA card | Reports & Metrics is deliberately blank — "No reports available yet" (Josh, 2026-09-22, §5.46b) | **MISSING, and it reverses a 9/22 decision** (§9.2 Q4) |
+| Reports: Communications SLA card | Reports & Metrics is deliberately blank — "No reports available yet" (Josh, 2026-09-22, §5.46b) | **MISSING — built as drawn, replacing the blank page** (§9.1 D8) |
 | The hub header (dialer, "which calls ring me") | The navy header with a dialer and the ring-preferences bell, plus the bell on a conversation (`WatchCallbackButton`) | **HAVE** — v2 doesn't redraw the header; keep ours |
 | Outbound-call attribution ("We called · Katie") | None: one shared RingCentral extension, so the call log can't say who (§5.13b). `sent_messages` attributes texts only | **MISSING** (small — §4.6) |
 
 **Built today, not in the mockup, and it must survive** (§5.39f's lossless rule):
 - New text to any number (`NewTextPanel`), and the naming progress bar.
-- The opt-out guard and the delivery-failure notes (§5.5).
+- The opt-out guard and the delivery-failure notes (CLAUDE.md §5.5).
 - MMS attachments.
 - Recordings: *Download N*, and archive playback (§5.16, §5.47).
 - Voicemail heard/unheard (the flag and the right-click; the Unheard *filter* is retired, §9.1 D4),
@@ -210,19 +225,20 @@ has an open item. If they have none, it shows their last resolution.
     / §5.47 boundary.
   - It gets the same source-scan test the call archive has.
 
-### 4.2 Capturing events — the three archives already hold them
+### 4.2 Capturing events — the archives already hold them
 
-**All three kinds of event are already archived on the messaging pool, just not quickly enough.**
+**Every kind of event is already archived on the messaging pool, just not quickly enough.**
 
 | Archive | Holds | Refreshes |
 |---|---|---|
-| `sms_archive` (§5.27) | every text, both directions: body, status, `created_at` | **daily**, 35-day window |
-| `voicemail_archive` (§5.47b — landed 2026-09-23) | every voicemail: duration, `created_at`, **transcript** | **hourly**, 35-day window |
-| `call_archive` (§5.47) | every call-log row: direction, `result`, `leg_results`, duration | **hourly**, over 2 days (deep pass ~daily) — and only while the S3 bucket is configured |
+| `sms_archive` (§5.27) | every text, both directions: body, status, **delivery error**, `created_at`, and the list of any photos attached | **daily**, 35-day window |
+| `voicemail_archive` (§5.47b — landed 2026-09-23) | every voicemail: duration, `created_at`, **transcript**; the audio in the bucket | **hourly**, 35-day window |
+| `call_archive` (§5.47) | every call-log row: direction, `result`, `leg_results`, duration; the recording in the bucket | **hourly**, over 2 days (deep pass ~daily) — and only while the S3 bucket is configured |
+| `mms_archive` (§5.47c — landed 2026-09-23) | the photos, videos and contact cards sent with texts; the bytes in the bucket | **hourly**. Its queue is `sms_archive`'s attachment list, so it never reads RingCentral for metadata |
 
 **So the inbox does not keep its own copy of events.** It adds one thing: a **60-second hot tick**.
 - The tick reads RingCentral's last 2 hours: one `message-store` read (**no `messageType` param** —
-  the multi-value filter returns 400 on this account, §5.5, so filter locally, the way
+  the multi-value filter returns 400 on this account, CLAUDE.md §5.5, so filter locally, the way
   `/messaging/conversation` does) and one `call-log?view=Detailed` read.
 - It hands each record to **its owning archive's own upsert**, so every table keeps exactly one
   writer. That matters because the archives carry invariants of their own — for example, a scan
@@ -240,6 +256,9 @@ The inbox's own tables are only what is new (§4.3).
   retried hot — the call archive's shedding pattern.
 - **A free side effect:** texts and voicemails become **minute-fresh** in their archives, for every
   other reader too.
+- **Photos follow within the hour.** A text with a photo lands in `sms_archive` on the tick, and
+  `mms_archive` fetches the bytes on its next hourly run. Until then the timeline shows the photo
+  from RingCentral, exactly as today's thread does (§4.6).
 - **Missed, answered or voicemail: the verdict is the SPA's rule.** It lives in
   `src/lib/callHistory/callHistory.ts` (`callConnected` / `isVoicemail`) and reads the call's
   **legs**.
@@ -248,7 +267,7 @@ The inbox's own tables are only what is new (§4.3).
   - `call_archive` deliberately does **not** store a verdict. The inbox computes it when it reads,
     from `result` and `leg_results`. Check at build time that those two fields are everything the
     rule reads.
-  - That makes the gateway copy a hand-synced mirror — the §5.7 / §5.29 hazard. So it ships with a
+  - That makes the gateway copy a hand-synced mirror — the CLAUDE.md §5.7 / §5.29 hazard. So it ships with a
     **parity test** that runs both copies over the same fixtures (the `directoryCoverage.test.ts` /
     `chaseMethodMirror.test.ts` convention).
 - **Later, optionally:** `message-sync` (ISync), which `rcAllowlist.mjs` already names as the
@@ -265,21 +284,23 @@ All on the messaging pool, created with `CREATE … IF NOT EXISTS`, one statemen
 - inbound and outbound texts from `sms_archive` — with `sent_messages` joined on the RingCentral id
   for who sent it;
 - calls from `call_archive`;
-- voicemails and their transcripts from `voicemail_archive`.
+- voicemails and their transcripts from `voicemail_archive`;
+- photos from `mms_archive`, through the list `sms_archive` already keeps.
 
-All three already key on `phone_hmac` + time, with an index for it.
+All of them already key on `phone_hmac` + time, with an index for it.
 
 ```sql
 comms_resolutions (
   id BIGSERIAL PRIMARY KEY,
   resolution_id UUID NOT NULL,          -- one click = one id, one row per number in the group
   phone_hmac TEXT NOT NULL,
-  how TEXT NOT NULL,                    -- called | texted | no_action | left_vm (an attempt: does NOT close)
-  note TEXT,                            -- the inline note (PHI — §5)
+  how TEXT NOT NULL,                    -- called | texted | no_action | left_vm (an attempt: never closes)
+  note TEXT,                            -- the inline note (PHI — §5); always null for left_vm
   covers_through TIMESTAMPTZ NOT NULL,  -- the newest inbound the rep SAW — §4.4
   resolved_by TEXT NOT NULL,
   resolved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   item_board BIGINT, item_id TEXT,      -- the patient record at the time, when matched
+  mirror_claimed_at TIMESTAMPTZ,        -- the copy to Monday is claimed before it is written (§5.4)
   mirrored_to TEXT, mirror_error TEXT,  -- where the note was copied on Monday (§5)
   undone_by TEXT, undone_at TIMESTAMPTZ)
   -- index: (phone_hmac, resolved_at DESC)
@@ -326,8 +347,8 @@ directory refreshes daily, stores one row per number, and lets the furthest-alon
     `group_id` to its rows.
 
 **Open, and how long it has waited.**
-- A number is **open** when its newest inbound event is later than the newest `covers_through` on
-  it that hasn't been undone.
+- A number is **open** when its newest inbound event is later than the newest `covers_through` among
+  its resolutions that are neither undone nor a *Left voicemail*.
 - A group is open when any of its numbers is open.
 - The **wait** runs from the first inbound event after the last resolution — the mockup's
   `openedBy`.
@@ -345,8 +366,22 @@ directory refreshes daily, stores one row per number, and lets the furthest-alon
 - The UI then shows that, instead of writing a second resolution. Two reps on one item is an
   ordinary afternoon.
 
-**Over 24h** is wall-clock time in the mockup (`864e5` ms). §9.2 Q3 asks whether weekends should
-count. Whatever the answer, the wait on screen, the red flag and the report use one clock.
+**Over 24h — Saturday and Sunday don't count (§9.1 D7).** The mockup uses wall-clock time
+(`864e5` ms); ours skips the weekend.
+- The wait is the time since `openedBy`, minus every hour of Saturday and Sunday in Eastern time.
+- A text at 6 PM Friday reads *Waiting 15h* at 9 AM Monday, and turns red at 6 PM Monday.
+- A message that arrives on the weekend starts its clock at midnight Monday. A Saturday text reads
+  *Waiting 0m* all weekend, *Waiting 9h* at 9 AM Monday, and turns red as Tuesday begins.
+- Eastern is read through `Intl`, never a fixed offset — the way `callArchiveRules.isOfficeHours`
+  already does it. So a daylight-saving weekend, which is 47 or 49 real hours long, still skips
+  exactly Saturday and Sunday.
+- Holidays count like weekdays. Nothing in the app knows them; there is no holiday list anywhere in
+  `src/`.
+- ⚠️ **One function, `countedWaitMs(openedBy, now)`, on the gateway, and no copy in the browser.**
+  The wait on screen, the red flag, the *Over 24h* tab and every number on the SLA card come from
+  it. The browser only shows the wait it is given. The list and the open item refresh every 30
+  seconds, which is finer than the minutes the screen displays, so a second copy for the browser to
+  tick with would buy nothing but a mirror to drift (the CLAUDE.md §5.7 hazard).
 
 **The suggestion** is the newest outbound event after `openedBy`: an outbound `call_archive` row
 suggests *Called*, an outbound `sms_archive` row suggests *Texted*.
@@ -355,6 +390,11 @@ suggests *Called*, an outbound `sms_archive` row suggests *Texted*.
   *Called* asks *"What did you talk about? (required)"*, so highlighting it after an unanswered
   callback invites a rep to resolve an item nobody spoke about. The unanswered call still shows in
   the timeline.
+- ⚠️ **A callback that reached the patient's voicemail probably reads as *connected*.** To the phone
+  network, a voicemail box answers the call, and our rule reads any leg RingCentral calls
+  *Call connected* as connected. That is reasoned, not measured on this account; phase 1 settles it
+  with one test call (§8). If it holds, *Called* is highlighted after the rep left a message. So a
+  call that a *Left voicemail* press links to (below) never suggests *Called*.
 - ⚠️ **Only an outbound text with a sender may suggest *Texted*** — a row in `sent_messages`, which
   means somebody pressed Send in the Command Center.
 - The reason: the Railway automations (the Day-20 reorder text, the drop-off nudges) text from the
@@ -374,10 +414,31 @@ suggests *Called*, an outbound `sms_archive` row suggests *Texted*.
     `sms_archive` already excludes).
 - **Numbers that aren't patients** — doctor offices, vendors — open items like anyone else, as the
   mockup's rule says (§9.3). Phase 1 counts them.
+- **A missed call that went to our voicemail is ONE event,** not two. The call-log row and the
+  voicemail it left are joined by the number-and-time rule the hub's Phone tab already uses
+  (`callVoicemail.ts`, §5.28), and the item shows it as a voicemail. If the rule finds no match they
+  stay two rows — it fails closed.
+  - The gateway needs that rule too, to label list rows, so its copy ships with a parity test, like
+    the missed-call verdict (§4.2).
 
-**Left VM** (only if §9.2 Q2 = A) is a resolution row with `how = left_vm`. It does **not** move
-`covers_through`, so the item stays open. It shows in the timeline and counts in the SLA as an
-attempt.
+**Left voicemail (§9.1 D6).**
+- It is a row in `comms_resolutions` with `how = left_vm` and no note.
+- It does **not** move `covers_through`, so the item stays open and its 24-hour clock keeps running.
+- It sits apart from the three *Mark resolved* buttons, because it resolves nothing.
+- In the timeline it reads *Left voicemail · Katie · 2:10 PM*. On the SLA card it counts as an
+  **attempt**, never as a resolution.
+- **Listen.** Calls are recorded in both directions (§5.16), so the message the rep left is in that
+  call's recording. The row links to **the newest outbound call to the patient's numbers that ended
+  no more than 15 minutes before the press**, and plays its recording.
+  - The link is worked out when the timeline is read, never stored. A call that reaches the archive
+    a minute after the press still links.
+  - ⚠️ **No such call, no Listen.** It fails closed, like a call opening the voicemail it left
+    (§5.28): linking the wrong call would play the rep a different conversation.
+  - The call is also its own row in the timeline, with its own play button, either way.
+- **Undo** comes from its toast, under the same server rule as a resolution: the author, within 15
+  minutes.
+- It writes nothing to Monday (there is no note), and it doesn't count as a Welcome Call or Intake
+  call attempt (§5.8).
 
 ### 4.5 Routes
 
@@ -388,15 +449,16 @@ except the health route.
 |---|---|---|
 | `GET /comms/inbox?view=open\|over\|all&type=&q=&sort=` | The list. Each row: an opaque key (the `/calls/prefs` `allow[].id` precedent) · name · last4 · stage pill · wait · preview · kind · last resolution | Postgres |
 | `GET /comms/inbox/count` | `{open, over}` for the header badge | Postgres |
-| `GET /comms/item?key=` | One item's events and resolutions. Its numbers are resolved **on open** (§4.8) | Postgres, plus one RingCentral or Monday read to resolve the number |
-| `POST /comms/resolve` | Takes `{key, how, note?, seenThrough}`. Answers **409** if it's already resolved, and **400** for `called` without a note — the server enforces what the UI enforces | Postgres |
-| `POST /comms/undo` | Only the resolver, within 15 minutes (§9.3) | Postgres |
+| `GET /comms/item?key=` | One item's timeline: every event on the patient's numbers from the four archives, the resolutions with their notes, and who sent or dialed (§4.9). Its numbers are resolved **on open** (§4.8) | Postgres, plus one RingCentral or Monday read to resolve the number |
+| `POST /comms/resolve` | Takes `{key, how, note?, seenThrough}`, where `how` is `called` · `texted` · `no_action` · `left_vm`. Answers **409** if it's already resolved, and **400** for `called` without a note — the server enforces what the UI enforces | Postgres |
+| `POST /comms/undo` | Only the author, within 15 minutes, and never once the note has been copied to Monday (§5.4) | Postgres |
 | `POST /comms/note` | The optional note after *Texted* or *No action needed* | Postgres |
+| `POST /comms/mirror` | The resolver's browser claims an uncopied note, then reports where it landed on Monday, or the error (§5.4) | Postgres |
 | `POST /comms/link` | Records *this number is that patient* (§6). Written after the Monday write succeeds, or alone for a link-only pick | Postgres |
 | `POST /comms/dialed` | The softphone reports who dialed which number | Postgres |
 | `POST /comms/state` | Takes `{numbers[]}` and returns that group's state, for a patient screen that already holds the numbers. The `/directory/lookup` posture: nothing is disclosed the caller didn't bring | Postgres |
 | `GET /comms/sla?days=` | The Reports card | Postgres |
-| `GET /comms/inbox-health` | **Unauthenticated**, counts only. **Not ok** if no tick has ever succeeded, if the last success is stale, or if the deep pass was truncated | Postgres |
+| `GET /comms/inbox-health` | **Unauthenticated**, counts only. **Not ok** if no tick has ever succeeded, if the last success is stale, or if the last tick was cut short. It also reports how many notes are waiting to be copied to Monday, and the oldest | Postgres |
 
 ### 4.6 The browser side
 
@@ -408,12 +470,20 @@ except the health route.
   FindPatientPane}.tsx`.
 - ⚠️ **`ItemTimeline` reuses the thread; it never copies it.**
   - `ConversationThread` carries the opt-out consent rule (it needs the full history), the delivery
-    re-check (§5.5), MMS attachments and Can Text.
+    re-check (CLAUDE.md §5.5), MMS attachments and Can Text.
   - So extract a `useConversation(phone)` hook and a `Composer` from it. Both the old thread and the
     new timeline render those, and there stays exactly one copy of each guard.
-  - Calls and voicemails come from the existing readers **on open** — `fetchPatientCallHistory`, and
-    the voicemail list filtered by number.
-  - The resolution dividers come from `/comms/item`.
+  - **Everything else on the timeline comes from `/comms/item`** — the archived texts, calls,
+    voicemails and photos, and the resolutions (§4.9). Not from RingCentral's lists.
+  - **The live thread is laid over it for the newest texts.** The two are merged by RingCentral's
+    message id, and **the live copy wins a collision**: an archived text can still say *Queued* after
+    RingCentral has turned it into *SendingFailed* (CLAUDE.md §5.5, §5.27).
+  - **Playback is archive-first, RingCentral second** — the §5.47 `recordingSource` rule, applied to
+    voicemails and photos too. Recordings, voicemails and photos come from `/calls/recording`,
+    `/voicemail/audio` and `/mms/media`, and anything newer than the archive's last run comes from
+    RingCentral when Play is pressed, never on open.
+  - The archive's URL goes into a bare `<audio src>` or `<img src>` and is never `fetch()`ed. A
+    browser `fetch` of the redirect needs CORS on the bucket, which Railway can't set (§5.47).
 - **Header badge** (`GlobalHeader`): the unresolved count.
   - It is fetched only for people who can see the tab (`comms`).
   - A 60 s poll of `/comms/inbox/count`, skipped while the tab is hidden. No RingCentral.
@@ -427,8 +497,8 @@ except the health route.
 |---|---|
 | Gateway capture | about 2 a minute, background tier |
 | Inbox list · count · item state · resolve | **0** — Postgres |
-| Opening an item | the same as opening a thread today: the conversation plus the call history, on open |
-| The logs (Texts / Calls / VMs) | unchanged from today's tabs until phase 3; later they could be served from the three archives |
+| Opening an item | one conversation read, for the live thread — the same as opening a thread today. Calls, voicemails and photos come from the archives, not RingCentral's lists. One too new for the archive is fetched from RingCentral when someone presses Play |
+| The logs (Texts / Calls / VMs) | unchanged from today's tabs until phase 3; later they could be served from the archives |
 
 ### 4.8 PHI — what is new
 
@@ -436,6 +506,9 @@ except the health route.
 - That is the same category as `sms_archive.body` and `voicemail_archive.transcript`. Both were
   accepted explicitly (§5.27, §5.47b).
 - The list's previews are read from those two columns. Nothing is copied.
+
+**No new audio or photo storage.** Playback reuses the archives' own routes, so every presigned URL
+issued for the timeline is audited like any other (§5.47).
 
 **Two categories this design avoids:**
 - **The phone number in the clear.**
@@ -452,6 +525,62 @@ What that means on screen:
 - Searching by a full number still works, because the gateway hashes what you type.
 - If `···1234` on unknown callers isn't acceptable, the alternative is to store the number
   encrypted — a new PHI category, so it is a decision, not a tidy-up (§9.3).
+
+### 4.9 Where everything is saved — one place per number
+
+Josh, 2026-09-23: *"where are we going to save this info? like the way his mockup works with
+inlining the notes and including everything in once place for taht number"*.
+
+The mockup keeps all of it in page memory, so a reload loses it. The live build keeps it in **one
+database** — the gateway's messaging Postgres (`ASSIGNMENTS_DATABASE_URL`, service `cmd ctr server`),
+which already holds the four archives — plus the **`call-recordings` bucket** beside it for audio and
+photos. Every table is keyed by the **number's hash**, so "everything for this number" is one
+indexed lookup per table.
+
+| On the timeline | Saved in | Audio or photo | Played from |
+|---|---|---|---|
+| Texts, both directions, with their delivery verdicts | `sms_archive`, plus `sent_messages` for who pressed Send | — | — |
+| Photos sent with a text | listed in `sms_archive`, fetched by `mms_archive` | bucket, `mms/` | `/mms/media` |
+| Calls, both directions: answered, missed, and the leg that connected | `call_archive`, plus `comms_dials` for who pressed Call | bucket, `recordings/` | `/calls/recording` |
+| Voicemails patients leave us, with transcripts | `voicemail_archive` | bucket, `voicemails/` | `/voicemail/audio` |
+| *Left voicemail* — the rep's attempt | `comms_resolutions` (`left_vm`) | the recording of the call it links to | `/calls/recording` |
+| Resolutions and their inline notes | `comms_resolutions` | — | — |
+| "This number is that patient" | `comms_links` | — | — |
+
+**How it becomes one place.**
+- `/comms/item` takes the item's numbers — the patient's primary and alternate, grouped as §4.4
+  describes — reads every table above by their hashes, and returns **one list in time order**.
+- When the patient has two numbers, each row says which one it came in on.
+- The browser lays the live thread over it for the newest texts (§4.6), so a text sent a second ago,
+  and its late delivery verdict, appear without waiting for the archive.
+- **Faxes are not on it.** A fax is an office's, not a patient's, and keeps its own rail.
+
+**The note is saved twice** (§9.1 D5):
+- in `comms_resolutions`, always, the moment the rep resolves — this is the copy the inbox,
+  the timeline and the report read;
+- in the patient's Monday notes, when the rep moves on — this is the copy for whoever opens the
+  patient's stage page tomorrow.
+
+**Kept forever.** None of the four archives prunes (§5.27, §5.47, §5.47b, §5.47c), and neither do
+the new tables (§9.3).
+
+**How far back it reaches.** Each archive holds only what RingCentral still had the day it started:
+- texts from 2026-08-01;
+- calls and recordings from about late June 2026 (90 days before 2026-09-21);
+- voicemails and photos from about late August 2026 (30 days before 2026-09-23).
+
+Anything older had already been deleted by RingCentral, and nothing can bring it back.
+
+**Why not keep it on Monday instead?**
+- An unknown number has no Monday item to write to.
+- A patient is a different item on every board. A resolution stored on their Welcome Call item
+  would drop out of view the day they reach Subscription; a phone number survives the hop.
+- Two reps resolving the same item is an ordinary afternoon, and Monday has no compare-and-set. So
+  it couldn't answer the second rep with *"Katie resolved this at 2:10"* (§4.4's 409).
+- The header badge is on every page for every rep. Counting on Monday every minute is the kind of
+  load that drained the account's budget in §5.25; counting in Postgres costs nothing.
+- The texts, calls and voicemails are in Postgres already. Keeping the resolutions beside them is
+  what makes the timeline one query, instead of seven boards plus three RingCentral lists.
 
 ---
 
@@ -474,9 +603,8 @@ memory. This is everything that has to be decided about them.
 - That is also the only place a note on an **unmatched** number can live — there is no Monday item
   to write it to.
 
-**5.2 Should notes be copied to Monday? (open — §9.2 Q1)** A note that says what was discussed is case history,
-and the person working that patient tomorrow reads the stage's notes, not the inbox. So the default
-proposal:
+**5.2 Notes are copied to Monday (decided — §9.1 D5).** A note that says what was discussed is case
+history, and the person working that patient tomorrow reads the stage's notes, not the inbox. So:
 - Copy every **non-empty** note on a **matched** patient who has a **live** record.
 - Write it into that record's notes column — the active board, the same record Recent notes writes
   to.
@@ -484,31 +612,44 @@ proposal:
   appending, and asks the live board about the 2,000-character cap.
 - Stamp it with the stage label **Communications**:
   `[Sep 23, 2026, 2:10 PM] Communications: Called — told her it ships Friday —JH`.
-- A `No action needed` with no note writes **nothing** to Monday.
+- A `No action needed` with no note writes **nothing** to Monday, and a *Left voicemail* never has a
+  note, so it never writes either.
 - A patient with no live record (every record completed) gets the log only. A completed item is
   read-only in new code (§5.38).
 
 **5.3 Order and failure.**
-- Resolve first (Postgres), copy to Monday second.
-- A failed copy never un-resolves anything. The UI says *"Resolved — couldn't copy your note to
-  Monday: …"*, and the row records `mirror_error`.
-- The copy runs **in the browser**, as the signed-in rep. That keeps the audit attribution every
+- Resolve first (Postgres), copy to Monday second — when the rep moves on (§5.4).
+- A failed copy never un-resolves anything. The rep is shown *"Resolved — couldn't copy your note on
+  \<patient\> to Monday: …"*, naming the patient because by then they are on the next item. The row
+  records `mirror_error`.
+- The copy runs **in the browser**, as the signed-in rep, and **only the resolver's** browser runs
+  it. `appendNoteToRecord` stamps the signed-in person's initials, so a copy made from somebody
+  else's browser would sign the note with the wrong name. It also keeps the audit attribution every
   other note path has. It then reports `mirrored_to` back to the log.
 
-**5.4 Undo vs. the Monday copy (folded into §9.2 Q1).**
+**5.4 When the copy happens (decided — §9.1 D5: when the rep moves on).**
 - Monday notes are append-only, and Monday has no compare-and-set, so a copied line can't be taken
-  back.
-- **Copy when the rep moves on (§9.2 Q1 = A, recommended).** The copy runs when the row stops being
-  sticky — the moment the rep opens another item, which is also when Undo stops being offered.
+  back. That is why the copy waits.
+- **It runs when the row stops being sticky** — the moment the rep opens another item or leaves the
+  Inbox, which is also when Undo stops being offered.
   - An Undo before then leaves nothing on Monday. That matters most for the wrong-patient case: a
     note resolved against the wrong item, caught while it is still sticky, never reaches that
     patient's record.
-  - If the tab closes first, the log row is still unmirrored (`mirrored_to` null, no
-    `mirror_error`), and that rep's browser copies it the next time Communications opens. The note
-    is never lost; it is only late.
-- **Copy immediately (§9.2 Q1 = B).** An Undo afterwards leaves the line on Monday, and the undo toast
-  says so. The argument for it: a *Called* note records a conversation that happened, so undoing
-  means "this still needs attention", not "the call didn't happen".
+  - **The server refuses an Undo once the note is copied,** so the two can never disagree: a
+    Communications line on Monday always means a resolution that stands.
+- **If the tab closes first,** the log row stays uncopied (`mirrored_to` null, no `mirror_error`),
+  and that rep's browser copies it the next time Communications opens. The note is never lost; it
+  is only late.
+  - A copy made more than 15 minutes after the resolve says when the resolve happened —
+    `… Communications: Called (Sep 23, 2:10 PM) — told her it ships Friday —KT` — because the
+    stamp's own time is when the line was written.
+- **Two open tabs can't copy it twice.** The browser claims the note (`POST /comms/mirror`, a
+  compare-and-set on `mirror_claimed_at`) before it writes to Monday.
+  - A claim that never reports back is released after 10 minutes. That can, rarely, repeat a line on
+    Monday; a repeated line is a smaller harm than a missing one, and `commsNoteLine()` guarantees a
+    repeat can't be read as anything but a note (§5.5).
+- **The health route counts the notes still waiting** (§4.5), so notes from a rep who never came
+  back to Communications show up there instead of sitting unnoticed.
 
 **5.5 ⚠️ A comms note must never be read as a stage's own structured line.** Two of these columns are
 *parsed*.
@@ -551,8 +692,8 @@ note-less *No action needed*.
 - They can't be edited or deleted afterwards — append-only, like every other note path. A correction
   is a new note.
 - A *Called* resolution does **not** bump Welcome Call's Call Attempts or Patient Intake's attempt
-  counter. A patient reaching out and us calling back is not an outreach attempt, and the mockup
-  never writes one (§9.3).
+  counter, and neither does a *Left voicemail*. A patient reaching out and us calling back is not an
+  outreach attempt, and the mockup never writes one (§9.3).
 
 **5.9 Rules the server enforces too.**
 - `called` without a note → 400.
@@ -655,31 +796,36 @@ is heavier than today's.
 
 Each phase lands on its own, and nothing is removed before phase 3.
 
-**Phase 0 — the four open questions** (§9.2). Phase 1 can start without them: the 24-hour rule
-(Q3) is one function in the rules module, settled before anyone sees a list. Phase 2 needs Q1 and
-Q3, phase 3 needs Q2, and phase 4 needs Q4.
+**Phase 0 — done.** Every question is answered (§9.1).
 
 **Phase 1 — the gateway, in shadow mode, with no UI (M).**
-- Build all of §4.2–§4.5, behind `COMMS_INBOX_ENABLED`.
+- Build all of §4.2–§4.5 and §4.9, behind `COMMS_INBOX_ENABLED`.
 - Run it for a few business days and *measure before anyone sees it*:
   - items opened per day, by kind;
   - how many are unmatched;
   - how many are replies to automated texts;
   - how many are doctor offices, vendors or spam.
+- **One test call** from the line to a staff phone that sends it to voicemail. Does RingCentral log
+  the call as connected, and is there a recording? That settles whether *Called* lights up after a
+  message was left, and whether *Left voicemail*'s Listen has a recording to play (§4.4).
 - Compare its open set against what the hub's lists show.
 - Wire up the health route and `calls-monitor`.
 - **Tests:**
-  - the rules: open · reopen · the cover race · 409 · suggestion · grouping · household · over 24h ·
-    undo · left VM;
-  - the missed-call parity test;
+  - the rules: open · reopen · the cover race · 409 · suggestion · grouping · household · undo · left
+    VM (it never closes, and its call link finds the nearest call or nothing);
+  - the weekend clock: a Friday-evening arrival, a weekend arrival, and both daylight-saving weekends;
+  - the Monday-copy outbox: two tabs claiming one note, a stale claim, and Undo refused once copied;
+  - the missed-call parity test, and the call-to-voicemail join's;
   - the no-plaintext-number source scan.
 
 **Phase 2 — the Inbox (L).**
 - Add an **Inbox rail as the hub's default**. Phone, Text and Fax stay untouched.
 - Build:
   - the list;
-  - the item timeline, reusing the thread;
-  - the resolve bar with its inline notes — the log, plus the Monday copy if §9.2 Q1 is a yes (§5);
+  - the item timeline, reusing the thread and read from the archives, with Play on calls, voicemails
+    and photos (§4.6, §4.9);
+  - the resolve bar with its inline notes and the *Left voicemail* button (§4.4);
+  - the Monday copy when the rep moves on (§5.2–§5.4);
   - unmatched → find → add the number to the patient, or link it (§6);
   - the header badge.
 - **Prerequisite:** anchor `isResetLine` (§5.5).
@@ -694,17 +840,22 @@ Q3, phase 3 needs Q2, and phase 4 needs Q4.
 - Unread is retired: Texts becomes All / Received / Sent and the voicemail list drops Unheard
   (§9.1 D4).
 - Dial attribution.
-- The *Left voicemail* button, if §9.2 Q2 = A.
 
 **Phase 4 — the rest (L).**
 - The right pane becomes the embedded patient screen, carrying §7's five jobs.
-- The SLA card, if §9.2 Q4 is a yes, once the log has a few weeks in it.
+- **The SLA card as drawn** (§9.1 D8), once the log has a few weeks in it. Reports & Metrics shows it
+  in place of *"No reports available yet"*.
+  - *Left voicemail* appears on it as attempts, beside the resolution counts and in the per-rep
+    table — never counted as a resolution.
+  - The rest of what the handoff specifies for that page — Katie's tracker embedded and the pipeline
+    numbers (§5.46b) — stays unbuilt. The card doesn't change that.
 
 **Phase 5 — optional.**
+- The SLA card's footnote views — by week, by stage, and a trend line — from the same log (§9.3).
 - Capture through `message-sync` or a webhook instead of polling.
 - The manager sidebar contact marks switch to "unresolved". Today they show "who spoke last", so the
   two screens will disagree by design until then.
-- A count on the dashboard's Communications bar. ⚠️ That is a §5.8 counting-contract change, and
+- A count on the dashboard's Communications bar. ⚠️ That is a CLAUDE.md §5.8 counting-contract change, and
   both baseline generators would need to reach the gateway.
 
 ## 9. Decisions and questions
@@ -717,6 +868,10 @@ Q3, phase 3 needs Q2, and phase 4 needs Q4.
 | D2 | `Mine \| All patients` | *"dont integrate that"* | Not built. Everyone works one list — which is also the §5.13 / §5.30 *no ownership* rule. |
 | D3 | Swapping the right pane for the patient screen | *"incldue the switcher for shared numbers and the other four jobs"* | Swapped in phase 4, carrying all five jobs (§7). The draft had proposed dropping the per-stage call detail; it stays. |
 | D4 | Retiring Unread | *"that makes sense"* | Below. |
+| D5 | Should a resolve note also go into the patient's Monday notes? | *"1A"* — yes, when the rep moves on | The note is saved to the log the moment the rep resolves, and copied into the patient's notes on the board they're on now when the rep opens their next item. An Undo before then leaves nothing on Monday; a closed tab is caught up the next time that rep opens Communications (§5.2–§5.4). |
+| D6 | A callback goes to voicemail — what does the rep press? | *"2A — and voicemail should be in the timeline to listen to since we record them"* | A fourth button, *Left voicemail*: it logs the attempt, keeps the item open with its clock running, and counts as an attempt in the report. Voicemails play in the timeline from our archive (§4.4, §4.9). |
+| D7 | Do weekends count toward the 24 hours? | *"3B"* | Saturday and Sunday, Eastern, don't count. A Friday 6 PM text reads *Waiting 15h* at 9 AM Monday and turns red at 6 PM Monday. One clock for the screen, the red flag and the report; holidays count like weekdays (§4.4). |
+| D8 | Should Reports & Metrics show the communications report? | *"4A"* | The *Communications SLA · 24 hours* card, as drawn and per-rep table included, in place of *"No reports available yet"*. Anyone with the Reports tab sees it. Phase 4 (§8). |
 
 **D4, precisely** — my reading of *"Retiring Unread"*; say so if the voicemail half should stay.
 - **Goes:**
@@ -729,76 +884,23 @@ Q3, phase 3 needs Q2, and phase 4 needs Q4.
   - Opening a message still marks it read in RingCentral, and the right-click read/unread stays.
     Reps also work this line in the RingCentral desktop app, which shows that flag (§5.28).
 
-### 9.2 Open — four questions
+**D6, precisely** — my reading of *"voicemail should be in the timeline to listen to since we record
+them"*; say so if only one half was meant. Both kinds play:
+- **A voicemail a patient leaves us** plays from `voicemail_archive`, with its transcript — so it is
+  still there after RingCentral deletes its own copy at about 30 days.
+- **The message the rep left** is inside the recording of their call, because calls are recorded in
+  both directions. The *Left voicemail* row plays that call's recording (§4.4).
+  - ⚠️ That assumes a call answered by the patient's voicemail box gets recorded like any connected
+    call. It is reasoned, not measured; phase 1's test call settles it (§8).
 
-Each is one real situation, what the screen does under each answer, and my recommendation. Answer
-with a number and a letter, e.g. *1A 2A 3B 4A*.
+### 9.2 Open — none
 
-**Q1. Should a resolve note also go into the patient's Monday notes?**
+The four follow-ups were answered on 2026-09-23 as *1A 2A 3B 4A* (D5–D8 above). What each option
+meant is in the previous version of this file (commit `ffbb589`).
 
-> Katie calls Maria back, resolves the item as **Called**, and types *"told her the order ships
-> Friday."*
-
-- **A — yes, when Katie moves on (recommended).** The line goes into Maria's notes on the board
-  she's on now — `[Sep 23, 2026, 2:10 PM] Communications: Called — told her the order ships Friday —KT`
-  — when Katie opens her next item. An Undo before then leaves nothing on Monday. If Katie closes
-  the tab first, it's added the next time she opens Communications.
-- **B — yes, immediately.** Added the moment she resolves. If she then presses Undo, the line stays
-  in Maria's notes.
-- **C — no.** The note stays in the inbox only: on the item's timeline and in the report. A rep
-  opening Maria's stage page tomorrow won't see it.
-
-Under A or B, a *No action needed* with no note writes nothing, and an unknown number — or a patient
-whose records are all completed — keeps the note in the inbox only (§5).
-
-**Q2. A callback goes to voicemail. What does the rep press?**
-
-> A patient texts. Katie calls back, gets voicemail and leaves a message. The mockup's written
-> rules have a *Left VM* button, but its screen never draws one.
-
-- **A — a fourth button, "Left voicemail" (recommended).** It adds *Left voicemail · Katie · 2:10 PM*
-  to the timeline and keeps the item unresolved, with the 24-hour clock still running. The report
-  counts it as an attempt.
-- **B — no button.** The unanswered call already shows on the timeline from the phone log; the item
-  simply stays unresolved.
-
-Either way, a callback that didn't connect won't pre-highlight *Called* (§4.4).
-
-**Q3. Do weekends count toward the 24 hours?**
-
-> A patient texts Friday at 6 PM. Nobody works the weekend. It's now Monday, 9 AM.
-
-- **A — every hour counts, as the mockup draws it.** The row reads *Waiting 2d 15h* in red, and the
-  report counts it as missed.
-- **B — Saturday and Sunday don't count (recommended).** It reads *Waiting 15h*, and turns red at
-  6 PM Monday.
-- **C — only working hours count (9–5 ET, Monday to Friday).** It reads *Waiting 0h*, and turns red
-  at 5 PM Wednesday, after 24 working hours.
-
-The wait on screen, the red flag and the report all use the same clock. Nothing in the app knows
-holidays (there is no holiday list anywhere in `src/`), so a holiday counts like a weekday under any
-answer.
-
-**Q4. Should the Reports & Metrics tab show the communications report?**
-
-Reports & Metrics is the tab in the top bar. On 9/22 you had it emptied, so today it only says
-*"No reports available yet"* (§5.46b). The new mockup puts one card there, *Communications SLA ·
-24 hours*:
-- four numbers:
-  - unresolved right now, and how many are past 24 hours;
-  - the share resolved within 24 hours;
-  - the median time from a patient's message to *resolved*;
-  - how items were resolved (e.g. *Called 12 · Texted 30 · No action needed 8*);
-- a table with one row per rep: how many they resolved, their share within 24 hours, and their
-  median time;
-- an **Open breaches** button that jumps to the Inbox's *Over 24h* list.
-
-The options:
-- **A — yes, as drawn (recommended).** Reports shows this card in place of *"No reports available
-  yet"*. Anyone with the Reports tab sees it, per-rep table included.
-- **B — yes, but team totals only.** The four numbers, no per-rep table.
-- **C — not yet.** Reports stays empty. Everything is recorded from the first day either way, so the
-  card can be added later with its full history.
+Two things are still to be **measured**, not decided. Both are in phase 1 (§8):
+- whether a callback that reached voicemail is logged as connected, and recorded (§4.4);
+- how many items a day are doctor offices, vendors, or replies to automated texts (§9.3).
 
 ### 9.3 Defaults — no answer needed
 
@@ -811,11 +913,16 @@ Each follows the mockup or a rule the app already has. Say so to change one.
 - **Permissions.** Anyone who can open Communications (`comms`) can resolve. Adding a number to a
   patient's record also needs *Edit profile*, like the phone pencil (§6).
 - **Undo** is shown while the row is sticky, as drawn. The server takes it only from the resolver,
-  within 15 minutes. Nothing can be deleted.
+  within 15 minutes, and not once the note has been copied to Monday (§5.4). Nothing can be deleted.
 - **The resolve log is kept forever**, like the recordings (§5.47). It is the report's history.
 - **The stage pill uses the patient screen's names:** *Medical Necessity*, not the mockup's
   *Medical Evaluation*.
-- **Called doesn't count as a Welcome Call or Intake call attempt.** The mockup never writes one.
+- **Called and Left voicemail don't count as a Welcome Call or Intake call attempt.** The mockup
+  never writes one.
+- **The SLA card's footnote** asks the live build for views *"by week, by stage (the pill), and by
+  rep, with a trend line"*. The per-rep view is the table the card draws, and it ships with the card.
+  The by-week, by-stage and trend views come in phase 5, from the same log: they need weeks of
+  history before they show anything.
 - **Doctor offices, vendors and replies to automated texts open items like anyone else.** That is
   the mockup's rule, and its own sample opens an item on a *"Got it, thank you!"* sent back to a
   reorder text. Phase 1 counts all three before anyone sees the list; revisit then.
@@ -827,6 +934,16 @@ Write these into CLAUDE.md when the feature ships.
 
 - The missed-call verdict in `commsInboxRules` ⇄ `src/lib/callHistory/callHistory.ts` (the parity
   test).
+- The call-to-voicemail join in `commsInboxRules` ⇄ `src/lib/commsHub/callVoicemail.ts` (a parity
+  test too).
+- `countedWaitMs` has **one** copy, on the gateway. The browser only shows the wait it is given, so
+  the screen, the red flag and the report can't drift apart (§4.4).
+- The *Left voicemail* → call link is worked out when the timeline is read, never stored, and fails
+  closed (§4.4).
+- Only the resolver's browser copies a note to Monday, after claiming it, and the server refuses an
+  Undo once it is copied (§5.4).
+- Playback goes through the archives' own routes — `/calls/recording`, `/voicemail/audio`,
+  `/mms/media` — never a new bucket read, so every presigned URL stays audited (§5.47).
 - The own-number exclusion list ⇄ `sms_archive`'s.
 - The hot tick writes each archive **only through that archive's own upsert** — one writer per
   table, so its invariants hold (§5.47's `none` → `pending` rule, among others).
