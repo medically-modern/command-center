@@ -294,43 +294,77 @@ describe("⚠️ viewOthers is opt-in, and only for the people granted it", () =
 
 /**
  * ⚠️ The shipped access.json is the thing the app actually reads, so the grant
- * is asserted against the FILE rather than against a fixture. A config that
- * loses it silently turns the dropdown off for the only two people who have it.
+ * rules are asserted against the FILE rather than against a fixture.
  */
 describe("⚠️ the shipped access.json", () => {
-  /**
-   * ⚠️ Looped over `OPT_IN_ABILITIES` rather than written per ability, so a
-   * THIRD opt-in entry is asserted against the file the day it is declared. The
-   * `viewOthers`-only version of this test passed unchanged when `stageManager`
-   * joined the list, which is the drift it exists to catch.
-   */
   /* ⚠️ A SUBSET check, not an exact one (2026-09-23). access.json is edited
      LIVE from /access and committed straight to main, so pinning the exact
      grant list meant an admin revoking one on the page broke every deploy
      (Brandon's stageManager was turned off at 14:42 that day and CI went red).
-     What matters is the direction that WIDENS access: nobody outside the two
-     named people may hold an opt-in ability. Revoking is always allowed. */
-  const ALLOWED = new Set(["brandon@medicallymodern.com", "josh@medicallymodern.com"]);
+     Revoking is always allowed; only the direction that WIDENS access is
+     checked, and only where Josh has said who may hold the ability. */
 
-  for (const ability of OPT_IN_ABILITIES) {
-    it(`grants ${ability} to nobody but Josh and Brandon`, async () => {
+  /**
+   * ⚠️ Who may hold each opt-in ability, as Josh set it — one entry per ability,
+   * because the two abilities have DIFFERENT rules:
+   *
+   *  · `viewOthers` — Josh and Brandon ONLY (Josh, 2026-09-18: "that's something
+   *    that should ONLY be applied to me and brandon as users"). A grant to
+   *    anybody else contradicts his own rule, so it fails the build.
+   *  · `stageManager` — granted on /access to whoever needs it (§5.41: "Anyone
+   *    else who needs it takes one tick on /access"). Janelle was given it at
+   *    14:45 on 2026-09-23 and Josh confirmed that was deliberate. The old
+   *    Josh-and-Brandon-only check turned that one tick into a failed deploy for
+   *    everybody, for two hours, including an unrelated patient-data fix — a
+   *    deploy gate is the wrong place to police a decision an admin makes on a
+   *    page built for making it.
+   *
+   * ⚠️ The first test below fails for an opt-in ability with NO entry here, so a
+   * third one cannot ship until somebody decides its rule. That is the drift the
+   * old loop over `OPT_IN_ABILITIES` existed to catch (its `viewOthers`-only
+   * predecessor passed unchanged when `stageManager` joined the list).
+   */
+  const GRANT_RULE: Record<string, readonly string[] | "grantedOnAccessPage"> = {
+    viewOthers: ["brandon@medicallymodern.com", "josh@medicallymodern.com"],
+    stageManager: "grantedOnAccessPage",
+  };
+
+  const restricted = OPT_IN_ABILITIES.flatMap((a) => {
+    const rule = GRANT_RULE[a];
+    return Array.isArray(rule) ? [{ ability: a, allowed: new Set(rule) }] : [];
+  });
+
+  it("every opt-in ability has a grant rule — a new one cannot ship unclassified", () => {
+    for (const a of OPT_IN_ABILITIES) {
+      expect(GRANT_RULE[a], `opt-in ability "${a}" has no entry in GRANT_RULE`).toBeDefined();
+    }
+  });
+
+  it("View others' views is still restricted, and to Josh and Brandon", () => {
+    // Guards the classification itself: loosening viewOthers to
+    // "grantedOnAccessPage" would switch its check off without anything failing.
+    expect(GRANT_RULE.viewOthers).toEqual(["brandon@medicallymodern.com", "josh@medicallymodern.com"]);
+  });
+
+  for (const { ability, allowed } of restricted) {
+    it(`grants ${ability} to nobody outside its list`, async () => {
       const cfg = (await import("../../../public/data/access.json")).default as unknown as AccessConfig;
       const granted = Object.entries(cfg.processors || {})
         .filter(([, p]) => p?.perms?.[ability] === true)
         .map(([e]) => e.trim().toLowerCase());
-      expect(granted.filter((e) => !ALLOWED.has(e))).toEqual([]);
+      expect(granted.filter((e) => !allowed.has(e))).toEqual([]);
     });
   }
 
-  it("⚠️ nobody holds an opt-in ability by ACCIDENT — every grant is deliberate", async () => {
+  it("⚠️ nobody holds a RESTRICTED opt-in ability by accident", async () => {
     // An opt-in flag is the only `perms` value that grants rather than removes,
     // so a stray `true` on somebody's row is the one edit that widens access
-    // without anybody choosing it.
+    // without anybody choosing it — for the abilities whose holders Josh named.
     const cfg = (await import("../../../public/data/access.json")).default as unknown as AccessConfig;
     const strays = Object.entries(cfg.processors || {}).flatMap(([email, p]) =>
-      OPT_IN_ABILITIES.filter((a) => p?.perms?.[a] === true && !ALLOWED.has(email.trim().toLowerCase())).map(
-        (a) => `${email}:${a}`,
-      ),
+      restricted
+        .filter(({ ability, allowed }) => p?.perms?.[ability] === true && !allowed.has(email.trim().toLowerCase()))
+        .map(({ ability }) => `${email}:${ability}`),
     );
     expect(strays).toEqual([]);
   });
