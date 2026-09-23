@@ -372,29 +372,23 @@
    the row however long the other labels get. On a narrow pane the row wraps
    and the alternatives drop to their own line, which is the graceful version
    of running out of room rather than four squeezed buttons. */
-.pf-root .exit-group { display:flex; gap:10px; min-width:0; flex:1 1 320px }
-.pf-root .exit-group > .btn { flex:1 1 0; min-width:0; justify-content:center }
-.pf-root .exit-group.alt { flex:0 1 auto; justify-content:flex-end; margin-left:auto }
-.pf-root .exit-group.alt > .btn { flex:0 1 auto }
+/* ⚠️ **ALL FOUR ARE THE SAME SIZE from 2026-09-23** (Josh: *"make the buttons
+   the same sizes right now advance and log call attempt are huge"*). The left
+   pair used to take `flex:1 1 0` inside a `flex:1 1 320px` group, so they grew
+   to fill whatever the right pair left — on a wide pane that made Advance and
+   Log call attempt roughly twice the width of the other two. Every button now
+   sizes to its own label, so the row reads as four buttons rather than two
+   banners and two afterthoughts. */
+.pf-root .exit-group { display:flex; gap:10px; min-width:0; flex:0 1 auto }
+.pf-root .exit-group > .btn { flex:0 1 auto; min-width:0; justify-content:center }
+.pf-root .exit-group.alt { justify-content:flex-end; margin-left:auto }
 
-/* ⚠️ THE SECOND ROW — Save and Finish Later + Propose Stuck (Brandon,
-   2026-09-17: "'Advance' and 'Log Call Attempt' are the main 2 buttons at the
-   end, then 'save and finish later' and 'propose stuck' are kinda like the
-   alternative buttons, so let's make them below and a bit smaller").
-
-   Smaller is the whole point, so it is stated three ways rather than one — a
-   tighter row gap above it, less padding, and a smaller type size — because
-   `.btn` sets its own padding and font and a single override reads as an
-   accident later. They stay equal columns with each other so the pair still
-   lines up under the pair above. */
-/* ⚠️ Smaller is still the point, and it is still stated three ways rather than
-   one — less padding, a smaller type size and no flex growth — because `.btn`
-   sets its own padding and font and a single override reads as an accident
-   later. What changed on 2026-09-22 is only WHERE they sit: the pair moved from
-   its own row beneath to the right-hand end of the same row. */
-.pf-root .exit-group.alt > .btn {
-  padding:7px 12px; font-size:.82rem; font-weight:700;
-}
+/* ⚠️ The right pair's size-down is GONE, and this reverses Brandon's 2026-09-17
+   *"a bit smaller"* on Josh's word (2026-09-23). His earlier point still holds
+   in the LAYOUT rather than the type ramp: Propose Stuck is still in the
+   right-hand group, away from the button a rep presses at the end of every good
+   call, and still wears the rose that says what it does. Restore the smaller
+   pair by putting this block back — it is three declarations, not a rebuild. */
 /* Below the row: two footnotes, two blocks. The Save caption and the attempt
    counter used to share one dot-joined line and read as a run-on sentence.
    The counter is the dynamic one, so it's a chip — quiet while zero, amber

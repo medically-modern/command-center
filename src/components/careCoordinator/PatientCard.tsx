@@ -59,12 +59,19 @@ const PILL_TONE: Record<PillTone, string> = {
 };
 
 /** A pill. Blank values never reach here — `PillRow` renders an em dash instead. */
-export function Pill({ children, title, tone = "neutral" }: { children: ReactNode; title?: string; tone?: PillTone }) {
+export function Pill({ children, title, tone = "neutral", iconPad = false }: {
+  children: ReactNode; title?: string; tone?: PillTone;
+  /** Reserve room at the right edge for a corner glyph. ⚠️ Padding only —
+   *  never a height change, or this slot's caption drops below every other
+   *  slot's and Brandon's alignment fix comes straight back. */
+  iconPad?: boolean;
+}) {
   return (
     <span
       title={title}
       className={cn(
         "inline-block max-w-full truncate rounded-full border px-[7px] py-0.5 text-[11px] font-medium leading-tight",
+        iconPad && "pr-[15px]",
         PILL_TONE[tone],
       )}
     >
@@ -88,7 +95,21 @@ export function Pill({ children, title, tone = "neutral" }: { children: ReactNod
  * either.
  */
 /** A pressable pill, per slot. See `PatientCard`'s `pillActions`. */
-export type PillActions = Partial<Record<PillSlotKey, { onClick: () => void; title: string }>>;
+export type PillActions = Partial<Record<PillSlotKey, {
+  onClick: () => void;
+  title: string;
+  /**
+   * A glyph in the pill's top-right corner (Brandon, 2026-09-22: *"with a
+   * little photo icon in top right of the pill to designate that it was
+   * assigned based on a photo upload"*).
+   *
+   * ⚠️ It is positioned OVER the pill's corner and paired with `iconPad`, so
+   * it can never cover the label. Rendering it inline would be truncated away
+   * by the pill's own `truncate` on exactly the long carrier names — the ones
+   * most likely to have come off a photo.
+   */
+  icon?: ReactNode;
+}>>;
 
 export function PillRow({ slots, variant, actions }: {
   slots: PillSlots; variant: PillVariant; actions?: PillActions;
@@ -107,7 +128,11 @@ export function PillRow({ slots, variant, actions }: {
               ? (() => {
                   const action = actions?.[slot.key];
                   const pill = (
-                    <Pill title={action ? action.title : `${slot.field}: ${value}`} tone={pillTone(slot.key, value, variant)}>
+                    <Pill
+                      title={action ? action.title : `${slot.field}: ${value}`}
+                      tone={pillTone(slot.key, value, variant)}
+                      iconPad={!!action?.icon}
+                    >
                       {shortLabel(value)}
                     </Pill>
                   );
@@ -132,9 +157,17 @@ export function PillRow({ slots, variant, actions }: {
                            below every other slot's. A flex container has no
                            strut, so the button is exactly as tall as the pill
                            and the caption row re-registers. */
-                        className="inline-flex max-w-full rounded-full underline decoration-dotted underline-offset-2 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="relative inline-flex max-w-full rounded-full underline decoration-dotted underline-offset-2 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {pill}
+                        {action.icon && (
+                          <span
+                            aria-hidden
+                            className="pointer-events-none absolute right-[3px] top-[2px] leading-none text-current opacity-70"
+                          >
+                            {action.icon}
+                          </span>
+                        )}
                       </button>
                     )
                     : pill;

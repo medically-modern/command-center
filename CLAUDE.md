@@ -3746,6 +3746,108 @@ Files: `lib/careCoordinator/{workflow,pills,mondayApi}.ts` (+ `intakeBlocker.tes
 `components/masheke/mmKit.tsx`, `components/welcomeCall/PatientActivityCard.tsx`,
 `components/copyPhoneScope.test.ts`, `pages/CareCoordinatorPage.tsx`.
 
+### 5.30h The carrier dropdown, and three follow-ups (Sep 2026)
+Brandon's bullet 2 from 2026-09-22, built on Josh's 2026-09-23 decision, plus the three notes he
+sent with it. **No board change; app only.**
+
+⚠️⚠️ **THIS IS THE DASHBOARD'S SECOND WRITE** (§5.30's read-only line; `callAttempt.ts` was the
+first). It is crossed the same narrow way: `lib/careCoordinator/carrierAssign.ts` holds the RULE
+and calls **`profile/mondayWrite.writeBenefitsInputs`**, the profile page's own writer, with the
+member ID passed blank. No new mutation, no advancer, no group move. Two writers for one column is
+§5.31c/§5.31d's failure; calling the existing one from a second screen is what keeps there being one.
+
+**What Brandon asked for:** *"When i click photo upload, i should be able to see the photo, but also
+then assign a general insurance from a drop-down. Once i've assigned it, that general insurance
+should be the pill, instead of 'Photo Upload', with a little photo icon in top right of the pill."*
+**What Josh decided (2026-09-23):** *"click it, it opens the photo, we select an insurance from the
+drop down of general insurance, it writes to monday only the general insurance, doesnt run a stedi
+check, this is just an ease of access thing."*
+
+⚠️⚠️ **IT DELIBERATELY DOES NOT RUN THE CHECK, and that reverses §5.30f's "skip".** General
+Insurance `color_mm24ap4j` is one of the FOUR inputs Stedi reads off the item — name, DOB, this, and
+the working Member ID `text_mm4t8gbq` (§5.11) — and the member ID is not on the card photo and is not
+on this dashboard. §5.30f declined the dropdown on exactly that ground (a carrier with no member ID
+and no re-run arms the next check to fail on an unverified payer — **Savannah French**, `AAA 73`,
+twice). What changed is the scope, not the argument: recording the carrier is now explicitly NOT a
+benefits step. The dialog says so on screen, and `carrierAssign.test.ts` scans the module for
+`triggerStediRun` · `writePatientProfile` · `verifyProfileWritten` · `memberIdWorking` and fails on
+any of them. **Never widen this to run the check** — the member ID is still nowhere near this screen.
+
+⚠️⚠️ **THE REFUSAL RUNS BEFORE THE WRITE.** `writeBenefitsInputs` resolves the label to an index and
+**skips the column silently** when it cannot (`if (generalInsurance && gi !== undefined)`), so an
+unresolvable carrier comes back a clean, resolved promise having written nothing and the dialog
+would close green over an unchanged board. Same trap `unwritableDoctorFields` (§7) and
+`phoneRejectionReason` (§5.32d) exist for. ⚠️ Checked against the **live** index (§5.33): a write to
+a label id a column does not have is taken at HTTP 200 and written nowhere, so a hardcoded map
+silently drops any payer added on monday since — the failure this refusal has to catch rather than
+reproduce. A board that could not be read falls back to the hardcoded map, never to refusing
+everything.
+
+⚠️ **The pill changing to the carrier costs no code.** `pills.intakeInsurance` already prefers a real
+General Insurance over the photo note, so writing the column IS the pill change. Do not add a second
+rule: that same function is what `intakeFilter.facetValue` derives the Insurance facet's options
+from (§5.30e), and the option and the pill must stay one string.
+
+⚠️ **The gate is the FILE, not the pill's words.** It used to also require the pill to read "Photo
+upload" — right while the press only opened the photo, wrong now that the press is what makes the
+pill stop saying that. Keyed on the words, the pill would go inert on its own next poll: no way back
+to the photo and no way to correct a carrier misread off it.
+
+⚠️ **The photo glyph is DERIVED, not stored** (`carrierFromPhoto`): a carrier on the row **and**
+Insurance Provided Via = "Photo of card". No provenance column was added and none is needed — whether
+a coordinator set it here or a rep read the same photo on the profile page, the carrier came from the
+photo. A session-scoped "I just set it" flag would go quiet the moment they clicked another card
+(§5.19's provenance rule, one board over). ⚠️ Measured in a browser: 10px, 3px from the pill's right
+edge inside a 15px `iconPad`, so it never covers the label — and the caption row stays registered
+across all five slots, which is Brandon's own 9/22 alignment fix and the thing a corner glyph is most
+likely to undo.
+
+⚠️ **ONE dialog, not the global viewer plus a picker.** `openFileViewer` is full-screen, so a
+dropdown on the card underneath would be covered at exactly the moment the coordinator is reading the
+carrier off the photo. ⚠️ The image is **tried and falls back**, never sniffed by filename — these are
+whatever a patient's phone uploaded, and `<img onError>` is the only test that is true of the actual
+bytes; the fallback hands the file to the shared viewer, which has pdf.js behind it. ⚠️ The signed URL
+is resolved **on open**: it expires in an hour, so it cannot ride the list row even if that were free
+(§5.30f's `protected_static` note). ⚠️ A failed save **keeps the dialog open** holding the pick — the
+carrier is on a photo they are looking at right now.
+
+⚠️ **The pill flips immediately via a page-level override**, not a `refetch()`: that is four paged
+monday requests for one one-column write, and a minute of "Photo upload" after a save reads as the
+save not having taken. Written only on a confirmed write and dropped as soon as the board agrees —
+`pruneMessageReadOverrides`' rule (§5.28), never a stored opinion.
+
+**Josh's three follow-ups the same day, all on the INTAKE PROFILE page** (§5.30's two-screens rule —
+*"the red on the main dashboard is fine"*):
+1. **"Already in System" in the LEFT SIDEBAR**, beside the name. ⚠️ It reads **Dup Check Result**, never
+   the Already In System flag: on a partial lead the check is flag-only by design, because writing that
+   column trips automation 7922049614 and empties this queue (§5.21). ⚠️ `COL.dupCheckResult` joined
+   **`LIST_COLUMN_IDS`** for it — the tenth column on a ~1,900-row poll — and `listColumns.test.ts`
+   caught the omission and named the fix, which is what that test is for.
+2. **The phone number dials in the page** — `components/shared/DialPatientDialog`, via
+   `PatientContact`'s opt-in `onCall`. ⚠️ **DIAL ONLY**: this page already owns its attempt step, with
+   its own writer and its own required-note gate, so the popup hands off to it rather than carrying a
+   second form — two dialogs onto one write is what §5.30e records finding on this very page with
+   Propose Stuck. ⚠️ No `<CallOverlay>` (one is mounted app-wide). ⚠️ Every other header still passes
+   nothing and keeps its `tel:` anchor byte for byte; only this page and the dashboard card opt in.
+3. **All four exit-row buttons are the same size** (Josh: *"advance and log call attempt are huge"*).
+   The left pair took `flex:1 1 0` inside a `flex:1 1 320px` group and grew to fill whatever the right
+   pair left. ⚠️ This reverses Brandon's 2026-09-17 *"a bit smaller"*; his LAYOUT point is kept — Propose
+   Stuck is still in the right-hand group, away from the button pressed after every good call. Measured
+   at 900/640/460: all four 44px tall, `11px 20px`, 14.4px, and the row wraps rather than squeezing.
+
+**Keep-in-agreement:** `carrierAssign.carrierFromPhoto` ⇄ `pills.PHOTO_OF_CARD` (the board's own
+answer, one spelling) ⇄ `pills.intakeInsurance`'s switch · `carrierOptions` ⇄
+`boardLabels.payerOptions`, which is what keeps **"Stedi"** out of the picker (§5.33) ·
+`carrierWriteRefusal` ⇄ `writeBenefitsInputs`' own silent skip — the refusal exists because of it ·
+`PillActions.icon` ⇄ `Pill`'s `iconPad`, which is the only thing stopping the glyph covering the
+label · `PatientsSidebar`'s pill ⇄ `profile/dupCheckFlag` ⇄ `LIST_COLUMN_IDS` ⇄
+`listColumns.test.ts`' `SLIM_FIELD_COLUMNS`.
+Files: `lib/careCoordinator/{carrierAssign,pills}.ts`,
+`components/careCoordinator/{InsuranceCardDialog,cards,PatientCard}.tsx`,
+`components/shared/DialPatientDialog.tsx`, `components/profile/PatientsSidebar.tsx`,
+`lib/profile/mondayApi.ts`, `pages/{CareCoordinatorPage,UnverifiedReferralsPage}.tsx`,
+`pages/profile/intake.css` (+ `carrierAssign.test.ts`, 33 tests, six verified to fail when reverted).
+
 ### 5.30g Brandon's 2026-09-22 notes on the Masani dashboard
 Seventeen notes, and two of his diagnoses were wrong in ways that changed the work — both worth
 reading before touching anything here. **No board change; one write added, and one change in
@@ -10885,6 +10987,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The Welcome Call column says "Scheduled 0" for a moment on load | §5.30d — correct since 2026-09-16 only if the amber "Checking Calendly" line is showing with it. No line and Scheduled 0 means `useWelcomeCallBookings.ready` has gone back to latching on the first (empty) address list — `useWelcomeCallBookings.test.tsx` pins it |
 | A patient who clearly gave us insurance shows no Insurance pill | §5.30c · §5.30f — `lib/careCoordinator/pills.ts` `intakeInsurance`. A card photo reads **"Photo upload"** and the pill OPENS the card; **"Not provided"** is deliberately blank. If it is blank for somebody who sent a photo, check `color_mm5zv5pa` is still in `INTAKE_COLS`; if the pill is there but inert, the row has no file on `file_mm5zhy1` (one live row is exactly that) |
 | The Photo upload pill opens an error, or the wrong document | §5.30f — the click resolves the ASSET (`mondayApi.fetchInsuranceCardAsset`), because the file column's own `text` is a `protected_static` link that **302s to a login page** without a monday session. An error means the asset is gone from the item or monday returned no `public_url`; the WRONG file means something went back to `assets[0]` instead of matching the column's asset id. ⚠️ This is the general rule for every file column — read `UnverifiedReferralsPage`'s `FileColumnRow` comment before wiring one up |
+| Setting the carrier from a card photo does nothing / saves green and the board is unchanged | §5.30h — `lib/careCoordinator/carrierAssign.ts`. `writeBenefitsInputs` **skips a label it cannot resolve silently**, so the refusal runs BEFORE the write and names the label; a carrier added on monday since needs the live index (§5.33). ⚠️ It writes General Insurance and nothing else — no Stedi run, deliberately, because the member ID is the other half of that input and is on neither the photo nor this screen |
+| The Insurance pill won't open the photo, or won't change to the carrier | §5.30h — the pill is pressable whenever the row HAS a file (never gated on the words "Photo upload", or the press disables itself). The pill switching to the carrier is `pills.intakeInsurance` preferring a real General Insurance — no second rule, because `intakeFilter.facetValue` reads the same function. A pill still reading "Photo upload" a minute after a save means the page-level override was dropped |
+| The photo glyph covers the label, or the pill captions fall out of line | §5.30h — `PillActions.icon` must be paired with `Pill`'s `iconPad` (15px reserved for a 10px glyph 3px from the edge). Reproduce by MEASURING the caption row across several cards; "Pump path" sitting 2px low is the em-dash slot and is pre-existing on cards with no glyph at all |
+| A phone number still opens the RingCentral app | §5.30h — `PatientContact`'s `onCall` is **opt-in**, and only the Care Coordinator card and the intake profile page pass it. Adding it elsewhere is one prop; the popup is `components/shared/DialPatientDialog`, which **dials only** — a screen that owns its own attempt step must hand off to it rather than grow a second form |
 | A patient a rep has worked is missing from the Care Coordinator dashboard | §5.30f — they are in **Review Profile** now, not an exclusion. `callDone` and `sendNow` were exclusions until 2026-09-18 and between them hid everybody who does not need a call. A Review card prints the **blocker** (`workflow.intakeBlocker`); a BLANK blocker means "nothing this dashboard can see", never "ready to advance" — the authority is `profile/intakeUnlock.evaluateUnlock` on the profile page |
 | A Review Profile card shows no blocker but the profile page won't advance | §5.30f — expected, and the narrower read is deliberate: `cgmInPlay` on the page also consults Provided CGM Preference and CGM Data Awareness, which this dashboard does not carry. Widening it means adding those columns to `INTAKE_COLS`, not special-casing the card |
 | Somebody wants the copy-number button on another screen | §5.30f — it is opt-in (`PatientContact` `showCopy`) and Welcome Call is the only caller, because Katie asked for it there and Brandon asked for it off the Care Coordinator card. Adding a caller is a decision; `copyPhoneScope.test.ts` will fail until this section and the test are updated |

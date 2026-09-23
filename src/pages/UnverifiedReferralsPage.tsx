@@ -99,6 +99,7 @@ import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { IntakeMessages } from "@/components/profile/IntakeMessages";
 // Evaluate's Call + Text buttons, reused as-is.
 import { PatientContact } from "@/components/masheke/mmKit";
+import { DialPatientDialog } from "@/components/shared/DialPatientDialog";
 // The same stamped-note renderer Verified Referrals uses, so the two stages
 // display an identical log.
 import { NoteLog } from "@/components/profile/NoteLog";
@@ -1405,6 +1406,16 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
      patient change — a reason typed for one patient must never be sitting in
      the box armed against the next one. */
   const [attemptOpen, setAttemptOpen] = useState(false);
+  /**
+   * Ringing the patient without leaving the page (Josh, 2026-09-23: *"when i
+   * click on a phone call number it still opens ring central, it should call
+   * via a pop up inside the command center"*).
+   *
+   * ⚠️ The pop-up DIALS and nothing else — this page already owns the attempt
+   * step below, with its own writer and its own required-note gate, and the
+   * dialog hands off to it rather than carrying a second copy.
+   */
+  const [dialOpen, setDialOpen] = useState(false);
   const [attemptNote, setAttemptNote] = useState("");
   /** The follow-up the attempt pushes — next calendar day by default, the
    *  same amount Welcome Call's +1 writes, editable (Brandon, 2026-09-14). */
@@ -2354,6 +2365,13 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     </span>
                     <PatientContact
                       phone={selected.ptPhone}
+                      /* ⚠️ Opt-in: given `onCall`, the number becomes a
+                         <button> that dials the shared registration instead of
+                         an `<a href="tel:">` that hands the call to the
+                         RingCentral desktop app and takes the rep off the page.
+                         Every other header in the app passes nothing and is
+                         byte-identical (§5.30g). */
+                      onCall={() => setDialOpen(true)}
                       textPrefill={textPrefill}
                       textOpen={textComposerOpen}
                       onTextSent={logTextSent}
@@ -3742,6 +3760,16 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                   trap that keeps shadcn panels off this page otherwise).
                   Neither closes on failure: the rep's typed text stays in the
                   box so a retry doesn't mean retyping it. */}
+              {/* ⚠️ Keyed on the patient, so a call popup can never survive a
+                  sidebar click and ring the previous patient's number. */}
+              <DialPatientDialog
+                key={selected.id}
+                open={dialOpen}
+                phone={selected.ptPhone}
+                name={selected.name}
+                onClose={() => setDialOpen(false)}
+                onLogAttempt={() => setAttemptOpen(true)}
+              />
               <Dialog open={attemptOpen} onOpenChange={setAttemptOpen}>
                 <DialogContent>
                   <DialogHeader>

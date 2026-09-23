@@ -16,6 +16,7 @@ import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2, Search, X, Chevron
 import type { Patient } from "@/lib/profile/workflow";
 import { titleCaseName } from "@/lib/profile/workflow";
 import { attemptCount, contactTally, sidebarSections } from "@/lib/profile/sidebarList";
+import { isAlreadyInSystemResult } from "@/lib/profile/dupCheckFlag";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { clearStatusColumn, clearDateColumn, COL } from "@/lib/profile/mondayApi";
@@ -191,6 +192,32 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                                 <p className="text-sm font-medium truncate">{titleCaseName(p.name)}</p>
                                 {hasOverlay?.(p.id) && (
                                   <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title="Unsaved edits" />
+                                )}
+                                {/* Already in System, beside the name (Josh,
+                                    2026-09-23: *"he means in the side bar on
+                                    the left"* — the dashboard card's own pill
+                                    stays as it is).
+
+                                    ⚠️ It reads **Dup Check Result**, never the
+                                    Already In System column. On a partial lead
+                                    the check is deliberately flag-only and
+                                    never files that column, because writing it
+                                    trips automation 7922049614 and takes the
+                                    item out of this queue (§5.21) — so the flag
+                                    is blank for most of the population this
+                                    pill exists for.
+
+                                    ⚠️ Orange, matching the dashboard card, and
+                                    the two read one rule
+                                    (`profile/dupCheckFlag`). It is a routing
+                                    fact, not a blocker. */}
+                                {isAlreadyInSystemResult(p.dupCheckResult) && (
+                                  <span
+                                    className="shrink-0 rounded-full border border-orange-300 bg-orange-100 px-1.5 py-[1px] text-[9px] font-semibold uppercase leading-tight tracking-wide text-orange-800 dark:border-orange-500/40 dark:bg-orange-500/15 dark:text-orange-200"
+                                    title="The duplicate check matched this person to a patient we already serve"
+                                  >
+                                    In system
+                                  </span>
                                 )}
                               </div>
                               {/* The count the list is ORDERED by, on the row
