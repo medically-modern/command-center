@@ -10613,6 +10613,29 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   send. `notesDraftIsolation.test.ts` scans for all three. ⚠️ Keying is required on top of the guard:
   a remounted box starts empty, and the masheke panels reset their lifted `pendingNoteText` on
   `patient.id` for the same reason — a lifted flag that outlives the box blocks the NEXT patient's send.
+- **A DEEP-LINKED patient goes through the overlay, in the same commit as the queue** (MM-1094,
+  2026-09-23). Every role hook re-fetches a `?patientId=` that is not in its own queue on EVERY poll
+  and adds it to the list. The Profile hook `unshift`ed that record RAW (since 2026-05-11), so on
+  `/profile` the rep's unsaved edits were replaced by Monday's copy every 15s — every 4s while a
+  Stedi check polls — and fields blank on the board came back red. Janelle: *"All fields keep
+  resetting and showing as red after I made an update"* (address, gender, insurance, serving).
+  ⚠️ **Only an OUT-OF-QUEUE patient can hit this** — a queue row always went through the overlay —
+  which is why it survived four months. Hers was a *New Form — Partial Leads* patient on `/profile`;
+  the ticket URL is the one the Comms Hub's **Profile** step chip built, which took `board.route`
+  for every Profile Send Off group (most likely how she got there — no other door found in the code
+  builds that URL for a form-group patient). Three fixes: the Profile hook merges the overlay (the
+  as-received snapshot stays PRE-edit); **Final Confirm** had the same raw injection in a SECOND
+  `setPatients` after the list committed, so the patient also blinked out for the length of each
+  fetch — now added before the commit, the masheke shape; and the chip is **`dossier.stepOpenHref`**
+  — a live record opens its GROUP's page (`item.route`, the answer the pane's "Open on" button and
+  Search already gave), a completed one still opens in review mode on the board's page.
+  `hooks/deepLinkOverlay.test.ts` scans all six hooks for the raw shapes; both halves verified to
+  fail on the old code. ⚠️ **`/profile`'s Save Progress is BROWSER-ONLY** (`prof-overlays` in
+  localStorage) — nothing typed there reached Monday, so no board data was overwritten. If she
+  pressed Save Progress, her edits are still in that browser's `prof-overlays`, and **Info
+  Collection reads the same key** (`fetchDetail` applies it) and saves to Monday — so opening the
+  patient on `/unverified-referrals` recovers them even before this deploys. Otherwise they went
+  with the tab.
 - **Toasts are TOP-CENTRE (`App.tsx`), and both other corners are ruled out by past bugs.**
   Bottom-right is where every stage page puts its primary action, so a toast landed on the button
   the rep presses next — adding a note on Evaluate popped "Note saved to Monday" over **Completed
@@ -10914,6 +10937,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A voicemail's audio, or its transcript, from another service | §5.47b — `GET /voicemail/audio?messageId=` (302 presigned, `?mode=proxy` to stream) and `POST /voicemail/archive/query` (also the batched "do we hold these"; pass `messageIds` and it is not date-bounded). Same `CALL_ARCHIVE_SERVICE_TOKEN`, same `last4`-never-the-number posture |
 | A voicemail has no transcript | §5.47b — **that is the expected reading**, not a fault: transcription is a per-account RingCentral feature and it is not established that it is on here (§5.28). `archiveHealth` reports the count so the other explanation (the fetch is broken) is visible; nothing marks a row failed for want of one. A transcript that arrives LATE is still picked up — `transcript_uri` is refreshed on every scan |
 | A bulk download stopped part-way | §5.16 — `lib/callHistory/recordingDownload.ts`. The run is paced at ~24/min against `rcLimiter`'s 40-per-caller budget and retries a throttled file once; the toast reports how many failed. Closing the tab ends it — whatever already saved is kept |
+| A rep's edits "reset" every few seconds / fields go red on their own | §9 — the page is showing a DEEP-LINKED patient that is not in its queue, and its hook re-fetches that record every poll; the injected record must go through the overlay (`hooks/deepLinkOverlay.test.ts`). Compare the URL's `?patientId=` with the page's queue first — an out-of-queue patient is the only one this can happen to. A Comms Hub chip that opens the wrong page is `dossier.stepOpenHref` |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
 | A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Since the 2026-09-03 cutover the six live notes columns are uncapped `text`, so this now means a column still `long_text` (Request Message `long_text_mm4cnw52`, the Escalation Notes, the two Insurance call logs) — `columnType.isCappedColumn` asks the board. Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |

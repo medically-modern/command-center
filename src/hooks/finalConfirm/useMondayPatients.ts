@@ -97,18 +97,17 @@ export function useMondayPatients(injectedPatientId?: string | null) {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
       });
-      // ⚠️ Hide at the POINT OF COMMIT, not where the list was built: everything
-      // in between is an await during which a send can resolve, and a list
-      // filtered earlier would put that patient — Send button and all — back on
-      // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
-      setPatients(visible);
-      persistPatientCache(visible);
 
       // If a patientId was injected (deep-link), fetch that item if not already present
       // ⚠️ A deep link is exempt from this group's queue rules but NOT from an
       // advance made this session — re-injecting a patient we just hid hands
       // back the live Send button the hide exists to take away.
+      // ⚠️ Added BEFORE the commit below and through the overlay, the shape
+      // every other role hook has (MM-1094). It used to be appended raw, in a
+      // second setPatients after the list had already committed without it —
+      // so on every poll the patient vanished from the page for the length of
+      // this fetch (unmounting the form, and any unsaved note with it) and came
+      // back carrying Monday's copy in place of the rep's edits.
       if (
         injectedPatientId &&
         !pendingAdvanceRef.current.has(injectedPatientId) &&
@@ -116,17 +115,24 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       ) {
         try {
           const item = await fetchItemById(injectedPatientId);
-          if (item && mountedRef.current) {
+          if (!mountedRef.current) return;
+          if (item) {
             const injected = mondayItemToPatient(item);
-            setPatients((prev) => {
-              if (prev.some((p) => p.id === injected.id)) return prev;
-              return [...prev, injected];
-            });
+            const o = overlayRef.current.get(injected.id);
+            merged.push(o ? { ...injected, ...o } : injected);
           }
         } catch (e) {
           console.warn("[useMondayPatients] failed to fetch injected patient", e);
         }
       }
+
+      // ⚠️ Hide at the POINT OF COMMIT, not where the list was built: everything
+      // in between is an await during which a send can resolve, and a list
+      // filtered earlier would put that patient — Send button and all — back on
+      // screen (Greptile, PR #54).
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
+      setPatients(visible);
+      persistPatientCache(visible);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
