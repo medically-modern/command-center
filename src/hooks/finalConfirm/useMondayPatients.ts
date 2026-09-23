@@ -67,6 +67,9 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
+  // ⚠️ The board's OWN values, before any overlay is merged in — what
+  // `discardEdits` puts back on screen (the Welcome Call hook's `baseRef`).
+  const baseRef = useRef<Map<string, Patient>>(new Map());
   const mountedRef = useRef(true);
 
   // Patients hidden optimistically because a send advanced them out of this
@@ -93,6 +96,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
+      for (const p of ps) baseRef.current.set(p.id, p);
       const merged = ps.map((p) => {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
@@ -118,6 +122,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
           if (!mountedRef.current) return;
           if (item) {
             const injected = mondayItemToPatient(item);
+            baseRef.current.set(injected.id, injected);
             const o = overlayRef.current.get(injected.id);
             merged.push(o ? { ...injected, ...o } : injected);
           }
@@ -171,6 +176,29 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     removeOverlay(id);
   }, []);
 
+  /**
+   * Reset: drop this patient's local edits AND put the board's values back on
+   * screen, now.
+   *
+   * ⚠️ Reset used to call `clearOverlay` and then `update()` with blanks — the
+   * five Last Bill dates among them. `update` writes the OVERLAY, which every
+   * refetch merges back over the board, so the blanks outlived the "refetching
+   * from Monday" toast, and the Send that followed wrote them: the send writes
+   * all five "<product> SoS Last Bill" columns unconditionally (a blank clears),
+   * so Reset → Send erased every Last Bill date on the patient (§5.32e's
+   * "NEVER EVER should something be deleted").
+   *
+   * Separate from `clearOverlay`, which runs after a SEND and must not flash the
+   * pre-send values back. A patient with no base entry is left alone.
+   */
+  const discardEdits = useCallback((id: string) => {
+    overlayRef.current.delete(id);
+    removeOverlay(id);
+    const base = baseRef.current.get(id);
+    if (!base) return;
+    setPatients((prev) => prev.map((p) => (p.id === id ? base : p)));
+  }, []);
+
   /** Persist the current overlay for a patient to localStorage. */
   const saveOverlay = useCallback((id: string) => {
     const overlay = overlayRef.current.get(id);
@@ -218,5 +246,5 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     setPatients((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
-  return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay, addPatient };
+  return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay, addPatient };
 }

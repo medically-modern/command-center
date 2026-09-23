@@ -105,6 +105,11 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
+  // ⚠️ The board's OWN values, before any overlay is merged in — what
+  // `discardEdits` puts back on screen. Same device as the Welcome Call hook's
+  // `baseRef` (Greptile, PR #57): deleting an overlay entry does not change what
+  // is rendered, because `patients` holds the MERGED record.
+  const baseRef = useRef<Map<string, Patient>>(new Map());
   const mountedRef = useRef(true);
   // Patients we've already stamped with a Next Action Date this session.
   const stampedRef = useRef<Set<string>>(new Set());
@@ -220,6 +225,10 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
         (p) => matchesTab(p.subStage, activeTab) && !p.proposedStuck,
       );
 
+      // After the backfill and the self-heal above, so the copy Reset restores
+      // carries the dates and flags those loops just wrote.
+      for (const p of allPatients) baseRef.current.set(p.id, p);
+
       const merged = filtered.map((p) => {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
@@ -261,6 +270,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
           const item = await fetchItemById(injectedPatientId);
           if (item) {
             const injected = mondayItemToPatient(item);
+            baseRef.current.set(injected.id, injected);
             const o = overlayRef.current.get(injected.id);
             merged.unshift(o ? { ...injected, ...o } : injected);
           }
@@ -332,6 +342,31 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
     removeOverlay(id);
   }, []);
 
+  /**
+   * Reset: drop this patient's local edits AND put the board's values back on
+   * screen, now — what "Reset — pulled fresh from Monday" says it does.
+   *
+   * ⚠️ `clearOverlay` alone deletes the overlay entry and changes nothing that
+   * is rendered: every list below holds the MERGED patient, so the discarded
+   * edits stayed up until the refetch landed, the Reset's `resetVersion` bump
+   * re-seeded the panel FROM them, and a send in that window wrote them. A
+   * failed refetch made it permanent (Greptile, PR #57, on Welcome Call).
+   *
+   * Separate from `clearOverlay`, which runs after a SEND and must not flash the
+   * pre-send values back. A patient with no base entry is left alone — there is
+   * nothing truer to show, and blanking would invent data.
+   */
+  const discardEdits = useCallback((id: string) => {
+    overlayRef.current.delete(id);
+    removeOverlay(id);
+    const base = baseRef.current.get(id);
+    if (!base) return;
+    const revert = (prev: Patient[]) => prev.map((p) => (p.id === id ? base : p));
+    setPatients(revert);
+    setChaseViewerPatients(revert);
+    setScheduledApptPatients(revert);
+  }, []);
+
 
   const saveOverlay = useCallback((id: string) => {
     const overlay = overlayRef.current.get(id);
@@ -348,5 +383,5 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   }, []);
 
 
-  return { patients, chaseViewerPatients, scheduledApptPatients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay };
+  return { patients, chaseViewerPatients, scheduledApptPatients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay };
 }

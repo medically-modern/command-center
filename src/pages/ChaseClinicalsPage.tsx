@@ -50,7 +50,7 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
   // Manager view (?manager=1): sidebar lists ONLY escalated patients and
   // the panel tucks "Review the Request" behind a collapsed dropdown.
   const isManager = searchParams.get("manager") === "1";
-  const { patients: allChasePatients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("chase", searchParams.get("patientId"));
+  const { patients: allChasePatients, loading, initialLoading, error, refetch, update, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("chase", searchParams.get("patientId"));
   // Role split: parachute role = Clinicals Method "Parachute" OR "Email"
   // (Email rides with Parachute for queueing/cadence but still SENDS by email);
   // fax role = everything else (Fax, blank) so nobody falls through the cracks.
@@ -100,7 +100,7 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
   const resetForNewPatient = () => {
     if (!selected) return;
     clearEvalState(selected.id);
-    clearOverlay(selected.id);
+    discardEdits(selected.id);
     setResetVersion((v) => v + 1);
     toast.success("Reset — pulled fresh from Monday");
     refetch();

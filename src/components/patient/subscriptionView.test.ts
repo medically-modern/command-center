@@ -121,6 +121,33 @@ describe("⚠️⚠️ the form-owned sections are matched by TITLE, so the titl
   });
 });
 
+describe("⚠️⚠️ the send is built on a record read AT THE PRESS, never the one the tab opened with", () => {
+  // The Subscription send writes every board-mirrored column the record holds
+  // (Next Order, Order Type, the sets and quantities, auth ids, Doctor, NPI…),
+  // and `merged` is whatever this tab read when it opened — hours earlier, on a
+  // screen a rep leaves up. Sending it put that morning's values back over
+  // anything written since, with a green toast (2026-09-23).
+  const handleSend = () => {
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    const start = view.indexOf("const handleSend = useCallback(");
+    return view.slice(start, view.indexOf("}, [", start));
+  };
+
+  it("re-reads the board first, and lays only the rep's edits over it", () => {
+    expect(handleSend()).toMatch(/\{\s*\.\.\.\(await readFresh\(\)\),\s*\.\.\.edits\s*\}/);
+  });
+
+  it("never sends `merged`", () => {
+    expect(handleSend(), "the send went back to the record the tab opened with").not.toMatch(
+      /sendPatientToMonday\(\s*merged/,
+    );
+  });
+
+  it("validates what will actually go, not what was on screen", () => {
+    expect(handleSend()).toMatch(/validatePatientForSend\(toSend\)/);
+  });
+});
+
 describe("⚠️ the compact Send is the SAME button, not a second one", () => {
   // The patient screen carries the send inside a one-line bar, so the shared
   // component grew a `compact` size. Every state and the validation list stay

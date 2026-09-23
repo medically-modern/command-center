@@ -60,7 +60,7 @@ const AuthOutstandingPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay } = useMondayPatients("authOutstanding", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("authOutstanding", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -109,10 +109,21 @@ const AuthOutstandingPage = () => {
     update(selected.id, { insurance: next });
   };
 
+  /**
+   * Reset = "discard my local edits and show me what Monday holds". It writes
+   * NOTHING into the overlay.
+   *
+   * ⚠️ It used to `update()` `{ insurance: EMPTY_INSURANCE, notes: "" }` after
+   * `clearOverlay`. The overlay is merged back over the board on every refetch,
+   * so the blanks outlived the "refetching from Monday" toast: the next send
+   * wrote `notes: ""` over the shared Call Reference Notes column, and Add note
+   * appended one line onto `""` and replaced the whole column with it — every
+   * Insurance stage's history for that patient, gone. `discardEdits` restores
+   * the board's own copy instead (`resetDiscardsEdits.test.ts`).
+   */
   const resetForNewPatient = () => {
     if (!selected) return;
-    clearOverlay(selected.id);
-    update(selected.id, { insurance: EMPTY_INSURANCE, notes: "" });
+    discardEdits(selected.id);
     toast.success("Cleared local edits — refetching from Monday");
     refetch();
   };

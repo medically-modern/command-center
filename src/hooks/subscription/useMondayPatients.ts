@@ -52,6 +52,11 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
+  // ⚠️ The board's OWN values, before any overlay is merged in — what
+  // `discardEdits` puts back on screen. Same device as the Welcome Call hook's
+  // `baseRef` (Greptile, PR #57): deleting an overlay entry does not change what
+  // is rendered, because `patients` holds the MERGED record.
+  const baseRef = useRef<Map<string, Patient>>(new Map());
   const mountedRef = useRef(true);
   const isFirstLoadRef = useRef(true);
 
@@ -75,6 +80,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
+      for (const p of ps) baseRef.current.set(p.id, p);
       const merged = ps.map((p) => {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
@@ -85,6 +91,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
           const item = await fetchItemById(injectedPatientId);
           if (item) {
             const injected = mondayItemToPatient(item);
+            baseRef.current.set(injected.id, injected);
             const o = overlayRef.current.get(injected.id);
             merged.unshift(o ? { ...injected, ...o } : injected);
           }
@@ -133,6 +140,25 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     removeOverlayFromStorage(id);
   }, []);
 
+  /**
+   * Reset: drop this patient's local edits AND put the board's values back on
+   * screen, now — what "Cleared local edits" says it does.
+   *
+   * ⚠️ `clearOverlay` alone changes nothing that is rendered — `patients` holds
+   * the MERGED record — so the discarded edits stayed up until the refetch
+   * landed and a Send in that window wrote them; a failed refetch made that
+   * permanent (Greptile, PR #57, on Welcome Call). Separate from `clearOverlay`,
+   * which runs after a SEND and must not flash the pre-send values back. A
+   * patient with no base entry is left alone — blanking would invent data.
+   */
+  const discardEdits = useCallback((id: string) => {
+    overlayRef.current.delete(id);
+    removeOverlayFromStorage(id);
+    const base = baseRef.current.get(id);
+    if (!base) return;
+    setPatients((prev) => prev.map((p) => (p.id === id ? base : p)));
+  }, []);
+
   const saveOverlay = useCallback((id: string) => {
     const overlay = overlayRef.current.get(id);
     if (overlay) { const m = loadOverlays(); m.set(id, overlay); persistOverlays(m); }
@@ -143,5 +169,5 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     return !!o && Object.keys(o).length > 0;
   }, []);
 
-  return { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
+  return { patients, loading, initialLoading, error, refetch, update, clearOverlay, discardEdits, saveOverlay, hasOverlay };
 }

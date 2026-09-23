@@ -317,8 +317,16 @@ describe("the patient screen is READ-ONLY", () => {
     // second and not the first.
     const view = src("src/components/patient/SubscriptionView.tsx");
     expect(view).toMatch(/useAbility\("editProfile"\)/);
-    // The handler refuses before it sends.
-    expect(view).toMatch(/if \(!canEdit\) return;[\s\S]{0,400}sendPatientToMonday/);
+    // The handler refuses before it does anything — before the pre-send
+    // re-read as well as before the send itself (2026-09-23: the send now
+    // re-reads the record first, so the refusal is no longer a few lines above
+    // the write; ORDER inside the handler is the rule, not distance).
+    const start = view.indexOf("const handleSend = useCallback(");
+    const handler = view.slice(start, view.indexOf("}, [", start));
+    const refuse = handler.indexOf("if (!canEdit) return;");
+    expect(refuse, "handleSend no longer refuses without the ability").toBeGreaterThan(-1);
+    expect(refuse).toBeLessThan(handler.indexOf("readFresh("));
+    expect(refuse).toBeLessThan(handler.indexOf("sendPatientToMonday("));
     /* ⚠️ The EDITOR is mounted for everybody from 2026-09-22 (§5.46b) — the
        read-only half of this screen is the same form, inert — so what has to
        be gated is the SEND and the INPUTS, not the mount.
