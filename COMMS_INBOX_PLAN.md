@@ -5,8 +5,10 @@
 > detailed plan for building this and ask any questions on anything that is unclear / seems
 > destructive"*
 
-**Status: DRAFT — nothing is built.** The build waits on the questions in §9. When a phase ships,
-record it in CLAUDE.md (a new §5 section, the way §5.47 recorded the call archive) and mark it here.
+**Status: DRAFT — nothing is built.** Josh answered the five destructive items on 2026-09-23 (§9.1).
+Four questions are still open (§9.2); everything else has a stated default (§9.3). When a phase
+ships, record it in CLAUDE.md (a new §5 section, the way §5.47 recorded the call archive) and mark it
+here.
 
 **Source.** Brandon's `command-center-mockup-REAL-DATA_2.html` (7.7 MB). The spec is the script
 block headed *"COMMUNICATIONS v2 — the Unresolved queue (Brandon + Katie, 2026-09-22)"*, plus the
@@ -43,8 +45,8 @@ The hub list, the header badge, the patient screen and Reports all read from it.
 badge, and the SLA card.
 
 **Build order is additive-first (§8).** The Inbox is *added* as a new default rail, and the current
-Phone / Text / Fax rails stay exactly as they are until the team has used it. Nothing in §9's list of
-destructive or unclear items happens without an answer.
+Phone / Text / Fax rails stay exactly as they are until the team has used it. The destructive items
+were each decided explicitly (§9.1); nothing else destructive is in the plan.
 
 ---
 
@@ -69,7 +71,7 @@ destructive or unclear items happens without an answer.
    *Confirm*. It never resolves anything on its own.
 6. **Left VM.** The header comment says it *"logs an attempt and keeps it open (the 24h clock keeps
    running)"*. ⚠️ **It is not built in the mockup.** There is no button, and its attempts state is
-   read but never written. See Q6.
+   read but never written. Open question — §9.2 Q2.
 7. **Undo.** A row you just resolved stays in the list, greyed with a ✓ ("sticky"), until you open
    another item. While it is sticky, *Undo* puts it back on the unresolved list.
 8. **Everyone works the same list.** The manager summary strip was removed in v2.1. *Unresolved* and
@@ -87,7 +89,7 @@ destructive or unclear items happens without an answer.
 
 **Inbox list:**
 - tabs `Unresolved n` · `Over 24h n` (red) · `All`;
-- `Mine | All patients` — shown only when you have assigned patients (Q5);
+- `Mine | All patients` — shown only when you have assigned patients. **Not built** (§9.1 D2);
 - a search box for name or number;
 - sort: *Longest waiting* (the default) or *Newest*;
 - type chips: *All · Texts · Missed calls · Voicemails*.
@@ -150,7 +152,7 @@ has an open item. If they have none, it shows their last resolution.
 - **Its Call button,** which appends a fake `Called patient · 3:12` row. The live one dials
   through the softphone; the real call-log row arrives on the next capture (§4.2).
 - **`Mine` assignments.** These are set on sample data only; the real-data build has no per-patient
-  owner field (Q5).
+  owner field. Not built (§9.1 D2).
 
 ## 3. Diff — what the mockup asks for vs. what we have
 
@@ -159,20 +161,20 @@ has an open item. If they have none, it shows their last resolution.
 | **Unresolved state, shared by everyone** | Nothing. Read state is RingCentral's `readStatus` — one per message, shared with the RC desktop app. Nothing anywhere records "handled". | **MISSING — the core of the build (§4)** |
 | Inbox: Unresolved / Over 24h / All, search, sort, type chips, stage pill, wait clock | Text tab = conversations + an Unread filter; Phone tab = calls + a voicemail sub-tab with Today / Missed | **MISSING** — the list is new; search and sort exist per tab |
 | Unit = the patient (primary + alternate number folded together) | Unit = one phone number (one RingCentral conversation) | **PARTIAL** — the directory maps number → record (§5.29); the grouping is new |
-| Texts log (All / Received / Sent) | Text tab (All / Unread, New text, mark read/unread, naming progress) | **PARTIAL** — Received/Sent is new; Unread exists and the mockup drops it (Q10) |
+| Texts log (All / Received / Sent) | Text tab (All / Unread, New text, mark read/unread, naming progress) | **PARTIAL** — Received/Sent is new; Unread exists and the mockup drops it — retired (§9.1 D4) |
 | Calls log (All / Inbound / Outbound / Missed) | Phone tab (Today / All / Missed; recordings play + ⤓ + *Download N*; archive playback §5.47) | **PARTIAL** — Inbound/Outbound is new; our recordings go further than the mockup |
 | VMs log | Phone → Voicemail (transcripts, heard/unheard, a call opening the voicemail it left). Since 2026-09-23 the audio and transcripts are also archived (§5.47b) | **HAVE** — ours does more |
 | Fax rail | Fax tab (views, sending office + its patients, read/unread) | **HAVE** — v2 doesn't change it |
 | One timeline per item: texts + calls + VMs + resolution dividers | Separate pieces: `ConversationThread`, `VoicemailDetail`, call rows. A call that left a voicemail stacks the VM above the thread | **MISSING** — a new component built from the existing pieces |
 | Composer under the timeline | `ConversationThread`'s composer: opt-out guard, delivery-failure note (§5.5), MMS, Can Text | **HAVE** — reuse it, never copy it |
 | Resolve bar: wait + Called(note) / Texted / No action; suggestion; sticky + Undo; optional note | — | **MISSING** |
-| Left VM (logs an attempt, stays open) | — (the mockup doesn't build it either) | **UNCLEAR** (Q6) |
-| Right pane = the patient screen's main column + Open Profile Page | `PatientDossierPanel`: stage path, writable notes, every stage's notes, per-stage call detail, household switcher, find-without-writing, Open profile page | **DIFFERENT** — already flagged in `DIFF_2026-09-22.md` §14 (§7 here) |
-| Unmatched → find → **add the number to the patient** (alternate or primary) | `DossierSearch` finds and shows the profile and **writes nothing** — deliberately (§5.28) | **NEW WRITE — destructive** (§6, Q4) |
-| `Mine \| All patients` | No per-patient owner exists anywhere. §5.13 and §5.30 record *no ownership* | **CONFLICT** (Q5) |
+| Left VM (logs an attempt, stays open) | — (the mockup doesn't build it either) | **UNCLEAR** (§9.2 Q2) |
+| Right pane = the patient screen's main column + Open Profile Page | `PatientDossierPanel`: stage path, writable notes, every stage's notes, per-stage call detail, household switcher, find-without-writing, Open profile page | **DIFFERENT** — swap approved, carrying all five jobs (§7, §9.1 D3) |
+| Unmatched → find → **add the number to the patient** (alternate or primary) | `DossierSearch` finds and shows the profile and **writes nothing** — deliberately (§5.28) | **NEW WRITE — approved** (§6, §9.1 D1) |
+| `Mine \| All patients` | No per-patient owner exists anywhere. §5.13 and §5.30 record *no ownership* | **NOT BUILT** (§9.1 D2) |
 | Header badge = unresolved count | No badge at all (`DIFF_2026-09-22.md` §1 already lists it missing) | **MISSING** |
 | Patient screen: compact resolve bar | `PatientCommsColumn` (Texts thread, Calls button, alternate-number switch, Recent notes) | **MISSING** |
-| Reports: Communications SLA card | Reports & Metrics is deliberately blank — "No reports available yet" (Josh, 2026-09-22, §5.46b) | **MISSING, and it reverses a 9/22 decision** (Q8) |
+| Reports: Communications SLA card | Reports & Metrics is deliberately blank — "No reports available yet" (Josh, 2026-09-22, §5.46b) | **MISSING, and it reverses a 9/22 decision** (§9.2 Q4) |
 | The hub header (dialer, "which calls ring me") | The navy header with a dialer and the ring-preferences bell, plus the bell on a conversation (`WatchCallbackButton`) | **HAVE** — v2 doesn't redraw the header; keep ours |
 | Outbound-call attribution ("We called · Katie") | None: one shared RingCentral extension, so the call log can't say who (§5.13b). `sent_messages` attributes texts only | **MISSING** (small — §4.6) |
 
@@ -181,8 +183,10 @@ has an open item. If they have none, it shows their last resolution.
 - The opt-out guard and the delivery-failure notes (§5.5).
 - MMS attachments.
 - Recordings: *Download N*, and archive playback (§5.16, §5.47).
-- Voicemail heard/unheard, and a call opening the voicemail it left.
-- Mark read/unread — the RingCentral desktop app sees it.
+- Voicemail heard/unheard (the flag and the right-click; the Unheard *filter* is retired, §9.1 D4),
+  and a call opening the voicemail it left.
+- Mark read/unread — the RingCentral desktop app sees it. (The Unread *filter* is retired, §9.1 D4;
+  the flag itself stays in step with RingCentral.)
 - The household switcher, *"N patients share this number"* (§5.28).
 - The per-stage call detail (`stageDetail.ts`) and every stage's notes.
 - The ring-preferences bell and the watch-callback bell.
@@ -294,7 +298,8 @@ comms_inbox_runs (...)                  -- the *_runs ledger every sync module h
 
 - ⚠️ **There is no phone-number column. HMAC + last4 only.**
   - That is the one property bounding every PHI table on this pool (§5.47).
-  - A source-scan test pins it, the way `callArchiveRules.test.mjs` does. See Q1 for the alternative.
+  - A source-scan test pins it, the way `callArchiveRules.test.mjs` does. It is a stated default
+    (§9.3); the alternative — the number stored encrypted — would be a new PHI category.
 - ⚠️ **Resolutions are stored per NUMBER and grouped when read.**
   - A patient's record changes as they move boards — every board makes a new item (§6 of
     CLAUDE.md). A resolution keyed to a Welcome Call item id would be orphaned the day they reach
@@ -340,10 +345,16 @@ directory refreshes daily, stores one row per number, and lets the furthest-alon
 - The UI then shows that, instead of writing a second resolution. Two reps on one item is an
   ordinary afternoon.
 
-**Over 24h** is wall-clock time in the mockup (`864e5` ms). Q7 asks whether weekends should count.
+**Over 24h** is wall-clock time in the mockup (`864e5` ms). §9.2 Q3 asks whether weekends should
+count. Whatever the answer, the wait on screen, the red flag and the report use one clock.
 
 **The suggestion** is the newest outbound event after `openedBy`: an outbound `call_archive` row
 suggests *Called*, an outbound `sms_archive` row suggests *Texted*.
+- ⚠️ **Only a CONNECTED outbound call suggests *Called*** — the same leg rule as the missed-call
+  verdict. This departs from the mockup, whose suggestion also fires on `Called patient · no answer`.
+  *Called* asks *"What did you talk about? (required)"*, so highlighting it after an unanswered
+  callback invites a rep to resolve an item nobody spoke about. The unanswered call still shows in
+  the timeline.
 - ⚠️ **Only an outbound text with a sender may suggest *Texted*** — a row in `sent_messages`, which
   means somebody pressed Send in the Command Center.
 - The reason: the Railway automations (the Day-20 reorder text, the drop-off nudges) text from the
@@ -361,9 +372,10 @@ suggests *Called*, an outbound `sms_archive` row suggests *Texted*.
   - a fax;
   - anything from our own numbers (`RC_SMS_FROM` + `SMS_ARCHIVE_OUR_NUMBERS`, the list
     `sms_archive` already excludes).
-- **An open question:** numbers that aren't patients — Q12.
+- **Numbers that aren't patients** — doctor offices, vendors — open items like anyone else, as the
+  mockup's rule says (§9.3). Phase 1 counts them.
 
-**Left VM** (only if Q6 = yes) is a resolution row with `how = left_vm`. It does **not** move
+**Left VM** (only if §9.2 Q2 = A) is a resolution row with `how = left_vm`. It does **not** move
 `covers_through`, so the item stays open. It shows in the timeline and counts in the SLA as an
 attempt.
 
@@ -378,9 +390,9 @@ except the health route.
 | `GET /comms/inbox/count` | `{open, over}` for the header badge | Postgres |
 | `GET /comms/item?key=` | One item's events and resolutions. Its numbers are resolved **on open** (§4.8) | Postgres, plus one RingCentral or Monday read to resolve the number |
 | `POST /comms/resolve` | Takes `{key, how, note?, seenThrough}`. Answers **409** if it's already resolved, and **400** for `called` without a note — the server enforces what the UI enforces | Postgres |
-| `POST /comms/undo` | Only the resolver, within 15 minutes (Q13) | Postgres |
+| `POST /comms/undo` | Only the resolver, within 15 minutes (§9.3) | Postgres |
 | `POST /comms/note` | The optional note after *Texted* or *No action needed* | Postgres |
-| `POST /comms/link` | Links an unmatched number to a patient — inbox-only (§6) | Postgres |
+| `POST /comms/link` | Records *this number is that patient* (§6). Written after the Monday write succeeds, or alone for a link-only pick | Postgres |
 | `POST /comms/dialed` | The softphone reports who dialed which number | Postgres |
 | `POST /comms/state` | Takes `{numbers[]}` and returns that group's state, for a patient screen that already holds the numbers. The `/directory/lookup` posture: nothing is disclosed the caller didn't bring | Postgres |
 | `GET /comms/sla?days=` | The Reports card | Postgres |
@@ -438,8 +450,8 @@ What that means on screen:
 - The full number is resolved **when the item is opened**: from the patient's Monday record when
   matched, otherwise from the RingCentral record by id.
 - Searching by a full number still works, because the gateway hashes what you type.
-- If `···1234` on unknown callers isn't acceptable, Q1 has the alternative: store the number
-  encrypted.
+- If `···1234` on unknown callers isn't acceptable, the alternative is to store the number
+  encrypted — a new PHI category, so it is a decision, not a tidy-up (§9.3).
 
 ---
 
@@ -462,7 +474,7 @@ memory. This is everything that has to be decided about them.
 - That is also the only place a note on an **unmatched** number can live — there is no Monday item
   to write it to.
 
-**5.2 Should notes be copied to Monday? (Q2)** A note that says what was discussed is case history,
+**5.2 Should notes be copied to Monday? (open — §9.2 Q1)** A note that says what was discussed is case history,
 and the person working that patient tomorrow reads the stage's notes, not the inbox. So the default
 proposal:
 - Copy every **non-empty** note on a **matched** patient who has a **live** record.
@@ -483,13 +495,20 @@ proposal:
 - The copy runs **in the browser**, as the signed-in rep. That keeps the audit attribution every
   other note path has. It then reports `mirrored_to` back to the log.
 
-**5.4 Undo vs. the Monday copy (Q3).**
-- Monday notes are append-only, and Monday has no compare-and-set.
-- **Default:** Undo does **not** touch Monday, and the undo toast says so.
-  - The argument: a *Called* note records a conversation that happened. Undoing means "this still
-    needs attention", not "the call didn't happen".
-- **The alternative:** hold the copy until the row stops being sticky. That loses the note if the
-  tab closes first.
+**5.4 Undo vs. the Monday copy (folded into §9.2 Q1).**
+- Monday notes are append-only, and Monday has no compare-and-set, so a copied line can't be taken
+  back.
+- **Copy when the rep moves on (§9.2 Q1 = A, recommended).** The copy runs when the row stops being
+  sticky — the moment the rep opens another item, which is also when Undo stops being offered.
+  - An Undo before then leaves nothing on Monday. That matters most for the wrong-patient case: a
+    note resolved against the wrong item, caught while it is still sticky, never reaches that
+    patient's record.
+  - If the tab closes first, the log row is still unmirrored (`mirrored_to` null, no
+    `mirror_error`), and that rep's browser copies it the next time Communications opens. The note
+    is never lost; it is only late.
+- **Copy immediately (§9.2 Q1 = B).** An Undo afterwards leaves the line on Monday, and the undo toast
+  says so. The argument for it: a *Called* note records a conversation that happened, so undoing
+  means "this still needs attention", not "the call didn't happen".
 
 **5.5 ⚠️ A comms note must never be read as a stage's own structured line.** Two of these columns are
 *parsed*.
@@ -532,7 +551,8 @@ note-less *No action needed*.
 - They can't be edited or deleted afterwards — append-only, like every other note path. A correction
   is a new note.
 - A *Called* resolution does **not** bump Welcome Call's Call Attempts or Patient Intake's attempt
-  counter. A patient reaching out and us calling back is not an outreach attempt (Q11).
+  counter. A patient reaching out and us calling back is not an outreach attempt, and the mockup
+  never writes one (§9.3).
 
 **5.9 Rules the server enforces too.**
 - `called` without a note → 400.
@@ -545,44 +565,63 @@ from a profile follows the same rules.
 
 ---
 
-## 6. Unmatched number → a patient (Q4 — destructive)
+## 6. Unmatched number → a patient (decided — §9.1 D1)
 
-The mockup writes the number onto the patient: *Add as alternate phone*, which **replaces** any
-existing alternate, or *Use as primary phone*. Here is what that runs into.
+The mockup writes the number onto the patient after a pick: *Add as alternate phone*, which
+**replaces** any existing alternate, or *Use as primary phone instead*, which replaces the primary.
+Josh approved both on 2026-09-23 (*"fine"*). This is how it gets built.
 
-**The Alternate Phone column exists only on Welcome Call** (`phone_mm7265hp`) **and Subscription**
-(`phone_mm72r19q`).
-- The Welcome Call phone slots own it, along with Alternate Contact, Can Text and Caregiver
-  (§5.31d).
-- A second writer for that column is the §5.31c / §5.31d failure.
-- Patients on Intake, Medical Evaluation or Insurance have no alternate column at all.
+**The flow** (phase 2).
+1. The rep searches with `DossierSearch` — the same live search as the header's — and picks a
+   patient. The
+   pane shows their profile under the *"Found by search"* banner. **Nothing is written yet.**
+2. The prompt, as drawn: *"Add (xxx) xxx-xxxx to \<patient\>?"* — `[Add as alternate phone]`
+   *(replaces (xxx) xxx-xxxx)* · `Use as primary phone instead` · `Pick someone else`.
+3. The Monday write goes first. Once it succeeds, `POST /comms/link` records *this number is that
+   patient*, so the number's texts and calls move to them in the inbox at once — the link also
+   covers the day until the patient directory's next refresh picks the new number up (§5.29).
+   - If the Monday write fails, the error is shown and nothing else happens; the rep retries.
 
-**Primary Phone** is written by the patient screen's pencil (`updatePatientContact`, §5.46g), and
-that writer:
-- writes the **anchor record only** — other boards keep the old number;
-- **clears Can Text**, which is its rule;
-- refuses a completed record.
+**Through the existing writers only — never a hand-rolled mutation.**
+- *Use as primary* **is** the patient screen's phone pencil (§5.46g): `contactEdit.phoneRefusal`
+  first, then `contactEdit.contactWrites` builds the values and `dossierApi.updatePatientContact`
+  sends them. That path:
+  - writes the **live record** only (the anchor); the next board hop carries the new number forward;
+  - **clears Can Text**, because that answer was about the old line (§5.31d);
+  - refuses a completed record, and refuses a number it can't parse **before** writing.
+- *Add as alternate* reuses the same send — `updatePatientContact` takes values already in the
+  board's own shape — with a sibling rule in `contactEdit` that builds the **Alternate Phone** value
+  from `contacts.CONTACT_COL`. So there is still one mutation for both numbers. It writes that column
+  on the live record and nothing else. That is exactly what the Welcome Call page does when a rep
+  changes that slot's number: `phoneSlots.setSlotNumber` keeps the slot's Patient/Caregiver answer,
+  and the alternate slot has no Can Text of its own.
+  - It never touches **Caregiver Name** or **Caregiver Authorized**. Those are consent records and
+    stay the Welcome Call page's; if its rules need a fresh answer, that page's own send gate asks
+    the rep there (`phoneSlotGaps`).
+  - It runs the same refusal before the write (`phoneRefusal`), since `planPhoneWrite` skips a
+    number it can't parse and would otherwise report success having written nothing.
+- The *(replaces …)* the button carries is read from the live record, so the rep sees what goes.
+- **Gated on Edit profile** (`editProfile`), like the pencil — on the button and in the handler
+  (§5.39h). Without it, the rep can still link the number in the inbox (step 3 alone).
 
-**"(replaces X)" silently discards a real number** — possibly a caregiver's.
+**Where there is no alternate column** — a stated default, §9.3. Alternate Phone exists only on
+**Welcome Call** (`phone_mm7265hp`) and **Subscription** (`phone_mm72r19q`). For a patient whose live
+record is on Profile Send Off, Medical Evaluation or Insurance, the alternate button reads **Link to
+\<name\>**: the history moves to them in the inbox and nothing is written to Monday. The Welcome
+Call rep collects the alternate number on the call, as today. *Use as primary* works on every board.
 
-**Proposal:**
-1. **Phase 2 writes nothing to Monday.** The rep's pick records an **inbox-only link**
-   (`comms_links`): *this number is that patient*. That gives the mockup's result — the history now
-   sits on their profile, in the inbox — immediately and reversibly.
-2. **Later, and only if Q4 = yes:** *"Also save it on their profile"*, as an explicit second action,
-   through the existing writers:
-   - the primary number through the pencil path, behind `editProfile`;
-   - the alternate number through a writer that follows the phone-slot rules, on Welcome Call and
-     Subscription records only;
-   - and it **never** overwrites an existing alternate unless the rep chooses that on screen.
-3. **Clear the name cache on link.** The browser's name cache (`useDirectoryNames`) remembers misses
-   for the whole session, so making a link must drop that number's miss. Otherwise the list keeps
-   saying "Unknown" until a reload.
+**Consequences worth knowing** — none needs an answer.
+- A **replaced** number's past texts and calls leave this patient's timeline once the directory
+  refreshes, because it deletes a number a record has moved off (§5.29). The mockup behaves the
+  same way. Resolutions are per number, so nothing is lost — that history shows under the old number.
+- The browser's name cache (`useDirectoryNames`) remembers misses for the whole session, so a link
+  must drop that number's miss, or the list keeps saying "Unknown" until a reload.
 
-## 7. The right pane (Q9)
+## 7. The right pane (decided — §9.1 D3)
 
 `DIFF_2026-09-22.md` §14 already notes that the mockup's pane is the **patient screen**, not our
-`PatientDossierPanel`.
+`PatientDossierPanel`. Josh decided on 2026-09-23 to swap it, carrying the shared-number switcher
+and the dossier pane's other jobs (§9.1 D3).
 
 **What swapping them takes.** Split `PatientPage` into a route shell and a body component.
 - The shell keeps `useParams` / `useSearchParams`.
@@ -590,21 +629,25 @@ that writer:
   namespaced set of params.
 - It is the same move §5.39c2 found the stage pages had already made.
 
-**What must survive:** four jobs the dossier pane does and the patient screen does not.
-1. **The household switcher** (*N patients share this number*). The composer's attribution depends
-   on it.
-2. **A writable notes box, plus every stage's notes.** The embedded main column has no Recent notes:
-   those live in `.pt-side`, and the hub replaces that column with the thread.
-3. **Find-a-patient without writing** (`DossierSearch`), and its *"Found by search"* banner.
-4. **The per-stage call detail.** This one can go: the info strip plus the read-only stage panels
-   replace it well.
+**What must come with it — all five jobs the dossier pane does and the patient screen does not.**
+The draft proposed dropping the fifth; that is reversed.
+1. **The household switcher** (*N patients share this number*, §5.28). The composer's attribution and
+   the note writer follow the selection, so without it a note or a text can land on the wrong person.
+2. **A writable notes box** — the Comms Hub's composer, through `appendNoteToRecord`. The embedded
+   main column has no Recent notes: those live in `.pt-side`, and the hub replaces that column with
+   the thread.
+3. **Every stage's notes** — the collapsed trail (`stageNoteTrail`).
+4. **Find-a-patient** (`DossierSearch`) when the number is on no board, with its *"Found by search"*
+   banner. It is now the first half of §6's flow.
+5. **The per-stage call detail** (`stageDetail.ts`), including Welcome Call's wide one.
+
+Plus the pane's *Open profile page* button, which the mockup draws too.
 
 **What it costs.** One or two more Monday reads per item opened — the stage panel's full-width
 record, and the subscription view. They are on open and never polled, so it's allowed, but the pane
 is heavier than today's.
 
-**Default:** keep `PatientDossierPanel` through phases 1–3, and swap in phase 4 with the checklist
-above.
+**When.** Phase 4. Phases 2–3 keep today's `PatientDossierPanel`, which already does all five.
 
 ---
 
@@ -612,7 +655,9 @@ above.
 
 Each phase lands on its own, and nothing is removed before phase 3.
 
-**Phase 0 — decisions.** §9.
+**Phase 0 — the four open questions** (§9.2). Phase 1 can start without them: the 24-hour rule
+(Q3) is one function in the rules module, settled before anyone sees a list. Phase 2 needs Q1 and
+Q3, phase 3 needs Q2, and phase 4 needs Q4.
 
 **Phase 1 — the gateway, in shadow mode, with no UI (M).**
 - Build all of §4.2–§4.5, behind `COMMS_INBOX_ENABLED`.
@@ -634,11 +679,11 @@ Each phase lands on its own, and nothing is removed before phase 3.
 - Build:
   - the list;
   - the item timeline, reusing the thread;
-  - the resolve bar with its inline notes — log plus Monday copy (§5);
-  - unmatched → link, inbox-only (§6);
+  - the resolve bar with its inline notes — the log, plus the Monday copy if §9.2 Q1 is a yes (§5);
+  - unmatched → find → add the number to the patient, or link it (§6);
   - the header badge.
 - **Prerequisite:** anchor `isResetLine` (§5.5).
-- Render-check at 1100 / 1440 / dark, with a **long** real list (§7's lesson).
+- Render-check at 1100 / 1440 / dark, with a **long** real list (CLAUDE.md §7's lesson).
 
 **Phase 3 — spread it (M).**
 - The patient screen's compact resolve bar.
@@ -646,14 +691,14 @@ Each phase lands on its own, and nothing is removed before phase 3.
   - Calls and VMs become their own rails;
   - Texts becomes a log with Received / Sent;
   - every log row opens the item.
-- Unread moves to the Texts log (Q10).
+- Unread is retired: Texts becomes All / Received / Sent and the voicemail list drops Unheard
+  (§9.1 D4).
 - Dial attribution.
-- Left VM, if Q6 = yes.
+- The *Left voicemail* button, if §9.2 Q2 = A.
 
 **Phase 4 — the rest (L).**
-- The right pane becomes the embedded patient screen, with §7's checklist.
-- The SLA card in Reports (Q8), once the log has a few weeks in it.
-- *Save the number on their profile*, if Q4 = yes.
+- The right pane becomes the embedded patient screen, carrying §7's five jobs.
+- The SLA card, if §9.2 Q4 is a yes, once the log has a few weeks in it.
 
 **Phase 5 — optional.**
 - Capture through `message-sync` or a webhook instead of polling.
@@ -662,69 +707,119 @@ Each phase lands on its own, and nothing is removed before phase 3.
 - A count on the dashboard's Communications bar. ⚠️ That is a §5.8 counting-contract change, and
   both baseline generators would need to reach the gateway.
 
-## 9. Questions
+## 9. Decisions and questions
 
-Each question comes with the default I'd build if you say "go with defaults". The **bold** ones block
-phase 1 or 2.
+### 9.1 Decided — Josh, 2026-09-23
 
-1. **Phone numbers (PHI).**
-   - **Default:** **don't store them.** HMAC + last4 only, with the full number resolved on open, so
-     unknown callers show `···1234` in the list.
-   - **Alternative:** store them encrypted with a Railway key. Simpler and durable, but a new PHI
-     category.
-2. **Copy resolve notes to Monday?**
-   - **Default:** **yes** — non-empty notes on matched patients with a live record, stamped
-     `Communications`; never a note-less *No action needed*.
-   - **Alternatives:** never copy them; or copy only *Called* notes.
-3. **Undo after a note was copied.**
-   - **Default:** leave the Monday line, and say so in the toast.
-   - **Alternative:** hold the copy until the row stops being sticky.
-4. **Writing numbers onto patient records** (the mockup's add-as-alternate / use-as-primary).
-   - **Default:** **not in phase 2.** Only an inbox-only link; later an explicit *Save to profile*
-     through the existing writers, which never silently replaces a number.
-   - Is replacing an existing alternate ever OK?
-5. **`Mine | All patients`.**
-   - **Default:** **don't build it.** It needs a per-patient owner that no board has.
-   - It also contradicts §5.13 ("it does not matter who picks up") and §5.30 ("no assignment").
-6. **Left VM.** It's in the rules but not in the mockup's UI.
-   - **Default:** **build it,** as a fourth button that logs an attempt and leaves the item open.
-   - Or drop it?
-7. **The 24-hour clock.** The mockup counts wall-clock hours, so every Friday-evening text is a breach
-   by Monday morning.
-   - **Default:** **don't count Saturday and Sunday.**
-   - Or keep wall clock as drawn, or count business hours only?
-8. **Reports & Metrics.** You blanked it on 9/22.
-   - **Default:** add the SLA card in phase 4, as the first real report.
-   - OK to un-blank it?
-9. **The right pane.**
-   - **Default:** keep today's dossier pane until phase 4, then swap to the embedded patient screen,
-     carrying §7's four survivors.
-10. **Unread.**
-    - **Default:** opening an item still marks its messages read in RingCentral, so the desktop app
-      stays in step.
-    - The Inbox has no Unread filter. The Texts log keeps Unread, plus mark read/unread.
-    - The badge counts unresolved items, not unread ones.
-11. **Does *Called* also count as a stage call attempt** (Welcome Call attempts, the Patient Intake
-    counter)?
-    - **Default:** no.
-12. **Numbers that aren't patients** — doctor offices, vendors, spam.
-    - **Default:** they open items like anyone else, labelled with the RingCentral or Doctor Database
-      name, and get resolved *No action needed*.
-    - Or should offices in the Doctor Database skip the queue? (A doctor's office calling back about
-      clinicals is often the most important call of the day.)
-13. **Permissions.**
-    - **Default:** anyone who can open Communications (`comms`) can resolve.
-    - Undo belongs to the resolver, within 15 minutes. Nothing can be deleted.
-14. **Retention.**
-    - **Default:** keep the resolution log forever, like the recordings (§5.47) — it is the SLA's
-      history.
-15. **The stage pill's label.** The mockup says "Medical Evaluation"; our stepper says "Medical
-    Necessity".
-    - **Default:** match the patient screen.
-16. **Replies to automated texts** (reorder confirmations, drop-off nudges) will open items, so
-    "Got it, thanks!" becomes work.
-    - As designed, or exclude them?
-    - **Default:** as designed, and measure it in phase 1 before deciding.
+| # | The item | His answer | What it means for the build |
+|---|---|---|---|
+| D1 | Writing phone numbers onto patient records: *Add as alternate* replaces the existing alternate, *Use as primary* clears Can Text | *"fine"* | Built as the mockup draws it, in phase 2, through the existing writers (§6). *Use as primary* replaces the patient's current primary number, as the mockup does. |
+| D2 | `Mine \| All patients` | *"dont integrate that"* | Not built. Everyone works one list — which is also the §5.13 / §5.30 *no ownership* rule. |
+| D3 | Swapping the right pane for the patient screen | *"incldue the switcher for shared numbers and the other four jobs"* | Swapped in phase 4, carrying all five jobs (§7). The draft had proposed dropping the per-stage call detail; it stays. |
+| D4 | Retiring Unread | *"that makes sense"* | Below. |
+
+**D4, precisely** — my reading of *"Retiring Unread"*; say so if the voicemail half should stay.
+- **Goes:**
+  - the *Unread* filter on the Texts list, which becomes the mockup's *All / Received / Sent*;
+  - the *Unheard* filter on voicemails — the mockup's VMs log has no filter.
+  - The Inbox's *Unresolved* list replaces both as the "needs attention" view.
+- **The header badge** counts unresolved items, never unread ones.
+- **Stays:**
+  - **Fax's** Unread view. v2 doesn't change Fax, and faxes never open items.
+  - Opening a message still marks it read in RingCentral, and the right-click read/unread stays.
+    Reps also work this line in the RingCentral desktop app, which shows that flag (§5.28).
+
+### 9.2 Open — four questions
+
+Each is one real situation, what the screen does under each answer, and my recommendation. Answer
+with a number and a letter, e.g. *1A 2A 3B 4A*.
+
+**Q1. Should a resolve note also go into the patient's Monday notes?**
+
+> Katie calls Maria back, resolves the item as **Called**, and types *"told her the order ships
+> Friday."*
+
+- **A — yes, when Katie moves on (recommended).** The line goes into Maria's notes on the board
+  she's on now — `[Sep 23, 2026, 2:10 PM] Communications: Called — told her the order ships Friday —KT`
+  — when Katie opens her next item. An Undo before then leaves nothing on Monday. If Katie closes
+  the tab first, it's added the next time she opens Communications.
+- **B — yes, immediately.** Added the moment she resolves. If she then presses Undo, the line stays
+  in Maria's notes.
+- **C — no.** The note stays in the inbox only: on the item's timeline and in the report. A rep
+  opening Maria's stage page tomorrow won't see it.
+
+Under A or B, a *No action needed* with no note writes nothing, and an unknown number — or a patient
+whose records are all completed — keeps the note in the inbox only (§5).
+
+**Q2. A callback goes to voicemail. What does the rep press?**
+
+> A patient texts. Katie calls back, gets voicemail and leaves a message. The mockup's written
+> rules have a *Left VM* button, but its screen never draws one.
+
+- **A — a fourth button, "Left voicemail" (recommended).** It adds *Left voicemail · Katie · 2:10 PM*
+  to the timeline and keeps the item unresolved, with the 24-hour clock still running. The report
+  counts it as an attempt.
+- **B — no button.** The unanswered call already shows on the timeline from the phone log; the item
+  simply stays unresolved.
+
+Either way, a callback that didn't connect won't pre-highlight *Called* (§4.4).
+
+**Q3. Do weekends count toward the 24 hours?**
+
+> A patient texts Friday at 6 PM. Nobody works the weekend. It's now Monday, 9 AM.
+
+- **A — every hour counts, as the mockup draws it.** The row reads *Waiting 2d 15h* in red, and the
+  report counts it as missed.
+- **B — Saturday and Sunday don't count (recommended).** It reads *Waiting 15h*, and turns red at
+  6 PM Monday.
+- **C — only working hours count (9–5 ET, Monday to Friday).** It reads *Waiting 0h*, and turns red
+  at 5 PM Wednesday, after 24 working hours.
+
+The wait on screen, the red flag and the report all use the same clock. Nothing in the app knows
+holidays (there is no holiday list anywhere in `src/`), so a holiday counts like a weekday under any
+answer.
+
+**Q4. Should the Reports & Metrics tab show the communications report?**
+
+Reports & Metrics is the tab in the top bar. On 9/22 you had it emptied, so today it only says
+*"No reports available yet"* (§5.46b). The new mockup puts one card there, *Communications SLA ·
+24 hours*:
+- four numbers:
+  - unresolved right now, and how many are past 24 hours;
+  - the share resolved within 24 hours;
+  - the median time from a patient's message to *resolved*;
+  - how items were resolved (e.g. *Called 12 · Texted 30 · No action needed 8*);
+- a table with one row per rep: how many they resolved, their share within 24 hours, and their
+  median time;
+- an **Open breaches** button that jumps to the Inbox's *Over 24h* list.
+
+The options:
+- **A — yes, as drawn (recommended).** Reports shows this card in place of *"No reports available
+  yet"*. Anyone with the Reports tab sees it, per-rep table included.
+- **B — yes, but team totals only.** The four numbers, no per-rep table.
+- **C — not yet.** Reports stays empty. Everything is recorded from the first day either way, so the
+  card can be added later with its full history.
+
+### 9.3 Defaults — no answer needed
+
+Each follows the mockup or a rule the app already has. Say so to change one.
+- **Phone numbers are never stored in plain text** — HMAC + last4, like every table on the messaging
+  database (§4.3, §4.8). An unknown caller shows as *Unknown caller ···1234* in the list; the full
+  number appears once the item is opened.
+- **No alternate column → "Link to \<name\>"** for patients on Profile Send Off, Medical Evaluation
+  or Insurance (§6).
+- **Permissions.** Anyone who can open Communications (`comms`) can resolve. Adding a number to a
+  patient's record also needs *Edit profile*, like the phone pencil (§6).
+- **Undo** is shown while the row is sticky, as drawn. The server takes it only from the resolver,
+  within 15 minutes. Nothing can be deleted.
+- **The resolve log is kept forever**, like the recordings (§5.47). It is the report's history.
+- **The stage pill uses the patient screen's names:** *Medical Necessity*, not the mockup's
+  *Medical Evaluation*.
+- **Called doesn't count as a Welcome Call or Intake call attempt.** The mockup never writes one.
+- **Doctor offices, vendors and replies to automated texts open items like anyone else.** That is
+  the mockup's rule, and its own sample opens an item on a *"Got it, thank you!"* sent back to a
+  reorder text. Phase 1 counts all three before anyone sees the list; revisit then.
+- **Only a callback that connected suggests *Called*** (§4.4).
 
 ## 10. Guards and keep-in-agreement
 
@@ -738,6 +833,11 @@ Write these into CLAUDE.md when the feature ships.
 - `ItemTimeline` and `ConversationThread` share `useConversation` / `Composer`. **Never a second
   copy** of the opt-out, delivery or Can Text guards.
 - Every Monday write of a note goes through `appendNoteToRecord`.
+- Adding a number to a patient goes through `contactEdit`'s rules and the one existing mutation,
+  `dossierApi.updatePatientContact`, with the refusal checked **before** the write — never a
+  hand-rolled mutation, and never a write to Caregiver Name or Caregiver Authorized (§6).
+- The swapped right pane carries all five of §7's jobs. A source-scan test names them, so none can
+  quietly drop in a later tidy-up.
 - `commsNoteLine()` ⇄ the three note parsers: `apptOutreach`, `proposedStuck` and `callIntake`.
 - The badge and the list read the **same** route family, so they can never disagree.
 - No RingCentral call on any list, count or resolve route. A source-scan test pins it — the
@@ -751,4 +851,4 @@ Write these into CLAUDE.md when the feature ships.
   hit.
   - Each hit spends the rate-limit key shared with softphone setup and the call-webhook renewal.
   - Per §5.13b, every provision creates a RingCentral device record.
-  - Queued as a separate task.
+  - Not queued: the task tool timed out when I tried. Worth fixing on its own.
