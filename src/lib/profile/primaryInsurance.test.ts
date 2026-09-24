@@ -44,7 +44,7 @@ describe("suggestPrimary — MA dual gate on Medicaid checks", () => {
   it("MA dual on an eMedNY check → Fidelis Medicare, never Medicaid", () => {
     const sg = suggestPrimary(mk({
       gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid",
-      plan: "ELIGIBLE PCP", medid: "AG02545S", qmb: "Yes",
+      plan: "ELIGIBLE PCP", medid: "ZZ00000Z", qmb: "Yes",
       ma: true, maCarrier: "Wellcare Fidelis Dual Liberty Sync",
       managedMedicaid: "FIDELIS CARE", primaryPayer: "NYSDOH",
     }));
@@ -65,7 +65,7 @@ describe("suggestPrimary — MA dual gate on Medicaid checks", () => {
   it("MA dual + QMB → secondary is NY Medicaid", () => {
     const inp = mk({
       gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid",
-      medid: "AG02545S", qmb: "Yes",
+      medid: "ZZ00000Z", qmb: "Yes",
       ma: true, maCarrier: "Wellcare Fidelis Dual Liberty Sync", primaryPayer: "NYSDOH",
     });
     expect(suggestSecondary(inp)).toBe("NY Medicaid");
@@ -546,7 +546,7 @@ describe("suggestPrimary — MA gate on the unmapped-carrier fallback", () => {
   const jackBoardState = {
     gins: "Wellcare", payerName: "Fidelis Care New York", covtype: "Medicaid",
     plan: "Wellcare Fidelis Dual Liberty Sync MMC (Upstate)",
-    medid: "AG02545S", qmb: "Yes", primaryPayer: "Fidelis Care New York",
+    medid: "ZZ00000Z", qmb: "Yes", primaryPayer: "Fidelis Care New York",
   };
 
   it("Wellcare gins + Fidelis MMC board data + MA columns → Fidelis Medicare", () => {
