@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   suggestPrimary, suggestSecondary, isCoverageActive, primaryPayerMismatch,
-  primaryPayerIsMemberMa, primaryPayerCell, maCobMessage,
+  primaryPayerIsMemberMa, primaryPayerCell, maCobMessage, maFamilyLabel,
   type SuggestionInputs, type StediSnapshot,
 } from "./primaryInsurance";
 
@@ -707,5 +707,68 @@ describe("suggestPrimary — MA member with a Medicare COB record is not a misma
     // Genuine mismatch (Impellizeri) → red, the named payer.
     expect(primaryPayerCell({ ma: false, maCarrier: "", primaryPayer: "United Healthcare Student Resource", payerName: "Fidelis Care New York" }))
       .toEqual({ value: "United Healthcare Student Resource", bad: true });
+  });
+});
+
+// ── Cigna Medicare (HealthSpring), 2026-09-24. HealthSpring is Cigna's Medicare
+//    Advantage brand: its own board label and its own payer (63092 for both the
+//    270 and the 837). Since Brandon's backend change that day, reps run these
+//    checks under General Insurance plain "Cigna" and a failed Cigna 62308 check
+//    is retried on 63092 — so the payer/plan must win over the General label, or
+//    the engine suggests commercial Cigna and the claims go to 62308, which
+//    rejects them. The fixture is the shape of the real HealthSpring 271 in the
+//    replay corpus (covtype "Commercial", MA flag unset — the 271 does not say
+//    Medicare Advantage, so only the payer/plan can). ──
+describe("suggestPrimary — Cigna Medicare (HealthSpring)", () => {
+  const HS = {
+    payerName: "HEALTHSPRING", plan: "HealthSpring True Choice (PPO)",
+    covtype: "Commercial", primaryPayer: "HEALTHSPRING",
+  };
+
+  it("HealthSpring check under General 'Cigna' → Cigna Medicare, not Cigna", () => {
+    const sg = suggestPrimary(mk({ gins: "Cigna", ...HS }));
+    expect(sg?.value).toBe("Cigna Medicare");
+    expect(sg?.confidence).toBe("high");
+    expect(sg?.warnings).toEqual([]);
+  });
+
+  it("HealthSpring check under General 'Cigna Medicare' → Cigna Medicare", () => {
+    expect(suggestPrimary(mk({ gins: "Cigna Medicare", ...HS }))?.value).toBe("Cigna Medicare");
+  });
+
+  it("HealthSpring named only in the plan still → Cigna Medicare", () => {
+    // primaryPayer follows the payer here — a PRP naming a DIFFERENT payer is a
+    // COB mismatch, and the engine rightly withholds the pick for that.
+    expect(suggestPrimary(mk({ gins: "Cigna", ...HS, payerName: "CIGNA", primaryPayer: "CIGNA" }))?.value).toBe("Cigna Medicare");
+  });
+
+  it("the request type doesn't change it", () => {
+    for (const requestType of ["CGM", "Supplies Only", "Insulin Pump + CGM"]) {
+      expect(suggestPrimary(mk({ gins: "Cigna", requestType, ...HS }))?.value).toBe("Cigna Medicare");
+    }
+  });
+
+  it("plain commercial Cigna stays Cigna", () => {
+    for (const payerName of ["CHLIC", "CGLIC", "Cigna Global Health Benefits"]) {
+      expect(suggestPrimary(mk({ gins: "Cigna", payerName, covtype: "Commercial", plan: "OPEN ACCESS PLUS" }))?.value).toBe("Cigna");
+    }
+  });
+
+  it("an MA dual whose MA carrier is HealthSpring → Cigna Medicare, never Medicaid", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", medid: "ZZ00000Z",
+      ma: true, maCarrier: "HealthSpring True Choice (PPO)", primaryPayer: "NYSDOH",
+    }));
+    expect(sg?.value).toBe("Cigna Medicare");
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+  });
+
+  it("maFamilyLabel maps HealthSpring and Cigna MA carriers to Cigna Medicare", () => {
+    expect(maFamilyLabel("HealthSpring True Choice (PPO)")).toBe("Cigna Medicare");
+    expect(maFamilyLabel("HEALTH SPRING")).toBe("Cigna Medicare");
+    expect(maFamilyLabel("Cigna Preferred Medicare (HMO)")).toBe("Cigna Medicare");
+    // The families already mapped are untouched.
+    expect(maFamilyLabel("Humana Gold Plus")).toBe("Humana");
+    expect(maFamilyLabel("Wellcare Fidelis Dual Liberty Sync")).toBe("Fidelis Medicare");
   });
 });

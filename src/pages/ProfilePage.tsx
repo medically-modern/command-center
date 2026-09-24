@@ -1289,7 +1289,7 @@ function ProfileBody(p: BodyProps) {
   // The status itself is no longer shown in the UI (it's folded into the
   // Serving suggestion below), but the column still auto-derives and writes
   // to Monday on send-off. Re-derive whenever Primary Insurance or Request
-  // Type changes: eligible (non-Medicaid/United/Cigna) → Cross-Sell + default
+  // Type changes: eligible (non-Medicaid/United) → Cross-Sell + default
   // Dexcom G7 on the Insulin path; blocked → Couldn't Cross-Sell + Not
   // Serving. Manual "Already Serving CGM" is respected and never overwritten.
   const primaryIns = pt.primaryInsurance;
@@ -1317,7 +1317,6 @@ function ProfileBody(p: BodyProps) {
       if (reason === "jlj") return "No CGM cross-sell: primary insurance is an Anthem JLJ plan — JLJ plans cannot do CGM";
       if (reason === "medicaid") return "No CGM cross-sell: primary insurance is a Medicaid plan";
       if (reason === "united") return "No CGM cross-sell: primary insurance is United, and we choose not to cross-sell United patients";
-      if (reason === "cigna") return "No CGM cross-sell: primary insurance is Cigna, and we choose not to cross-sell Cigna patients";
     }
     return null;
   })();

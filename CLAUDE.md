@@ -8383,6 +8383,19 @@ an unlisted label reads as `""`) and the `PRIMARY_INSURANCE_OPTIONS` `{index,lab
 `welcomeCall`/`finalConfirm`/`subscription` `workflow.ts`. Those need the per-board ids above, not
 159. Extending the §5.33 live-label treatment to them is the better fix and is not yet done.
 
+**Cigna Medicare (HealthSpring, Cigna's Medicare Advantage) was added the same way on 2026-09-24.**
+The full record is `INSURANCE_LABEL_AUDIT.md` §11; its §10.7 + §11.7 are the checklist for the next
+payer. It is a **primary-only** label, deliberately absent from General Insurance (Brandon), and it
+carries a DIFFERENT id on almost every column: Primary 160 · ME 153 · Insurance 152 · Welcome Call 153 ·
+Subscription 160 · Order 155 · Secondary Claims 9 (pinned in `payerLabels.test.ts`). It is a **$0-OOP**
+payer like United and Aetna Medicare (§5.37 — all five copies updated), HCPC group **B**, and it
+cross-sells, as all Cigna now does.
+⚠️ **The board half of the Cigna cross-sell change is still open:** automations 7917886786 / 7917886790
+list plain Cigna (id 12) as a payer that can't be cross-sold, and only Monday's UI can edit them.
+⚠️ `primaryInsurance.carrierFromPayer` reads **HealthSpring in the payer OR the plan**, because reps
+run these checks under General "Cigna" — reading the General label alone suggests commercial Cigna,
+whose claims go to 62308 and are rejected for these members.
+
 ---
 
 ### 5.34 The Welcome Call board joins the Propose Stuck ladder (Sep 2026)
@@ -11704,6 +11717,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 |---|---|
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A payer added on Monday isn't in the Command Center dropdown | §5.33 — Primary/General Insurance read `settings_str` live (`lib/profile/boardLabels.ts` + `hooks/profile/useBoardLabels.ts`); check it isn't in `NON_PAYER_LABELS`. If it is IN the picker but doesn't save, the write lost its live index. And a payer must exist on **all eight** payer columns — ME, Insurance, Welcome Call and Claims are the ones people forget. ⚠️ Monday assigns a DIFFERENT label id per board (this payer is 159/159/159/159 but **108** on ME, **7** on Insurance and Welcome Call, **3** on Claims); hops copy by label text so they are fine, but anything writing an index directly needs that board's own id |
+| Adding a new payer end to end / "where does Cigna Medicare live?" | `INSURANCE_LABEL_AUDIT.md` — §10.7 and §11.7 are the checklist, §11 is the Cigna Medicare record (ids per board, decisions, what is still open). Every column assigns its own id: read `settings_str` back, never carry one board's id to another |
 | The new header is missing, or a page sits under it wrong | §5.39b — the layout switch is in the **settings popover in BOTH layouts** and in the header's gear menu (`lib/shell/layout.ts`, default `redesign`, per browser). A page 56px too tall means it sizes against the viewport and `shell.css`'s `.cc-shell .min-h-screen` / `.h-screen` overrides did not reach it. ⚠️ Reproduce with a REAL, long list — §7 records this being "disproved" against a two-row fixture and reverted |
 | **"I switched to the old view and can't get back"** | §5.39d — open the app with **`?layout=redesign`** appended; it applies and strips itself. That is the route for a page with no settings menu (the patient screen, every stage page). From the home page or `ProcessorView` the settings gear's popover carries the toggle in both layouts. Nuclear option: clear `mm-shell-layout` in localStorage |
 | A redesign control appears over the OLD layout (a stray "Viewing" strip) | §5.39d — `HomeViewHost` is mounted at the ROUTE, outside `AppShell`, so it must gate on the layout itself. Anything else mounted outside the shell has the same trap; `layoutEscape.test.tsx` pins this one |

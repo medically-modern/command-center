@@ -130,6 +130,7 @@ const SHORT: Record<string, string> = {
   "Fidelis Medicaid": "Fidelis Mcaid",
   "Aetna Commercial": "Aetna Comm.",
   "Aetna Medicare": "Aetna Mcare",
+  "Cigna Medicare": "Cigna Mcare",
 };
 
 export function shortLabel(value: string): string {

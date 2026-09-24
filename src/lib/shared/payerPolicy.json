@@ -5,7 +5,7 @@
     "treatment HERE first, then run that script to see which consumers drifted.",
     "Consumers are listed under `consumers` with any deliberate deviations."
   ],
-  "version": "2026-09-17",
+  "version": "2026-09-24",
   "rateSchedule": {
     "NYSHIP": {
       "pump_rate": 4326.7,
@@ -133,6 +133,13 @@
       "monitor_rate": 214.05,
       "sensor_rate": 170.42
     },
+    "Cigna Medicare": {
+      "pump_rate": 4200,
+      "infusion_rate": 25.87,
+      "cartridge_rate": 3.47,
+      "monitor_rate": 214.05,
+      "sensor_rate": 170.42
+    },
     "Midlands Choice": {
       "pump_rate": 5644,
       "infusion_rate": 31.68,
@@ -217,7 +224,8 @@
       "Medicare A&B": "MM bills Medicare directly.",
       "NYSHIP": "Empire Plan covers DME in full, no member cost share.",
       "Aetna Medicare": "Fully covered, no cost share (MM-1071, 2026-08-10).",
-      "United Medicare": "Fully covered, no cost share \u2014 $0 regardless of deductible or benefits data (Josh, 2026-09-17, resolving the reorder-form / profile split)."
+      "United Medicare": "Fully covered, no cost share \u2014 $0 regardless of deductible or benefits data (Josh, 2026-09-17, resolving the reorder-form / profile split).",
+      "Cigna Medicare": "HealthSpring Medicare Advantage. $0 regardless of deductible, matching United and Aetna Medicare (Brandon, 2026-09-24). Brandon's wording was '$0 unless they haven't hit their deductible, same for united and aetna'; Josh's 2026-09-17 rule is $0 no matter what. This follows Josh's rule until he says otherwise."
     }
   },
   "coinsuranceOverrides": {
@@ -241,6 +249,7 @@
     "Wellcare",
     "Humana",
     "Cigna",
+    "Cigna Medicare",
     "Midlands Choice"
   ],
   "aetnaStylePayers": [

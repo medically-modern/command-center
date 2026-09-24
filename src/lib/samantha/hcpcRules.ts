@@ -54,6 +54,7 @@ export type PrimaryInsurance =
   | "NYSHIP"
   // Other
   | "Cigna"
+  | "Cigna Medicare"
   | "Humana"
   | "Wellcare"
   | "Midlands Choice"
@@ -134,6 +135,9 @@ const SUPPLY_HCPC_GROUP_BY_PAYER: Record<PrimaryInsurance, "A" | "B" | "C"> = {
   "Wellcare":                   "B",
   "Humana":                     "B",
   "Cigna":                      "B",
+  // Cigna HealthSpring Medicare Advantage — billed A4224/A4225 like Cigna
+  // (the Stedi backend's 837, 2026-09-24).
+  "Cigna Medicare":             "B",
   "Midlands Choice":            "B",
   // Group C — Aetna only
   "Aetna Commercial":           "C",
@@ -255,7 +259,7 @@ export const PRIMARY_INSURANCE_OPTIONS: PrimaryInsurance[] = [
   "United Medicare", "United Medicaid", "United Commercial", "United Low-Cost",
   "Aetna Medicare", "Aetna Commercial",
   "Medicare A&B", "Medicaid", "NYSHIP",
-  "Cigna", "Humana", "Wellcare", "Midlands Choice", "MagnaCare", "UMR", "Oregon Care",
+  "Cigna", "Cigna Medicare", "Humana", "Wellcare", "Midlands Choice", "MagnaCare", "UMR", "Oregon Care",
 ];
 
 /**
@@ -305,6 +309,9 @@ export const PRIMARY_INSURANCE_INDEX: Record<PrimaryInsurance, number> = {
   "Anthem BCBS Low-Cost (JLJ)": 109,
   "Fidelis CHP": 110,
   "Fidelis NJ": 151,
+  // Created 2026-09-24 and read back from settings_str: 152 here, 153 on
+  // Medical Evaluation AND Welcome Call, 160 on Profile Send Off / Subscription.
+  "Cigna Medicare": 152,
   "United Low-Cost": 10,  // maps to United Commercial on the board
 } as Record<PrimaryInsurance, number>;
 

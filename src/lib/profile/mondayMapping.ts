@@ -212,6 +212,11 @@ export const PRIMARY_INSURANCE_INDEX: Record<string, number> = {
   "Fidelis Commercial": 104, "Anthem BCBS Commercial": 105,
   "Anthem BCBS Medicare": 106, "Stedi": 107, "Anthem BCBS Low-Cost (JLJ)": 108,
   "United Low-Cost": 109, "Fidelis Medicare": 110, "Fidelis NJ": 151,
+  // Cigna HealthSpring Medicare Advantage (2026-09-24). PRIMARY ONLY, and not in
+  // GENERAL_INSURANCE_INDEX below on purpose: reps run these benefit checks under
+  // General "Cigna" and the Stedi backend retries a failed Cigna check on
+  // HealthSpring 63092 (Brandon's 11:18 deploy that day).
+  "Cigna Medicare": 160,
 };
 
 export const GENERAL_INSURANCE_INDEX: Record<string, number> = {

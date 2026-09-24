@@ -198,15 +198,18 @@ export interface Patient {
  *   - Anthem JLJ plans (Medicaid AND Low-Cost): no JLJ plan can do CGM (Brandon, 2026-07-15)
  *   - Medicaid plans: not eligible (rule)
  *   - United plans: business decision — we choose not to cross-sell United patients
- *   - Cigna: business decision — we choose not to cross-sell Cigna patients
+ *
+ * ⚠️ Cigna is NOT blocked — it was until 2026-09-24 ("we choose not to cross-sell
+ * Cigna patients"), and Brandon reversed it that day: "we should cross-sell all
+ * cigna" — plain Cigna AND Cigna Medicare. Profile Send Off automations 7917886786
+ * / 7917886790 carried the same block in their payer lists and must agree.
  */
 export type CrossSellReason =
   | "no-primary"   // Primary insurance not yet selected
   | "eligible"     // Allowed → auto Cross-Sell
   | "jlj"          // Blocked: Anthem JLJ plan (Medicaid and Low-Cost alike)
   | "medicaid"     // Blocked: Medicaid plan
-  | "united"       // Blocked: United business rule
-  | "cigna";       // Blocked: Cigna business rule
+  | "united";      // Blocked: United business rule
 
 export function crossSellReason(primaryInsurance: string): CrossSellReason {
   if (!primaryInsurance) return "no-primary";
@@ -217,7 +220,6 @@ export function crossSellReason(primaryInsurance: string): CrossSellReason {
   if (lower.includes("jlj")) return "jlj";
   if (lower.includes("medicaid")) return "medicaid";
   if (lower.includes("united")) return "united";
-  if (lower.includes("cigna")) return "cigna";
   return "eligible";
 }
 
@@ -239,7 +241,7 @@ export function deriveServing(cgmCrossSell: string, requestType: string): string
   }
   if (cgmCrossSell === "Couldn't Cross-Sell") {
     // We CANNOT serve CGM for this patient (Medicaid — e.g. Fidelis Medicaid —
-    // Anthem JLJ, United, or Cigna). When the referral asked for a COMBINED
+    // Anthem JLJ, or United). When the referral asked for a COMBINED
     // product, drop the CGM half and serve only the base product: we still
     // serve the pump/supplies, just not the CGM they can't get. Without this,
     // an "Insulin Pump + CGM" request was suggested verbatim as serving, i.e.

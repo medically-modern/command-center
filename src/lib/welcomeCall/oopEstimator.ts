@@ -44,6 +44,11 @@ export const PAYER_RATE_SCHEDULE: Record<string, PayerRates> = {
   "Wellcare": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: 241.97, sensor_rate: 229.13 },
   "Humana": { pump_rate: 5431.0, infusion_rate: 16.37, cartridge_rate: 2.20, monitor_rate: 295.36, sensor_rate: 317.97 },
   "Cigna": { pump_rate: 4200.0, infusion_rate: 17.75, cartridge_rate: 2.36, monitor_rate: 214.05, sensor_rate: 170.42 },
+  // Cigna Medicare (HealthSpring MA, added 2026-09-24). Infusion + cartridge are the
+  // A4224/A4225 allowables from a paid 9/15/26 ERA; pump, monitor and sensor are
+  // copied from "Cigna" in the backend and are unverified there too. A $0-OOP
+  // payer, so these only matter for the allowed figure, never what the patient owes.
+  "Cigna Medicare": { pump_rate: 4200.0, infusion_rate: 25.87, cartridge_rate: 3.47, monitor_rate: 214.05, sensor_rate: 170.42 },
   "Midlands Choice": { pump_rate: 5644.0, infusion_rate: 31.68, cartridge_rate: 3.96, monitor_rate: 331.40, sensor_rate: 349.77 },
   "Horizon BCBS": { pump_rate: 4300.0, infusion_rate: 10.90, cartridge_rate: 3.10, monitor_rate: 480.0, sensor_rate: 445.0 },
   "BCBS TN": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
@@ -65,7 +70,7 @@ export const PAYER_RATE_SCHEDULE: Record<string, PayerRates> = {
 
 const MEDICARE_STYLE_INFUSION_PAYERS = new Set([
   "Anthem BCBS Medicare", "Fidelis Medicare", "Medicare A&B", "NYSHIP",
-  "United Medicare", "Wellcare", "Humana", "Cigna", "Midlands Choice",
+  "United Medicare", "Wellcare", "Humana", "Cigna", "Cigna Medicare", "Midlands Choice",
 ]);
 
 // Aetna uses Group C codes (A4231/A4232) — same units as commercial (sets×10)
@@ -109,11 +114,13 @@ const PRIMARY_MEDICAID_LABELS = new Set([
 //  - NYSHIP (Empire Plan): plan covers DME in full — no patient cost share
 //  - Aetna Medicare: fully covered, no cost share (MM-1071)
 //  - United Medicare: fully covered, no cost share
+//  - Cigna Medicare: HealthSpring MA, $0 like United/Aetna Medicare (2026-09-24)
 const ZERO_OOP_PAYERS = new Set([
   "Medicare A&B",
   "NYSHIP",
   "Aetna Medicare",
   "United Medicare",
+  "Cigna Medicare",
 ]);
 
 // ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────

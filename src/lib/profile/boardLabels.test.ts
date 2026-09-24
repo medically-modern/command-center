@@ -210,6 +210,9 @@ describe("the picker delta from reading the board", () => {
     "Anthem BCBS Commercial", "Anthem BCBS Medicare", "Stedi",
     "Anthem BCBS Low-Cost (JLJ)", "United Low-Cost", "Fidelis Medicare",
     "Health Plans Inc (PHCS)", "Fidelis NJ",
+    // Added 2026-09-24 (id 160). In the hardcoded map too, so it is neither an
+    // appearance nor a disappearance — the same shape as Fidelis NJ.
+    "Cigna Medicare",
   ];
   const delta = (board: string[], hardcoded: string[], columnId: string) => {
     const shown = payerOptions(columnId, board);

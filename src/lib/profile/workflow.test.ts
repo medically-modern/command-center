@@ -20,8 +20,14 @@ describe("crossSellReason", () => {
   it("existing blocks unchanged", () => {
     expect(crossSellReason("Medicaid")).toBe("medicaid");
     expect(crossSellReason("United Medicare")).toBe("united");
-    expect(crossSellReason("Cigna")).toBe("cigna");
     expect(crossSellReason("")).toBe("no-primary");
+  });
+  it("cross-sells ALL Cigna — the Cigna block was lifted 2026-09-24", () => {
+    // Brandon: "we should cross-sell all cigna" — plain Cigna and Cigna Medicare.
+    expect(crossSellReason("Cigna")).toBe("eligible");
+    expect(crossSellReason("Cigna Medicare")).toBe("eligible");
+    expect(canCrossSellCgm("Cigna")).toBe(true);
+    expect(canCrossSellCgm("Cigna Medicare")).toBe(true);
   });
   it("non-JLJ plans stay eligible", () => {
     expect(crossSellReason("Anthem BCBS Commercial")).toBe("eligible");
@@ -54,7 +60,7 @@ describe("deriveServing strips CGM from a combined request when we can't serve C
     expect(deriveServing("Couldn't Cross-Sell", "Supplies + CGM")).toBe("Supplies Only");
   });
   it("applies to every can't-cross-sell reason, not just Medicaid", () => {
-    for (const ins of ["Fidelis Medicaid", "Anthem BCBS Low-Cost (JLJ)", "United Medicare", "Cigna"]) {
+    for (const ins of ["Fidelis Medicaid", "Anthem BCBS Low-Cost (JLJ)", "United Medicare"]) {
       expect(canCrossSellCgm(ins)).toBe(false);
     }
     expect(deriveServing("Couldn't Cross-Sell", "Insulin Pump + CGM")).toBe("Insulin Pump");

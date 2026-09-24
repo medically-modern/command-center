@@ -30,3 +30,7 @@ public/data/baseline.json
 
 # tsc -b build-mode artifacts
 *.tsbuildinfo
+
+# Stedi replay corpus (REGRESSION.md Gate 2). Holds patient addresses and
+# Medicaid IDs from every historical 271, so it must NEVER be committed.
+engine_corpus*.json

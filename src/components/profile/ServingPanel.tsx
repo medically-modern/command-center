@@ -71,7 +71,6 @@ function crossSellHint(crossSellStatus: string, primaryIns: string): string | nu
     if (reason === "jlj") return "Primary insurance is an Anthem JLJ plan — JLJ plans cannot do CGM";
     if (reason === "medicaid") return "Primary insurance is a Medicaid plan";
     if (reason === "united") return "Primary insurance is United, so we choose not to cross-sell United patients";
-    if (reason === "cigna") return "Primary insurance is Cigna, so we choose not to cross-sell Cigna patients";
   }
   return null;
 }

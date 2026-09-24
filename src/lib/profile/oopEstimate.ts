@@ -18,7 +18,7 @@ import { PAYER_RATE_SCHEDULE } from "@/lib/welcomeCall/oopEstimator";
 
 const MEDICARE_STYLE = new Set([
   "Anthem BCBS Medicare", "Fidelis Medicare", "Medicare A&B", "NYSHIP",
-  "United Medicare", "Wellcare", "Humana", "Cigna", "Midlands Choice",
+  "United Medicare", "Wellcare", "Humana", "Cigna", "Cigna Medicare", "Midlands Choice",
 ]);
 const SUPPLIES_TO_MEDICAID = new Set(["Fidelis Medicaid", "Anthem BCBS Medicaid (JLJ)", "Medicaid"]);
 const PRIMARY_MEDICAID = new Set([
@@ -34,7 +34,7 @@ const PRIMARY_MEDICAID = new Set([
 // remaining deductible payable, so this surface billed a member up to their full
 // deductible for a fill the reorder form quoted at $0. ZERO_PAYERS short-circuits
 // above the deductible math, so the two surfaces now answer identically.
-const ZERO_PAYERS = new Set(["Medicare A&B", "NYSHIP", "Aetna Medicare", "United Medicare"]);
+const ZERO_PAYERS = new Set(["Medicare A&B", "NYSHIP", "Aetna Medicare", "United Medicare", "Cigna Medicare"]);
 /**
  * Coinsurance overrides — a whole-number percentage replacing the Stedi value.
  *

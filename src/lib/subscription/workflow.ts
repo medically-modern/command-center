@@ -273,6 +273,7 @@ export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 106, label: "United Low-Cost" },
   { index: 159, label: "Health Plans Inc (PHCS)" },
   { index: 108, label: "Fidelis NJ" },
+  { index: 160, label: "Cigna Medicare" },
 ];
 
 export const SECONDARY_INSURANCE_OPTIONS = [

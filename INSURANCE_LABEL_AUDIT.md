@@ -8,6 +8,9 @@
 > code tables below are FALLBACKS; and §8's checklist has been reissued there.
 > Everything else in the body was re-verified live on 2026-09-16 and still holds
 > — including all six copy gaps and the `BCBS Wyoming` order blocker.
+>
+> §11 (2026-09-24) records **Cigna Medicare**, names two more payer columns (the
+> Claims boards), and adds five items to the §10.7 checklist.
 
 Current as of **2026-08-10**. Every board fact below was read from the live
 `settings_str` via the Monday API on that date, and every code fact from the files
@@ -663,3 +666,149 @@ to another.
   `mm-track-widget/intake-form.html`. It maps to **General** Insurance and is
   deliberately brand-level, not plan-level — a new *plan* usually needs nothing
   there.
+
+---
+
+## 11. 2026-09-24 — **Cigna Medicare** (HealthSpring) added
+
+Brandon added "Cigna Medicare" — HealthSpring, Cigna's Medicare Advantage brand —
+to the Stedi backend (`stedi-monday-integration`) and to four payer columns.
+Josh: *"definitely add the labels to the four columns"* and *"we need to add to
+cardinal"*. Every index below was read from the live `settings_str` on
+**2026-09-24**.
+
+### 11.1 Decisions (Brandon and Josh, 2026-09-24)
+
+- **Primary-only.** Not on Profile Send Off's General Insurance; Brandon removed it
+  there the same day. General is the Stedi input, and a HealthSpring check is run
+  under plain "Cigna": the backend retries a failed Cigna 62308 check on
+  HealthSpring 63092.
+- **Claims go to HealthSpring 63092**, not Cigna 62308 (Brandon's backend). A 9/15
+  claim to 62308 was rejected on the 277CA (A7:18); the 9/16 claim to 63092 paid.
+  Plain Cigna stays on 62308.
+- **CGM cross-sell: yes, for ALL Cigna.** Brandon: *"we should cross-sell all
+  cigna"*. This also lifts the old "we choose not to cross-sell Cigna patients"
+  rule for plain Cigna.
+- **Cost: $0**, like United and Aetna Medicare.
+  ⚠️ **Open question.** Brandon's wording was *"$0 unless they haven't hit their
+  deductible — same for united and aetna"*. Josh's 2026-09-17 rule for United
+  Medicare is *"0 oop … no matter what"*. The code follows Josh's rule for all
+  three. If Brandon's is right, all three move together to a 0%
+  `coinsuranceOverrides` entry, which passes the deductible through.
+- **HCPC supply group B** (A4224/A4225), like Cigna and the other MA plans.
+- **Cardinal:** name `Cigna`, type `Medicare Advantage`, `direct` (no DOB needed).
+
+### 11.2 The indexes Monday assigned
+
+| Board | Column | Cigna Medicare |
+|---|---|---|
+| Profile Send Off | `color_mm1xg10n` Primary Insurance | **160** |
+| Profile Send Off | `color_mm24ap4j` General Insurance | — (deliberately absent) |
+| Medical Evaluation | `color_mm1x157j` | **153** |
+| Insurance | `color_mm1x157j` | **152** |
+| Welcome Call | `color_mm1x157j` | **153** |
+| Subscription | `color_mm254qxj` | **160** |
+| New Order | `color_mm18jhq5` | **155** |
+| Secondary Claims | `color_mm3a93ek` Primary Payor | **9** |
+| Claims Board `18245429780` | `color_mkxmhypt` Primary Payor | **160** |
+
+⚠️ Welcome Call (153) and Insurance (152) share a column id and still differ.
+Pinned by `payerLabels.test.ts`.
+
+ME, Insurance, Welcome Call and Secondary Claims were created by the §10.6
+procedure, after checking that no automation triggers on those columns. Brandon
+created the rest.
+
+⚠️ **Two payer columns this audit had not listed.** Claims Board `18245429780`
+`color_mkxmhypt` (above), and **Claims Board - Primary Reconciliation**
+`18411961237`, same column id, which carries neither Cigna Medicare nor PHCS.
+Nothing in this repo reads either one. Whether anything still writes the second
+is unknown.
+
+⚠️ **PHCS index to check.** On Claims Board `18245429780`, PHCS is **159** and
+index **3** is **CDPHP**. §10.7 and CLAUDE.md §5.33 say the backend's
+`STATUS_INDEX_MAP` must write **3** for PHCS, which is right only for Secondary
+Claims. If the backend writes the Claims Board by index, a PHCS claim lands as
+CDPHP there. Unverified: the backend can't be read from here.
+
+### 11.3 Code
+
+**This repo:**
+- `hcpcRules`: union, group **B**, options, Insurance fallback **152**.
+- Fallback tables: `welcomeCall`/`finalConfirm` **153**; `subscription` **160**.
+- `profile/mondayMapping`: Primary **160** only.
+- `careCoordinator/pills`: short name.
+- `payerPolicy.json` and both estimators: $0, Medicare-style, rates.
+- `profile/workflow.crossSellReason`: Cigna is no longer blocked.
+- `profile/primaryInsurance`: see §11.4.
+
+**Rates.** Infusion **25.87** and cartridge **3.47** are the A4224/A4225
+allowables from a paid 9/15/26 ERA. Pump, monitor and sensor are copied from
+"Cigna" in the backend, unverified there too. While Cigna Medicare is a $0
+payer, none of them change what the patient owes.
+
+**Other repos, pushed 2026-09-24:**
+- `cardinal-api` `0aefe0c`: routing row and a test.
+- `reorder-patient-form` `afc6cb9`: both copies.
+- `coins-form-payment` `47dfb66`.
+
+### 11.4 The suggestion engine
+
+`carrierFromPayer` returns `cigna-medicare` when the payer name or the plan
+mentions **HealthSpring**, or the payer reads "Cigna Medicare". It runs before
+the plain-Cigna rule.
+
+⚠️ **The plan is read too, on purpose.** Reps run these checks under General
+"Cigna", so the General label alone reads every HealthSpring member as
+commercial Cigna. Those claims go to 62308 and are rejected.
+
+`maFamilyLabel` maps a HealthSpring or Cigna MA carrier to Cigna Medicare on the
+MA-dual path.
+
+**Gate 2 replay** (REGRESSION.md), 3,570 historical checks: **9 per-check diffs,
+0 board-state diffs.** All 9 are the 3 HealthSpring rows × 3 request types,
+moving Cigna → Cigna Medicare.
+
+### 11.5 Cross-sell — the board half is NOT done
+
+Profile Send Off automations **7917886786** and **7917886790** set CGM Cross-Sell
+from a fixed list of Primary Insurance ids. That list still contains **Cigna
+(12)**. It has to be removed in Monday's UI, because the API cannot edit these
+automations. Until then, the board marks plain Cigna patients "Couldn't
+Cross-Sell" while the app says they are eligible.
+
+Cigna Medicare (160) is on neither pair's list, so both pairs already
+cross-sell it.
+
+Pre-existing and unrelated: the other pair (**7917881347** / **7917881350**)
+lacks **Medicaid (13)** and **United Low-Cost (109)**. For those two payers the
+board fires both "Cross-Sell" and "Couldn't Cross-Sell".
+
+### 11.6 Not touched
+
+- `claims-ui-tool`'s second copy of `hcpcRules.ts`, already stale (§10.7).
+- `stedi-monday-integration`: Brandon's. It owns check routing, claims routing
+  and the Claims payer writes. If it writes by index it needs **9** for Secondary
+  Claims and **160** for Claims Board `18245429780`.
+- `pos.ts` `BCBS_FAMILY`: not a Blue.
+- `payerRules` / `infusionCap`: an unrecognised payer gets the cap of 3.
+- `SUPPLIES_NEED_NY_MEDICAID_SECONDARY`: Cigna is not in it.
+- `priority.ts`: default tier.
+- ⚠️ **Unlike Fidelis NJ, the string contains "medicare"**, so every `medicare`
+  substring rule reads it as Medicare. That is right for an MA plan. The
+  Original-Medicare-only fields require `Medicare A&B` exactly, and
+  cardinal-api's `isMedicare()` is a documented no-op.
+
+### 11.7 Additions to the §10.7 checklist
+
+1. **Primary, General, or both?** General is the Stedi input. A plan-level payer
+   (like this one) usually belongs on the Primary columns only.
+2. **The four cross-sell automations** (§11.5) carry payer id lists. Decide
+   cross-sell, then update the lists in Monday's UI.
+3. **The payer-policy copies** in `reorder-patient-form` (both files) and
+   `coins-form-payment`. `scripts/check-payer-policy.mjs` names every one that
+   drifts, and its weekday cron goes red until they match.
+4. **Claims Board `18245429780`** `color_mkxmhypt` is a ninth payer column (§11.2).
+5. **Replay the suggestion corpus** (REGRESSION.md Gate 2) whenever
+   `primaryInsurance.ts` changes. `engine_corpus*.json` is gitignored: it holds
+   patient addresses and Medicaid IDs.

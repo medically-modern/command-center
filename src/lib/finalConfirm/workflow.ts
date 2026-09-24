@@ -262,6 +262,7 @@ export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 109, label: "Anthem BCBS Low-Cost (JLJ)" },
   { index: 110, label: "Fidelis CHP" },
   { index: 151, label: "Fidelis NJ" },
+  { index: 153, label: "Cigna Medicare" },
 ];
 
 /** Original ("traditional") Medicare = primary insurance "Medicare A&B".

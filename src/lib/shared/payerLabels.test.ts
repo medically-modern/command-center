@@ -47,6 +47,23 @@ const FIDELIS_NJ_INDEX = {
   secondaryClaims: 6,
 } as const;
 
+/**
+ * "Cigna Medicare" (HealthSpring Medicare Advantage), read back from each
+ * column's live `settings_str` after it was created on 2026-09-24. Seven
+ * columns, five different numbers. It is deliberately absent from Profile Send
+ * Off's GENERAL Insurance column: it is a primary-only label (Brandon,
+ * 2026-09-24), so no General entry is pinned here.
+ */
+const CIGNA_MEDICARE_INDEX = {
+  profileSendOffPrimary: 160,
+  medicalEvaluation: 153,
+  insurance: 152,
+  welcomeCall: 153,
+  subscription: 160,
+  newOrder: 155,
+  secondaryClaims: 9,
+} as const;
+
 describe("the payer board registry", () => {
   it("names a distinct board+column per slice", () => {
     const keys = Object.values(PAYER_BOARD).map((b) => `${b.boardId}:${b.columnId}`);
@@ -119,6 +136,21 @@ describe("the hardcoded fallbacks mirror their own board", () => {
     expect(labelAt(FC_FALLBACK, FIDELIS_NJ_INDEX.welcomeCall)).toBe("Fidelis NJ");
     expect(labelAt(SUB_FALLBACK, FIDELIS_NJ_INDEX.subscription)).toBe("Fidelis NJ");
     expect(INSURANCE_FALLBACK["Fidelis NJ" as never]).toBe(FIDELIS_NJ_INDEX.insurance);
+  });
+
+  it("carries Cigna Medicare at the index ITS OWN board assigned", () => {
+    expect(labelAt(WC_FALLBACK, CIGNA_MEDICARE_INDEX.welcomeCall)).toBe("Cigna Medicare");
+    expect(labelAt(FC_FALLBACK, CIGNA_MEDICARE_INDEX.welcomeCall)).toBe("Cigna Medicare");
+    expect(labelAt(SUB_FALLBACK, CIGNA_MEDICARE_INDEX.subscription)).toBe("Cigna Medicare");
+    expect(INSURANCE_FALLBACK["Cigna Medicare" as never]).toBe(CIGNA_MEDICARE_INDEX.insurance);
+  });
+
+  /* Welcome Call and Insurance share a column id and still gave this label
+     different numbers (153 vs 152) — the same trap as Fidelis NJ. */
+  it("does not reuse one board's Cigna Medicare index on another", () => {
+    expect(new Set(Object.values(CIGNA_MEDICARE_INDEX)).size).toBe(5);
+    expect(CIGNA_MEDICARE_INDEX.insurance).not.toBe(CIGNA_MEDICARE_INDEX.welcomeCall);
+    expect(CIGNA_MEDICARE_INDEX.medicalEvaluation).not.toBe(CIGNA_MEDICARE_INDEX.insurance);
   });
 
   /* One payer, eight columns, six different numbers — the reason nothing may

@@ -86,6 +86,9 @@ export function maFamilyLabel(maCarrier: string): string {
   if (/ANTHEM|EMPIRE/.test(n)) return "Anthem BCBS Medicare";
   if (/AETNA/.test(n)) return "Aetna Medicare";
   if (/HUMANA/.test(n)) return "Humana";
+  // HealthSpring is Cigna's Medicare Advantage brand, and this function only
+  // ever sees MA carriers — so a Cigna-named MA plan is Cigna Medicare too.
+  if (/HEALTH ?SPRING|CIGNA/.test(n)) return "Cigna Medicare";
   return "";
 }
 
@@ -305,6 +308,13 @@ function carrierFromPayer(inp: SuggestionInputs): string {
   const s = inp.stedi;
   const pn = ((s.payerName || "") + " " + (inp.generalInsurance || "")).toUpperCase();
   if (/AETNA/.test(pn)) return "aetna";
+  // HealthSpring (Cigna's Medicare Advantage, payer 63092) is its own board
+  // label, "Cigna Medicare". Tested BEFORE the Cigna rule and on the payer AND
+  // the plan: since 2026-09-24 reps run these checks under General Insurance
+  // plain "Cigna" (the Stedi backend retries a failed Cigna 62308 check on
+  // 63092), so the General label alone reads every one of them as commercial
+  // Cigna — whose claims go to 62308, which rejects them (Brandon's 9/15 claim).
+  if (/HEALTH ?SPRING/.test(pn + " " + (s.plan || "").toUpperCase()) || /\bCIGNA MEDICARE\b/.test(pn)) return "cigna-medicare";
   if (/CHLIC|CGLIC|CIGNA/.test(pn)) return "cigna";
   if (/HUMANA/.test(pn)) return "humana";
   if (/WELLCARE/.test(pn) && !/FIDELIS/.test(pn)) return "wellcare";
@@ -328,6 +338,7 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
   const cov = classifyCoverage(s.plan);
   const o = blank(); o.confidence = "medium";
   if (cov === "LowCost") { o.value = "Low-Cost"; o.confidence = "high"; o.reason = "Essential Plan / CHP — Low-Cost"; return o; }
+  if (carrier === "cigna-medicare") { o.value = "Cigna Medicare"; o.confidence = "high"; o.reason = "HealthSpring (Cigna Medicare Advantage) → Cigna Medicare."; return o; }
   if (carrier === "cigna") { o.value = "Cigna"; o.confidence = "high"; o.reason = "Cigna payer → Cigna."; return o; }
   if (carrier === "humana") { o.value = "Humana"; o.confidence = "high"; o.reason = "Humana payer → Humana."; return o; }
   if (carrier === "medicare") {
