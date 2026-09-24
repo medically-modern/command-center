@@ -4262,6 +4262,13 @@ through `PatientContact`'s opt-in **`commsPresentation`**, and exactly one calle
 set · `cardWritePlan` ⇄ `writeBenefitsInputs`' skip-a-blank contract · `useStediRun`'s
 `runningId`/`forId`/`startedAt` ⇄ the page's `stediHere`/`stediElsewhere`/`stediAbout` ⇄
 `BenefitsCheckProgress`' phases · `commsPresentation="panel"` ⇄ exactly one caller.
+⚠️ **Two screens now count calls out of the same archive, by two routes** — this card through
+`/messaging/contact-totals` (grouped on the gateway, faxes excluded), and the patient screen's
+*"We called · They called"* (§5.51b) through `/calls/archive/query` (rows counted in the browser,
+which cannot exclude faxes — that route returns no call type). Both read "somebody picked up" with
+the same rule (the gateway copy is parity-tested against `callHistory.callConnected`), so the only
+known difference is a fax to or from the patient's own number. Change what counts as a call in one
+and check the other.
 Tests: `components/careCoordinator/masaniNotes0924.test.tsx`, `lib/careCoordinator/networkPill.test.ts`,
 `lib/shared/usState.test.ts`, `hooks/careCoordinator/useContactTotals.test.tsx`,
 `services/monday-gateway/contactTotals.test.mjs`, `components/commsPanelScope.test.ts`,
