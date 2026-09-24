@@ -133,7 +133,9 @@ export function HubPatientPane({
   const anchor = dossier.active ?? dossier.items[0] ?? null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" data-hub-patient>
+    /* `scroll-pb-24`: a field scrolled into view stops above the Subscription
+       tab's pinned Send (§5.45b) rather than behind it. */
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-pb-24" data-hub-patient>
       {picked && <FoundBySearchBanner phone={phone} dossierPhone={dossier.phone} onClear={onClearPick} />}
       {people.length > 1 && (
         <div className="shrink-0 border-b border-border px-3 py-2">

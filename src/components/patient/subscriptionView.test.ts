@@ -148,31 +148,39 @@ describe("⚠️⚠️ the send is built on a record read AT THE PRESS, never th
   });
 });
 
-describe("⚠️ the compact Send is the SAME button, not a second one", () => {
-  // The patient screen carries the send inside a one-line bar, so the shared
-  // component grew a `compact` size. Every state and the validation list stay
-  // in that one component — a hand-rolled small Save in this file would be a
-  // second send affordance to keep in step with the real one.
+describe("⚠️ the patient screen's Send is the /subscription page's SAME button, not a second one", () => {
+  // Every state and the validation list live in that one component — a
+  // hand-rolled Save in this file would be a second send affordance to keep in
+  // step with the real one. (It had a small `compact` size for the bar that
+  // used to sit ABOVE the form; the Send moved to the bottom on 2026-09-23 and
+  // the size went with it, rather than staying behind as a prop nobody passes.)
   const btn = () => src("src/components/subscription/SendToMondayButton.tsx");
+  const view = () => src("src/components/patient/SubscriptionView.tsx");
 
-  it("is opt-in, so /subscription is byte-identical without it", () => {
-    expect(btn()).toContain("compact = false");
-    // The page that has always had it must not have started passing it.
-    expect(src("src/pages/SubscriptionPage.tsx")).not.toMatch(/SendToMondayButton[^>]*compact/);
-  });
-
-  it("⚠️ compact keeps the validation list — a disabled Save must say why", () => {
+  it("⚠️ the validation list is in the component — a disabled Save must say why", () => {
     // §5.31b: a greyed-out control with no stated reason is the dead end this
-    // codebase records reversing. The list is outside every size branch.
-    const text = btn();
-    expect(text).toContain("Required before sending:");
-    expect(text, "the list moved inside a size branch").not.toMatch(/compact[^)]*Required before sending/);
+    // codebase records reversing.
+    expect(btn()).toContain("Required before sending:");
   });
 
-  it("the patient screen passes it, and does not build its own", () => {
-    const view = src("src/components/patient/SubscriptionView.tsx");
-    expect(view).toMatch(/<SendToMondayButton\s+compact/);
-    expect(view, "a second Save appeared").not.toMatch(/btn primary[^"]*"[^>]*onClick=\{handleSend/);
+  it("the patient screen renders it exactly ONCE, and builds no Save of its own", () => {
+    const text = view();
+    expect(text).toMatch(/from "@\/components\/subscription\/SendToMondayButton"/);
+    expect(text.match(/<SendToMondayButton\b/g), "a second Send appeared").toHaveLength(1);
+    expect(text, "a hand-rolled Save appeared").not.toMatch(/btn primary[^"]*"[^>]*onClick=\{(handleSend|onSend)/);
+  });
+
+  it("⚠️⚠️ and it sits in the bar at the BOTTOM of the tab, after the footer (Josh, 2026-09-23)", () => {
+    const text = view();
+    const start = text.indexOf("function ProfileTab(");
+    const tab = text.slice(start, text.indexOf("\nfunction ", start + 1));
+    const footer = tab.indexOf("on Update Clinicals");
+    const bar = tab.indexOf("<SendBar");
+    expect(footer, "the footer line moved").toBeGreaterThan(-1);
+    expect(bar, "the Send bar is not in the Profile tab").toBeGreaterThan(footer);
+    // The bar is pinned: sticky, at the bottom.
+    const css = src("src/pages/patient/redesign.css");
+    expect(css).toMatch(/\.cc-pt \.sub-send \{[^}]*position: sticky;[^}]*bottom:/);
   });
 });
 

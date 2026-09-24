@@ -9,19 +9,17 @@ interface Props {
   onSend: () => Promise<void>;
   disabled?: boolean;
   validationErrors?: string[];
-  /**
-   * ⚠️ **Opt-in, and the existing caller is byte-identical without it.** The
-   * patient screen (§5.45b) carries this button inside a one-line dirty bar
-   * rather than at the foot of a page, where a 48px pill would be the tallest
-   * thing in the row. Every STATE is unchanged — idle · sending · success ·
-   * retry-on-error — and so is the validation list, because a greyed-out
-   * control with no stated reason is the dead end this codebase records
-   * reversing (§5.31b). Only the size moves.
-   */
-  compact?: boolean;
 }
 
-export function SendToMondayButton({ onSend, disabled, validationErrors = [], compact = false }: Props) {
+/**
+ * The Subscription Send — ONE component on both screens that save a
+ * Subscription record: /subscription, and the Profile tab of the patient
+ * screen and the Communications hub's right pane (§5.45b), where it sits in
+ * the bar pinned to the bottom of the tab. Every state (idle · sending ·
+ * success · retry-on-error) and the validation list live here, so neither
+ * screen can grow a Save that behaves differently.
+ */
+export function SendToMondayButton({ onSend, disabled, validationErrors = [] }: Props) {
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -55,15 +53,15 @@ export function SendToMondayButton({ onSend, disabled, validationErrors = [], co
   const hasValidationErrors = validationErrors.length > 0;
 
   return (
-    <div className={cn("flex flex-col gap-2", compact ? "items-start" : "items-center pt-2")}>
+    <div className="flex flex-col gap-2 items-center pt-2">
       <Button
         onClick={handleClick}
         disabled={disabled || state === "sending"}
         title={error ?? config.label}
-        size={compact ? "sm" : "lg"}
+        size="lg"
         className={cn(
           "gap-2 shadow-elevate font-semibold transition-all duration-300",
-          compact ? "rounded-md px-3 h-8 text-xs" : "rounded-full px-8 h-12 text-base",
+          "rounded-full px-8 h-12 text-base",
           state === "success" && "animate-fade-in",
           config.className,
         )}

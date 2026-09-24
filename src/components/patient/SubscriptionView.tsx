@@ -71,6 +71,11 @@ import { expectedItems } from "@/lib/patient/expectedItems";
 import { usePatientOrders } from "@/hooks/patient/usePatientOrders";
 import { useSubscriptionRecord } from "@/hooks/patient/useSubscriptionRecord";
 import { SubscriptionForm } from "@/components/subscription/SubscriptionForm";
+import {
+  SubscriptionDemographicsCard,
+  SubscriptionDoctorCard,
+  SubscriptionInsuranceCard,
+} from "@/components/subscription/PatientInfoCard";
 import { SendToMondayButton } from "@/components/subscription/SendToMondayButton";
 import { AbilityLockNote, useAbility } from "@/components/shell/AbilityLock";
 import { sendPatientToMonday } from "@/lib/subscription/mondayWrite";
@@ -79,9 +84,17 @@ import { GatewayPendingError } from "@/lib/shared/verifiedWrite";
 import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 
 /**
- * The sections whose facts `SubscriptionForm` renders as INPUTS, so they are
- * not also rendered as read-only cards while editing: one fact editable and the
- * same fact read-only, on one screen, is worse than either alone.
+ * The sections whose facts the EDITOR renders as INPUTS, so they are not also
+ * rendered as read-only cards: one fact editable and the same fact read-only,
+ * on one screen, is worse than either alone. `SubscriptionForm` owns "Next
+ * order" and "What ships"; the Subscription page's own address, insurance and
+ * doctor cards own "Coverage" and "Ship to / doctor" (Josh, 2026-09-23 —
+ * *"for subscription patients make their profile editable on the right"*).
+ *
+ * ⚠️ Coverage's two eligibility facts ride along in the insurance card's Stedi
+ * block, which that card draws only when an eligibility answer exists — so a
+ * Ded. remaining with no Eligibility active beside it is not repeated anywhere.
+ * That is the /subscription page's own rule, kept rather than second-guessed.
  *
  * ⚠️ **"Next order" is in the list and is not in practice filtered**, because
  * it is the FIRST mapped section and the first section wears the teal overview
@@ -96,7 +109,7 @@ import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
  * against the live SUBSCRIPTION map: renamed there, the filter matches nothing
  * and the facts double-render with nothing erroring.
  */
-export const FORM_SECTIONS = ["Next order", "What ships"];
+export const FORM_SECTIONS = ["Next order", "What ships", "Coverage", "Ship to / doctor"];
 
 export type SubTab = "profile" | "orders";
 
@@ -173,8 +186,9 @@ export function SubscriptionView({
           </button>
         </div>
         {/* Brandon's own split: Save / Reset for somebody who can edit, this
-            sentence for everybody else. The Save lives in the form below,
-            beside the fields it writes, so this stays the read-only half. */}
+            sentence for everybody else. The Save lives at the foot of the
+            Profile tab, pinned there while the tab is on screen, so this stays
+            the read-only half. */}
         {tab === "profile" && !canEdit && <AbilityLockNote ability="editProfile" />}
       </div>
 
@@ -205,167 +219,25 @@ function ProfileTab({
   overview: OverviewFact[];
 }) {
   const sections = useMemo(() => buildStageDetail(item.boardId, item.cols), [item]);
-  /* ⚠️ Filtered ALWAYS now, not only while editing: the order-details form is
-     rendered for everybody (inert without the ability), so its fields would
-     otherwise appear twice — once as an input and once as a read-only row.
-     ⚠️ Matching by TITLE is why `subscriptionView.test.ts` asserts both strings
+  /* ⚠️ Filtered ALWAYS now, not only while editing: the editor is rendered for
+     everybody (inert without the ability), so its fields would otherwise
+     appear twice — once as an input and once as a read-only row.
+     ⚠️ Matching by TITLE is why `subscriptionView.test.ts` asserts every title
      against the live SUBSCRIPTION map: renamed there, the filter matches
      nothing and the facts double-render with nothing erroring. */
   const cards = sections.filter((sc) => !FORM_SECTIONS.includes(sc.title));
   const contacts = useMemo(() => buildContacts(item.boardId, item.cols), [item]);
 
-  return (
-    <>
-      {sections.length === 0 && (
-        <div className="card pad small muted">
-          {hasStageDetail(item.boardId)
-            ? "Nothing has been filled in on this board yet."
-            : "No read-only view is mapped for this board — open it on Monday."}
-        </div>
-      )}
-
-      {/* Brandon's teal "Subscription overview" strip — four facts, his four
-          (§5.46b). ⚠️ Rendered unconditionally so the shape of the screen does
-          not change with the data: a blank is an em dash, never a missing row,
-          because a fact nobody has answered and a fact that is not asked look
-          identical once the row disappears. */}
-      <section className="card pad left-teal">
-        <div className="eyebrow" style={{ marginBottom: 10 }}>
-          Subscription overview
-        </div>
-        <div className="strip">
-          {overview.map((f) => (
-            <div className="fact" key={f.label}>
-              <div className="k">{f.label}</div>
-              <div className="v">
-                {f.value || "—"}
-                {f.note && (
-                  <span className={`xs ${f.warn ? "warn" : "muted"}`} style={{ marginLeft: 6 }}>
-                    {f.value ? `(${f.note})` : f.note}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <SubscriptionEditor itemId={item.itemId} canEdit={canEdit} />
-
-      <ContactsCard contacts={contacts} />
-
-      {cards.map((sc) => (
-        <section className="card snapcard" key={sc.title}>
-          <div className="snap-ct">{sc.title}</div>
-          <div className="rogrid">
-            {sc.fields.map((f) => (
-              <div className={`rof${f.lead ? " lead" : ""}`} key={f.col}>
-                <div className="k">{f.label}</div>
-                <div className="v">{f.value}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
-
-      {item.notes.trim() && (
-        <section className="card pad">
-          <div className="section-h">
-            <b className="small">Subscription notes</b>
-            <span className="xs muted">from the board&apos;s notes column</span>
-          </div>
-          <div className="note">{item.notes.trim()}</div>
-        </section>
-      )}
-
-      {/* ⚠️ The "Open the profile / Update clinicals" card that used to sit here
-          is GONE (Josh, 2026-09-22) — the profile it linked to is rendered
-          above. Update Clinicals keeps its own page and its own role bar, and
-          the visit date is still only writable there, because that save also
-          writes the MR rung (§5.36); what is removed is a button, not a route.
-          The board and group the record lives on now ride in the footer line so
-          nothing is lost from the screen. */}
-      <p className="xs muted" style={{ margin: "2px 2px 0" }}>
-        {item.boardName} · {item.groupTitle} · medical-necessity documents and the visit date are
-        on Update Clinicals, which writes the Medical Records status with them.
-      </p>
-    </>
-  );
-}
-
-/**
- * Brandon's **Contacts** block — patient vs caregiver, and the number we last
- * reached them on (§5.46e). Six facts, his six, in his order.
- *
- * ⚠️ **Rendered whether or not anything is filled in**, like the overview strip
- * above it: these columns are new and populated for a handful of patients
- * today (2 alternate phones and 7 caregiver names across 875 rows, measured
- * 2026-09-22), and a card that disappears when empty teaches a rep the block
- * does not exist rather than that nobody has answered. A blank is an em dash.
- *
- * ⚠️ **Caregiver authorized shows "Yes" or an em dash, never "No".** It is a
- * Monday checkbox, which has two states and not three, so an unticked box means
- * nobody has recorded a HIPAA authorisation — not that one was refused.
- * Brandon's own `yn()` renders a blank the same way, and it is the safe
- * direction: nothing here can claim an authorisation that was never given.
- *
- * ⚠️ Read-only, like every other card on this tab. These columns are written on
- * the Welcome Call stage page (§5.31d), which has the rules that go with them —
- * clearing Can Text when a number changes, the consent audit line on the
- * off→on transition. A second editor here would be two writers for one column.
- */
-function ContactsCard({ contacts }: { contacts: Contacts | null }) {
-  if (!contacts) return null;
-  const rows: { k: string; v: string }[] = [
-    { k: "Primary contact", v: contacts.primaryContact },
-    { k: "Alternate contact", v: contacts.alternateContact },
-    { k: "Caregiver name", v: contacts.caregiverName },
-    { k: "Caregiver authorized", v: contacts.caregiverAuthorized ? "Yes" : "" },
-    { k: "Alternate phone", v: contacts.alternatePhone },
-    { k: "Last patient contact", v: contacts.lastPatientContact },
-  ];
-  return (
-    <section className="card snapcard">
-      <div className="snap-ct">Contacts</div>
-      <div className="rogrid">
-        {rows.map((r) => (
-          <div className="rof" key={r.k}>
-            <div className="k">{r.k}</div>
-            <div className="v">{r.v || "\u2014"}</div>
-          </div>
-        ))}
-      </div>
-      {/* ⚠️ Can Text lives in Brandon's Demographics block, not this one — but
-          that card is not built yet, and the fact governs whether the composer
-          in the right column works at all, so it is stated here rather than
-          nowhere. Move it when Demographics lands. */}
-      <p className="xs muted" style={{ margin: "8px 12px 12px" }}>
-        Can text:{" "}
-        {contacts.canText === "yes"
-          ? "Yes"
-          : contacts.canText === "no"
-            ? "No — texting is blocked in the column on the right"
-            : "not answered"}
-        . Edited on the Welcome Call stage page.
-      </p>
-    </section>
-  );
-}
-
-/**
- * The editable half — `/subscription`'s own form and its own send, on a
- * `Patient` read at full width (§5.45b).
- *
- * ⚠️ Local edits live HERE and the parent keys this component on the item, so
- * a draft cannot survive a patient switch — §9's notes-box rule, which this
- * codebase records costing a note filed against the wrong chart.
- */
-function SubscriptionEditor({ itemId, canEdit }: { itemId: string; canEdit: boolean }) {
-  /* ⚠️ Read for EVERYBODY now, not only for an editor — the read-only half of
-     this screen is the same form, inert. It is one item read against the
-     board, and the cards above render from the dossier we already hold, so
-     nothing is blank while it lands. */
-  const { patient, loading, error, reload, readFresh } = useSubscriptionRecord(itemId, true);
+  /* ⚠️⚠️ The editor's STATE lives here, one level above the fields it saves,
+     because the Send is at the BOTTOM of the tab (Josh, 2026-09-23: *"with a
+     send to monday button at the bottom"*) while the fields sit in the middle
+     — both have to read one draft. The parent keys this tab on the item, so a
+     draft still cannot survive a patient switch (§9's notes-box rule).
+     ⚠️ Read for EVERYBODY, not only an editor — the read-only half of this
+     screen is the same fields, inert. It is one item read against the board,
+     and the cards above render from the dossier already in hand, so nothing
+     is blank while it lands. */
+  const { patient, loading, error, reload, readFresh } = useSubscriptionRecord(item.itemId, true);
   const [edits, setEdits] = useState<Partial<SubPatient>>({});
 
   const merged = useMemo(
@@ -436,6 +308,192 @@ function SubscriptionEditor({ itemId, canEdit }: { itemId: string; canEdit: bool
     }
   }, [merged, canEdit, reload, readFresh, edits]);
 
+  return (
+    /* ⚠️ A FRAGMENT, and that is what pins the Send from the first frame: the
+       bar's containing block is then the patient body's own column
+       (`.pt-main`), which starts at the top of the scroll area. Wrapped in a
+       box of its own it could not rise above that box's top edge — measured in
+       the hub's pane, 67px of it sat below the fold until the rep scrolled. */
+    <>
+      {sections.length === 0 && (
+        <div className="card pad small muted">
+          {hasStageDetail(item.boardId)
+            ? "Nothing has been filled in on this board yet."
+            : "No read-only view is mapped for this board — open it on Monday."}
+        </div>
+      )}
+
+      {/* Brandon's teal "Subscription overview" strip — four facts, his four
+          (§5.46b). ⚠️ Rendered unconditionally so the shape of the screen does
+          not change with the data: a blank is an em dash, never a missing row,
+          because a fact nobody has answered and a fact that is not asked look
+          identical once the row disappears. */}
+      <section className="card pad left-teal">
+        <div className="eyebrow" style={{ marginBottom: 10 }}>
+          Subscription overview
+        </div>
+        <div className="strip">
+          {overview.map((f) => (
+            <div className="fact" key={f.label}>
+              <div className="k">{f.label}</div>
+              <div className="v">
+                {f.value || "—"}
+                {f.note && (
+                  <span className={`xs ${f.warn ? "warn" : "muted"}`} style={{ marginLeft: 6 }}>
+                    {f.value ? `(${f.note})` : f.note}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <SubscriptionEditor
+        patient={merged}
+        loading={loading}
+        error={error}
+        canEdit={canEdit}
+        onFieldChange={onFieldChange}
+      />
+
+      <ContactsCard contacts={contacts} />
+
+      {cards.map((sc) => (
+        <section className="card snapcard" key={sc.title}>
+          <div className="snap-ct">{sc.title}</div>
+          <div className="rogrid">
+            {sc.fields.map((f) => (
+              <div className={`rof${f.lead ? " lead" : ""}`} key={f.col}>
+                <div className="k">{f.label}</div>
+                <div className="v">{f.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      {item.notes.trim() && (
+        <section className="card pad">
+          <div className="section-h">
+            <b className="small">Subscription notes</b>
+            <span className="xs muted">from the board&apos;s notes column</span>
+          </div>
+          <div className="note">{item.notes.trim()}</div>
+        </section>
+      )}
+
+      {/* ⚠️ The "Open the profile / Update clinicals" card that used to sit here
+          is GONE (Josh, 2026-09-22) — the profile it linked to is rendered
+          above. Update Clinicals keeps its own page and its own role bar, and
+          the visit date is still only writable there, because that save also
+          writes the MR rung (§5.36); what is removed is a button, not a route.
+          The board and group the record lives on now ride in the footer line so
+          nothing is lost from the screen. */}
+      <p className="xs muted" style={{ margin: "2px 2px 0" }}>
+        {item.boardName} · {item.groupTitle} · medical-necessity documents and the visit date are
+        on Update Clinicals, which writes the Medical Records status with them.
+      </p>
+
+      {/* ⚠️⚠️ The ONE Send, at the bottom (Josh, 2026-09-23). It used to sit in a
+          bar ABOVE the form, because the form is taller than the viewport and a
+          Save at its foot is below the fold. Sticky resolves both: it is the last
+          thing on the tab, and it is pinned to the bottom of the scroll area the
+          whole time the tab is on screen. Only for somebody who can edit, and
+          only once there is a record to send. */}
+      {canEdit && merged && (
+        <SendBar
+          dirty={dirty}
+          onDiscard={() => setEdits({})}
+          onSend={handleSend}
+          validation={validation}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Brandon's **Contacts** block — patient vs caregiver, and the number we last
+ * reached them on (§5.46e). Six facts, his six, in his order.
+ *
+ * ⚠️ **Rendered whether or not anything is filled in**, like the overview strip
+ * above it: these columns are new and populated for a handful of patients
+ * today (2 alternate phones and 7 caregiver names across 875 rows, measured
+ * 2026-09-22), and a card that disappears when empty teaches a rep the block
+ * does not exist rather than that nobody has answered. A blank is an em dash.
+ *
+ * ⚠️ **Caregiver authorized shows "Yes" or an em dash, never "No".** It is a
+ * Monday checkbox, which has two states and not three, so an unticked box means
+ * nobody has recorded a HIPAA authorisation — not that one was refused.
+ * Brandon's own `yn()` renders a blank the same way, and it is the safe
+ * direction: nothing here can claim an authorisation that was never given.
+ *
+ * ⚠️ Read-only, like every other card on this tab. These columns are written on
+ * the Welcome Call stage page (§5.31d), which has the rules that go with them —
+ * clearing Can Text when a number changes, the consent audit line on the
+ * off→on transition. A second editor here would be two writers for one column.
+ */
+function ContactsCard({ contacts }: { contacts: Contacts | null }) {
+  if (!contacts) return null;
+  const rows: { k: string; v: string }[] = [
+    { k: "Primary contact", v: contacts.primaryContact },
+    { k: "Alternate contact", v: contacts.alternateContact },
+    { k: "Caregiver name", v: contacts.caregiverName },
+    { k: "Caregiver authorized", v: contacts.caregiverAuthorized ? "Yes" : "" },
+    { k: "Alternate phone", v: contacts.alternatePhone },
+    { k: "Last patient contact", v: contacts.lastPatientContact },
+  ];
+  return (
+    <section className="card snapcard">
+      <div className="snap-ct">Contacts</div>
+      <div className="rogrid">
+        {rows.map((r) => (
+          <div className="rof" key={r.k}>
+            <div className="k">{r.k}</div>
+            <div className="v">{r.v || "\u2014"}</div>
+          </div>
+        ))}
+      </div>
+      {/* ⚠️ Can Text lives in Brandon's Demographics block, not this one — but
+          that card is not built yet, and the fact governs whether the composer
+          in the right column works at all, so it is stated here rather than
+          nowhere. Move it when Demographics lands. */}
+      <p className="xs muted" style={{ margin: "8px 12px 12px" }}>
+        Can text:{" "}
+        {contacts.canText === "yes"
+          ? "Yes"
+          : contacts.canText === "no"
+            ? "No — texting is blocked in the column on the right"
+            : "not answered"}
+        . Edited on the Welcome Call stage page.
+      </p>
+    </section>
+  );
+}
+
+/**
+ * The editable half — `/subscription`'s own order form AND its own address,
+ * insurance and doctor cards, on a `Patient` read at full width (§5.45b). One
+ * writer: every field here saves through `sendPatientToMonday`, pressed from
+ * the bar at the foot of the tab.
+ *
+ * ⚠️ Presentational: the draft and the send live in `ProfileTab`, one level up,
+ * because the Send is at the bottom of the tab and these fields are not.
+ */
+function SubscriptionEditor({
+  patient,
+  loading,
+  error,
+  canEdit,
+  onFieldChange,
+}: {
+  patient: SubPatient | null;
+  loading: boolean;
+  error: string;
+  canEdit: boolean;
+  onFieldChange: (field: keyof SubPatient, value: string | number | null) => void;
+}) {
   if (error) {
     return (
       <section className="card pad small">
@@ -443,7 +501,7 @@ function SubscriptionEditor({ itemId, canEdit }: { itemId: string; canEdit: bool
       </section>
     );
   }
-  if (!merged) {
+  if (!patient) {
     return (
       <section className="card pad small muted">
         {loading ? "Reading the Subscription board…" : "Nothing to show yet."}
@@ -451,43 +509,15 @@ function SubscriptionEditor({ itemId, canEdit }: { itemId: string; canEdit: bool
     );
   }
 
+  /* ⚠️ A form handed to somebody who may not edit gets a writer that writes
+     nothing — belt and braces behind `inert`, below. */
+  const write = canEdit ? onFieldChange : noop;
+
   return (
-    /* ⚠️ NOT a `.card` — `SubscriptionForm` brings its own cards, and wrapping
-       them in another one nests a card in a card. This is the bare block the
-       /subscription page uses, with Brandon's bar over it. */
+    /* ⚠️ NOT a `.card` — `SubscriptionForm` and the three cards bring their own
+       cards, and wrapping them in another one nests a card in a card. */
     <section className="sub-edit">
-      {/* Brandon's `dirty-bar` (mockup line 2200), merged with the Save he also
-          keeps in the toggle row — ONE row doing both jobs, because two Saves
-          at opposite ends of an 800px form is two affordances to keep in step.
-          ⚠️ It sits ABOVE the form on purpose: the form is taller than the
-          viewport, so a Save at its foot is below the fold on every patient. */}
-      {canEdit ? (
-        <div className={`sub-bar${dirty ? " dirty" : ""}`}>
-          {dirty && <AlertTriangle className="ico" />}
-          <div className="grow">
-            {dirty ? (
-              <>
-                <b>Unsaved changes.</b> Nothing is written to Monday until you press Send.
-              </>
-            ) : (
-              <span className="muted">
-                Editable — the same write as the profile page, on the same board.
-              </span>
-            )}
-          </div>
-          {dirty && (
-            <button type="button" className="btn ghost sm" onClick={() => setEdits({})}>
-              <RotateCcw style={{ width: 13, height: 13 }} /> Discard
-            </button>
-          )}
-          <SendToMondayButton
-            compact
-            onSend={handleSend}
-            disabled={!validation.valid}
-            validationErrors={validation.errors}
-          />
-        </div>
-      ) : (
+      {!canEdit && (
         <div className="sub-bar">
           <Eye className="ico" />
           <div className="grow">
@@ -498,22 +528,75 @@ function SubscriptionEditor({ itemId, canEdit }: { itemId: string; canEdit: bool
 
       {/* ⚠️⚠️ `inert` is the read-only guard and it is load-bearing (§5.39c2):
           the wrapper cannot be clicked and focus cannot enter it, so none of
-          `SubscriptionForm`'s event handlers can fire. The no-op callback is
-          belt and braces — a form nobody can click still should not hold a
-          writer. Rendering the real form rather than a second read-only copy
-          is what stops the two drifting (§5.31c · §5.31d). */}
+          these components' event handlers can fire. Rendering the real
+          components rather than a second read-only copy is what stops the two
+          drifting (§5.31c · §5.31d). */}
       <div
-        className={canEdit ? undefined : "sub-ro"}
+        className={canEdit ? "sub-fields" : "sub-fields sub-ro"}
         {...(canEdit ? {} : { inert: "" as unknown as boolean })}
       >
-        <SubscriptionForm patient={merged} onFieldChange={canEdit ? onFieldChange : noop} />
+        <SubscriptionForm patient={patient} onFieldChange={write} />
+        {/* The /subscription page's OWN cards — address, insurance, doctor —
+            exported from `PatientInfoCard`, never copied. ⚠️ Not the phone
+            (the top bar's pencil owns it and clears Can Text, §5.46g), and not
+            the visit date or MN documents (Update Clinicals, §5.36). */}
+        <div className="sub-cards">
+          <SubscriptionDemographicsCard patient={patient} onFieldChange={write} />
+          <SubscriptionInsuranceCard patient={patient} onFieldChange={write} />
+          <SubscriptionDoctorCard patient={patient} onFieldChange={write} />
+        </div>
       </div>
     </section>
   );
 }
 
-/** A form handed to somebody who may not edit gets a writer that writes
- *  nothing — declared once so it is a stable identity across renders. */
+/**
+ * The Send, pinned to the bottom of the Profile tab (Josh, 2026-09-23). Quiet
+ * while clean; amber with Discard once there is something unsaved.
+ *
+ * ⚠️ It renders in BOTH states rather than appearing only when dirty — a form
+ * with no Save on it reads as read-only, and a record can be unsendable while
+ * clean: `SendToMondayButton`'s own list says why (§5.31b).
+ */
+function SendBar({
+  dirty,
+  onDiscard,
+  onSend,
+  validation,
+}: {
+  dirty: boolean;
+  onDiscard: () => void;
+  onSend: () => Promise<void>;
+  validation: { valid: boolean; errors: string[] };
+}) {
+  return (
+    <div className={`sub-send${dirty ? " dirty" : ""}`} role="region" aria-label="Send to Monday">
+      {dirty && <AlertTriangle className="ico" />}
+      <div className="grow">
+        {dirty ? (
+          <>
+            <b>Unsaved changes.</b> Not on Monday until you press Send.
+          </>
+        ) : (
+          <span className="muted">Every change on this profile saves here.</span>
+        )}
+      </div>
+      {dirty && (
+        <button type="button" className="btn ghost sm" onClick={onDiscard}>
+          <RotateCcw style={{ width: 13, height: 13 }} /> Discard
+        </button>
+      )}
+      <SendToMondayButton
+        onSend={onSend}
+        disabled={!validation.valid}
+        validationErrors={validation.errors}
+      />
+    </div>
+  );
+}
+
+/** A writer that writes nothing — declared once so it is a stable identity
+ *  across renders. */
 function noop() {}
 
 /**

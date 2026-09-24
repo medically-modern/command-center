@@ -346,13 +346,27 @@ describe("the patient screen is READ-ONLY", () => {
        ⚠️ `inert` is the real guard (§5.39c2): measured in Chrome 141 a real
        click is not hittable and focus cannot enter, so none of the form's
        event handlers can fire. The no-op writer is belt and braces. */
+    // The Send lives in the bar pinned to the BOTTOM of the tab (Josh,
+    // 2026-09-23) and renders only for somebody who can edit.
     expect(view, "the Send bar renders without the ability").toMatch(
-      /canEdit \? \(\s*<div className=\{`sub-bar/,
+      /\{canEdit && merged && \(\s*<SendBar/,
     );
     expect(view, "the read-only form is not inert").toMatch(/inert: ""/);
     expect(view, "a form nobody can edit still holds a writer").toMatch(
-      /onFieldChange=\{canEdit \? onFieldChange : noop\}/,
+      /const write = canEdit \? onFieldChange : noop;/,
     );
+    // …and EVERY editable component gets that writer — the order form and the
+    // /subscription page's own address, insurance and doctor cards.
+    for (const c of [
+      "SubscriptionForm",
+      "SubscriptionDemographicsCard",
+      "SubscriptionInsuranceCard",
+      "SubscriptionDoctorCard",
+    ]) {
+      expect(view, `${c} is not handed the gated writer`).toMatch(
+        new RegExp(`<${c} patient=\\{patient\\} onFieldChange=\\{write\\} />`),
+      );
+    }
   });
 
   it("⚠️ somebody WITHOUT the ability is told why, rather than shown nothing", () => {

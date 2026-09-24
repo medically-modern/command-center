@@ -243,7 +243,56 @@ function DaysToOrderField({ value }: { value: string }) {
   );
 }
 
-export function PatientInfoCard({ patient, onFieldChange }: Props) {
+/**
+ * The three cards of this profile whose facts a rep can EDIT — address,
+ * insurance and the doctor — exported so the patient screen and the
+ * Communications hub's right pane (§5.45b) render the SAME cards rather than a
+ * copy (Josh, 2026-09-23: *"for subscription patients make their profile
+ * editable on the right, with a send to monday button at the bottom"*).
+ *
+ * ⚠️ `PatientInfoCard` below composes exactly these, so /subscription renders
+ * the same markup it always did; only the call sites are new. A card that
+ * grows a field grows it on every screen at once, and they all save through
+ * the one `sendPatientToMonday`.
+ *
+ * ⚠️ **Deliberately NOT exported, because each has a second writer or a side
+ * effect the other screens must not inherit:** the top row's PHONE (the
+ * patient screen's top-bar pencil owns Primary Phone and clears Can Text with
+ * it, §5.46g — a second editor there is the §5.31d failure), and the Medical
+ * Necessity card's VISIT DATE and MN documents (a visit date moves MN Expiry,
+ * and only Update Clinicals writes the Medical Records rung with it, §5.36).
+ */
+export function SubscriptionDemographicsCard({ patient, onFieldChange }: Props) {
+  return (
+    <Card className="p-4">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Demographics</p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Gender" value={patient.gender} />
+        <div className="col-span-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Address</p>
+          <AddressAutocomplete
+            key={`addr-${patient.id}`}
+            value={patient.addressEdited ?? patient.address}
+            onChange={(result: AddressResult) => {
+              onFieldChange?.("addressEdited", result.address);
+              onFieldChange?.("addressLat" as keyof Patient, result.lat);
+              onFieldChange?.("addressLng" as keyof Patient, result.lng);
+            }}
+            placeholder="Search for address..."
+          />
+          {patient.addressEdited !== null && patient.addressEdited !== patient.address && <p className="text-[10px] text-amber-600 mt-0.5">edited</p>}
+        </div>
+        <Field label="Referral" value={patient.referral} />
+        {patient.carecentrixIntakeId && (
+          <Field label="Carecentrix Intake I.D." value={patient.carecentrixIntakeId} />
+        )}
+        <Field label="Order Count" value={patient.orderCount} />
+      </div>
+    </Card>
+  );
+}
+
+export function SubscriptionInsuranceCard({ patient, onFieldChange }: Props) {
   /**
    * Primary Insurance options come from the SUBSCRIPTION board, live — its
    * `color_mm254qxj` numbers its labels independently of every other board,
@@ -257,6 +306,131 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
     patient.primaryInsurance,
     patient.primaryInsuranceIndex,
   );
+  return (
+    <Card className="p-4">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Insurance</p>
+      <div className="grid grid-cols-2 gap-3">
+        <EditableStatusSelect
+          label="Primary Insurance"
+          options={primaryInsuranceOptions}
+          currentLabel={patient.primaryInsurance}
+          editedIndex={patient.primaryInsuranceEdited}
+          editedField="primaryInsuranceEdited"
+          onFieldChange={onFieldChange}
+        />
+        <EditableField
+          label="Member ID 1"
+          value={patient.memberId1}
+          editedValue={patient.memberId1Edited}
+          editedField="memberId1Edited"
+          onFieldChange={onFieldChange}
+        />
+        <EditableStatusSelect
+          label="Secondary Insurance"
+          options={SECONDARY_INSURANCE_OPTIONS}
+          currentLabel={patient.secondaryInsurance || "None"}
+          editedIndex={patient.secondaryInsuranceEdited}
+          editedField="secondaryInsuranceEdited"
+          onFieldChange={onFieldChange}
+        />
+        <EditableField
+          label="Member ID 2"
+          value={patient.memberId2}
+          editedValue={patient.memberId2Edited}
+          editedField="memberId2Edited"
+          onFieldChange={onFieldChange}
+        />
+      </div>
+      {patient.stediActive && (
+        <div className="mt-3 pt-3 border-t">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Stedi Eligibility</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Active?" value={patient.stediActive} className={patient.stediActive === "Active" ? "text-green-600" : patient.stediActive === "Inactive" ? "text-red-600" : ""} />
+            <Field label="Ded. Remaining" value={patient.stediDedRemaining} />
+            <Field label="Insurance Change?" value={patient.insuranceChange} className={patient.insuranceChange === "Yes" ? "text-red-600 font-bold" : ""} />
+            <Field label="Prior Auth Req?" value={patient.priorAuthReq} />
+            <Field label="Primary Claim Paid?" value={patient.primaryClaimPaid} className={patient.primaryClaimPaid === "No" ? "text-red-600" : ""} />
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export function SubscriptionDoctorCard({ patient, onFieldChange }: Props) {
+  return (
+    <Card className="p-4">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Doctor Info</p>
+      <div className="grid grid-cols-2 gap-3">
+        <EditableField
+          label="Doctor"
+          value={patient.doctor}
+          editedValue={patient.doctorEdited}
+          editedField="doctorEdited"
+          onFieldChange={onFieldChange}
+        />
+        <EditableField
+          label="NPI"
+          value={patient.npi}
+          editedValue={patient.npiEdited}
+          editedField="npiEdited"
+          onFieldChange={onFieldChange}
+        />
+        <div className="col-span-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Doctor Address</p>
+          <AddressAutocomplete
+            key={`docaddr-${patient.id}`}
+            value={patient.doctorAddressEdited ?? patient.doctorAddress}
+            onChange={(result: AddressResult) => {
+              onFieldChange?.("doctorAddressEdited", result.address);
+              onFieldChange?.("doctorAddressLat" as keyof Patient, result.lat);
+              onFieldChange?.("doctorAddressLng" as keyof Patient, result.lng);
+            }}
+            placeholder="Search for doctor address..."
+          />
+          {patient.doctorAddressEdited !== null && patient.doctorAddressEdited !== patient.doctorAddress && <p className="text-[10px] text-amber-600 mt-0.5">edited</p>}
+        </div>
+        <EditableField
+          label="Doctor Phone"
+          value={patient.doctorPhone ? formatPhone(patient.doctorPhone) : ""}
+          editedValue={patient.doctorPhoneEdited}
+          editedField="doctorPhoneEdited"
+          onFieldChange={onFieldChange}
+          placeholder="(555) 555-5555"
+        />
+        <EditableField
+          label="Doctor Fax"
+          value={patient.doctorFax}
+          editedValue={patient.doctorFaxEdited}
+          editedField="doctorFaxEdited"
+          onFieldChange={onFieldChange}
+          placeholder="(555) 555-5555"
+        />
+        {(() => {
+          const faxDisplay = patient.faxParachuteEdited ?? patient.faxParachute;
+          const faxEditedIdx = patient.faxParachuteEdited !== null
+            ? FAX_PARACHUTE_OPTIONS.find((o) => o.label === patient.faxParachuteEdited)?.index ?? null
+            : null;
+          return (
+            <EditableStatusSelect
+              label="Fax / Parachute"
+              options={FAX_PARACHUTE_OPTIONS}
+              currentLabel={faxDisplay || "—"}
+              editedIndex={faxEditedIdx}
+              editedField="faxParachuteEdited"
+              onFieldChange={(field, value) => {
+                const label = FAX_PARACHUTE_OPTIONS.find((o) => o.index === Number(value))?.label ?? "";
+                onFieldChange?.(field, label);
+              }}
+            />
+          );
+        })()}
+      </div>
+    </Card>
+  );
+}
+
+export function PatientInfoCard({ patient, onFieldChange }: Props) {
   return (
     <div className="space-y-4">
       {/* Top row: Name + DOB + Status + Phone */}
@@ -311,80 +485,10 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
       {/* Demographics + Insurance + Address */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Demographics */}
-        <Card className="p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Demographics</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Gender" value={patient.gender} />
-            <div className="col-span-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Address</p>
-              <AddressAutocomplete
-                key={`addr-${patient.id}`}
-                value={patient.addressEdited ?? patient.address}
-                onChange={(result: AddressResult) => {
-                  onFieldChange?.("addressEdited", result.address);
-                  onFieldChange?.("addressLat" as keyof Patient, result.lat);
-                  onFieldChange?.("addressLng" as keyof Patient, result.lng);
-                }}
-                placeholder="Search for address..."
-              />
-              {patient.addressEdited !== null && patient.addressEdited !== patient.address && <p className="text-[10px] text-amber-600 mt-0.5">edited</p>}
-            </div>
-            <Field label="Referral" value={patient.referral} />
-            {patient.carecentrixIntakeId && (
-              <Field label="Carecentrix Intake I.D." value={patient.carecentrixIntakeId} />
-            )}
-            <Field label="Order Count" value={patient.orderCount} />
-          </div>
-        </Card>
+        <SubscriptionDemographicsCard patient={patient} onFieldChange={onFieldChange} />
 
         {/* Insurance */}
-        <Card className="p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Insurance</p>
-          <div className="grid grid-cols-2 gap-3">
-            <EditableStatusSelect
-              label="Primary Insurance"
-              options={primaryInsuranceOptions}
-              currentLabel={patient.primaryInsurance}
-              editedIndex={patient.primaryInsuranceEdited}
-              editedField="primaryInsuranceEdited"
-              onFieldChange={onFieldChange}
-            />
-            <EditableField
-              label="Member ID 1"
-              value={patient.memberId1}
-              editedValue={patient.memberId1Edited}
-              editedField="memberId1Edited"
-              onFieldChange={onFieldChange}
-            />
-            <EditableStatusSelect
-              label="Secondary Insurance"
-              options={SECONDARY_INSURANCE_OPTIONS}
-              currentLabel={patient.secondaryInsurance || "None"}
-              editedIndex={patient.secondaryInsuranceEdited}
-              editedField="secondaryInsuranceEdited"
-              onFieldChange={onFieldChange}
-            />
-            <EditableField
-              label="Member ID 2"
-              value={patient.memberId2}
-              editedValue={patient.memberId2Edited}
-              editedField="memberId2Edited"
-              onFieldChange={onFieldChange}
-            />
-          </div>
-          {patient.stediActive && (
-            <div className="mt-3 pt-3 border-t">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Stedi Eligibility</p>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Active?" value={patient.stediActive} className={patient.stediActive === "Active" ? "text-green-600" : patient.stediActive === "Inactive" ? "text-red-600" : ""} />
-                <Field label="Ded. Remaining" value={patient.stediDedRemaining} />
-                <Field label="Insurance Change?" value={patient.insuranceChange} className={patient.insuranceChange === "Yes" ? "text-red-600 font-bold" : ""} />
-                <Field label="Prior Auth Req?" value={patient.priorAuthReq} />
-                <Field label="Primary Claim Paid?" value={patient.primaryClaimPaid} className={patient.primaryClaimPaid === "No" ? "text-red-600" : ""} />
-              </div>
-            </div>
-          )}
-        </Card>
+        <SubscriptionInsuranceCard patient={patient} onFieldChange={onFieldChange} />
 
         {/* Medical Necessity + Auth */}
         <Card className="p-4">
@@ -431,74 +535,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         </Card>
 
         {/* Doctor Info */}
-        <Card className="p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Doctor Info</p>
-          <div className="grid grid-cols-2 gap-3">
-            <EditableField
-              label="Doctor"
-              value={patient.doctor}
-              editedValue={patient.doctorEdited}
-              editedField="doctorEdited"
-              onFieldChange={onFieldChange}
-            />
-            <EditableField
-              label="NPI"
-              value={patient.npi}
-              editedValue={patient.npiEdited}
-              editedField="npiEdited"
-              onFieldChange={onFieldChange}
-            />
-            <div className="col-span-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Doctor Address</p>
-              <AddressAutocomplete
-                key={`docaddr-${patient.id}`}
-                value={patient.doctorAddressEdited ?? patient.doctorAddress}
-                onChange={(result: AddressResult) => {
-                  onFieldChange?.("doctorAddressEdited", result.address);
-                  onFieldChange?.("doctorAddressLat" as keyof Patient, result.lat);
-                  onFieldChange?.("doctorAddressLng" as keyof Patient, result.lng);
-                }}
-                placeholder="Search for doctor address..."
-              />
-              {patient.doctorAddressEdited !== null && patient.doctorAddressEdited !== patient.doctorAddress && <p className="text-[10px] text-amber-600 mt-0.5">edited</p>}
-            </div>
-            <EditableField
-              label="Doctor Phone"
-              value={patient.doctorPhone ? formatPhone(patient.doctorPhone) : ""}
-              editedValue={patient.doctorPhoneEdited}
-              editedField="doctorPhoneEdited"
-              onFieldChange={onFieldChange}
-              placeholder="(555) 555-5555"
-            />
-            <EditableField
-              label="Doctor Fax"
-              value={patient.doctorFax}
-              editedValue={patient.doctorFaxEdited}
-              editedField="doctorFaxEdited"
-              onFieldChange={onFieldChange}
-              placeholder="(555) 555-5555"
-            />
-            {(() => {
-              const faxDisplay = patient.faxParachuteEdited ?? patient.faxParachute;
-              const faxEditedIdx = patient.faxParachuteEdited !== null
-                ? FAX_PARACHUTE_OPTIONS.find((o) => o.label === patient.faxParachuteEdited)?.index ?? null
-                : null;
-              return (
-                <EditableStatusSelect
-                  label="Fax / Parachute"
-                  options={FAX_PARACHUTE_OPTIONS}
-                  currentLabel={faxDisplay || "—"}
-                  editedIndex={faxEditedIdx}
-                  editedField="faxParachuteEdited"
-                  onFieldChange={(field, value) => {
-                    const label = FAX_PARACHUTE_OPTIONS.find((o) => o.index === Number(value))?.label ?? "";
-                    onFieldChange?.(field, label);
-                  }}
-                />
-              );
-            })()}
-          </div>
-        </Card>
+        <SubscriptionDoctorCard patient={patient} onFieldChange={onFieldChange} />
 
         {/* Financials */}
         <Card className="p-4">

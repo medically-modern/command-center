@@ -73,8 +73,15 @@
   flex: 1; min-height: 0;
 }
 .cc-pt .pt-main {
-  min-width: 0; overflow-y: auto; padding: 18px 24px 48px;
+  /* Its bottom padding, named because the Subscription tab's pinned Send reads
+     it: a sticky box stops at the scroll container's PADDING edge, so without
+     this the bar floats 48px up with the fields showing underneath it. */
+  --pt-main-pb: 48px;
+  min-width: 0; overflow-y: auto; padding: 18px 24px var(--pt-main-pb);
   display: flex; flex-direction: column; gap: 14px;
+  /* A field scrolled into view (a Tab keypress, a focus) stops above the
+     Subscription tab's pinned Send rather than behind it. */
+  scroll-padding-bottom: 96px;
 }
 .cc-pt .pt-side {
   border-left: 1px solid var(--bd); background: var(--cd);
@@ -443,6 +450,48 @@
 .cc-pt .sub-bar .grow { flex: 1; min-width: 200px; }
 .cc-pt .sub-bar .ico { width: 15px; height: 15px; flex: none; }
 
+/* The Profile tab's fields: `SubscriptionForm`, then the /subscription page's
+   own address · insurance · doctor cards (Josh, 2026-09-23 — *"make their
+   profile editable on the right"*). The cards take as many columns as the
+   box has room for — one in the Communications hub's ~480px pane, three in the
+   patient screen's main column — by the BOX's width, not the window's: the
+   pane never sees the viewport breakpoints the patient screen's own grids use
+   (the `.embedded` rules further down restate those one by one). */
+.cc-pt .sub-fields { display: flex; flex-direction: column; gap: 16px; }
+.cc-pt .sub-cards {
+  display: grid; gap: 16px; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+/* ⚠️⚠️ The Send is at the BOTTOM of the tab and PINNED there while the tab is
+   on screen (Josh, 2026-09-23: *"with a send to monday button at the bottom"*).
+   It used to sit above the form because the form is taller than the viewport,
+   so a Save at its foot was below the fold on every patient; sticky answers
+   both. It is a direct child of `.pt-main` (the Profile tab renders a
+   fragment), so it is pinned from the first frame — inside a box of its own it
+   could not rise above that box's top edge.
+   ⚠️ The background is OPAQUE — the bar floats over the fields as they scroll
+   under it, and the warning tint alone is 10% alpha, so it is laid over the
+   card colour rather than standing alone. */
+.cc-pt .sub-send {
+  /* Flush with the bottom edge: `.pt-main` is the scroller here, and sticky
+     measures from inside its padding (see `--pt-main-pb`). */
+  position: sticky; bottom: calc(-1 * var(--pt-main-pb, 0px)); z-index: 4;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; border-radius: 12px; font-size: 12px;
+  background: var(--cd); border: 1px solid var(--bd);
+  box-shadow: 0 -10px 24px -14px hsl(215 40% 12% / 0.4);
+}
+.cc-pt .sub-send.dirty {
+  background: linear-gradient(var(--warn-bg), var(--warn-bg)), var(--cd);
+  border-color: var(--warn-bd); color: var(--warn-fg);
+}
+.cc-pt .sub-send .grow { flex: 1; min-width: 180px; }
+.cc-pt .sub-send .ico { width: 15px; height: 15px; flex: none; }
+/* The Send keeps the right-hand end — beside the text while there is room, and
+   under Discard when the pane wraps it to a second line. */
+.cc-pt .sub-send > :last-child { margin-left: auto; }
+
 /* The same form, read-only. ⚠️ The guard is `inert` on this element (§5.39c2);
    what this rule adds is the LOOK, so a rep can tell at a glance that the
    controls are not theirs to press rather than discovering it by clicking. */
@@ -570,6 +619,9 @@
    scrolling pane would be a second scrollbar with the switcher above it. */
 .cc-pt.embedded { height: auto; flex: none; min-height: 0; background: none; }
 .cc-pt.embedded .pt-main { overflow: visible; padding: 12px 12px 40px; gap: 12px; }
+/* In the pane the scroller is the pane itself, which has no padding, so the
+   Send needs no allowance for `.pt-main`'s. */
+.cc-pt.embedded .sub-send { bottom: 0; }
 .cc-pt.embedded .tb-card { padding: 12px 14px; }
 .cc-pt.embedded .tb { gap: 10px 18px; }
 .cc-pt.embedded .tb .vtoggle { width: 100%; margin-left: 0; }
@@ -586,6 +638,13 @@
 .cc-pt.embedded .strip.upstrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cc-pt.embedded .rogrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cc-pt.embedded .clin { grid-template-columns: 1fr; }
+/* The Subscription tab's order form is the /subscription page's own component,
+   laid out for a wide page by VIEWPORT breakpoints — so at a 1440 window it
+   drew three columns in the ~480px pane and cut every select's value to "Next
+   Order…". Two columns here, and nothing about how the form looks: this
+   restates its grid for the pane's width, as the rules above do for ours. */
+.cc-pt.embedded .sub-fields .md\:grid-cols-3,
+.cc-pt.embedded .sub-fields .md\:grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cc-pt.embedded .clin .ctl { justify-content: flex-start; }
 /* The stage tools are whole pages built for a wide column; in the pane they
    scroll sideways inside their own frame rather than pushing the pane wide. */
