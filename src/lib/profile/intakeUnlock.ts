@@ -9,10 +9,16 @@
  */
 
 import { isCashPayPatient } from "../shared/cashPay";
+import { warningConditions } from "./intakeWarnings";
+import {
+  networkShortLabel, networkToneOf, networkVerdictOf,
+  type NetworkTone, type NetworkVerdict,
+} from "./networkVerdict";
 import type { Patient } from "./workflow";
 
 export interface UnlockCondition {
-  id: "authorised" | "stediRan" | "active" | "cgmPath" | "pumpPath";
+  /** `warn:<KEY>` rows come from the benefits check's Intake Warnings (§5.20b). */
+  id: "authorised" | "stediRan" | "active" | "cgmPath" | "pumpPath" | `warn:${string}`;
   label: string;
   passed: boolean;
   /** Shown when the condition fails — what the rep should actually do. */
@@ -81,23 +87,36 @@ export function coverageActive(p: Patient): boolean {
  * across 500 rows — not one real negative had ever been written.
  *
  * ⚠️ Re-measured board-wide 2026-09-24: **Yes 485 · Unknown 224 · No 40 ·
- * blank 2,034**, plus one free-text answer ("Check with patient: lives in NY,
- * NJ, FL or TN?"). Real negatives ARE written now — and the free-text row is
- * why an unrecognised value must stay `unknown` and be shown verbatim.
+ * blank 2,034**, plus one "Check with patient: lives in NY, NJ, FL or TN?".
+ * Real negatives ARE written now. That last one is not free text: it is the
+ * first row of the backend's new contract (deployed 2026-09-24), whose two
+ * "Check …" answers `networkVerdict.ts` names (§5.20b). Both are neither a Yes
+ * nor a No, so they read `unknown` HERE; `networkVerdict` below is the finer
+ * reading the screens use. A value that is none of these still stays
+ * `unknown` and is shown verbatim.
  */
 export type NetworkAnswer = "yes" | "no" | "unknown" | "none";
 
-const NETWORK_YES = new Set(["yes", "in network", "in-network", "true"]);
-const NETWORK_NO = new Set([
-  "no", "out of network", "out-of-network", "not in network", "oon", "false",
-]);
-
 export function networkAnswer(p: Pick<Patient, "stediInNetwork"> | null | undefined): NetworkAnswer {
-  const v = (p?.stediInNetwork ?? "").trim().toLowerCase();
-  if (!v) return "none";
-  if (NETWORK_YES.has(v)) return "yes";
-  if (NETWORK_NO.has(v)) return "no";
-  return "unknown";
+  // One vocabulary, in `networkVerdict.ts` — the two "Check …" verdicts the
+  // backend writes from 2026-09-24 are neither a Yes nor a No, so they read
+  // as unknown here, which is exactly what they are.
+  const v = networkVerdictOf(p?.stediInNetwork);
+  return v === "yes" || v === "no" || v === "none" ? v : "unknown";
+}
+
+/**
+ * The contract verdict the backend writes from 2026-09-24 (§5.20b) — finer
+ * than `networkAnswer`, because the two "Check …" answers need different
+ * handling on screen (a pop-up for one, a tooltip for the other).
+ */
+export function networkVerdict(p: Pick<Patient, "stediInNetwork"> | null | undefined): NetworkVerdict {
+  return networkVerdictOf(p?.stediInNetwork);
+}
+
+/** Yes green · No red · the two "Check …" answers amber · anything else neutral. */
+export function networkTone(p: Pick<Patient, "stediInNetwork"> | null | undefined): NetworkTone {
+  return networkToneOf(networkVerdict(p));
 }
 
 /** Positively confirmed in-network. Drives the readout's green Yes ONLY — it
@@ -122,12 +141,11 @@ export function inNetwork(p: Patient): boolean {
  * rule can never disagree about what counts as a Yes.
  */
 export function networkLabel(p: Patient | null | undefined): string {
-  switch (networkAnswer(p)) {
-    case "yes": return "Yes";
-    case "no": return "No";
-    case "none": return "—";
-    default: return (p?.stediInNetwork ?? "").trim();
-  }
+  // ⚠️ From 2026-09-24 the two "Check …" verdicts print SHORT ("Check with
+  // patient", "Check manually") — the full sentence is the pop-up's and the
+  // note's job. Everything else is unchanged: recognised answers normalised,
+  // anything else verbatim.
+  return networkShortLabel(p?.stediInNetwork);
 }
 
 /** Condition 1: the patient authorised us to send, or the rep completed the
@@ -200,6 +218,19 @@ export function evaluateUnlock(p: Patient | null | undefined): UnlockState {
      can act on a genuine Out-of-Network; this stage warns, it does not block.
      Coverage being INACTIVE still blocks — that is a real, answerable fact
      about the patient, and re-running the check is what clears it. */
+
+  /* ⚠️ THE BENEFITS CHECK'S INTAKE WARNINGS GATE THE ADVANCE (Brandon,
+     2026-09-24; §5.20b). One row per warning: a BLOCK never passes — no
+     override, Josh: "let's leave it blocked for now", and Propose Stuck is
+     still the way out — and a CONFIRM passes once its box is ticked. They sit
+     outside the cash pay branch on purpose: they only exist if a check ran,
+     and whatever a check said still applies.
+     ⚠️ Callers pass the patient with the acks the SCREEN shows (the page's
+     optimistic copy), or a box the rep just ticked leaves Advance grey until
+     the next poll. The In Network verdict is still NOT a condition. */
+  for (const w of warningConditions(p)) {
+    conditions.push({ id: w.id, label: w.label, passed: w.passed, hint: w.hint });
+  }
 
   // Coverage paths block the advance (Josh, 2026-08-18) — but only for the
   // product categories actually in play, so a CGM-only patient is never asked

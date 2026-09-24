@@ -44,7 +44,7 @@ const intake = (over: Partial<IntakeLead>): IntakeLead => ({
   referralSource: "Patient", alreadyInSystem: "", followUp: "", followUpDate: "", dupCheckResult: "", state: "NY",
   generalInsurance: "Anthem", insuranceProvidedVia: "Entered manually", insuranceOther: "", calendlyEventUri: "",
   providedDoctorName: "Dr. Okafor", providedClinicPhone: "5555550100", ipCoveragePath: "", cgmCoveragePath: "Insulin",
-  hasInsuranceCard: false, stediError: "", stediActive: "Yes", stediPlanName: "Test Plan", stediInNetwork: "",
+  hasInsuranceCard: false, stediError: "", stediActive: "Yes", stediPlanName: "Test Plan", stediInNetwork: "", intakeWarnings: "", intakeWarningAcks: "",
   ...over,
 });
 const wc = (over: Partial<WelcomeCallItem>): WelcomeCallItem => ({

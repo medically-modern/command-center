@@ -39,6 +39,7 @@ import {
 import { isAlreadyInSystemResult } from "@/lib/profile/dupCheckFlag";
 import { networkPill } from "@/lib/careCoordinator/networkPill";
 import { stateCode, stateFromAddress } from "@/lib/shared/usState";
+import { cardWarnings } from "@/lib/profile/intakeWarnings";
 import { PatientCard } from "./PatientCard";
 import type { CallTarget } from "./CallPatientDialog";
 
@@ -214,6 +215,7 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
       networkPill={networkPill(lead)}
+      warnings={cardWarnings(lead)}
       when={<ScheduledWhen entry={entry} muted={entry.when === "today-passed"} />}
       pills={intakePills(lead, false)}
       pillActions={insurancePillAction(lead, extras)}
@@ -244,6 +246,7 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
       networkPill={networkPill(lead)}
+      warnings={cardWarnings(lead)}
       when={<DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
       pillActions={insurancePillAction(lead, extras)}
@@ -345,6 +348,7 @@ export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
       networkPill={networkPill(lead)}
+      warnings={cardWarnings(lead)}
       when={<DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
       pillActions={insurancePillAction(lead, extras)}

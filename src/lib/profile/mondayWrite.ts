@@ -75,9 +75,16 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
  * column is already showing "Run".
  */
 export async function triggerStediRun(itemId: string): Promise<void> {
-  // Clear the two completion signals only. Sequential, only two writes.
+  // Clear the two completion signals. Sequential, only a few writes.
   await writeText(itemId, COL.stediErrorDescription, "");
   await writeText(itemId, COL.stediPlanName, "");
+  // ⚠️ A new check asks again (Josh, 2026-09-24: "every new stedi check should
+  // have updated info"). The backend never touches Intake Warning Acks, so a
+  // tick would otherwise outlive the check it confirmed. Cleared HERE, before
+  // the run, because this is the one function both intake pages start a check
+  // through — checks started outside the Command Center keep their ticks, and
+  // that is accepted ("all we care about is our side"). §5.20b.
+  await writeText(itemId, COL.intakeWarningAcks, "");
 
   // Force a real status transition: clear → Run.
   await clearStatusColumn(itemId, COL.runStediEligibility);

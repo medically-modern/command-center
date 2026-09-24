@@ -2234,6 +2234,111 @@ Cross-Sell column wins over the payer guess when set — which a create automati
 on its own for the ordinary referral. Nothing types it in.
 
 
+### 5.20b The benefits check's In Network verdict and Intake Warnings (Sep 2026)
+Brandon's Prompt 2 (*"In Network chip states + Intake Warnings pop-up and Advance gate"*), built on
+Josh's answers the same day. **No board change on our side; the backend half was already live.**
+Rules: **`lib/profile/networkVerdict.ts`** and **`lib/profile/intakeWarnings.ts`** (+ tests); the
+write: **`lib/profile/intakeWarningAck.ts`**; the screen: **`hooks/profile/useIntakeWarnings.ts`** +
+**`components/profile/IntakeWarnings.tsx`**. Both intake pages use it — Josh: *"this should apply to
+that intake page too"*, i.e. `/profile` as well as Info Collection / Profile Clean-Up (§5.19b's
+two-routes rule).
+
+**What the backend writes** (`stedi-monday-integration` commit 02f5d81, deployed 2026-09-24):
+- **Stedi In Network? `text_mm1xehx8`** now holds OUR contract verdict after every successful check,
+  one of exactly four strings: `Yes` · `No` · `Check with patient: lives in NY, NJ, FL or TN?` ·
+  `Check manually`. It used to be the 271's first network indicator, which is why old rows still
+  say `Unknown` until the check is re-run. Brandon's dry run over 681 completed patients: 647 Yes,
+  31 Check with patient, 3 Check manually.
+- ⚠️ **Anthem BCBS Commercial is in network only in NY**, plus through the host Blue plans:
+  **Horizon BCBS (NJ) · BCBS FL · BCBS TN · BCBS WY** (Josh added Wyoming, 2026-09-24). The backend
+  reads the patient's state from Profile State, then the Address, then the Stedi Address.
+- **Intake Warnings `long_text_mm7g4b4h`** — one warning per line, `KEY|TYPE|message`, TYPE being
+  `BLOCK` or `CONFIRM:<checkbox label>`. Keys today: `MEDICAID_MCO_OON` · `SELF_REF_CIGNA` ·
+  `SELF_REF_UHC` · `MEDICARE_PUMP_MEDICAID_ID` · `UHC_AETNA_PUMP_MGMT`. A successful check with no
+  warnings CLEARS it; a failed check writes nothing.
+- **Intake Warning Acks `text_mm7g1hr`** — ours alone, comma-separated KEYs. The backend never
+  writes it.
+
+**What the rep sees:**
+- **The In Network box** — Yes green · No red · **Check with patient** amber · **Check manually**
+  amber (its tooltip says to look the plan up) · anything else verbatim · blank until a check has
+  run. On `/profile` it is new, in the **Address row**, not the first row: that row is four boxes
+  in a narrow card, and a fifth wrapped the payer name to seven lines (measured in a browser).
+- **The pop-up**, *"Before you move forward — <name>"*: the Anthem steps, then every BLOCK, then
+  every CONFIRM (ticked ones marked "— confirmed"). It opens every time a patient with a Check
+  with patient verdict or any warning is opened (Josh), and again when a check finishes. Never while
+  a check is still running for that patient; never on a finished record in review mode.
+- **The panel under the results**, which stays: the amber *In network only if they live in the
+  right state* note, then *Benefits check warnings* with its open count — a BLOCK in rose with
+  *"This patient can't be advanced. Let them know."*, each CONFIRM with its checkbox. **The boxes
+  live here and only here**, so the pop-up and the panel cannot disagree about what is ticked.
+- **The Care Coordinator card** — the network pill (§5.30i) gains the two amber states, and under
+  it a rose *Can't advance: …* line per BLOCK and an amber *Confirm: …* line per box nobody has
+  ticked yet.
+
+**The gate.** Every BLOCK is an unlock condition that never passes — **no override** (Brandon:
+*"let's leave it blocked for now"*). Every CONFIRM passes once ticked. They are
+`intakeWarnings.warningConditions`, read by `intakeUnlock.evaluateUnlock` on the intake page (so
+both Advance buttons there) and by `/profile`'s checklist, from ONE function.
+⚠️ **The gate reads the ticks the SCREEN shows** (`gatePatient`), not the last poll: a box the rep
+just ticked must light Advance now. The tick is a page-level override that retires once the board
+agrees, and lapses after 2 minutes whatever happens — the §5.28 override rule, never a stored
+opinion. ⚠️ It is deliberately NOT the hook's patient overlay: that would mark the page dirty and
+send the column again on the next Save.
+
+**A tick is a write, in this order** (`setIntakeWarningAck`, each step pinned by a test):
+1. **Re-read the ticks.** A failed read throws and writes nothing. The new value is built from the
+   RE-READ one, so another rep's tick made since the last poll survives — Monday has no
+   compare-and-set.
+2. **Stamp the intake notes**, under the page's own stage label: *"Intake warning confirmed:
+   <label> (KEY)"*, *"… overridden: <label> (KEY) — <reason>"*, or *"… un-ticked: …"*. A note that
+   fails means no tick.
+3. **Write the ticks.**
+- ⚠️ **A CONFIRM whose label says management approved it is an OVERRIDE** (`requiresReason`: a
+  label matching management / approved / override). Brandon: *"let's have her add a note of why it
+  was overridden and it can be added to the intake notes section"* — so ticking it opens a reason
+  box, *Save and tick* stays disabled until there is text, and the reason goes into that note.
+  Every other box ticks on the click.
+- ⚠️ **A new check asks again.** `triggerStediRun` clears `text_mm7g1hr` before it flips Run, and
+  the screen clears at once (`markCheckStarted`). A check started outside the Command Center keeps
+  its ticks — accepted (Josh: *"all we care about is our side"*).
+
+**The Anthem guidance** (`anthemNetworkGuidance`, for a Check with patient verdict) reads the
+insurance's address and says what to do, never does it: insurance in NJ / FL / TN / WY → confirm
+they live there, then change Primary Insurance to that state's plan and re-run; insurance in NY but
+this profile's address elsewhere → fix the address and re-run; any other state → ask whether they
+moved, and if they really live there we are not in network. `primaryInsurance.ANTHEM_HOST_PLAN` is
+the one state→plan map, shared with the suggestion engine.
+
+**Reading it without surprises:**
+- ⚠️ **The two "Check …" verdicts are matched by PREFIX.** The backend owns the wording after the
+  colon (the state list has already grown by one), and an exact match would demote a reworded
+  verdict to "other" and drop its pop-up.
+- ⚠️ **An unknown TYPE or a malformed line becomes a CONFIRM** labelled *"I've read this"*, with the
+  whole line as the message — shown and gating, never dropped. Keys are deduplicated.
+- ⚠️ **Both settle signatures carry `intakeWarnings`** (`useStediRun.stediSignature` and `/profile`'s
+  `STEDI_SIGNATURE_KEYS`): the service writes it in the same one-column-at-a-time writeback, and
+  without it the results can reveal before the warnings land (§5.11).
+- ⚠️ **In the full read only, not `LIST_COLUMN_IDS`** — the ~2,000-row list poll does not need them
+  (§5.25). The Care Coordinator's own intake read carries both.
+
+**Fixed with it:** `unverifiedWrite.appendIntakeNote` fell back to `""` when its re-read failed and
+then WROTE — so one Monday blip replaced a patient's whole call log with a single line. It aborts
+now. And on `/profile` in dark mode every filled result value rendered dim gray, red "No" answers
+included: the placeholder rule `.dark .pf-root .rcell .rv` tied `.rv.set` / `.good` / `.bad` and
+won on source order. It is `:not(.set)` now.
+
+**Verified in a browser** (a throwaway harness against a fake Monday, nothing sent out) at 1440 and
+1100, light and dark: the pop-up, the panel and its reason box, the `/profile` results rows, and the
+card; and a tick end to end — read ticks, read notes, write the note, write the ticks, refetch.
+
+**Keep-in-agreement:** `networkVerdict.networkVerdictOf` is the one reading of the column —
+`intakeUnlock.networkAnswer`, the two pages' boxes and `careCoordinator/networkPill` all go through
+it · `intakeWarnings.warningConditions` ⇄ `evaluateUnlock` ⇄ `/profile`'s checklist ·
+`networkVerdict.ANTHEM_NETWORK_STATES` ⇄ `primaryInsurance.ANTHEM_HOST_PLAN` (tested) ·
+`intakeWarningsWiring.test.ts` pins the reads, both settle signatures, the clear-before-Run order,
+both pages' mounts and the gate — each assertion verified to fail with its piece removed.
+
 ### 5.21 DTC form leads get a duplicate check — completed filed, partials flagged (Aug 2026)
 The `duplicate-patient-check` webhook (`josh-monday-automations` on Railway) fires on **every**
 create on Profile Send Off, but it gated on the group and accepted only **1. Intake** and **Already
@@ -4101,11 +4206,17 @@ yet, it'll just stay blank."* Rule: **`lib/careCoordinator/networkPill.ts`** (+ 
 | In Network `Yes` | green **In-network** |
 | `No` | red **Out-of-network** |
 | the literal `Unknown` (Original Medicare has no network) | gray **Network unknown** |
+| `Check with patient: …` (§5.20b) | amber **Only in-network if patient lives in NY, NJ, FL, TN or WY?** |
+| `Check manually` (§5.20b) | amber **Check manually** |
 | any other text | gray, **verbatim** |
 | blank — no check has run | nothing |
 
-- ⚠️ **The yes/no reading is `profile/intakeUnlock.networkAnswer`, never a second copy** — the pill
-  and the profile page's own readout must agree about what counts as a Yes.
+- ⚠️ **The reading is `profile/networkVerdict.networkVerdictOf`, never a second copy** — the pill,
+  `intakeUnlock.networkAnswer` and both profile pages' own boxes go through it, so they agree about
+  what counts as a Yes. (It was `networkAnswer` itself until §5.20b gave the column a contract.)
+- The two amber rows landed the same afternoon (§5.20b): the "free-text value" measured below was
+  the first row of the backend's new contract, not free text. Josh's wording for the card:
+  *"only in-network if patient lives in NY, NJ, FL or TN?"*, plus Wyoming.
 - ⚠️ **A failed check outranks whatever the column still says.** A failure means the identifiers
   did not match, so a network answer beside it is from an earlier run.
 - ⚠️ **§5.20's "the column has never carried a real No" is out of date.** Measured board-wide on
@@ -12239,7 +12350,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A DTC form patient wasn't duplicate-checked / the "Already In System" pill is missing | §5.21 — `lib/profile/dupCheckFlag.ts` reads **Dup Check Result**, never `alreadyInSystem`; the service half is `josh-monday-automations` `automations/duplicate-patient-check.js` |
 | A CareCentrix referral arrived half-empty / which intake form should reps use | §5.20 — the **Intake Form on Profile Send Off** (view `246988391`) is lossless; DTC Intake's Manual Patient Intake Form drops 12 fields at the board hop. `"source":"form"` in the item's `create_pulse` tells you which path it took |
 | Provided Doctor Name / Clinic Phone empty on a CareCentrix intake | §5.20 — `lib/profile/referralDoctorInfo.ts`; the manual intake form fills the VERIFIED doctor columns, and the fallback is display-only |
-| A patient reads "not in network" / Advance is greyed out on an intake patient | §5.20 — `lib/profile/intakeUnlock.ts` `networkAnswer`. `Unknown` is what Original Medicare returns and is **not** a No; the network answer gates nothing |
+| A patient reads "not in network" / Advance is greyed out on an intake patient | §5.20 — `lib/profile/intakeUnlock.ts` `networkAnswer`. `Unknown` is what Original Medicare returns and is **not** a No; the network answer gates nothing. ⚠️ If Advance is greyed out, read the checklist for a benefits-check WARNING first (§5.20b) — a BLOCK never passes and an un-ticked box holds it |
+| "Check with patient" / "Check manually" on an intake patient, or a pop-up the rep can't get rid of | §5.20b — the backend's verdict in `text_mm1xehx8` (`networkVerdict.ts`). The pop-up opens on every open while the patient has a Check with patient verdict or any warning, by design; it goes away when a re-run check comes back clean. The Anthem steps say which plan to switch to — `ANTHEM_HOST_PLAN` |
+| A benefits-check warning can't be ticked, or a tick "won't stick" | §5.20b — `intakeWarningAck.setIntakeWarningAck`: re-read, note, then the tick, and a failed read or note writes NOTHING (the toast says why). A "Management approved" box asks for a reason first. Ticks are cleared on purpose when a new check starts from our pages. A BLOCK has no box and no override (Brandon) |
+| A warning is on the board but nowhere on screen | §5.20b — `long_text_mm7g4b4h` must be in `READ_COLUMN_IDS` and in both settle signatures; `intakeWarningsWiring.test.ts` should have failed. A malformed line is shown as an "I've read this" box, never dropped |
 | A DTC intake patient is in the wrong half of the split / Advance did nothing | §5.20 — `lib/profile/intakeSubStage.ts` (the queue is the GROUP), then `unverifiedWrite.advanceToProfileCleanUp`. Both roles are `UnverifiedReferralsPage` under a `variant` prop |
 | A patient got two "here's your link" texts / the insurance step asked for a card they already sent | §5.23 — the once-only stamps are **on the board** (`date_mm6eakae` / `date_mm6eev4b`), and `uploadLink.js` `UPLOAD_KINDS` decides which column a link writes to |
 | A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |

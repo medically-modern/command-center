@@ -124,6 +124,8 @@ export function mondayItemToPatient(
     stediManagedMedicaid: col(item, COL.stediManagedMedicaid),
     stediPrimaryPayer: col(item, COL.stediPrimaryPayer),
     stediInNetwork: col(item, COL.stediInNetwork),
+    intakeWarnings: col(item, COL.intakeWarnings),
+    intakeWarningAcks: col(item, COL.intakeWarningAcks),
     stediPriorAuthRequired: col(item, COL.stediPriorAuthRequired),
     stediCoinsurance: col(item, COL.stediCoinsurance),
     stediCopay: col(item, COL.stediCopay),

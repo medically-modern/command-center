@@ -144,8 +144,14 @@ export interface IntakeLead {
   stediActive: string;
   stediPlanName: string;
   /** The eligibility check's network answer, exactly as Stedi wrote it —
-   *  `Unknown` included (§5.20). Blank when no check has run. */
+   *  `Unknown` included (§5.20). Blank when no check has run. The card shows
+   *  it as one pill (`networkPill`), which names the two "Check …" verdicts
+   *  the backend writes from 2026-09-24 in amber (§5.20b). */
   stediInNetwork: string;
+  /** The benefits check's Intake Warnings and the ticks against them (§5.20b)
+   *  — the card shows every BLOCK and each CONFIRM not yet ticked. */
+  intakeWarnings: string;
+  intakeWarningAcks: string;
 }
 
 export interface ChaseItem {

@@ -378,6 +378,9 @@ export function buildIntakeTasks(
  */
 export async function appendIntakeNote(
   itemId: string, note: string, existingNotes?: string,
+  /** The stamp's stage label. The Care Coordinator and Referral Intake write
+   *  this same column, and the label is what makes a line traceable (§9). */
+  stage = "Patient Intake",
 ): Promise<IntakeWriteResult> {
   const body = note.trim();
   if (!body) {
@@ -388,8 +391,19 @@ export async function appendIntakeNote(
     try {
       const cols = await readColumnTexts(itemId, [COL.notes]);
       prior = cols.find((c) => c.id === COL.notes)?.text ?? "";
-    } catch {
-      prior = "";
+    } catch (e) {
+      // ⚠️ ABORT, never append onto "" (fixed 2026-09-24). `change_column_value`
+      // REPLACES the column, so a failed re-read used to overwrite the patient's
+      // whole call log with this one line — the §5.28 rule for the Comms Hub's
+      // own composer ("a failed re-read ABORTS rather than appending onto ''"),
+      // which this helper had not followed.
+      return {
+        ok: false,
+        errors: [{
+          label: "Note", columnId: COL.notes,
+          error: `Couldn't read the notes before adding to them, so nothing was written: ${e instanceof Error ? e.message : String(e)}`,
+        }],
+      };
     }
   }
   try {
@@ -401,7 +415,7 @@ export async function appendIntakeNote(
     // which is how the two got crossed.
     await writeText(
       itemId, COL.notes,
-      appendStampedNote(prior, body, "Patient Intake", { initials: userInitials() }),
+      appendStampedNote(prior, body, stage, { initials: userInitials() }),
     );
     return { ok: true, errors: [] };
   } catch (e) {

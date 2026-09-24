@@ -131,6 +131,20 @@ export const COL = {
   // wired into the UI 2026-07-20 for the §1b MSP soft block.
   stediPrimaryPayer: "dropdown_mm594743",
   stediInNetwork: "text_mm1xehx8",
+  /**
+   * Intake Warnings — one warning per line, `KEY|TYPE|message`, TYPE being
+   * `BLOCK` or `CONFIRM:<checkbox label>`. Written by stedi-monday-integration
+   * after every SUCCESSFUL benefits check (a check with no warnings clears it;
+   * a failed check writes nothing). Read-only here. §5.20b.
+   */
+  intakeWarnings: "long_text_mm7g4b4h",
+  /**
+   * Intake Warning Acks — the comma-separated KEYs of the CONFIRM warnings a
+   * rep ticked. ⚠️ OURS: the backend never writes it. The SPA writes it on a
+   * tick and clears it when a benefits check starts from our pages
+   * (`triggerStediRun`), so a new check always asks again (Josh, 2026-09-24).
+   */
+  intakeWarningAcks: "text_mm7g1hr",
   stediPriorAuthRequired: "text_mm1xhymg",
   stediCoinsurance: "text_mm1xssyw",
   stediCopay: "text_mm1xzqe0",
@@ -249,6 +263,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.stediQmb, COL.stediMedicareJurisdiction, COL.stediMedicaidMltc,
   COL.stediManagedMedicaid, COL.stediPrimaryPayer,
   COL.stediInNetwork, COL.stediPriorAuthRequired,
+  COL.intakeWarnings, COL.intakeWarningAcks,
   COL.stediCoinsurance, COL.stediCopay,
   COL.stediIndividualDeductible, COL.stediIndividualDeductibleRemaining,
   COL.stediFamilyDeductible, COL.stediFamilyDeductibleRemaining,

@@ -141,6 +141,18 @@ export function resolveState(addr: string): string {
 }
 function homePlanState(hp: string): string { return resolveState(hp || ""); }
 
+/**
+ * An Anthem / BCBS member whose address is in one of these states is billed
+ * through that state's OWN Blue plan, not Anthem — and those are the plans we
+ * are in network with outside NY. Exported because the benefits check's
+ * "Check with patient" guidance (`intakeWarnings.anthemNetworkGuidance`) must
+ * name the same plan this engine suggests; a second copy is how the two would
+ * start telling a rep different things (§5.20b).
+ */
+export const ANTHEM_HOST_PLAN: Readonly<Record<string, string>> = {
+  NJ: "Horizon BCBS", TN: "BCBS TN", FL: "BCBS FL", WY: "BCBS WY",
+};
+
 // ── Coverage classification helpers ──
 function coverageCategory(s: StediSnapshot): "Medicare" | "Medicaid" | "Commercial" {
   const ct = (s.covtype || "").toLowerCase();
@@ -257,9 +269,8 @@ function anthemSuggest(inp: SuggestionInputs): Suggestion {
   }
   const homePlan = s.homeplan || "";
   const hps = homePlanState(homePlan);
-  const HOST: Record<string, string> = { NJ: "Horizon BCBS", TN: "BCBS TN", FL: "BCBS FL", WY: "BCBS WY" };
-  if (HOST[state]) {
-    o.value = HOST[state]; o.pos = "12"; o.confidence = "high";
+  if (ANTHEM_HOST_PLAN[state]) {
+    o.value = ANTHEM_HOST_PLAN[state]; o.pos = "12"; o.confidence = "high";
   } else if (state === "NY") {
     const sub = anthemSubType(inp);
     o.value = sub.value || null; o.secondary = sub.secondary; o.alternatives = sub.alternatives; o.needs = sub.needs;

@@ -31,6 +31,11 @@ import {
   hasDoctorFax,
 } from "@/lib/profile/doctorFaxRequired";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { networkLabel, networkTone } from "@/lib/profile/intakeUnlock";
+import { warningConditions } from "@/lib/profile/intakeWarnings";
+import { CHECK_MANUALLY_HINT } from "@/lib/profile/networkVerdict";
+import { useIntakeWarnings, type IntakeWarningsState } from "@/hooks/profile/useIntakeWarnings";
+import { IntakeWarningsDialog, IntakeWarningsPanel } from "@/components/profile/IntakeWarnings";
 import type { Patient } from "@/lib/profile/workflow";
 import {
   hasValidZip, formatPhone, crossSellReason, canCrossSellCgm, deriveServing, addressWarning,
@@ -136,6 +141,8 @@ const STEDI_SIGNATURE_KEYS: (keyof Patient)[] = [
   "stediPlanBeginDate", "stediErrorDescription", "stediSecondaryMedicaidId",
   "stediPlanName", "stediGender", "stediMedicaidId", "stediHomePlan", "stediFacilityFlags",
   "stediAddress",
+  // The benefits check's warnings land in the same writeback (§5.20b).
+  "intakeWarnings",
 ];
 function stediSignature(p: Patient): string {
   return STEDI_SIGNATURE_KEYS.map((k) => String(p[k] ?? "")).join("␟");
@@ -339,6 +346,21 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   // A Stedi run is "in flight" for the selected patient only.
   const stediRunning = !!selected && stediRunningId === selected.id;
 
+  /**
+   * The benefits check's In Network verdict and Intake Warnings (§5.20b) — the
+   * same hook the intake page uses, because this board has two routes to
+   * Advance to MN and a rule on one of them is §5.19b's failure (Josh,
+   * 2026-09-24: "this should apply to that intake page too"). The stamp names
+   * the queue the patient is actually in, like Mark as Stuck's (a deep link is
+   * exempt from the split, so the URL is not evidence).
+   */
+  const intakeWarnings = useIntakeWarnings(selected, {
+    running: stediRunning,
+    stage: VARIANT_LABEL[selectedRole ?? "verified"],
+    enabled: !reviewMode,
+    onWritten: () => { void refetch(true); },
+  });
+
   const stopStediPolling = useCallback(() => {
     const timers = stediPollRef.current;
     if (timers) {
@@ -418,6 +440,15 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     ];
     if (selected.secondaryInsurance === "NY Medicaid") items.push({ label: "Member ID 2 (NY Medicaid)", ok: !!selected.memberId2?.trim() });
     items.push({ label: "Benefits verified active", ok: (selected.stediEligibilityActive || "").toLowerCase().trim() === "yes" });
+    // The benefits check's warnings gate Advance to MN exactly as they gate the
+    // intake page's advance (§5.20b): a BLOCK never passes, a CONFIRM once it
+    // is ticked. Read with the ticks the SCREEN shows.
+    for (const w of warningConditions(intakeWarnings.gatePatient ?? selected)) {
+      items.push({
+        label: w.label, ok: w.passed, key: w.id,
+        tag: w.type === "block" ? "can't advance" : "tick to confirm",
+      });
+    }
     items.push({ label: "Serving", ok: !!serv.trim() });
     if (servingIncludes(serv, "cgm")) {
       items.push({ label: "CGM Type", ok: !!selected.cgmType?.trim() });
@@ -463,7 +494,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
        cash pay patient is asked for (§5.19b records the cost of exactly that
        drift). Insurance rows only; the doctor still gates. */
     return applyCashPayReadiness(items, selected);
-  }, [selected, addressIssue]);
+  }, [selected, addressIssue, intakeWarnings.gatePatient]);
 
   const missing = checklist.filter((i) => !i.ok);
   const canSubmit = missing.length === 0;
@@ -524,6 +555,8 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
         return;
       }
       await triggerStediRun(runId);
+      // That cleared the ticks on the board (§5.20b) — clear them on screen too.
+      intakeWarnings.markCheckStarted();
       toast.success("Profile saved — Stedi eligibility check triggered");
       // Poll fast while the run is in flight; the settle watcher above stops
       // this the moment the full result set has landed and gone quiet.
@@ -829,11 +862,14 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 markingStuck={markingStuck}
                 onMoveToPipeline={selectedInSystem ? () => setMoveOpen(true) : undefined}
                 movingToPipeline={movingToPipeline}
+                intakeWarnings={intakeWarnings}
               />
             )}
           </main>
         </div>
       </div>
+
+      {selected && <IntakeWarningsDialog state={intakeWarnings} patientName={selected.name} />}
 
       {/* Mark as Stuck — the reason is REQUIRED because the Stuck group is the
           only marker this board has (no Stuck status label), so without it a
@@ -991,7 +1027,7 @@ function DtcFormFlagBanner({
 /** A send-off checklist row. `tag` overrides the right-hand chip for a row
  *  that isn't blank but isn't usable either — "missing" would be a lie for an
  *  address the rep can see in the box. */
-type ChecklistItem = { label: string; ok: boolean; tag?: string };
+type ChecklistItem = { label: string; ok: boolean; tag?: string; key?: string };
 
 interface BodyProps {
   patient: Patient;
@@ -1032,6 +1068,8 @@ interface BodyProps {
   movingToPipeline?: boolean;
   onAdvance: () => void;
   onAddNote: (fullText: string) => Promise<void>;
+  /** The benefits check's verdict + warnings for this patient (§5.20b). */
+  intakeWarnings: IntakeWarningsState;
 }
 
 function Field({ label, required, children, warn }: { label: string; required?: boolean; children: ReactNode; warn?: string }) {
@@ -1657,10 +1695,36 @@ function ProfileBody(p: BodyProps) {
                         still fits (Josh, 2026-07-21); Gender rides in a box
                         beside it, pulled from the Stedi gender column (Josh,
                         2026-07-22). */}
-                    <div className="res-grid" style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1fr)", marginTop: 10 }}>
+                    {/* In Network is new on this page (2026-09-24, §5.20b) —
+                        the same verdict, colours and short labels as the intake
+                        page, blank until a check has run. ⚠️ It sits in THIS
+                        row, not the first one: that row is four boxes in a
+                        narrow card already, and a fifth wrapped the payer name
+                        to seven lines (measured in a browser). Here it is also
+                        beside the address its "Check with patient" is about,
+                        and directly above the note that explains it. */}
+                    <div className="res-grid" style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1.5fr)", marginTop: 10 }}>
                       <ResCell label="Address" value={pt.stediAddress} />
                       <ResCell label="Gender" value={pt.stediGender} />
+                      <ResCell
+                        label="In Network"
+                        value={(pt.stediInNetwork ?? "").trim() ? networkLabel(pt) : ""}
+                        tone={networkTone(pt)}
+                        title={p.intakeWarnings.verdict === "checkManually" ? CHECK_MANUALLY_HINT : undefined}
+                      />
                     </div>
+                    {/* The "Check with patient" note and the warnings (§5.20b).
+                        Keyed by patient HERE as well as on ProfileBody, so an
+                        override reason half-typed for one patient can never be
+                        saved against the next even if that outer key moves. */}
+                    <IntakeWarningsPanel
+                      key={pt.id}
+                      state={p.intakeWarnings}
+                      disabled={p.stediRunning || p.reviewMode}
+                      disabledReason={p.reviewMode
+                        ? "This stage is finished — the ticks can't change here."
+                        : "A benefits check is running — tick once it finishes."}
+                    />
                   </>
                 )}
 
@@ -1849,7 +1913,7 @@ function ProfileBody(p: BodyProps) {
                     <div style={{ height: 16 }} />
                     <div id="checklist">
                       {p.checklist.map((it) => (
-                        <div key={it.label} className={`ci ${it.ok ? "done" : ""}`}>
+                        <div key={it.key ?? it.label} className={`ci ${it.ok ? "done" : ""}`}>
                           <span className="cb">{it.ok ? "✓" : "✕"}</span><span>{it.label}</span>
                           <span className="ctag">{it.ok ? "ok" : (it.tag ?? "missing")}</span>
                         </div>
@@ -1949,11 +2013,17 @@ function NotesComposer({ notes, onAppend }: { notes: string; onAppend: (full: st
   );
 }
 
-function ResCell({ label, value, bad }: { label: string; value: string; bad?: boolean }) {
+function ResCell({ label, value, bad, tone, title }: {
+  label: string; value: string; bad?: boolean;
+  /** The In Network verdict's colour (§5.20b); `bad` wins when both are set. */
+  tone?: "good" | "bad" | "warn" | "neutral";
+  title?: string;
+}) {
+  const t = bad ? "bad" : tone && tone !== "neutral" ? tone : "";
   return (
     <div className="rcell">
       <div className="rl">{label}</div>
-      <div className={`rv ${value ? "set" : ""} ${bad ? "bad" : ""}`}>{value || "—"}</div>
+      <div className={`rv ${value ? "set" : ""} ${t}`} title={title}>{value || "—"}</div>
     </div>
   );
 }

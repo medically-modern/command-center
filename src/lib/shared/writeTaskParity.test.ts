@@ -311,7 +311,7 @@ function profilePatient(overrides: Record<string, unknown> = {}) {
      stediCoverageType: "", stediPayerName: "", stediMedicareAdvantage: "",
      stediMedicareAdvantageCarrier: "", stediMedicareAdvantageMemberId: "", stediQmb: "",
      stediMedicareJurisdiction: "", stediMedicaidMltc: "", stediManagedMedicaid: "",
-     stediPrimaryPayer: "", stediInNetwork: "", stediPriorAuthRequired: "", stediCoinsurance: "",
+     stediPrimaryPayer: "", stediInNetwork: "", intakeWarnings: "", intakeWarningAcks: "", stediPriorAuthRequired: "", stediCoinsurance: "",
      stediCopay: "", stediIndividualDeductible: "", stediIndividualDeductibleRemaining: "",
      stediFamilyDeductible: "", stediFamilyDeductibleRemaining: "", stediIndividualOopMax: "",
      stediIndividualOopMaxRemaining: "", stediFamilyOopMax: "", stediFamilyOopMaxRemaining: "",

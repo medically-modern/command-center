@@ -47,6 +47,9 @@ export function stediSignature(p: Patient): string {
     p.stediFamilyOopMax, p.stediFamilyOopMaxRemaining,
     p.stediPlanBeginDate, p.stediErrorDescription, p.stediPrimaryPayer,
     p.stediMedicareAdvantage, p.stediQmb, p.stediManagedMedicaid,
+    // Written in the same writeback as the rest (§5.20b), one column at a
+    // time — leave it out and the run can settle before its warnings land.
+    p.intakeWarnings,
   ].join("|");
 }
 

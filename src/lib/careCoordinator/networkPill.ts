@@ -16,15 +16,25 @@
  * ("Check with patient: lives in NY, NJ, FL or TN?"). §5.20 recorded on
  * 2026-08-25 that no real "No" had ever been written; forty have since.
  *
- * ⚠️ **The rule is `profile/intakeUnlock.networkAnswer`, never a second copy.**
- * The profile page's readout and this pill must agree about what counts as a
+ * ⚠️ **The rule is `profile/networkVerdict.networkVerdictOf`, never a second
+ * copy** — the same one the profile page's readout and
+ * `intakeUnlock.networkAnswer` read. They must agree about what counts as a
  * Yes, or a coordinator sees green here and "No" one click in.
  *
- * ⚠️ **An unrecognised answer is shown VERBATIM, gray** — §5.20's
- * `networkLabel` rule. The free-text row above is exactly why: rewriting it to
- * "Unknown" would throw away the one instruction the eligibility service left.
- * Only the board's literal `Unknown` is reworded, because that one IS a known
- * answer — Original Medicare has no network — and Josh chose the words.
+ * ⚠️ **The two "Check …" answers are AMBER** (§5.20b). That "free-text" row
+ * was the first of the backend's new contract, deployed the same day: after
+ * every successful check the column now holds exactly one of `Yes` · `No` ·
+ * `Check with patient: lives in NY, NJ, FL or TN?` · `Check manually`. Neither
+ * "Check" is a No, and neither is a Yes a coordinator can pass through, so
+ * they get the colour that means "somebody has to ask, or look". Check with
+ * patient reads in Josh's words (*"only in-network if patient lives in NY, NJ,
+ * FL or TN?"*, plus Wyoming), with the backend's own sentence on hover.
+ *
+ * ⚠️ **Any other answer is shown VERBATIM, gray** — §5.20's `networkLabel`
+ * rule: rewording a value we have no rule for throws away what the service
+ * said. Only the board's literal `Unknown` is reworded, because that one IS a
+ * known answer — Original Medicare has no network — and Josh chose the words.
+ * Rows checked before 2026-09-24 keep theirs until the check is re-run.
  *
  * ⚠️ **A failed check outranks whatever the column still says.** A failure
  * means the identifiers did not match, so any network answer beside it is from
@@ -34,10 +44,10 @@
  * ⚠️ It blocks nothing — the network answer was removed as an advance gate on
  * 2026-08-25 (§5.20), and a pill is a readout.
  */
-import { networkAnswer } from "@/lib/profile/intakeUnlock";
+import { CHECK_MANUALLY_HINT, NETWORK_CARD_CHECK_TEXT, networkVerdictOf } from "@/lib/profile/networkVerdict";
 import { intakeBlockerDetail, type IntakeLead } from "./workflow";
 
-export type NetworkPillTone = "green" | "red" | "gray";
+export type NetworkPillTone = "green" | "red" | "amber" | "gray";
 
 export interface NetworkPill {
   label: string;
@@ -63,13 +73,21 @@ export function networkPill(
     };
   }
   const raw = (lead.stediInNetwork ?? "").trim();
-  switch (networkAnswer({ stediInNetwork: raw })) {
+  switch (networkVerdictOf(raw)) {
     case "none":
       return null;
     case "yes":
       return { label: "In-network", tone: "green", title: "The benefits check says this plan is in network" };
     case "no":
       return { label: "Out-of-network", tone: "red", title: "The benefits check says this plan is out of network" };
+    case "checkWithPatient":
+      return {
+        label: NETWORK_CARD_CHECK_TEXT,
+        tone: "amber",
+        title: `Anthem BCBS Commercial. The benefits check said "${raw}" — confirm where they live on the profile page.`,
+      };
+    case "checkManually":
+      return { label: "Check manually", tone: "amber", title: CHECK_MANUALLY_HINT };
     default:
       return raw.toLowerCase() === BOARD_UNKNOWN
         ? {

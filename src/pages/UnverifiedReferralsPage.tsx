@@ -62,8 +62,11 @@ import {
 // blocked advance. (`coverageActive` still gates; the network answer no
 // longer does — see `evaluateUnlock`.)
 import {
-  evaluateUnlock, coverageActive, inNetwork, networkLabel,
+  evaluateUnlock, coverageActive, networkLabel, networkTone,
 } from "@/lib/profile/intakeUnlock";
+import { CHECK_MANUALLY_HINT } from "@/lib/profile/networkVerdict";
+import { useIntakeWarnings } from "@/hooks/profile/useIntakeWarnings";
+import { IntakeWarningsDialog, IntakeWarningsPanel } from "@/components/profile/IntakeWarnings";
 import {
   applyCashPayReadiness, benefitCheckApplies, cashPayMirrorEdit, verifiedInsuranceStepApplies,
 } from "@/lib/profile/cashPayIntake";
@@ -264,24 +267,29 @@ const REFERRAL_SOURCE_OPTS = Object.keys(REFERRAL_SOURCE_INDEX);
  * to line up with, and a box there would be noise.
  */
 function Field(
-  { label, value, full, boxed, good }:
+  { label, value, full, boxed, good, tone, title }:
   /** `good` renders the VALUE green — for the benefits readout's healthy
-   *  answers (In Network Yes, Active Yes), where the rep is scanning for
-   *  go/no-go. The caller decides; this component doesn't know Yes from No. */
-  { label: string; value?: string; full?: boolean; boxed?: boolean; good?: boolean },
+   *  answers (Active Yes), where the rep is scanning for go/no-go. `tone` is
+   *  the finer version the In Network verdict needs (§5.20b): good · bad ·
+   *  warn · neutral. The caller decides; this component doesn't know Yes from No. */
+  {
+    label: string; value?: string; full?: boolean; boxed?: boolean; good?: boolean;
+    tone?: "good" | "bad" | "warn" | "neutral"; title?: string;
+  },
 ) {
+  const t = good ? "good" : tone && tone !== "neutral" ? tone : "";
   if (boxed) {
     return (
       <div className={full ? "fld full" : "fld"}>
         <div className="flabel">{label}</div>
-        <div className={good ? "ro good" : "ro"}>{value?.trim() || "—"}</div>
+        <div className={t ? `ro ${t}` : "ro"} title={title}>{value?.trim() || "—"}</div>
       </div>
     );
   }
   return (
     <div className={full ? "f full" : "f"}>
       <div className="k">{label}</div>
-      <div className={good ? "v good" : "v"}>{value?.trim() || "—"}</div>
+      <div className={t ? `v ${t}` : "v"} title={title}>{value?.trim() || "—"}</div>
     </div>
   );
 }
@@ -930,7 +938,32 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const selectedIdRef = useRef<string | null>(null);
   useEffect(() => { selectedIdRef.current = selected?.id ?? null; }, [selected?.id]);
 
-  const unlock = useMemo(() => evaluateUnlock(selected), [selected]);
+  const stedi = useStediRun();
+  /** This patient's check is in flight — the in-progress card and "Running…". */
+  const stediHere = !!selected && stedi.state.runningId === selected.id;
+  /** Another patient's check is still in flight, which is what greys Run out here. */
+  const stediElsewhere = stedi.isRunning && !stediHere;
+  /** The latest run's failure or timeout is about THIS patient. */
+  const stediAbout = !!selected && stedi.state.forId === selected.id;
+
+  /**
+   * The benefits check's In Network verdict and Intake Warnings (§5.20b): the
+   * pop-up, the panel under the results, and the ticks. The gate below reads
+   * `gatePatient`, i.e. the ticks as the SCREEN shows them — a box the rep has
+   * just ticked must light Advance now, not on the next poll.
+   */
+  const intakeWarnings = useIntakeWarnings(selected, {
+    // THIS patient's run only: a check still finishing for somebody else
+    // must not hold this patient's pop-up shut.
+    running: stediHere,
+    stage: "Patient Intake",
+    onWritten: () => { void refetch(true); },
+  });
+
+  const unlock = useMemo(
+    () => evaluateUnlock(intakeWarnings.gatePatient),
+    [intakeWarnings.gatePatient],
+  );
 
   /** What the Provided Doctor Info card SHOWS — the patient's own form answers
    *  where they gave them, and the CareCentrix referral's doctor where they
@@ -1048,14 +1081,6 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     return missing;
   }, [selected?.generalInsurance, selected?.workingMemberId]);
   const benefitsReady = benefitsMissing.length === 0;
-
-  const stedi = useStediRun();
-  /** This patient's check is in flight — the in-progress card and "Running…". */
-  const stediHere = !!selected && stedi.state.runningId === selected.id;
-  /** Another patient's check is still in flight, which is what greys Run out here. */
-  const stediElsewhere = stedi.isRunning && !stediHere;
-  /** The latest run's failure or timeout is about THIS patient. */
-  const stediAbout = !!selected && stedi.state.forId === selected.id;
 
   // While a run is in flight the service streams results back one column at a
   // time, so poll and let the hook decide when the whole set has settled.
@@ -1689,8 +1714,10 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     // Persist the rep's edits first — the check reads General Insurance and
     // Member ID off the BOARD, not off this page's local state.
     await save();
-    await stedi.start(selected);
-  }, [selected, stedi, save]);
+    // `start` resolves true once `triggerStediRun` has fired — which cleared
+    // the ticks on the board, so clear them on screen too (§5.20b).
+    if (await stedi.start(selected)) intakeWarnings.markCheckStarted();
+  }, [selected, stedi, save, intakeWarnings]);
 
   /**
    * "Start Insurance Follow-Up" opens the SAME text composer Evaluate uses,
@@ -3221,11 +3248,17 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     {/* Green Yes (Josh, 2026-08-18): the two go/no-go answers
                         read at a glance. Only Yes gets the colour — blank "—",
                         No and a passed-through payer answer stay neutral. */}
+                    {/* ⚠️ From 2026-09-24 the backend writes a CONTRACT verdict
+                        here (§5.20b): Yes green, No red, "Check with patient"
+                        and "Check manually" amber with short labels — the
+                        full sentence is the pop-up's and the note's. Still not
+                        a gate. Old rows' `Unknown` prints as before. */}
                     <Field
                       boxed
                       label="In Network"
                       value={networkLabel(selected)}
-                      good={inNetwork(selected)}
+                      tone={networkTone(selected)}
+                      title={intakeWarnings.verdict === "checkManually" ? CHECK_MANUALLY_HINT : undefined}
                     />
                     <Field
                       boxed
@@ -3251,6 +3284,16 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     )}
                   </div>
                 )}
+                {/* The "Check with patient" note and the benefits check's
+                    warnings, persistent under the results (§5.20b). Keyed by
+                    patient so an override reason half-typed for one patient
+                    can never be saved against the next. */}
+                <IntakeWarningsPanel
+                  key={selected.id}
+                  state={intakeWarnings}
+                  disabled={stediHere}
+                  disabledReason="A benefits check is running — tick once it finishes."
+                />
               </Card>
 
               <Card title="Provided Doctor Info">
@@ -3801,6 +3844,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                 onClose={() => setDialOpen(false)}
                 onLogAttempt={() => setAttemptOpen(true)}
               />
+              <IntakeWarningsDialog state={intakeWarnings} patientName={selected.name} />
               <Dialog open={attemptOpen} onOpenChange={setAttemptOpen}>
                 <DialogContent>
                   <DialogHeader>

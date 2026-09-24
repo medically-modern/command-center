@@ -227,6 +227,11 @@ const INTAKE_COLS: string[] = [
   // and the column comes back the literal string `Unknown` — a gate on it
   // stranded patients on something that could never pass. This is a readout.
   PROFILE_COL.stediInNetwork,
+  // ⚠️ The benefits check's warnings, and the ticks against them (Josh,
+  // 2026-09-24: "yes" — show them on Masani's cards too). Blank on nearly every
+  // row: the backend only writes a line when a rule fires, so the widening is
+  // two mostly-empty columns on this ~1,750-row read. §5.20b.
+  PROFILE_COL.intakeWarnings, PROFILE_COL.intakeWarningAcks,
 ];
 
 function toIntakeLead(item: RawItem): IntakeLead {
@@ -273,6 +278,8 @@ function toIntakeLead(item: RawItem): IntakeLead {
     stediActive: text(item, PROFILE_COL.stediEligibilityActive),
     stediPlanName: text(item, PROFILE_COL.stediPlanName),
     stediInNetwork: text(item, PROFILE_COL.stediInNetwork),
+    intakeWarnings: text(item, PROFILE_COL.intakeWarnings),
+    intakeWarningAcks: text(item, PROFILE_COL.intakeWarningAcks),
   };
 }
 

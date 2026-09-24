@@ -37,8 +37,35 @@ describe("networkPill", () => {
   });
 
   it("prints any other answer VERBATIM, gray — never a guess", () => {
-    const raw = "Check with patient: lives in NY, NJ, FL or TN?";
+    const raw = "Pending payer response";
     expect(networkPill(lead(raw))).toMatchObject({ label: raw, tone: "gray" });
+  });
+
+  // §5.20b — the backend's contract verdicts from 2026-09-24. The one
+  // "free-text" row measured above was the first of them.
+  it("Check with patient is AMBER, in Josh's words, with the backend's sentence on hover", () => {
+    const raw = "Check with patient: lives in NY, NJ, FL or TN?";
+    const p = networkPill(lead(raw));
+    expect(p).toMatchObject({
+      label: "Only in-network if patient lives in NY, NJ, FL, TN or WY?",
+      tone: "amber",
+    });
+    expect(p?.title).toContain(raw);
+  });
+
+  it("Check with patient is matched by PREFIX, so a reworded state list keeps its colour", () => {
+    expect(networkPill(lead("Check with patient: lives in NY, NJ, FL, TN or WY?"))?.tone).toBe("amber");
+  });
+
+  it("Check manually is AMBER and says what it means on hover", () => {
+    const p = networkPill(lead("Check manually"));
+    expect(p).toMatchObject({ label: "Check manually", tone: "amber" });
+    expect(p?.title).toMatch(/look the plan up/);
+  });
+
+  it("a failed check still outranks a Check verdict left from an earlier run", () => {
+    expect(networkPill(lead("Check manually", "AAA 72 — Invalid/Missing Subscriber/Insured ID"))?.label)
+      .toBe("Check failed");
   });
 
   it("a FAILED check is a red 'Check failed', with the payer's reason on hover", () => {

@@ -40,7 +40,7 @@ const lead = (over: Partial<IntakeLead> = {}): IntakeLead => ({
   state: "NY", generalInsurance: "Aetna", insuranceProvidedVia: "", insuranceOther: "",
   calendlyEventUri: "", providedDoctorName: "", providedClinicPhone: "",
   ipCoveragePath: "", cgmCoveragePath: "", hasInsuranceCard: false,
-  stediError: "", stediActive: "Yes", stediPlanName: "Plan", stediInNetwork: "",
+  stediError: "", stediActive: "Yes", stediPlanName: "Plan", stediInNetwork: "", intakeWarnings: "", intakeWarningAcks: "",
   ...over,
 });
 

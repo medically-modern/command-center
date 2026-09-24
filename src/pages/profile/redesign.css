@@ -475,5 +475,47 @@
 .dark .pf-root .frm:hover { background: oklch(0.26 0.04 25); }
 
 /* `.rv` is a deliberately faint value on white; on a dark card it has to come
-   DOWN in lightness rather than up, or a placeholder reads as live data. */
-.dark .pf-root .rcell .rv { color: oklch(0.62 0.012 250); }
+   DOWN in lightness rather than up, or a placeholder reads as live data.
+   ⚠️ The PLACEHOLDER only (`:not(.set)`). Written as a bare `.rv`, this rule
+   tied `.rv.set` / `.good` / `.bad` on specificity and won on source order, so
+   every filled value in dark mode — a red "No" on Active? included — rendered
+   in this same dim gray (found rendering §5.20b, 2026-09-24). */
+.dark .pf-root .rcell .rv:not(.set) { color: oklch(0.62 0.012 250); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   The benefits check's In Network verdict + Intake Warnings (§5.20b).
+   Both intake pages load this file. Every colour is a token that `.dark
+   .pf-root` above already flips, so dark mode needs no second block.
+   ══════════════════════════════════════════════════════════════════════════ */
+.pf-root .fld .ro.bad, .pf-root .f .v.bad { color:var(--mm-rose); font-weight:700 }
+.pf-root .fld .ro.warn, .pf-root .f .v.warn { color:var(--amber); font-weight:700 }
+.pf-root .rcell .rv.warn { color:var(--amber) }
+
+.pf-root .iw { margin-top:14px; display:grid; gap:10px }
+.pf-root .iw-note { display:flex; align-items:flex-start; gap:10px; border:1px solid var(--amber-ring);
+  border-left:4px solid var(--amber); border-radius:10px; background:var(--amber-soft);
+  padding:10px 14px; font-size:.85rem; line-height:1.45; color:var(--foreground) }
+.pf-root .iw-note svg { color:var(--amber); flex-shrink:0; margin-top:2px }
+.pf-root .iw-note-head { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--amber); margin-bottom:2px }
+.pf-root .iw-list { border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:var(--card) }
+.pf-root .iw-head { display:flex; align-items:center; gap:8px; font-size:.68rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:.04em; color:var(--muted-foreground) }
+.pf-root .iw-count { font-size:.66rem; font-weight:800; border-radius:999px; padding:2px 8px;
+  background:var(--mm-rose-soft); color:var(--mm-rose); letter-spacing:0; text-transform:none }
+.pf-root .iw-count.ok { background:var(--mm-mint); color:var(--mm-green) }
+.pf-root .iw-row { display:grid; gap:3px; margin-top:8px; padding:8px 10px 8px 12px; border-radius:8px; font-size:.85rem }
+.pf-root .iw-row.block { background:var(--mm-rose-soft); box-shadow:inset 3px 0 0 var(--mm-rose) }
+.pf-root .iw-row.block .iw-top { display:flex; align-items:flex-start; gap:6px; color:var(--mm-rose) }
+.pf-root .iw-row.block .iw-top svg { margin-top:2px }
+.pf-root .iw-row.block .iw-msg { font-weight:700 }
+.pf-root .iw-row.confirm { background:var(--amber-soft); box-shadow:inset 3px 0 0 var(--amber) }
+.pf-root .iw-row.confirm.done { background:var(--mm-mint); box-shadow:inset 3px 0 0 var(--mm-green) }
+.pf-root .iw-check { display:flex; align-items:center; gap:8px; font-weight:700; cursor:pointer; color:var(--foreground) }
+.pf-root .iw-check input { width:16px; height:16px; flex-shrink:0; accent-color:var(--mm-green); cursor:pointer }
+.pf-root .iw-check input:disabled { cursor:not-allowed }
+.pf-root .iw-busy { font-size:.72rem; font-weight:600; color:var(--muted-foreground) }
+.pf-root .iw-sub { font-size:.78rem; line-height:1.45; color:var(--muted-foreground) }
+.pf-root .iw-reason { display:grid; gap:6px; margin-top:6px }
+.pf-root .iw-reason textarea { min-height:64px }
+.pf-root .iw-reason-actions { display:flex; justify-content:flex-end; gap:8px }

@@ -61,6 +61,7 @@ import {
 } from "@/lib/careCoordinator/pills";
 import type { NetworkPill as NetworkPillFacts, NetworkPillTone } from "@/lib/careCoordinator/networkPill";
 import { stateLabel } from "@/lib/shared/usState";
+import type { CardWarning } from "@/lib/profile/intakeWarnings";
 import { cn } from "@/lib/utils";
 
 const PILL_TONE: Record<PillTone, string> = {
@@ -331,6 +332,9 @@ function CountPair({ dir, calls, texts, callsSince, textsSince, highlight = fals
 const NETWORK_TONE: Record<NetworkPillTone, string> = {
   green: "border-[color:var(--mm-green)] bg-[color:var(--mm-green-12)] text-foreground",
   red: "border-rose-300 bg-rose-100 text-rose-950 dark:border-rose-500/50 dark:bg-rose-950/50 dark:text-rose-100",
+  // The two "Check …" verdicts (§5.20b): not a No, but not a Yes a coordinator
+  // can pass through either — somebody has to ask, or look.
+  amber: "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100",
   gray: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200",
 };
 
@@ -352,7 +356,7 @@ function NetworkPill({ pill }: { pill: NetworkPillFacts }) {
 export function PatientCard({
   name, attempted, nextUp = false, state, doctor, clinic, networkPill, when, pills, pillActions, variant, contact,
   phone, notes, notesLabel, openHref, openLabel, onBookingLink, onCall, reached, blocker,
-  inSystem = false,
+  inSystem = false, warnings,
 }: {
   name: string;
   /** Has anybody rung them yet? Green edge when true, gray when false. */
@@ -448,6 +452,15 @@ export function PatientCard({
    * "nothing we can see", which is a different claim.
    */
   blocker?: string;
+  /**
+   * The benefits check's Intake Warnings (`intakeWarnings.cardWarnings`):
+   * every BLOCK in rose, each CONFIRM not yet ticked in amber (Josh,
+   * 2026-09-24). Empty or absent prints nothing. The full sentence is each
+   * line's `title`; the card clamps to two lines so a long one can't push the
+   * rest of the column down. Intake cards only — the warnings live on the
+   * Profile Send Off row.
+   */
+  warnings?: CardWarning[];
 }) {
   const detailLine = [
     `State: ${stateLabel(state)}`,
@@ -554,6 +567,30 @@ export function PatientCard({
         <div className="mt-2 flex items-start gap-1.5 rounded-md border border-rose-300 bg-rose-50 px-2 py-1.5 text-[11.5px] font-medium leading-snug text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
           <AlertTriangle className="mt-[1px] h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="min-w-0">{blocker.trim()}</span>
+        </div>
+      )}
+
+      {/* The benefits check's Intake Warnings (§5.20b) — the same rose as the
+          blocker for a BLOCK (it stops the advance the same way), amber for a
+          box nobody has ticked yet on the profile page. A ticked one is handled
+          and says nothing here. */}
+      {warnings && warnings.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {warnings.map((w) => (
+            <div
+              key={w.text}
+              title={w.title}
+              className={cn(
+                "flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-[11.5px] font-medium leading-snug",
+                w.tone === "block"
+                  ? "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200"
+                  : "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200",
+              )}
+            >
+              <AlertTriangle className="mt-[1px] h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="min-w-0 line-clamp-2">{w.text}</span>
+            </div>
+          ))}
         </div>
       )}
 

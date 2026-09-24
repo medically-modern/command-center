@@ -123,6 +123,11 @@ export interface Patient {
    *  parsed payer name otherwise (dropdown_mm594743). */
   stediPrimaryPayer: string;
   stediInNetwork: string;
+  /** Raw `KEY|TYPE|message` lines from the benefits check — parse with
+   *  `lib/profile/intakeWarnings.parseIntakeWarnings`, never by hand. */
+  intakeWarnings: string;
+  /** Comma-separated KEYs of the CONFIRM warnings the rep ticked (text_mm7g1hr). */
+  intakeWarningAcks: string;
   stediPriorAuthRequired: string;
   stediCoinsurance: string;
   stediCopay: string;
