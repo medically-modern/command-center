@@ -7,7 +7,7 @@
  * patient still reading "MR Expired", nothing in any log.
  */
 import { describe, it, expect } from "vitest";
-import { mrRungForExpiry, MR_STATUS_INDEX } from "./mrStatus";
+import { mrRungForExpiry, MR_STATUS_INDEX, expiryForVisitDate } from "./mrStatus";
 import { MR_STATUS_OPTIONS } from "./workflow";
 
 /** `color_mktyr8xg` settings_str, board 18407459988, read live 2026-09-16. */
@@ -147,5 +147,33 @@ describe("mrStatus — ET, not the runtime's timezone", () => {
   it("handles a leap year", () => {
     expect(mrRungForExpiry("2028-02-29", "2028-02-28")?.label).toBe("MR <5 Days");
     expect(mrRungForExpiry("2028-03-01", "2028-02-29")?.label).toBe("MR <5 Days");
+  });
+});
+
+describe("expiryForVisitDate — the visit plus six months, on the date's PARTS", () => {
+  it("adds six months", () => {
+    expect(expiryForVisitDate("2026-09-01")).toBe("2027-03-01");
+    expect(expiryForVisitDate("2026-01-15")).toBe("2026-07-15");
+  });
+
+  it("rolls a month overflow exactly as Update Clinicals' setMonth does", () => {
+    // Aug 31 + 6 months is "Feb 31", which both roll to Mar 3 (non-leap).
+    expect(expiryForVisitDate("2026-08-31")).toBe("2027-03-03");
+    // …and to Mar 2 when February has 29 days.
+    expect(expiryForVisitDate("2027-08-31")).toBe("2028-03-02");
+  });
+
+  it("⚠️ cannot depend on the machine's timezone — no local Date is ever built", () => {
+    // The container runs UTC; the point is that the answer is the same string
+    // whatever TZ is set, because only Date.UTC is used.
+    expect(expiryForVisitDate(" 2026-12-15 ")).toBe("2027-06-15");
+  });
+
+  it("returns null for anything unreadable, and the caller then writes nothing", () => {
+    expect(expiryForVisitDate("")).toBeNull();
+    expect(expiryForVisitDate(null)).toBeNull();
+    expect(expiryForVisitDate(undefined)).toBeNull();
+    expect(expiryForVisitDate("9/1/2026")).toBeNull();
+    expect(expiryForVisitDate("2026-9-1")).toBeNull();
   });
 });

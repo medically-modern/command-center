@@ -139,3 +139,84 @@ describe("ConversationThread", () => {
     expect(box.value).toBe("It ships Friday");
   });
 });
+
+/* ── The patient screen's look (Brandon's pixel-match item 14, 2026-09-24) ──
+   `bare` is LOOK ONLY: the header goes and the composer is one line, and every
+   guard above still holds. The Communications hub passes nothing and must be
+   untouched. */
+describe("ConversationThread — `bare` (the patient screen's look)", () => {
+  function renderBare(opts: { canText?: "yes" | "no" | "unknown"; onCount?: (n: number) => void } = {}) {
+    return render(
+      <ConversationThread
+        phone={PHONE}
+        patient={{ itemId: "900", name: "Jane Doe", phone: PHONE, boardId: "18410804557", boardName: "Welcome Call" }}
+        onCall={() => {}}
+        calling={false}
+        canText={opts.canText}
+        bare
+        composerPlaceholder="Write a text…"
+        onCount={opts.onCount}
+      />,
+    );
+  }
+
+  it("drops the header — no name block, no Call — and draws the one-line composer", async () => {
+    api.fetchConversation.mockResolvedValueOnce({ messages: [msg(1, "Inbound", "when does it ship?", 0)], complete: true });
+    renderBare();
+    await waitFor(() => expect(screen.getByText("when does it ship?")).toBeTruthy());
+    expect(screen.queryByText("Jane Doe")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Call$/ })).toBeNull();
+    const box = screen.getByLabelText("Write a text") as HTMLInputElement;
+    expect(box.tagName).toBe("INPUT");
+    expect(box.placeholder).toBe("Write a text…");
+    expect(screen.getByRole("button", { name: /Send text/ })).toBeTruthy();
+  });
+
+  it("⚠️ the default is unchanged — the hub keeps its header and its box", async () => {
+    api.fetchConversation.mockResolvedValueOnce({ messages: [], complete: true });
+    renderThread();
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Call$/ })).toBeTruthy());
+    expect(screen.getByText("Jane Doe")).toBeTruthy();
+    expect(((await screen.findByPlaceholderText(/Text from/)) as HTMLElement).tagName).toBe("TEXTAREA");
+    expect(screen.queryByLabelText("Write a text")).toBeNull();
+  });
+
+  it("⚠️⚠️ a STOP still blocks it — the guard is the same code whichever look is drawn", async () => {
+    api.fetchConversation.mockResolvedValueOnce({ messages: [msg(1, "Inbound", "STOP", 0)], complete: true });
+    renderBare();
+    await waitFor(() => expect(screen.getByText(/opted out of texts/)).toBeTruthy());
+    expect(screen.queryByLabelText("Write a text")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Send text/ })).toBeNull();
+  });
+
+  it("⚠️ Can Text = No still blocks it", async () => {
+    api.fetchConversation.mockResolvedValueOnce({ messages: [], complete: true });
+    renderBare({ canText: "no" });
+    await waitFor(() => expect(screen.getByText(/Can Text/)).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /Send text/ })).toBeNull();
+  });
+
+  it("sends on Enter through the same send, and clears on acceptance", async () => {
+    api.fetchConversation.mockResolvedValue({ messages: [], complete: true });
+    renderBare();
+    const box = (await screen.findByLabelText("Write a text")) as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "It ships Friday" } });
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    expect(api.sendMessage).toHaveBeenCalledWith({ to: PHONE, text: "It ships Friday", mondayItemId: "900" });
+    expect(box.value).toBe("");
+  });
+
+  it("reports the count only once the thread has LOADED — never while loading or on an error", async () => {
+    const counts: number[] = [];
+    let release: (v: unknown) => void = () => {};
+    api.fetchConversation.mockImplementationOnce(() => new Promise((r) => (release = r)));
+    renderBare({ onCount: (n) => counts.push(n) });
+    expect(counts).toEqual([]);
+    await act(async () => {
+      release({ messages: [msg(1, "Inbound", "hi", 0), msg(2, "Outbound", "hello", 1)], complete: true });
+    });
+    await waitFor(() => expect(counts.at(-1)).toBe(2));
+  });
+});

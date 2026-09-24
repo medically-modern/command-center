@@ -56,9 +56,29 @@ interface Props {
    */
   draft?: string;
   onDraftChange?: (text: string) => void;
+  /**
+   * How the box LOOKS — nothing else. `"line"` is Brandon's patient-screen
+   * composer (pixel-match item 14, 2026-09-24): one line and a blue "Send
+   * text", in the patient screen's own `.cc-pt` classes. ⚠️ **OPT-IN: absent is
+   * the box every other screen has always had**, byte for byte. The guards
+   * above and the send below are the same code whichever look is drawn —
+   * a second composer would be a second copy of the rule that stops us
+   * texting somebody who asked us to stop.
+   */
+  variant?: "box" | "line";
+  /** The line look's placeholder — "Write a text…" unless the caller names the number. */
+  placeholder?: string;
 }
 
-export default function Composer({ conversation, canText, onSent, draft: heldDraft, onDraftChange }: Props) {
+export default function Composer({
+  conversation,
+  canText,
+  onSent,
+  draft: heldDraft,
+  onDraftChange,
+  variant = "box",
+  placeholder,
+}: Props) {
   const { consent, loading, error } = conversation;
   const [ownDraft, setOwnDraft] = useState("");
   const held = heldDraft !== undefined && !!onDraftChange;
@@ -137,6 +157,36 @@ export default function Composer({ conversation, canText, onSent, draft: heldDra
               texts. Texting is blocked rather than risk messaging someone who asked us to stop — call them instead.
             </span>
           )}
+        </div>
+      ) : variant === "line" ? (
+        /* Brandon's `.pt-side .composer`: one line, a blue Send text. Enter
+           sends, exactly as in the box. */
+        <div className="composer">
+          <div className="row">
+            <input
+              className="input grow"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              placeholder={placeholder || "Write a text…"}
+              aria-label="Write a text"
+            />
+            <button
+              type="button"
+              className="btn primary sm"
+              onClick={() => void send()}
+              disabled={!draft.trim() || sending}
+              title="Send text"
+            >
+              {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              Send text
+            </button>
+          </div>
         </div>
       ) : (
         <div className="shrink-0 border-t border-border bg-card p-3">

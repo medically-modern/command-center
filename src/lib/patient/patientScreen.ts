@@ -362,11 +362,29 @@ export function subscriptionItem(dossier: PatientDossier | null): DossierItem | 
   return dossier.items.find((i) => i.boardId === SUBSCRIPTION_BOARD) ?? null;
 }
 
-/** The word under "Subscription" in the view toggle. */
+/**
+ * The Subscription board's Subscription Status column — Active · Paused · Not
+ * Active. Declared here rather than imported from `subscriptionOverview`
+ * (`OVERVIEW_COLS.status`), because that module imports `infoStrip`, which
+ * imports this one: the import back would be a cycle. `patientScreen.test.ts`
+ * pins the two ids equal.
+ */
+export const SUBSCRIPTION_STATUS_COL = "color_mm2t7tdy";
+
+/**
+ * The word under "Subscription" in the view toggle.
+ *
+ * ⚠️ **The subscription STATUS first** (Brandon's pixel-match item 2,
+ * 2026-09-24: *"the Subscription toggle chip shows the subscription status
+ * ("Active"), not the group name"*) — the group is "Subscriptions" for nearly
+ * everybody, so it said nothing. A blank status falls back to what it said
+ * before, never to an invented "Active".
+ */
 export function subscriptionCaption(item: DossierItem | null): string {
   if (!item) return "Not yet";
   if (item.isStuck) return "Stuck";
-  return item.stageAdvancerText || item.groupTitle || "On the board";
+  const status = (item.cols?.[SUBSCRIPTION_STATUS_COL] ?? "").trim();
+  return status || item.stageAdvancerText || item.groupTitle || "On the board";
 }
 
 /**

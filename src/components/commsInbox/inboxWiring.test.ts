@@ -58,7 +58,7 @@ describe("the thread's guards — one copy (plan §4.6)", () => {
   it("the hub's own thread renders the same two pieces", () => {
     const thread = code("src/components/assignedPatients/ConversationThread.tsx");
     expect(thread).toContain("useConversation(phone, patient?.itemId)");
-    expect(thread).toContain("<Composer conversation={conversation} canText={canText} />");
+    expect(thread).toMatch(/<Composer\s+conversation=\{conversation\}\s+canText=\{canText\}/);
     expect(thread).not.toMatch(/\bsendMessage\(/);
     expect(code("src/components/assignedPatients/Composer.tsx")).not.toMatch(/\bsendMessage\(/);
     expect(code("src/hooks/assignedPatients/useConversation.ts")).toMatch(/\bsendMessage\(/);

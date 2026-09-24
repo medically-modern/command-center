@@ -30,12 +30,31 @@
  * no compare-and-set, so the base of a write is read immediately before it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchItemById } from "@/lib/subscription/mondayApi";
+import { fetchItemById, type MondayItem } from "@/lib/subscription/mondayApi";
 import { mondayItemToPatient } from "@/lib/subscription/mondayMapping";
 import type { Patient } from "@/lib/subscription/workflow";
+import {
+  PROFILE_EXTRA_COLUMN_IDS,
+  readProfileExtras,
+  type ProfileExtras,
+} from "@/lib/subscription/profileExtras";
 
-const cache = new Map<string, Patient>();
-const inflight = new Map<string, Promise<Patient | null>>();
+/**
+ * ⚠️ The record AND the extra columns come from ONE read (Brandon's
+ * pixel-match, 2026-09-24): `PROFILE_EXTRA_COLUMN_IDS` rides along with the
+ * slice's own read set, so the Order details card's Frequency and quantities,
+ * the Contacts block and the eligibility facts cost no second request. The
+ * `Patient` is still mapped by the slice's own mapping, from the same item —
+ * the extras never reach it, so the send's shape is unchanged.
+ */
+type Rec = { patient: Patient; extras: ProfileExtras };
+
+function toRec(it: MondayItem | null): Rec | null {
+  return it ? { patient: mondayItemToPatient(it), extras: readProfileExtras(it) } : null;
+}
+
+const cache = new Map<string, Rec>();
+const inflight = new Map<string, Promise<Rec | null>>();
 
 export function clearSubscriptionRecordCache(): void {
   cache.clear();
@@ -44,6 +63,8 @@ export function clearSubscriptionRecordCache(): void {
 
 export function useSubscriptionRecord(itemId: string, enabled: boolean): {
   patient: Patient | null;
+  /** The extra columns the patient screen shows and edits (`profileExtras`). */
+  extras: ProfileExtras | null;
   loading: boolean;
   error: string;
   reload: () => Promise<void>;
@@ -51,7 +72,7 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
    *  Bypasses the cache and any read in flight; throws when it cannot say. */
   readFresh: () => Promise<Patient>;
 } {
-  const [patient, setPatient] = useState<Patient | null>(() => cache.get(itemId) ?? null);
+  const [rec, setRec] = useState<Rec | null>(() => cache.get(itemId) ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const want = useRef(itemId);
@@ -59,14 +80,14 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
   const load = useCallback(async (force = false) => {
     want.current = itemId;
     if (!itemId) {
-      setPatient(null);
+      setRec(null);
       return;
     }
     // A hit paints at once and is then RE-READ — shown, never trusted (see
     // the header). While it is on screen a failed re-read is not an error: the
     // form is still usable, and the send re-reads for itself regardless.
     const hit = force ? undefined : cache.get(itemId);
-    if (hit) setPatient(hit);
+    if (hit) setRec(hit);
     else {
       setLoading(true);
       setError("");
@@ -74,19 +95,19 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
     try {
       let p = inflight.get(itemId);
       if (!p || force) {
-        p = fetchItemById(itemId).then((it) => (it ? mondayItemToPatient(it) : null));
+        p = fetchItemById(itemId, PROFILE_EXTRA_COLUMN_IDS).then(toRec);
         // ⚠️ The `finally` belongs to the CHAINED promise, or an older pass
         // clears the slot while the one behind it is still running (§5.28).
         p = p.finally(() => inflight.delete(itemId));
         inflight.set(itemId, p);
       }
-      const rec = await p;
-      if (rec) cache.set(itemId, rec);
+      const got = await p;
+      if (got) cache.set(itemId, got);
       else cache.delete(itemId);
       // A slow answer for a patient the rep has already left is dropped.
       if (want.current === itemId) {
-        setPatient(rec);
-        if (!rec) setError("That item is no longer on the Subscription board.");
+        setRec(got);
+        if (!got) setError("That item is no longer on the Subscription board.");
       }
     } catch (e) {
       // NOT cached — re-opening the tab retries rather than pinning it broken.
@@ -100,15 +121,14 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
   const readFresh = useCallback(async (): Promise<Patient> => {
     // Deliberately NOT the in-flight dedupe: a read that started before the
     // rep pressed Send is exactly the staleness this exists to close.
-    const it = await fetchItemById(itemId);
-    const rec = it ? mondayItemToPatient(it) : null;
-    if (!rec) {
+    const got = toRec(await fetchItemById(itemId, PROFILE_EXTRA_COLUMN_IDS));
+    if (!got) {
       cache.delete(itemId);
       throw new Error("That item is no longer on the Subscription board.");
     }
-    cache.set(itemId, rec);
-    if (want.current === itemId) setPatient(rec);
-    return rec;
+    cache.set(itemId, got);
+    if (want.current === itemId) setRec(got);
+    return got.patient;
   }, [itemId]);
 
   useEffect(() => {
@@ -122,5 +142,5 @@ export function useSubscriptionRecord(itemId: string, enabled: boolean): {
     await load(true);
   }, [itemId, load]);
 
-  return { patient, loading, error, reload, readFresh };
+  return { patient: rec?.patient ?? null, extras: rec?.extras ?? null, loading, error, reload, readFresh };
 }

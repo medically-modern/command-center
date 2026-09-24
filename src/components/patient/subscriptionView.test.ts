@@ -10,8 +10,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { FORM_SECTIONS, parseSubTab } from "./SubscriptionView";
-import { STAGE_DETAIL } from "@/lib/commsHub/stageDetail";
+import { parseSubTab } from "./SubscriptionView";
 
 const src = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 
@@ -94,30 +93,89 @@ describe("⚠️ the view reads the ORDERS page's own rules, never a second copy
   });
 });
 
-describe("⚠️⚠️ the form-owned sections are matched by TITLE, so the titles must exist", () => {
-  // `ProfileTab` hides exactly these two snapshot cards while the form is on
-  // screen, because the form renders the same facts as inputs. It matches on
-  // the section TITLE, which is a string in another file — rename one there and
-  // this filter silently stops matching, so the patient's Next order shows
-  // TWICE, once editable and once not, with nothing erroring.
-  const SUBSCRIPTION_BOARD = 18407459988;
+describe("⚠️⚠️ Brandon's grid replaces the snapshot cards — nothing is drawn twice", () => {
+  /* Pixel-match, 2026-09-24 (items 5–13). His cards carry every fact the five
+     SUBSCRIPTION snapshot sections did, so the snapshot cards are gone rather
+     than filtered — a fact editable in one card and read-only in another, on
+     one screen, is worse than either alone (§5.45b). */
+  const tab = () => {
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    const start = view.indexOf("function ProfileTab(");
+    return view.slice(start, view.indexOf("\nfunction ", start + 1));
+  };
 
-  it("every FORM_SECTIONS title is a live section of the Subscription map", () => {
-    const titles = STAGE_DETAIL[SUBSCRIPTION_BOARD].map((s) => s.title);
-    for (const t of FORM_SECTIONS) {
-      expect(titles, `"${t}" is no longer a section — the filter matches nothing`).toContain(t);
+  it("the Profile tab draws no stageDetail snapshot card", () => {
+    expect(tab()).not.toMatch(/buildStageDetail|snapcard|rogrid/);
+  });
+
+  it("his grid, in his order: overview → [Demographics | Insurance | MN & Auth] → [Order details | Doctor | Financials] → notes", () => {
+    const t = tab();
+    const order = [
+      "<OverviewStrip",
+      '<div className="grid3 mnrow">',
+      "<DemographicsCard",
+      "<InsuranceCard",
+      "<MnAuthCard",
+      '<div className="grid3">',
+      "<OrderDetailsCard",
+      "<DoctorCard",
+      "<FinancialsCard",
+      "<SubscriptionNotesCard",
+      "<SendBar",
+    ];
+    let at = -1;
+    for (const piece of order) {
+      const i = t.indexOf(piece);
+      expect(i, `${piece} missing or out of order`).toBeGreaterThan(at);
+      at = i;
     }
   });
 
-  it("and the filter really is the thing that hides them", () => {
-    const text = src("src/components/patient/SubscriptionView.tsx");
-    expect(text).toMatch(/FORM_SECTIONS\.includes\(sc\.title\)/);
-    /* ⚠️ UNCONDITIONAL from 2026-09-22 (§5.46b). The form renders for
-       everybody now — inert without the ability — so a `canEdit ?` here would
-       double-render its fields for exactly the people who cannot correct
-       them: once as a greyed input and once as a read-only row. */
-    expect(text).toMatch(/const cards = sections\.filter/);
-    expect(text, "the filter went back to being conditional").not.toMatch(/canEdit \? rest\.filter/);
+  it("⚠️ the old footer line and the separate Contacts card are gone (items 7 and 13)", () => {
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    expect(view).not.toContain("on Update Clinicals, which writes the Medical Records status");
+    expect(view).not.toMatch(/function ContactsCard/);
+  });
+});
+
+describe("⚠️⚠️ SAME options as before — visuals only (Josh, 2026-09-24)", () => {
+  /* *"its so so critical that we are just changing the visuals and not the
+     backend or label options"*. Each select offers exactly the list the app
+     offered for that column before; the mockup's invented lists (plan §2.7) are
+     never used. */
+  const cards = () => src("src/components/patient/SubscriptionCards.tsx");
+
+  it("the order selects use the SAME lists SubscriptionForm uses", () => {
+    const form = src("src/components/subscription/SubscriptionForm.tsx");
+    const c = cards();
+    for (const list of ["SUBSCRIPTION_OPTIONS", "SENSORS_TYPE_OPTIONS", "SUPPLIES_TYPE_OPTIONS"]) {
+      expect(form, `${list} left SubscriptionForm`).toContain(list);
+      expect(c, `${list} is not what the card offers`).toContain(`options={${list}}`);
+    }
+    // The infusion sets are read LIVE, as SubscriptionForm reads them.
+    expect(src("src/components/patient/SubscriptionView.tsx")).toContain(
+      "useStatusOptions(BOARD_ID, [COL.infusionSet1, COL.infusionSet2])",
+    );
+  });
+
+  it("insurance and the doctor's method use the SAME sources PatientInfoCard uses", () => {
+    const c = cards();
+    expect(c).toContain('usePayerOptions("subscription")');
+    expect(c).toContain("PRIMARY_INSURANCE_OPTIONS");
+    expect(c).toContain("options={SECONDARY_INSURANCE_OPTIONS}");
+    expect(c).toContain("options={FAX_PARACHUTE_OPTIONS}");
+  });
+
+  it("⚠️ none of the mockup's invented options appear anywhere", () => {
+    const c = cards();
+    for (const fake of ["Pump & Sensors", "Omnipod 5", "t:slim X2", "AutoSoft XC 6 mm 23"]) {
+      expect(c, `mockup option "${fake}" leaked in`).not.toContain(fake);
+    }
+  });
+
+  it("the Subscription status columns Brandon adds are read LIVE — never a hardcoded id", () => {
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    expect(view).toMatch(/EXTRA_COL\.orderFrequency,\s*EXTRA_COL\.primaryContact,\s*EXTRA_COL\.alternateContact/);
   });
 });
 
@@ -170,14 +228,14 @@ describe("⚠️ the patient screen's Send is the /subscription page's SAME butt
     expect(text, "a hand-rolled Save appeared").not.toMatch(/btn primary[^"]*"[^>]*onClick=\{(handleSend|onSend)/);
   });
 
-  it("⚠️⚠️ and it sits in the bar at the BOTTOM of the tab, after the footer (Josh, 2026-09-23)", () => {
+  it("⚠️⚠️ and it sits in the bar at the BOTTOM of the tab, after the notes (Josh, 2026-09-23; kept 2026-09-24)", () => {
     const text = view();
     const start = text.indexOf("function ProfileTab(");
     const tab = text.slice(start, text.indexOf("\nfunction ", start + 1));
-    const footer = tab.indexOf("on Update Clinicals");
+    const notes = tab.indexOf("<SubscriptionNotesCard");
     const bar = tab.indexOf("<SendBar");
-    expect(footer, "the footer line moved").toBeGreaterThan(-1);
-    expect(bar, "the Send bar is not in the Profile tab").toBeGreaterThan(footer);
+    expect(notes, "the notes card moved").toBeGreaterThan(-1);
+    expect(bar, "the Send bar is not in the Profile tab").toBeGreaterThan(notes);
     // The bar is pinned: sticky, at the bottom.
     const css = src("src/pages/patient/redesign.css");
     expect(css).toMatch(/\.cc-pt \.sub-send \{[^}]*position: sticky;[^}]*bottom:/);

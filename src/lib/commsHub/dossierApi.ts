@@ -29,6 +29,7 @@ import { expectedItemsColumns } from "../patient/expectedItems";
 import { contactsColumns } from "../patient/contacts";
 import { infoStripColumns } from "../patient/infoStrip";
 import { emailColumns } from "../patient/contactEdit";
+import { overviewColumns } from "../patient/subscriptionOverview";
 import { escalationLevelFrom, type EscalationLevel } from "../systemMgmt/escalationDetail";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -244,6 +245,10 @@ function dossierCols(board: BoardDef): string[] {
     // The patient's own email (§5.46g) — the top bar's fourth fact and what
     // the pencil writes. One id per board, in that board's own shape.
     ...emailColumns(board.boardId),
+    // The Subscription profile's overview strip (pixel-match, 2026-09-24) —
+    // adds Order Frequency, the one of its five the SUBSCRIPTION map does not
+    // already carry. Additive and invisible here, like the five above.
+    ...overviewColumns(board.boardId),
   ].filter((c): c is string => !!c)
     // ⚠️ De-duplicated because the lists above overlap on purpose: three of
     // the expected-items ids are also in `stageDetail`'s SUBSCRIPTION map, and

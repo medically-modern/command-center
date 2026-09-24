@@ -48,6 +48,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, RotateCw } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { useShellLayout } from "@/hooks/shell/useShellLayout";
 import { PatientBody } from "@/components/patient/PatientBody";
 import { PatientCommsColumn } from "@/components/patient/PatientCommsColumn";
 import { usePatientRecord } from "@/hooks/patient/usePatientRecord";
@@ -198,7 +199,14 @@ export default function PatientPage() {
             {/* The main column is its own component so the Communications
                 hub's right pane can render the same thing (COMMS_INBOX_PLAN.md
                 §7). The view state is this page's URL, as it always was. */}
-            <PatientBody dossier={dossier} itemId={itemId} params={params} setParam={setParam} onSaved={reload} />
+            <PatientBody
+              dossier={dossier}
+              itemId={itemId}
+              params={params}
+              setParam={setParam}
+              onSaved={reload}
+              onNoteAppended={(id, notes) => setNoteEdit({ itemId: id, notes })}
+            />
           </div>
 
           {/* ⚠️ Keyed on the record, so the alternate-number switch inside it
@@ -225,11 +233,19 @@ export default function PatientPage() {
 /**
  * Back, history-first (§9) — the same `useBackNavigation` every other page uses,
  * so a rep who arrived from Search, the Communications hub or a role page lands
- * exactly where they were. ⚠️ Not gated on the layout: the redesign's header has
- * tabs but no back, so this screen needs one in both.
+ * exactly where they were.
+ *
+ * ⚠️ **Hidden in the redesign layout, and only there** (Brandon's pixel-match
+ * item 1, 2026-09-24: *"No '← Back' row; the patient card sits directly under
+ * the header"*). The redesign's global header — tabs and the patient search —
+ * is the way off this screen there. In the "as today" layout there is no
+ * header at all, and this row is the only way off, which is what §5.39d
+ * recorded as a dead end — so it stays there, in every branch.
  */
 function BackRow() {
   const { goBack } = useBackNavigation();
+  const [layout] = useShellLayout();
+  if (layout === "redesign") return null;
   return (
     <div className="pt-back">
       <button type="button" onClick={goBack}>

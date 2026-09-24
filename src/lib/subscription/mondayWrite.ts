@@ -1,15 +1,16 @@
-import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, writeDropdownIds, writePhone, writeEmail, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
+import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, writeDropdownIds, writePhone, writeEmail, writeCheckbox, clearStatusColumn, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 import type { Patient } from "./workflow";
 import { mrRungForExpiry } from "./mrStatus";
 import { appendNoteEntry, stampNoteEntry } from "../shared/noteStamp";
+import { EXTRA_COL, extrasRefusals, type ExtrasEdit } from "./profileExtras";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
 
-interface WriteTask {
+export interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
@@ -56,6 +57,10 @@ export async function sendPatientToMonday(
     onProgress?: (phase: WriteProgressPhase) => void;
     requireDone?: boolean;
     waitForDoneMs?: number;
+    /** The patient screen's extra columns (`profileExtras.ts`) — ONLY the ones
+     *  the rep changed. Absent, the send is exactly what it always was, which
+     *  is what `/subscription` gets. */
+    extras?: ExtrasEdit;
   },
 ): Promise<void> {
   const tasks: WriteTask[] = [];
@@ -205,6 +210,11 @@ export async function sendPatientToMonday(
   if (faxVal)
     tasks.push({ label: "Fax/Parachute", columnId: COL.faxParachute, value: { index: faxVal === "Parachute" ? 1 : 0 }, fn: () => writeStatusIndex(p.id, COL.faxParachute, faxVal === "Parachute" ? 1 : 0) });
 
+  // Patient screen only — see `buildExtrasTasks`. Rides the SAME verified
+  // transaction, so the Order details card and the Contacts block land (or
+  // fail) with the rest of the profile, in one gateway job.
+  if (opts?.extras) tasks.push(...buildExtrasTasks(p.id, opts.extras));
+
   // ---- Execute all writes, verified ----
   // Empty stage list = every task is a verified data write and Phase 3
   // (advance) writes nothing: this board has NO stage advancer column.
@@ -229,6 +239,78 @@ export async function sendPatientToMonday(
       `${failures.length} column(s) failed after retries. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
     );
   }
+}
+
+/**
+ * The patient screen's extra Subscription columns (Brandon's pixel-match,
+ * PIXEL_MATCH_PLAN.md §4.1): Order Frequency, the CGM and cartridge
+ * quantities, and the Contacts block. Built from a DELTA (`diffExtras`), never
+ * from a record, so nothing the rep did not change is written.
+ *
+ * ⚠️ Every task carries its real `value` — one `undefined` disables the
+ * gateway's durable fast path for the WHOLE send (§5.2).
+ * ⚠️ The refusals run here as well as on the Save: `writePhone` SKIPS a number
+ * it cannot parse, so an unchecked alternate phone would come back green
+ * having written nothing (§5.32d). A refused change set throws before any
+ * write is issued.
+ * ⚠️ A status clear is `{}`, never `{index: null}` (§5.31c).
+ */
+export function buildExtrasTasks(itemId: string, edit: ExtrasEdit): WriteTask[] {
+  const refused = extrasRefusals(edit);
+  if (refused.length) throw new Error(refused.join("; "));
+
+  const out: WriteTask[] = [];
+  const status = (label: string, columnId: string, idx: number | null | undefined) => {
+    if (idx === undefined) return;
+    out.push(
+      idx === null
+        ? { label, columnId, value: {}, fn: () => clearStatusColumn(itemId, columnId) }
+        : { label, columnId, value: { index: idx }, fn: () => writeStatusIndex(itemId, columnId, idx) },
+    );
+  };
+  const number = (label: string, columnId: string, v: string | undefined) => {
+    if (v === undefined) return;
+    const t = v.trim();
+    out.push({
+      label,
+      columnId,
+      value: t === "" ? "" : String(Number(t)),
+      fn: () => writeNumber(itemId, columnId, t === "" ? "" : Number(t)),
+    });
+  };
+
+  status("Order Frequency", EXTRA_COL.orderFrequency, edit.orderFrequencyIndex);
+  number("CGM Qty", EXTRA_COL.cgmQty, edit.cgmQty);
+  number("Cartridge Qty", EXTRA_COL.cartridgeQty, edit.cartridgeQty);
+  status("Primary Contact", EXTRA_COL.primaryContact, edit.primaryContactIndex);
+  status("Alternate Contact", EXTRA_COL.alternateContact, edit.alternateContactIndex);
+  if (edit.caregiverName !== undefined) {
+    const name = edit.caregiverName;
+    out.push({ label: "Caregiver Name", columnId: EXTRA_COL.caregiverName, value: name, fn: () => writeText(itemId, EXTRA_COL.caregiverName, name) });
+  }
+  if (edit.caregiverAuthorized !== undefined) {
+    const on = edit.caregiverAuthorized;
+    out.push({
+      label: "Caregiver Authorized",
+      columnId: EXTRA_COL.caregiverAuthorized,
+      value: on ? { checked: "true" } : {},
+      fn: () => writeCheckbox(itemId, EXTRA_COL.caregiverAuthorized, on),
+    });
+  }
+  if (edit.alternatePhone !== undefined) {
+    const raw = edit.alternatePhone;
+    const plan = planPhoneWrite(raw);
+    // `skip` cannot reach here — `extrasRefusals` refused it above — but a task
+    // declaring `{}` for it would CLEAR a real number, so it is never pushed.
+    if (plan.action !== "skip")
+      out.push({
+        label: "Alternate Phone",
+        columnId: EXTRA_COL.alternatePhone,
+        value: plan.action === "write" ? { phone: plan.phone, countryShortName: "US" } : {},
+        fn: () => writePhone(itemId, EXTRA_COL.alternatePhone, raw),
+      });
+  }
+  return out;
 }
 
 /**

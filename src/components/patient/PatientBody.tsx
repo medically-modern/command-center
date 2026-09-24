@@ -57,6 +57,7 @@ export function PatientBody({
   onSaved,
   embedded = false,
   afterTop,
+  onNoteAppended,
 }: {
   dossier: PatientDossier;
   /** The item the host opened — the top bar's key when there is no live record. */
@@ -70,6 +71,10 @@ export function PatientBody({
   embedded?: boolean;
   /** Between the top bar card and the view — the hub puts its notes here. */
   afterTop?: ReactNode;
+  /** A note added on the Subscription notes card. The page lays the returned
+   *  body over its record (so the right column's Recent notes shows it too);
+   *  without it the host simply re-reads. */
+  onNoteAppended?: (itemId: string, notes: string) => void;
 }) {
   const steps = useMemo(() => buildStages(dossier), [dossier]);
   const rawStep = params.get(STEP_PARAM);
@@ -195,6 +200,8 @@ export function PatientBody({
           phone={dossier.phone ?? ""}
           tab={subTab}
           onTab={(next) => setParam({ [SUB_PARAM]: next })}
+          embedded={embedded}
+          onNoteAppended={onNoteAppended ?? (() => onSaved())}
         />
       )}
     </>

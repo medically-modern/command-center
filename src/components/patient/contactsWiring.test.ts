@@ -22,6 +22,13 @@ const THREAD = src("src/components/assignedPatients/ConversationThread.tsx");
 // inbox's timeline renders the same one — scanned there now.
 const COMPOSER = src("src/components/assignedPatients/Composer.tsx");
 const SUB_VIEW = src("src/components/patient/SubscriptionView.tsx");
+/** Since 2026-09-24 the block is inside Brandon's Demographics card (his item
+ *  7), not a card of its own — and it is EDITABLE there (Josh, "1. YES"). */
+const CARDS = src("src/components/patient/SubscriptionCards.tsx");
+const DEMOGRAPHICS = CARDS.slice(
+  CARDS.indexOf("export function DemographicsCard"),
+  CARDS.indexOf("export function InsuranceCard"),
+);
 
 describe("the read", () => {
   it("⚠️ dossierCols asks for the contacts columns", () => {
@@ -73,7 +80,7 @@ describe("the composer block", () => {
     expect(THREAD).toMatch(/canText\?: "yes" \| "no" \| "unknown";/);
     expect(COMPOSER).toMatch(/canText\?: "yes" \| "no" \| "unknown";/);
     // The thread hands it straight to the one composer.
-    expect(THREAD).toContain("<Composer conversation={conversation} canText={canText} />");
+    expect(THREAD).toMatch(/<Composer\s+conversation=\{conversation\}\s+canText=\{canText\}/);
     expect(src("src/components/profile/IntakeMessages.tsx")).not.toContain("canText={");
     // The hub's own threads stay as they were. (Its Inbox passes Can Text to
     // its timeline on purpose — the next test pins how.)
@@ -111,33 +118,59 @@ describe("the composer block", () => {
 });
 
 describe("the profile block", () => {
-  it("⚠️ is built from the record and rendered", () => {
-    expect(SUB_VIEW).toContain("buildContacts(item.boardId, item.cols)");
-    expect(SUB_VIEW).toContain("<ContactsCard contacts={contacts} />");
+  it("⚠️ the scan found the card — a slice that matched nothing passes everything below it", () => {
+    // The old ContactsCard was deleted on 2026-09-24 and this describe went on
+    // passing its read-only assertion against an EMPTY slice. Never again.
+    expect(DEMOGRAPHICS.length).toBeGreaterThan(500);
+    expect(DEMOGRAPHICS).toContain('className="eyebrow contacts-h">Contacts</div>');
+  });
+
+  it("⚠️ is read from the record and handed to the card", () => {
+    // `useSubscriptionRecord` reads the six columns at FULL width (the same
+    // read the send is built on), and the tab hands them to Demographics.
+    expect(SUB_VIEW).toMatch(/<DemographicsCard\s[^]*?extras=\{extras\}/);
+    expect(SUB_VIEW).not.toContain("<ContactsCard");
   });
 
   it("⚠️ renders Brandon's six facts, in his order", () => {
-    const block = SUB_VIEW.slice(SUB_VIEW.indexOf("function ContactsCard"));
+    // In BOTH branches — the controls and the plain facts a record whose
+    // extras did not arrive falls back to.
     const order = ["Primary contact", "Alternate contact", "Caregiver name", "Caregiver authorized", "Alternate phone", "Last patient contact"];
-    let at = -1;
-    for (const label of order) {
-      const i = block.indexOf(`"${label}"`);
-      expect(i, label).toBeGreaterThan(at);
-      at = i;
+    const live = DEMOGRAPHICS.slice(0, DEMOGRAPHICS.indexOf(") : ("));
+    const facts = DEMOGRAPHICS.slice(DEMOGRAPHICS.indexOf(") : ("));
+    for (const [name, block] of [["controls", live], ["facts", facts]] as const) {
+      let at = -1;
+      for (const label of order) {
+        const i = block.indexOf(label);
+        expect(i, `${name}: ${label}`).toBeGreaterThan(at);
+        at = i;
+      }
     }
   });
 
   it("⚠️ an unticked Caregiver authorized is an em dash, never a No", () => {
     // A Monday checkbox has two states, not three, so unticked means nobody
-    // recorded an authorisation — not that one was refused.
-    expect(SUB_VIEW).toContain('contacts.caregiverAuthorized ? "Yes" : ""');
+    // recorded an authorisation — not that one was refused. The select offers
+    // "—" and "Yes" and nothing else.
+    expect(DEMOGRAPHICS).toContain('<option value="">{"—"}</option>');
+    expect(DEMOGRAPHICS).toContain('<option value="yes">Yes</option>');
+    expect(DEMOGRAPHICS).not.toMatch(/<option[^>]*>\s*No\s*</);
+    expect(DEMOGRAPHICS).toContain('x?.caregiverAuthorized ? <span className="good">Yes</span> : ""');
   });
 
-  it("⚠️ the card is READ-ONLY — these columns are written on the stage page", () => {
-    const block = SUB_VIEW.slice(
-      SUB_VIEW.indexOf("function ContactsCard"),
-      SUB_VIEW.indexOf("function SubscriptionEditor"),
-    );
-    expect(block).not.toMatch(/onChange|<input|<select/);
+  it("⚠️ every Contacts control is disabled for somebody who may not edit", () => {
+    // Brandon's read-only mechanism ("disabled controls + notes"); the page's
+    // writer is a no-op as well. `subscriptionSendBottom.test.tsx` renders it.
+    const live = DEMOGRAPHICS.slice(DEMOGRAPHICS.indexOf("{contactsLive ? ("), DEMOGRAPHICS.indexOf(") : ("));
+    const controls = live.match(/<(Sel|Inp|select)\b/g) ?? [];
+    expect(controls.length).toBe(5);
+    expect(live.match(/disabled=\{!canEdit( \|\| optsOff)?\}/g) ?? []).toHaveLength(5);
+  });
+
+  it("⚠️ Can Text is SHOWN here and answered on the Welcome Call page", () => {
+    // It is the starred number's answer (§5.31d), and the top bar's phone
+    // pencil clears it when the number changes (§5.46g) — no control for it here.
+    expect(DEMOGRAPHICS).toContain('<F k="Can text" v={yn(x?.canText ?? "")} />');
+    expect(DEMOGRAPHICS).not.toMatch(/onExtras\(\{\s*canText/);
   });
 });

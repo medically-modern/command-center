@@ -327,11 +327,12 @@
 
 /* ── Notes ────────────────────────────────────────────────────────────────── */
 .cc-pt .notes { display: flex; flex-direction: column; gap: 8px; }
+/* His `.note` — a muted box (pixel-match, 2026-09-24). */
 .cc-pt .note {
-  font-size: 12px; border-left: 2px solid var(--bd); padding-left: 10px;
+  border-radius: 8px; background: var(--mut); padding: 10px 12px; font-size: 12px;
   white-space: pre-line; overflow-wrap: anywhere;
 }
-.cc-pt .note .who { font-size: 11px; color: var(--mfg); margin-bottom: 2px; }
+.cc-pt .note .who { font-size: 10px; color: var(--mfg); margin-bottom: 2px; }
 
 /* ── Buttons, segmented controls ──────────────────────────────────────────── */
 .cc-pt .btn {
@@ -428,40 +429,109 @@
 .cc-pt .fact.reorder .rbtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .cc-pt .fact.reorder .rbtns .btn { text-decoration: none; }
 
-/* ── The editable Order details block (§5.45b) ────────────────────────────── */
-/* ⚠️ `SubscriptionForm` and `SendToMondayButton` are the /subscription page's
-   OWN shadcn components, dropped in here unchanged — so these rules give them
-   spacing and nothing else. Restyling them from this file would be a second
-   opinion about how that form looks, which is the drift the shared component
-   exists to prevent. Tailwind reaches inside `.cc-pt` normally (unlike
-   `.pf-root`, which resets `button` and out-specifies every utility, §9). */
-.cc-pt .sub-edit { display: flex; flex-direction: column; gap: 14px; }
-/* Brandon's `dirty-bar`, quiet until there is something to save. It is the ONE
-   place the Save lives, so it renders in both states rather than appearing
-   only when dirty — a form with no Save on it reads as read-only. */
-.cc-pt .sub-bar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 10px 14px; border-radius: 12px; font-size: 12px;
-  background: var(--mut); border: 1px solid var(--bd);
-}
-.cc-pt .sub-bar.dirty {
-  background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn-fg);
-}
-.cc-pt .sub-bar .grow { flex: 1; min-width: 200px; }
-.cc-pt .sub-bar .ico { width: 15px; height: 15px; flex: none; }
+/* ── Subscription › Profile — Brandon's grid (pixel-match, 2026-09-24) ─────
+   His `profilePage` markup and CSS, ported value for value: `.facts`,
+   `.grid3` / `.mnrow`, `.editgrid` / `.ef`, `.files`, `.mndocs`, `.readonly`.
+   ⚠️ Every selector keeps the `.cc-pt` prefix — each of these is a bare class
+   in his file, and `.facts` / `.grid3` would restyle other pages here. */
+.cc-pt .sub-fields { display: flex; flex-direction: column; gap: 14px; }
+.cc-pt .facts { display: grid; gap: 14px 24px; }
+.cc-pt .facts.split { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--bd); }
+.cc-pt .facts.split.wide { margin-top: 14px; }
+.cc-pt .contacts-h { margin: 14px 0 8px; padding-top: 12px; border-top: 1px solid var(--bd); }
+/* The editable Contacts (pixel-match item 7): Brandon's three columns when
+   the card is wide enough, two when it is not — measured, a 1440 window gives
+   the Demographics card 254px inside, and three selects there cut their own
+   labels. A fact wraps; a select cannot. */
+.cc-pt .facts.contacts.ctl { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 12px 14px; }
+/* A section title never breaks across two lines beside its note, and a count
+   chip never splits its number from its word. */
+.cc-pt .section-h > .eyebrow { white-space: nowrap; flex: none; }
+.cc-pt .section-h > .xs.muted { text-align: right; }
+.cc-pt .section-h .chip { white-space: nowrap; flex: none; }
 
-/* The Profile tab's fields: `SubscriptionForm`, then the /subscription page's
-   own address · insurance · doctor cards (Josh, 2026-09-23 — *"make their
-   profile editable on the right"*). The cards take as many columns as the
-   box has room for — one in the Communications hub's ~480px pane, three in the
-   patient screen's main column — by the BOX's width, not the window's: the
-   pane never sees the viewport breakpoints the patient screen's own grids use
-   (the `.embedded` rules further down restate those one by one). */
-.cc-pt .sub-fields { display: flex; flex-direction: column; gap: 16px; }
-.cc-pt .sub-cards {
-  display: grid; gap: 16px; align-items: start;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+.cc-pt .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.cc-pt .grid3.mnrow { grid-template-columns: 1fr 1fr 1.35fr; }
+@media (max-width: 1100px) {
+  .cc-pt .grid3, .cc-pt .grid3.mnrow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+@media (max-width: 760px) {
+  .cc-pt .grid3, .cc-pt .grid3.mnrow { grid-template-columns: 1fr; }
+}
+/* His `.editgrid` / `.ef` — a label over a control, two to a row. */
+.cc-pt .editgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.cc-pt .ef { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* ⚠️ A label that wraps to two lines ("SUPPLIES TYPE (PUMP)" beside "CARTRIDGES
+   QTY") must not push its control below its neighbour's: the row's cells
+   stretch to one height, and the label takes the slack, so every control in a
+   row sits on one line. Measured at 1440 — 15px out before. */
+.cc-pt .editgrid > .ef > .k, .cc-pt .facts.contacts.ctl > .ef > .k { flex: 1 0 auto; }
+.cc-pt .ef .k {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--mfg);
+}
+.cc-pt .ef .input { width: 100%; }
+.cc-pt select.input { appearance: auto; }
+.cc-pt .input:disabled { cursor: not-allowed; }
+/* His read-only card — the controls stay where they are, muted. */
+.cc-pt .card.readonly .input { background: var(--mut); color: var(--mfg); }
+/* The same grey on every disabled control in the profile's cards — a reader
+   sees one read-only look, not a white box in one card and a grey one in the
+   next (Brandon's "disabled controls" for a read-only viewer). */
+.cc-pt .sub-fields .input:disabled { background: var(--mut); color: var(--mfg); }
+/* The grey address box a reader sees (his `div.input.sm`). */
+.cc-pt .input.ro-box { background: var(--mut); min-height: 28px; overflow-wrap: anywhere; }
+/* The live address autocomplete is another page's component with its own
+   Tailwind look; this gives it his `.input.sm` frame. Two classes and an
+   element out-specify every single-class utility it carries. */
+.cc-pt .addr-sm input {
+  height: auto; width: 100%; padding: 5px 8px; font-size: 12px; line-height: 1.45;
+  border: 1px solid hsl(var(--input)); border-radius: 8px; background: var(--cd); color: var(--tfg);
+}
+.cc-pt .fact .v .good, .cc-pt .fact .v.good, .cc-pt .xs.good { color: var(--ok-fg); }
+.cc-pt .fact .v .bad, .cc-pt .fact .v.bad { color: var(--bad-fg); }
+.cc-pt .fact .v .warn { color: var(--warn-fg); }
+.cc-pt .plink { color: var(--p); text-decoration: none; }
+.cc-pt .plink:hover { text-decoration: underline; }
+/* The overview's Status — his dot + text in the status colour. */
+.cc-pt .status-v { display: inline-flex; align-items: center; gap: 5px; }
+.cc-pt .status-v .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.cc-pt .status-v.good { color: var(--ok-fg); }
+.cc-pt .status-v.warn { color: var(--warn-fg); }
+.cc-pt .status-v.bad { color: var(--bad-fg); }
+/* His Profile | Orders toggle at his `home-toggle` size, and the read-only line
+   beside it. */
+.cc-pt .home-toggle button { padding: 6px 14px; font-size: 13px; gap: 6px; }
+.cc-pt .ro-line { display: inline-flex; align-items: center; gap: 5px; }
+.cc-pt .notice.ro-note { background: var(--mut); font-size: 11px; }
+/* The reorder-form chip in the Order details card (his `.rf`). */
+.cc-pt .rf { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px; font-size: 12px; }
+/* Files — his `.files .f`. */
+.cc-pt .files .f {
+  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  border-bottom: 1px solid var(--bd); font-size: 12px;
+}
+.cc-pt .files .f:last-child { border-bottom: 0; }
+.cc-pt .files .f .ico {
+  width: 24px; height: 24px; border-radius: 6px; background: var(--mut);
+  display: grid; place-items: center; color: var(--mfg); flex-shrink: 0;
+}
+.cc-pt .files.queued { margin-top: 6px; }
+/* The MN documents drop zone and the visit date — his `.mndocs`. */
+.cc-pt .mndocs { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; margin-top: 6px; align-items: start; }
+.cc-pt .mndocs .drop {
+  border: 1px dashed var(--bd); border-radius: 10px; padding: 12px 8px;
+  display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center;
+  text-align: center; background: var(--mut); color: var(--mfg); min-height: 88px; cursor: pointer;
+}
+.cc-pt .mndocs .drop b { color: var(--tfg); font-size: 13px; }
+.cc-pt .mndocs .drop.over { border-color: var(--p); background: var(--p10); }
+.cc-pt .mndocs .drop.off { opacity: 0.55; cursor: not-allowed; }
+.cc-pt .mndocs .visit .k {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--mfg); margin-bottom: 4px;
+}
+@media (max-width: 760px) { .cc-pt .mndocs { grid-template-columns: 1fr; } }
 
 /* ⚠️⚠️ The Send is at the BOTTOM of the tab and PINNED there while the tab is
    on screen (Josh, 2026-09-23: *"with a send to monday button at the bottom"*).
@@ -492,11 +562,6 @@
    under Discard when the pane wraps it to a second line. */
 .cc-pt .sub-send > :last-child { margin-left: auto; }
 
-/* The same form, read-only. ⚠️ The guard is `inert` on this element (§5.39c2);
-   what this rule adds is the LOOK, so a rep can tell at a glance that the
-   controls are not theirs to press rather than discovering it by clicking. */
-.cc-pt .sub-ro { opacity: 0.72; }
-.cc-pt .sub-ro, .cc-pt .sub-ro * { cursor: default; }
 
 /* A next order that has already passed — the one thing on the overview strip
    that is ever anything but neutral. Token-based, so it follows dark mode
@@ -538,6 +603,18 @@
 }
 .cc-pt .numbtn:hover { border-color: var(--p); color: var(--p); }
 .cc-pt .numbtn.on { background: var(--p); color: hsl(var(--primary-foreground)); border-color: var(--p); }
+/* A Call chip is disabled while that number is already on the line. */
+.cc-pt .numbtn:disabled { opacity: 0.55; cursor: default; }
+.cc-pt .numbtn:disabled:hover { border-color: var(--bd); color: var(--mfg); }
+/* Brandon's one-line composer (pixel-match item 14) — `ConversationThread`'s
+   opt-in `bare` look, drawn on this screen only. ⚠️ `flex: none`, the rule
+   every block under the thread follows: the thread takes `flex: 1`, so a
+   composer without it is squeezed by a long conversation. */
+.cc-pt .pt-side .composer {
+  flex: none; border-top: 1px solid var(--bd); background: var(--mut);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.cc-pt .pt-side .composer .input { background: var(--cd); }
 /* ⚠️ `flex: none` for the same reason the notes strip has it: `.side-body` is a
    column whose thread takes `flex: 1`, so without it the note grows by stealing
    the thread's height rather than sitting above it. */
@@ -638,13 +715,12 @@
 .cc-pt.embedded .strip.upstrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cc-pt.embedded .rogrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cc-pt.embedded .clin { grid-template-columns: 1fr; }
-/* The Subscription tab's order form is the /subscription page's own component,
-   laid out for a wide page by VIEWPORT breakpoints — so at a 1440 window it
-   drew three columns in the ~480px pane and cut every select's value to "Next
-   Order…". Two columns here, and nothing about how the form looks: this
-   restates its grid for the pane's width, as the rules above do for ours. */
-.cc-pt.embedded .sub-fields .md\:grid-cols-3,
-.cc-pt.embedded .sub-fields .md\:grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* The Subscription profile's grids — his own `.embedded` rules: the cards
+   stack one per row in the pane, and the MN documents row too. The Contacts
+   block's three columns become two, because in the pane they are inputs. */
+.cc-pt.embedded .grid3, .cc-pt.embedded .grid3.mnrow { grid-template-columns: 1fr; }
+.cc-pt.embedded .mndocs { grid-template-columns: 1fr; }
+.cc-pt.embedded .facts.contacts { grid-template-columns: 1fr 1fr !important; }
 .cc-pt.embedded .clin .ctl { justify-content: flex-start; }
 /* The stage tools are whole pages built for a wide column; in the pane they
    scroll sideways inside their own frame rather than pushing the pane wide. */

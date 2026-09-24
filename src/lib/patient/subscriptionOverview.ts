@@ -22,6 +22,9 @@
  * this is that difference closed, not a fact dropped on the floor.
  */
 import { etToday } from "@/lib/masheke/etDate";
+import { etDateOf } from "@/lib/patient/infoStrip";
+
+const SUBSCRIPTION_BOARD = 18407459988;
 
 /** Column ids on the Subscription board (18407459988) this strip reads. */
 export const OVERVIEW_COLS = {
@@ -29,7 +32,23 @@ export const OVERVIEW_COLS = {
   nextOrder: "date_mkp0nvf1",
   subscription: "color_mm273mv8",
   orderType: "color_mm2w6kd",
+  /** Brandon's pixel-match (2026-09-24): "Subscription = Sensors · First Order
+   *  · 90-Days". The cadence is the board's own Order Frequency — the column
+   *  the Welcome Call → Subscription hops fill (§5.31c). */
+  orderFrequency: "color_mm48kv1c",
 } as const;
+
+/**
+ * The columns this strip needs, for the dossier read (`dossierApi`).
+ *
+ * ⚠️ Additive and invisible in the Comms Hub, like the four modules beside it
+ * there: that pane renders from `buildStageDetail`'s map, so an extra id only
+ * widens a `column_values(ids:)` list that already runs. Four of these five
+ * are in the SUBSCRIPTION map already; Order Frequency is the one it adds.
+ */
+export function overviewColumns(boardId: number): string[] {
+  return boardId === SUBSCRIPTION_BOARD ? Object.values(OVERVIEW_COLS) : [];
+}
 
 export interface OverviewFact {
   label: string;
@@ -87,6 +106,11 @@ export function subscriptionOverview(
   /** Every order date this patient has, in any order. `null` while unread. */
   orderDates: readonly string[] | null,
   today: string = etToday(),
+  opts: {
+    /** The Subscription item's `created_at` (a UTC instant) — First order's
+     *  fallback once the orders are READ and none carries a date. */
+    createdAt?: string;
+  } = {},
 ): OverviewFact[] {
   const col = (id: string) => (cols?.[id] ?? "").trim();
 
@@ -94,12 +118,24 @@ export function subscriptionOverview(
   const days = daysUntil(nextRaw, today);
   const sub = col(OVERVIEW_COLS.subscription);
   const type = col(OVERVIEW_COLS.orderType);
+  const freq = col(OVERVIEW_COLS.orderFrequency);
 
   /* ⚠️ Earliest, not `orders[last]`: the history table is sorted newest-first
      for the rep, and a patient's orders do not arrive in any promised order
      from Monday either. A blank date sorts out rather than counting as "the
      beginning of time". */
-  const first = (orderDates ?? []).filter(Boolean).sort()[0] ?? "";
+  const earliest = (orderDates ?? []).filter(Boolean).sort()[0] ?? "";
+  /* Brandon's fallback — "first order = earliest order date, falling back to
+     the board item's created date" (pixel-match, item 4). ⚠️ Only once the
+     orders are READ: while they are still loading, a date borrowed from the
+     row's creation would flip to a real order date a second later, so the
+     fact stays blank until there is an answer. `created_at` is a real UTC
+     instant, so it is the one date here that goes through a `Date` (§5.46f). */
+  const first = earliest
+    ? usDate(earliest)
+    : orderDates !== null && opts.createdAt
+      ? usDate(etDateOf(opts.createdAt))
+      : "";
 
   return [
     { label: "Status", value: col(OVERVIEW_COLS.status) },
@@ -109,7 +145,9 @@ export function subscriptionOverview(
       note: dueText(days),
       warn: days !== null && days < 0,
     },
-    { label: "Subscription", value: sub, note: type },
-    { label: "First order", value: usDate(first) },
+    /* "Sensors · First Order · 90-Days" — the order type and the cadence ride
+       as the quieter clause, Brandon's `<span class="xs muted">`. */
+    { label: "Subscription", value: sub, note: [type, freq].filter(Boolean).join(" · ") },
+    { label: "First order", value: first },
   ];
 }

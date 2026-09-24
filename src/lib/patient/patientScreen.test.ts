@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
+import { OVERVIEW_COLS } from "./subscriptionOverview";
 import {
   MACRO_STAGES,
   buildStages,
@@ -24,6 +25,7 @@ import {
   snapTabLabel,
   stepCaption,
   subscriptionCaption,
+  SUBSCRIPTION_STATUS_COL,
   subscriptionItem,
   topBarFacts,
 } from "./patientScreen";
@@ -167,6 +169,24 @@ describe("subscription toggle", () => {
     expect(subscriptionCaption(sub)).toBeTruthy();
   });
 
+  it("the caption is the subscription STATUS — Brandon's pixel-match item 2", () => {
+    // The group reads "Subscriptions" for nearly everybody, so it said nothing.
+    const sub = item({ boardId: SUB, groupTitle: "Subscriptions", cols: { [SUBSCRIPTION_STATUS_COL]: "Active" } });
+    expect(subscriptionCaption(sub)).toBe("Active");
+    expect(subscriptionCaption({ ...sub, cols: { [SUBSCRIPTION_STATUS_COL]: " Paused " } })).toBe("Paused");
+  });
+
+  it("⚠️ a blank status falls back to what it said before — never an invented Active", () => {
+    const sub = item({ boardId: SUB, groupTitle: "Not Active Patients", stageAdvancerText: "", cols: {} });
+    expect(subscriptionCaption(sub)).toBe("Not Active Patients");
+    // Stuck still wins over any status.
+    expect(subscriptionCaption({ ...sub, isStuck: true, cols: { [SUBSCRIPTION_STATUS_COL]: "Active" } })).toBe("Stuck");
+  });
+
+  it("⚠️ the status column is declared twice (an import would be a cycle), so the two must agree", () => {
+    expect(SUBSCRIPTION_STATUS_COL).toBe(OVERVIEW_COLS.status);
+  });
+
   it("is null when the patient has no Subscription row", () => {
     expect(subscriptionItem(dossier([item()]))).toBeNull();
     expect(subscriptionItem(null)).toBeNull();
@@ -232,8 +252,11 @@ describe("the patient screen is READ-ONLY", () => {
    * 1. **The Subscription Profile tab** (§5.45b; Josh, 2026-09-21: *"if the
    *    person has edit profile access they should be able to edit from this
    *    page too / read only if you dont have it, the way it is today"*) —
-   *    renders `/subscription`'s OWN form and calls its OWN send, behind
-   *    `editProfile`.
+   *    calls `/subscription`'s OWN send, behind `editProfile`. From 2026-09-24
+   *    its fields are Brandon's cards (`SubscriptionCards.tsx`), which are
+   *    PRESENTATIONAL and stay in the blanket scan below: they hand every edit
+   *    up to the tab, and their one write — the notes box — is the Comms Hub's
+   *    own `appendNoteToRecord`, pinned in its own test.
    * 2. **Recent notes** (§5.39c3) — calls the Comms Hub's OWN
    *    `appendNoteToRecord`. ⚠️ Deliberately NOT gated on `editProfile`, per
    *    §5.39h: a running case history is not the profile, and it is how a rep
@@ -331,50 +354,84 @@ describe("the patient screen is READ-ONLY", () => {
     const view = src("src/components/patient/SubscriptionView.tsx");
     expect(view).toMatch(/useAbility\("editProfile"\)/);
     // The handler refuses before it does anything — before the pre-send
-    // re-read as well as before the send itself (2026-09-23: the send now
-    // re-reads the record first, so the refusal is no longer a few lines above
-    // the write; ORDER inside the handler is the rule, not distance).
+    // re-read, the send, the visit date, the MN uploads and the consent line
+    // (2026-09-24: Brandon's layout adds the last three to the ONE Send).
+    // ORDER inside the handler is the rule, not distance.
     const start = view.indexOf("const handleSend = useCallback(");
     const handler = view.slice(start, view.indexOf("}, [", start));
     const refuse = handler.indexOf("if (!canEdit) return;");
     expect(refuse, "handleSend no longer refuses without the ability").toBeGreaterThan(-1);
-    expect(refuse).toBeLessThan(handler.indexOf("readFresh("));
-    expect(refuse).toBeLessThan(handler.indexOf("sendPatientToMonday("));
-    /* ⚠️ The EDITOR is mounted for everybody from 2026-09-22 (§5.46b) — the
-       read-only half of this screen is the same form, inert — so what has to
-       be gated is the SEND and the INPUTS, not the mount.
-       ⚠️ `inert` is the real guard (§5.39c2): measured in Chrome 141 a real
-       click is not hittable and focus cannot enter, so none of the form's
-       event handlers can fire. The no-op writer is belt and braces. */
+    for (const call of [
+      "readFresh(",
+      "sendPatientToMonday(",
+      "saveVisitDateVerified(",
+      "uploadFileToColumn(",
+      "appendNoteToRecord(",
+    ]) {
+      expect(handler.indexOf(call), `${call} is gone from handleSend`).toBeGreaterThan(-1);
+      expect(refuse, `${call} runs before the ability check`).toBeLessThan(handler.indexOf(call));
+    }
     // The Send lives in the bar pinned to the BOTTOM of the tab (Josh,
-    // 2026-09-23) and renders only for somebody who can edit.
+    // 2026-09-23; kept 2026-09-24) and renders only for somebody who can edit.
     expect(view, "the Send bar renders without the ability").toMatch(
       /\{canEdit && merged && \(\s*<SendBar/,
     );
-    expect(view, "the read-only form is not inert").toMatch(/inert: ""/);
-    expect(view, "a form nobody can edit still holds a writer").toMatch(
-      /const write = canEdit \? onFieldChange : noop;/,
+    /* ⚠️ The CARDS are mounted for everybody — the read-only half of this
+       screen is the same cards, every control `disabled` (Brandon's own
+       mechanism; `subscriptionSendBottom.test.tsx` renders it and checks EVERY
+       control). `inert` was the guard before 2026-09-24 and is deliberately not
+       used now: it would also kill View and Download on the MN documents, and
+       reading a file is not editing the profile (§5.39c).
+       So the writers handed down refuse too — belt and braces behind every
+       `disabled`. */
+    expect(view, "onFieldChange writes without the ability").toMatch(
+      /const onFieldChange = useCallback<FieldChange>\(\s*\(field, value\) => \{\s*if \(!canEdit\) return;/,
     );
-    // …and EVERY editable component gets that writer — the order form and the
-    // /subscription page's own address, insurance and doctor cards.
-    for (const c of [
-      "SubscriptionForm",
-      "SubscriptionDemographicsCard",
-      "SubscriptionInsuranceCard",
-      "SubscriptionDoctorCard",
-    ]) {
-      expect(view, `${c} is not handed the gated writer`).toMatch(
-        new RegExp(`<${c} patient=\\{patient\\} onFieldChange=\\{write\\} />`),
-      );
+    expect(view, "onExtras writes without the ability").toMatch(
+      /const onExtras = useCallback\(\s*\(patch: ExtrasEdit\) => \{\s*if \(!canEdit\) return;/,
+    );
+    expect(view, "an MN document can be queued without the ability").toMatch(/onQueue=\{\(fs\) => canEdit &&/);
+    expect(view, "a visit date can be typed without the ability").toMatch(/onVisitDate=\{\(v\) => canEdit &&/);
+    // …and EVERY card that edits is told whether it may, so it can disable
+    // its own controls. A card missing this renders live inputs to a reader.
+    for (const c of ["DemographicsCard", "InsuranceCard", "MnAuthCard", "OrderDetailsCard", "DoctorCard"]) {
+      const at = view.indexOf(`<${c}`);
+      expect(at, `${c} is no longer rendered`).toBeGreaterThan(-1);
+      const tag = view.slice(at, view.indexOf("/>", at));
+      expect(tag, `${c} is not told whether the rep may edit`).toContain("canEdit={canEdit}");
     }
   });
 
   it("⚠️ somebody WITHOUT the ability is told why, rather than shown nothing", () => {
     // Hiding the control is the dead end §5.10 · §5.20 · §5.31c each record
     // reversing — a rep who cannot see it concludes the page is broken.
-    expect(src("src/components/patient/SubscriptionView.tsx")).toContain(
-      '<AbilityLockNote ability="editProfile" />',
-    );
+    // Brandon's own words for it: "Read-only for <name>" beside the toggle,
+    // and the grey notice above the cards naming the switch.
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    expect(view).toMatch(/\{!canEdit && \(\s*<div className="notice ro-note">/);
+    expect(view).toContain("Read-only for {readOnlyName}");
+    expect(view).toContain("<b>Edit profile</b>");
+  });
+
+  it("⚠️ Brandon's cards are PRESENTATIONAL — their one write is the notes box, through the EXISTING writer", () => {
+    // The cards hand every edit up to the tab; the tab's ONE Send writes it.
+    // The notes box is the exception, and it is the Comms Hub's own
+    // `appendNoteToRecord` — the writer the right column's Recent notes uses —
+    // so there is still one place that knows how that column is written.
+    const cards = src("src/components/patient/SubscriptionCards.tsx");
+    const code = cards
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("//"))
+      .join("\n");
+    expect(code).toMatch(/from "@\/lib\/commsHub\/dossierApi"/);
+    expect(code).toMatch(/appendNoteToRecord\(/);
+    expect(code).toMatch(/noteStageLabel\(/);
+    // No second gate on the ability: the tab decides, and hands `canEdit` down.
+    expect(code).not.toMatch(/useAbility|editProfile/);
+    // …and the notes card is not gated at all — a note is not the profile.
+    const notes = code.slice(code.indexOf("export function SubscriptionNotesCard"));
+    expect(notes).not.toMatch(/canEdit/);
   });
 
   it("⚠️ never polls — the record is fetched on OPEN only", () => {

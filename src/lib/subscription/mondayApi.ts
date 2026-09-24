@@ -318,8 +318,18 @@ export async function fetchGroupItems(
   return allItems;
 }
 
-/** Fetch a single item by ID regardless of group. */
-export async function fetchItemById(itemId: string): Promise<MondayItem | null> {
+/**
+ * Fetch a single item by ID regardless of group.
+ *
+ * `extraCols` rides along with `READ_COLUMN_IDS` for the ONE caller that needs
+ * more — the patient screen's Subscription profile, which shows and edits a
+ * few columns this page does not (`profileExtras.ts`). Absent, the request is
+ * byte-identical to what it always was, so `/subscription` is unaffected.
+ */
+export async function fetchItemById(
+  itemId: string,
+  extraCols: readonly string[] = [],
+): Promise<MondayItem | null> {
   const query = `
     query ($itemId: [ID!]!, $cols: [String!]) {
       items(ids: $itemId) {
@@ -330,9 +340,11 @@ export async function fetchItemById(itemId: string): Promise<MondayItem | null> 
       }
     }
   `;
+  const base: readonly string[] = READ_COLUMN_IDS;
+  const cols = extraCols.length ? [...base, ...extraCols.filter((c) => !base.includes(c))] : READ_COLUMN_IDS;
   const data = await gql<{ items: MondayItem[] }>(query, {
     itemId: [itemId],
-    cols: READ_COLUMN_IDS,
+    cols,
   });
   return data.items?.[0] ?? null;
 }
@@ -405,13 +417,43 @@ export async function writeLongText(itemId: string, columnId: string, text: stri
   await gql(query, { boardId: BOARD_ID, itemId, vals: JSON.stringify({ [columnId]: text }) });
 }
 
-export async function writeNumber(itemId: string, columnId: string, num: number): Promise<void> {
+/**
+ * Write a number column. `""` CLEARS it — the same contract the Welcome Call
+ * and Final Confirm slices use, because `Number("")` is 0 and funnelling a blank
+ * through it writes a real quantity. Every existing caller passes a number, so
+ * their writes are unchanged.
+ */
+export async function writeNumber(itemId: string, columnId: string, num: number | ""): Promise<void> {
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }
   `;
-  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify(String(num)) });
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: num === "" ? JSON.stringify("") : JSON.stringify(String(num)),
+  });
+}
+
+/**
+ * Write a checkbox column. checked=true → ticked; false → cleared.
+ * Ported from `welcomeCall/mondayApi.ts`, whose Caregiver Authorized is the
+ * twin of this board's.
+ */
+export async function writeCheckbox(itemId: string, columnId: string, checked: boolean): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify(checked ? { checked: "true" } : {}),
+  });
 }
 
 export async function writeDate(itemId: string, columnId: string, date: string): Promise<void> {

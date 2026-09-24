@@ -5713,9 +5713,11 @@ a person would notice first:
    so it is unbuilt spec, not a regression.
 8. ✅ **The Orders tab's Upcoming order strip is complete — REORDER FORM §5.46c and EXPECTED ITEMS §5.46d, both 2026-09-22 — and the CONTACTS block §5.46e the same day**, on the profile AND as the
    right column's alternate-number line. ✅ **Demographics landed 2026-09-23** with the editable
-   address, insurance and doctor cards (§5.45b). ⚠️ **Still missing: Financials, and the MN card's
-   own visit-date + MN-docs controls** — §5.45 · §5.45b have the argument for each (the first widens
-   the Comms Hub's shared `stageDetail` map; the second carries side effects, §5.36).
+   address, insurance and doctor cards (§5.45b). ✅ **Financials and the MN card's own visit-date +
+   MN-docs controls landed 2026-09-24 with Brandon's pixel-match (§5.51)** — Financials read on the
+   Subscription slice's own full-width record (so the Comms Hub's `stageDetail` map is untouched),
+   and the visit date saves through `saveVisitDateVerified`, never /subscription's MN-Expiry-only
+   path (§5.36).
 9. ⚠️ **Auth Denied is still unclickable** (§4 · §7), where the handoff makes `/stage/authDenied`
    render the Auth Outstanding steps — *"Brandon's call 'for now'"*. A real difference of opinion
    about an unbuilt stage, not an oversight.
@@ -6490,6 +6492,14 @@ the fail-closed read, the shared-rule scans — the fail-closed one verified to 
 removed) and `lib/patient/patientScreen.test.ts`'s directory-wide no-writer scan.
 
 ### 5.45b The Subscription profile is EDITABLE behind `editProfile` (Sep 2026)
+> ⚠️ **SUPERSEDED IN PART 2026-09-24 — read §5.51 first.** The tab is Brandon's grid now
+> (`components/patient/SubscriptionCards.tsx`), not `/subscription`'s own `SubscriptionForm` and
+> three cards; `FORM_SECTIONS` and the read-only `stageDetail` cards are GONE from it; the visit
+> date and MN documents ARE on it (through Update Clinicals' writer); and read-only is native
+> `disabled`, not `inert`. What still holds, word for word: ONE writer (`sendPatientToMonday`),
+> the send built on `readFresh()`, the double `editProfile` gate, the ONE Send pinned to the
+> BOTTOM (Josh kept it there on 2026-09-24: *"leave these"*), `GatewayPendingError` as "queued,
+> don't repeat", and the phone left to the top bar's pencil.
 Josh, 2026-09-21, hours after §5.45 shipped read-only: *"is this what edit profile was about? this
 is read only unless we have edit profile access? if the person has edit profile access they should
 be able to edit from this page too"* · *"read only if you dont have it, the way it is today"*.
@@ -6883,6 +6893,9 @@ flash the one answer this search must not give prematurely.
   section"*). Those buttons were the screen admitting it was a summary: a rep read four cards and
   then left for `/subscription` to see the rest. Brandon's `profilePage` has no such link — it
   draws the grid inline and `disabled`s it for somebody who cannot edit.
+  ⚠️ **SUPERSEDED 2026-09-24 (§5.51): every control is natively `disabled` now** — Brandon's own
+  mechanism — because `inert` also killed View and Download on the MN documents the tab gained.
+  The paragraph below is the history.
   ⚠️ **`inert` is the mechanism**, the one `StagePanelEmbed` already uses for this job (§5.39c2):
   measured in Chrome 141 a real click is not hittable and focus cannot enter, and every write in
   `SubscriptionForm` is in an event handler. The no-op writer is belt and braces.
@@ -7167,6 +7180,13 @@ older Welcome Call record is still right.
 ⚠️ **Last Patient Contact is SUBSCRIPTION-ONLY** — Welcome Call's full column list was read the
 same day and has none, so that fact is `null` there rather than guessed at. Asking Monday for an
 id a board does not have is not an error; it is a field that reads blank for ever (§5.11).
+
+> ⚠️ **SUPERSEDED FOR THE SUBSCRIPTION PROFILE 2026-09-24 (§5.51)** — Brandon's item 7 makes the
+> block EDITABLE there and Josh approved it (*"1. YES"*). It writes the **Subscription** board's own
+> five columns through the Subscription send, as a delta, with the LIVE label ids
+> (`useStatusOptions`), the consent audit line on off→on, and the phone refused before the write —
+> §5.31d's rules, applied on the other board. `lib/patient/contacts.ts` (the READ, and the right
+> column's number line) is unchanged, and Can Text is still shown, never edited.
 
 ⚠️ **Nothing here writes, so no label INDEX is declared** — and that is the point: ids differ per
 board on every other status column in this app and a write is where that bites (§5.12 · §5.20 ·
@@ -8917,8 +8937,9 @@ into **MN Expiry only** (`mondayWrite.ts`, "Visit Date → MN Expiry") — no MR
 enters the visit date on /subscription rather than Update Clinicals still pushes the expiry out and
 leaves the patient reading MR Expired. It also computes the date with `new Date(...).toISOString()`,
 a UTC conversion that lands a day early in a browser east of UTC. The fix is to route that field
-through `saveVisitDateVerified` (or its rung rule). The patient screen deliberately does not render
-the field, so it cannot widen the gap.
+through `saveVisitDateVerified` (or its rung rule). The patient screen's own visit date (§5.51,
+2026-09-24) saves through `saveVisitDateVerified` and computes the expiry on the date's parts
+(`mrStatus.expiryForVisitDate`), so it does not widen the gap — /subscription's field still has it.
 
 **Not backfilled.** The ~400 rows already stranded on MR Expired self-heal on their next
 visit-date save. A backfill is safe in principle — these automations trigger on date arrival,
@@ -10346,7 +10367,9 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
   `components/patient/PatientBody.tsx`, and both render the same body — its view state arrives as a
   get/set pair keyed by the patient screen's own param names, so the page passes its URL and the
   hub a per-patient map.
-  - **A Subscription patient's profile is editable right here** (Josh, 2026-09-23: *"for
+  - **A Subscription patient's profile is editable right here** — in Brandon's cards since
+    2026-09-24 (§5.51), one column in the pane, no Subscription notes card (the pane's own notes box
+    is job 2 below) — (Josh, 2026-09-23: *"for
     subscription patients make their profile editable on the right, with a send to monday button at
     the bottom"*) — the order form plus the address, insurance and doctor, behind `editProfile`, with
     ONE Send pinned to the bottom of the pane. It is the patient screen's own Profile tab, so both
@@ -10605,6 +10628,139 @@ Files: `components/comms/*`, `components/shared/{AudioPlayer,CallHistoryList,Dia
 `components/masheke/{mmKit,CallBox}.tsx`, `lib/shared/{audioScrub,phoneDisplay}.ts`,
 `lib/comms/commsPopup.ts`, `components/commsInbox/ItemTimeline.tsx`,
 `components/assignedPatients/Composer.tsx`, and every header named above.
+
+### 5.51 Brandon's pixel-match, Phase 1 — the Subscription profile and the right column (Sep 2026)
+Josh, 2026-09-24, on Brandon's *"match the mockup pixel for pixel"* instructions: *"approve all ui
+asks, 0 backend changes allowed"*, then, twice over, the rule for all of it — *"its so so critical
+that we are just changing the visuals and not the backend or label options claude, he just cares
+about how shit looks"*. Plan and every decision: [`PIXEL_MATCH_PLAN.md`](PIXEL_MATCH_PLAN.md).
+**No board change; app only.** Files: `components/patient/{SubscriptionCards,SubscriptionView,
+PatientCommsColumn,PatientBody,TopBarContact}.tsx`, `components/assignedPatients/{Composer,
+ConversationThread}.tsx` (two opt-in looks), `hooks/patient/useMnDocFiles.ts`,
+`lib/subscription/{profileExtras,mondayWrite,mondayApi,mrStatus}.ts`,
+`lib/patient/{subscriptionOverview,patientScreen}.ts`, `lib/shared/phoneDisplay.ts`,
+`pages/{PatientPage.tsx,patient/redesign.css}`.
+
+**The Subscription › Profile tab is Brandon's grid**: overview → [Demographics | Insurance |
+Medical necessity & auth] (his `1fr 1fr 1.35fr`) → [Order details | Doctor info | Financials] →
+Subscription notes, full width. The cards are `SubscriptionCards.tsx` and are PRESENTATIONAL; the
+draft and the ONE Send live in `SubscriptionView`'s `ProfileTab`.
+
+⚠️⚠️ **SAME FIELDS, SAME VALUES, SAME WRITER, SAME OPTIONS — that is the whole contract.** Every
+control writes the `Patient` field `/subscription`'s own components write, in the same shape, and
+the Send still hands the result to `sendPatientToMonday`, built on `readFresh()` (§5.45b). Every
+select offers exactly the list the app already offered for that column — the hardcoded lists in
+`subscription/workflow.ts`, the live infusion-set labels, `usePayerOptions` for Primary Insurance.
+⚠️ **The mockup's own option lists are invented and are NOT used** (PIXEL_MATCH_PLAN.md §2.7).
+The one addition to any list is the patient's CURRENT value when the list lacks it (`withCurrent`,
+§5.31b's rule), so a real board value never renders as a different option.
+`subscriptionView.test.ts` scans for all of it, mockup labels included.
+
+⚠️ **The Send stays at the BOTTOM** (Josh, 2026-09-24: *"leave these"*) — the plan's top Save and
+dirty bar were not built. Brandon's other asks are.
+
+**Eight Subscription columns the app did not write before** (Josh, *"1. YES"*), every one already on
+the board: Order Frequency `color_mm48kv1c` · CGM qty `numeric_mm3sr332` · Cartridges qty
+`numeric_mm3sfe56` · the Contacts — Primary Contact `color_mm72vm7p`, Alternate Contact
+`color_mm723hfk`, Caregiver Name `text_mm72mdzk`, Caregiver Authorized `boolean_mm72nt75`,
+Alternate Phone `phone_mm72r19q`. Rule: **`lib/subscription/profileExtras.ts`** (+ tests).
+- ⚠️⚠️ **Written as a DELTA, never from a record** (`diffExtras`): a value read when the tab opened
+  is never written back, so a Contacts block the Welcome Call send filled since cannot be undone by
+  somebody who touched nothing. A phone compares on digits. They ride the SAME verified transaction
+  (`mondayWrite.buildExtrasTasks` via `sendPatientToMonday`'s `extras` option), so they land or fail
+  with the rest of the profile, in one gateway job.
+- ⚠️ **Status columns by the LIVE label id** (`useStatusOptions`), never a number in code — Monday
+  derives a label's id from its colour and drops a write to a missing id at HTTP 200 (seventh time
+  this file records it). A clear is `{}`.
+- ⚠️ **Refused BEFORE the write** (`extrasRefusals`): `writePhone` SKIPS a number it cannot parse, so
+  an unchecked alternate phone saves green having written nothing (§5.32d). A quantity must be a
+  whole number or blank.
+- ⚠️ **Frequency offers 75-Days only to Aetna** (§5.31's payer rule), or when the board already holds it.
+- Caregiver Authorized off→on stamps the consent audit line through `appendNoteToRecord` — §5.31d's
+  `caregiverConsentJustGiven` rule on the other board. Its failure is said, never thrown.
+- **Read-only, never edited here:** Can Text (the Welcome Call page's answer, §5.31d), Last patient
+  contact, Last eligibility check `date_mm43n083`, OOP remaining `text_mm3gs345`.
+- ⚠️⚠️ **Automations CHECKED before shipping (2026-09-24, `list_automations` + `webhooks` on
+  18407459988): none of the eight TRIGGERS anything.** Order Frequency is the OUTPUT of 7919601062 /
+  7919601087 (Primary Insurance to/from Medicaid sets it) and is COPIED, with Cartridge Qty, by the
+  four order-creation workflows 7919600514 · 7919600591 · 7919600607 · 7922772142, which trigger on
+  Ordering Cycle. Webhook **590897509 fires on ANY column change on this board** — every existing
+  /subscription send already fires it, so this adds no new kind of event; its consumer is outside
+  this repo. **Re-run that check before writing any other Subscription column.**
+
+**The visit date and MN documents are on the tab now**, and the Send runs in three steps, each
+naming itself when it fails: (1) the Subscription save with the extras; (2) the visit date, through
+**`saveVisitDateVerified`** (MN Expiry + the MR rung, §5.36) with the expiry computed on the date's
+PARTS (`mrStatus.expiryForVisitDate`) — ⚠️ never /subscription's own visit-date path, which writes MN
+Expiry alone (§5.36's known gap), so the date is deliberately NOT a `Patient` field; (3) the queued
+files, through `uploadFileToColumn` — a file that fails stays queued on screen. Files are listed
+from the ASSET's signed link (`useMnDocFiles`), never the column's `protected_static` text (§5.30f).
+
+**Read-only (no `editProfile`)** is Brandon's mechanism: every control natively `disabled` and grey,
+the drop zone `.off`, no Send bar, *"Read-only for <name>"* by the toggle and a grey notice naming the
+switch. ⚠️ **Not `inert` any more** — `inert` would also kill View and Download on the MN documents,
+and reading a file is not editing (§5.39c). The writers handed down no-op without the ability, and
+`handleSend` refuses before anything else. The notes box stays live (§5.39h).
+Insurance and Doctor are editable for an editor (Josh, *"3. keep them editable"*) and plain facts
+for a reader — his 9/18 look.
+
+**Top bar and overview:** the phone reads (xxx) xxx-xxxx (`formatPhoneParen`, display only); the
+Subscription chip shows the Subscription STATUS (`SUBSCRIPTION_STATUS_COL`, declared beside
+`OVERVIEW_COLS.status` because an import would be a cycle — a test pins them equal); the Email pencil
+STAYS (Josh, *"2. leave it"*); the Back row is hidden in the redesign layout only (§5.39d keeps it in
+"as today"). The overview adds the status dot, "type · order type · frequency", and First order
+falling back to the item's creation date — ⚠️ only once the orders are READ, or a borrowed date
+flips to a real one a second later.
+
+**Layout fixes the render found** (§5.30d's rule): the editable Contacts are his three columns WHEN
+THEY FIT and two otherwise (`.facts.contacts.ctl`, `minmax(104px,1fr)`) — measured, three selects
+in the 1440 card cut "Patient" to "Patien"; a label that wraps no longer drops its control below its
+neighbour's (the label takes the row's slack); a section title never wraps beside its note.
+
+**Right column — LOOK ONLY** (Josh, *"leave communcaitons alone"*):
+- The header is the two tabs. **Texts N** is the loaded thread's own count (`ConversationThread`'s
+  opt-in `onCount`, called only after a successful load). ⚠️ **Calls has no count**: counting calls
+  means reading RingCentral's call log for every patient opened (§5.16) — no number beats one we
+  cannot stand behind.
+- The thread is drawn **`bare`** (no name block, bell or dark Call) and its composer is his one
+  line (`Composer`'s opt-in `variant="line"`). ⚠️ Both are OPT-IN: absent, the Communications hub
+  renders byte-for-byte what it did, and either way the guards and the send are the same code.
+- ⚠️ **Calling moved rather than went**: a **Call** chip beside the primary number, and **Call alt**
+  (now kept while the column is on the alternate, as in his numline). The plan said to make the
+  number itself dial with no visible change; a chip was chosen because a clickable number dials on
+  the click a rep uses to select it — §5.31f records the copy complaint that came from exactly that.
+- ⚠️ The resolve bar stays at the TOP of the column — the Inbox plan's placement (§5.49), pinned by
+  `inboxWiring.test.ts`. Recent notes keep their composer (Josh, *"leave these"*). The Calls tab
+  keeps the Communications button (§5.50) rather than his inline list.
+
+**The hub's pane** renders the same cards one column wide and draws no Subscription notes card —
+the pane's own notes box is job 2 (§5.49).
+
+**Rendered in a browser before shipping** — a throwaway harness with fake data and every network hook
+replaced (not committed): 1440×900, 1568×767 (his two sizes), 1100×800, 1920×1080, dark,
+read-only and the 480px hub pane. No horizontal overflow and no console errors in any of them; the
+Send pinned to the bottom edge; controls in one row within 4px of each other (a date input is 4px
+taller than a select).
+
+**Known, found on the way, NOT fixed** (the visuals-only rule):
+- ⚠️⚠️ **Every Subscription send rewrites Fax / Parachute `color_mm25t5q` to Fax unless it reads
+  "Parachute"** (`mondayWrite`, `faxVal === "Parachute" ? 1 : 0`) — pre-existing on /subscription
+  too. The live column also has Email (2) and Dashboard (3); **10 Subscription items** carried one
+  on 2026-09-24 (6 Email, 4 Dashboard), and any save of them flips it to Fax.
+- The right column hands the patient's Can Text to the thread even while it is on the ALTERNATE
+  number, where the Calls tab correctly does not — pre-existing (§5.49 rule: Can Text is the primary
+  line's answer).
+- **Lifetime revenue** has no column and renders an em dash.
+
+**Keep-in-agreement:** `SubscriptionCards`' option sources ⇄ `SubscriptionForm` / `PatientInfoCard`
+(the same lists, never the mockup's) · `profileExtras.EXTRA_COL` ⇄ the live board ⇄
+`PROFILE_EXTRA_COLUMN_IDS` (read) ⇄ `buildExtrasTasks` (write) · `diffExtras` ⇄ `extrasRefusals` ⇄
+the three-step `handleSend` · `SUBSCRIPTION_STATUS_COL` ⇄ `OVERVIEW_COLS.status` · the Send bar
+stays the last child of `.pt-main` (§5.45b). Tests: `subscriptionSendBottom.test.tsx` (rendered —
+the one Send, the delta, the visit date's writer, read-only disables EVERY control),
+`subscriptionView.test.ts`, `profileExtras.test.ts`, `patientScreen.test.ts`,
+`contactsWiring.test.ts`, `patientCommsColumn.test.tsx`, `conversationThread.test.tsx`,
+`mrStatus.test.ts`, `subscriptionOverview.test.ts`, `phoneDisplay.test.ts`.
 
 ---
 
@@ -11742,8 +11898,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The text composer is blocked and the patient never replied STOP | §5.46e — their **Can Text** column reads **No**; the banner says so and names where to change it. ⚠️ It blocks on an EXPLICIT No only — a blank is unknown (§5.31d) and blocks nobody. A STOP reply outranks the column and shows its own message |
 | The patient screen's Email is blank, or a pencil won't save | §5.46g — `lib/patient/contactEdit.ts`. Blank on EVERY patient ⇒ `emailColumns` dropped out of `dossierApi.dossierCols`. A greyed pencil says why in its tooltip: no `editProfile`, a **completed** record (refused by design, §5.38), or a board with no such column. A refusal under the box is the shape test — the email one is permissive because it must accept `<digits>@rcfax.com`. ⚠️ Saving a NUMBER also clears Can Text on Welcome Call and Subscription; that is §5.31d's rule, not a bug |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
-| The Subscription profile won't save, or says "Read-only" | §5.45b — the Send is the green button in the bar pinned to the BOTTOM of the Profile tab (the patient screen and the hub's right pane alike). `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). MN documents and the visit date are still `/subscription` and `/update-clinicals` alone — each carries side effects this card does not (§5.36) |
-| A fact shows TWICE on the Subscription profile — once editable, once as a card | §5.45b — `FORM_SECTIONS` matches `stageDetail.ts`'s SUBSCRIPTION section TITLES, so a rename there makes the filter match nothing with nothing erroring. `subscriptionView.test.ts` pins both strings. ⚠️ The teal overview strip restating Next order / Cycle / Order type is NOT that bug — it is this screen's `PatientInfoCard`, and `/subscription` shows the same six facts above its own form |
+| The Subscription profile won't save, or says "Read-only" | §5.45b — the Send is the green button in the bar pinned to the BOTTOM of the Profile tab (the patient screen and the hub's right pane alike). `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). Since 2026-09-24 the visit date and MN documents ARE on the tab (§5.51): the Send runs three steps and its message names the one that failed — the visit date goes through `saveVisitDateVerified`, a file that failed stays queued |
+| A new Subscription profile field (Frequency, a quantity, a Contact) doesn't save, or saves something the rep didn't touch | §5.51 — `lib/subscription/profileExtras.ts`. Only the DELTA is written (`diffExtras`), so an untouched field is never re-written; a refusal (a phone Monday can't read, a quantity that isn't a whole number) stops the Send before any write. A contact that saved but reads blank means its label id is not on the live column — the ids come from `useStatusOptions`, never code |
+| A select on the Subscription profile offers the wrong list | §5.51 — every list is the one `/subscription` already offered (`subscription/workflow.ts`, the live infusion sets, `usePayerOptions`), never the mockup's. A value the list lacks is shown as the CURRENT one (`withCurrent`), not replaced. 75-Days is Aetna-only (§5.31) |
+| A Subscription patient's Fax / Parachute flipped from Email or Dashboard to Fax | §5.51's known list — every Subscription send maps anything but "Parachute" to Fax (`mondayWrite`, pre-existing on /subscription too). Not fixed under the visuals-only rule |
+| A fact shows TWICE on the Subscription profile — once editable, once as a card | §5.51 — since 2026-09-24 the tab is Brandon's grid (`components/patient/SubscriptionCards.tsx`) and draws NO `stageDetail` cards, so `FORM_SECTIONS` is gone. A repeat now means a card was added twice to `ProfileTab`; `subscriptionView.test.ts` pins his card order. ⚠️ The teal overview strip restating Next order is NOT that bug — it is Brandon's overview |
 | The order history table mangles its rows on a narrow window | §5.45 — `.cc-pt .otable`'s `min-width: 720px`. Without it the table squeezes instead of scrolling inside `.scroll-x` and the Items cell collapses to one word per line. Reproduce at **1100**, where the 380px comms rail leaves the main column at ~672px — at 1440 it fits and looks correct whatever is broken |
 | The Cardinal stock page / "where is Inventory?" | §5.39i — `/orders?view=stock`, one table with category chips, `components/orders/SkuTrackerView.tsx`. OOP price is the board's column, never `cost × 1.25`; Status sorts by the VERDICT, not the raw label; the order sidebar is hidden there by design |
 | "Why does my home page look different from theirs?" | §5.39c — `homeView` on their profile (`bars` · `coordinator` · `oversight`). Missing = `["bars"]`, which is what everybody has; two or more puts a toggle on the home screen. The coordinator and oversight views ARE the live pages, not copies |
@@ -11910,7 +12069,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's ORDERS show as extra rows in the HEADER search | §5.46h — `foldRedundantOrders` drops an order hit whose patient is a row on the same list; they are not profiles, and the patient screen's Orders tab already lists every one. ⚠️ An order with NO patient on screen still stands alone, deliberately — a CAH, PO or tracking query matches the order board and nothing else (§5.35), so folding it would break the lookup Josh asked for. An order row beside its patient means the phones CONTRADICT (two same-named people), which is the one case it must not fold |
 | A search hit opens the wrong half of the record | §5.46b — `pickLead` scores the **Subscription** board above every pipeline bucket and `patientScreen.defaultView` reads the same fact, so the row and the screen agree. Keyed on the row EXISTING, never a status. An explicit `?view=` always wins |
 | The search dropdown shows rows and then changes them | §5.46b — correct: the NAME pass paints first and the loose + same-number passes land after it, which is why "Still looking…" sits under the rows. A row that only ever appears late is the same-number pass (§7), and it says so |
-| The Subscription profile shows the wrong facts, or a fact twice | §5.46b — the strip is `lib/patient/subscriptionOverview.ts` (Status · Next order · Subscription · First order) and is deliberately NOT `stageDetail`'s SUBSCRIPTION map, which keeps all six for the Comms Hub. A fact rendered twice means `FORM_SECTIONS` stopped matching that map's TITLES |
+| The Subscription profile shows the wrong facts, or a fact twice | §5.46b — the strip is `lib/patient/subscriptionOverview.ts` (Status · Next order · Subscription · First order) and is deliberately NOT `stageDetail`'s SUBSCRIPTION map, which keeps all six for the Comms Hub. The cards below it are Brandon's grid (§5.51) |
 | A rep without `editProfile` can change the subscription form | §5.46b — the guard is `inert` on the wrapper plus a no-op writer, and the Send bar is not rendered at all. `patientScreen.test.ts` pins all three |
 | Inventory locks the page for ~15s | §5.46b — `PageLoadingOverlay` must be `view === "orders" && initialLoading && !selectedId`; it is the ORDER BOARD's read, which Inventory only needs for the open-order column (and that says "—" until it lands, never 0) |
 | An order opened from a link sits behind "Loading orders…" for ~14s | §5.46h — fixed 2026-09-23: the DETAIL read is one item and lands in ~1s, the LIST is ~1,480 rows over three sequential pages, and the overlay keyed on the LIST. It stands down whenever an order is selected; the header chip says the list is still arriving. If it recurs, check the overlay still carries `&& !selectedId` and that `initialLoading` is still seeded `lastList === null` — `inventoryBlocking.test.ts` scans both |

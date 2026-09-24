@@ -3,6 +3,7 @@ import {
   OVERVIEW_COLS,
   daysUntil,
   dueText,
+  overviewColumns,
   subscriptionOverview,
   usDate,
 } from "./subscriptionOverview";
@@ -115,6 +116,49 @@ describe("⚠️ missing and empty stay different facts", () => {
     const sub = f.find((x) => x.label === "Subscription")!;
     expect(sub.value).toBe("Sensors & Supplies");
     expect(sub.note).toBe("Reorder");
+  });
+});
+
+describe("Brandon's pixel-match (2026-09-24)", () => {
+  it("Subscription reads type · order type · frequency — 'Sensors · First Order · 90-Days'", () => {
+    const f = subscriptionOverview(cols({ [OVERVIEW_COLS.orderFrequency]: "90-Days" }), [], TODAY);
+    const sub = f.find((x) => x.label === "Subscription")!;
+    expect(sub.value).toBe("Sensors & Supplies");
+    expect(sub.note).toBe("Reorder · 90-Days");
+  });
+
+  it("a blank frequency or type drops out of the clause rather than leaving a stray dot", () => {
+    const f = subscriptionOverview(cols({ [OVERVIEW_COLS.orderType]: "", [OVERVIEW_COLS.orderFrequency]: "60-Days" }), [], TODAY);
+    expect(f.find((x) => x.label === "Subscription")!.note).toBe("60-Days");
+    const g = subscriptionOverview(cols({ [OVERVIEW_COLS.orderType]: "" }), [], TODAY);
+    expect(g.find((x) => x.label === "Subscription")!.note).toBe("");
+  });
+
+  it("First order falls back to the item's created date once the orders are READ and none has a date", () => {
+    // 2026-04-21T15:00Z is 11 AM Eastern on 4/21.
+    const f = subscriptionOverview(cols(), [], TODAY, { createdAt: "2026-04-21T15:00:00Z" });
+    expect(valueOf(f, "First order")).toBe("4/21/2026");
+  });
+
+  it("⚠️ the created date is an INSTANT, read in Eastern — late evening UTC is still the same ET day's evening", () => {
+    // 02:30Z on 4/22 is 10:30 PM on 4/21 in New York.
+    const f = subscriptionOverview(cols(), [], TODAY, { createdAt: "2026-04-22T02:30:00Z" });
+    expect(valueOf(f, "First order")).toBe("4/21/2026");
+  });
+
+  it("⚠️ a real order date always wins over the created date", () => {
+    const f = subscriptionOverview(cols(), ["2025-03-14"], TODAY, { createdAt: "2026-04-21T15:00:00Z" });
+    expect(valueOf(f, "First order")).toBe("3/14/2025");
+  });
+
+  it("⚠️ while the orders are still loading, the fact stays BLANK — no borrowed date that flips a second later", () => {
+    const f = subscriptionOverview(cols(), null, TODAY, { createdAt: "2026-04-21T15:00:00Z" });
+    expect(valueOf(f, "First order")).toBe("");
+  });
+
+  it("the dossier asks for the frequency column on the Subscription board only", () => {
+    expect(overviewColumns(18407459988)).toContain(OVERVIEW_COLS.orderFrequency);
+    expect(overviewColumns(18410804557)).toEqual([]);
   });
 });
 

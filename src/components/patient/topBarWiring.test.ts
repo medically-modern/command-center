@@ -28,7 +28,11 @@ const CSS = src("src/pages/patient/redesign.css");
 
 describe("the host", () => {
   it("the patient screen still renders the body — one top bar, two hosts", () => {
-    expect(code(src("src/pages/PatientPage.tsx"))).toContain("<PatientBody dossier={dossier} itemId={itemId} params={params} setParam={setParam} onSaved={reload} />");
+    // `onSaved={reload}` is what re-reads the record after a pencil saves; the
+    // page also hands over a note appended on the Subscription notes card.
+    expect(code(src("src/pages/PatientPage.tsx"))).toMatch(
+      /<PatientBody\s+dossier=\{dossier\}\s+itemId=\{itemId\}\s+params=\{params\}\s+setParam=\{setParam\}\s+onSaved=\{reload\}/,
+    );
     expect(code(src("src/components/commsHub/HubPatientPane.tsx"))).toContain("<PatientBody");
   });
 });

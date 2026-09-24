@@ -34,7 +34,7 @@ interface Props {
 
 const ACCEPTED_MIME_FALLBACK = "application/octet-stream";
 
-function inferMimeType(file: File): string {
+export function inferMimeType(file: File): string {
   if (file.type) return file.type;
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   switch (ext) {

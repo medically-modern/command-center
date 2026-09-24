@@ -33,9 +33,26 @@
  * whole column at the alternate number, because this column is already built as
  * one `phone` feeding both tabs. That is one divergence from his mockup and it
  * is deliberate — see `CONTACTS` note below.
+ *
+ * ⚠️ **Brandon's pixel-match (item 14, 2026-09-24) is LOOK ONLY here** — Josh:
+ * *"leave communcaitons alone"*. The header is the two tabs and nothing else;
+ * the thread's own header (the name, the bell, the dark Call) is off on THIS
+ * screen through `ConversationThread`'s opt-in `bare`, and the composer is his
+ * one line. What moved rather than went:
+ *  - **Call** — a chip on the number line, beside the number it dials, the way
+ *    his "Call alt" sits beside the alternate. Dropping it would bring back the
+ *    button that does nothing (§5.50), which Josh reported the same day.
+ *  - **Texts N** — the thread's own count once it has loaded; ⚠️ **Calls has no
+ *    count**, because counting calls means reading RingCentral's call log for
+ *    every patient opened (§5.16) — no number beats a number we cannot stand
+ *    behind.
+ *  - The bell stays on the Communications hub's thread and in the ring
+ *    settings, the two ways a number joins the ring list (§5.13).
+ * ⚠️ The resolve bar stays at the TOP of the column, where the Inbox plan put
+ * it (COMMS_INBOX_PLAN.md §1.2) — it is Communications' own, and untouched.
  */
-import { useState } from "react";
-import { MessageSquare, Phone } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Loader2, MessageSquare, Phone } from "lucide-react";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
 import { CommunicationsButton } from "@/components/comms/CommunicationsButton";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
@@ -47,6 +64,7 @@ import type { Contacts } from "@/lib/patient/contacts";
 import { RecentNotes } from "@/components/patient/RecentNotes";
 import { PatientResolveBar } from "@/components/commsInbox/PatientResolveBar";
 import type { NoteTarget } from "@/lib/commsInbox/api";
+import { formatPhoneParen } from "@/lib/shared/phoneDisplay";
 
 export function PatientCommsColumn({
   phone,
@@ -72,6 +90,10 @@ export function PatientCommsColumn({
   noteTarget?: NoteTarget | null;
 }) {
   const [useAlt, setUseAlt] = useState(false);
+  /** The thread's message count per number — what the Texts tab shows. Kept
+   *  per NUMBER, so switching to the alternate cannot label one thread with
+   *  the other's count, and it survives a visit to the Calls tab. */
+  const [textCounts, setTextCounts] = useState<Record<string, number>>({});
 
   const alt = contacts?.alternatePhoneRaw || "";
   /** ⚠️ Falls back BY CONSTRUCTION when there is no alternate number, so a
@@ -91,8 +113,17 @@ export function PatientCommsColumn({
     reportDial(n);
     void webPhone.dial(n);
   };
-  const callingActive =
-    !!webPhone.call && !!activePhone && last10(webPhone.call.phone) === last10(activePhone);
+  const callingNumber = (n: string) => !!webPhone.call && !!n && last10(webPhone.call.phone) === last10(n);
+  const callingActive = callingNumber(activePhone);
+  /* ⚠️ Stable, and a no-op when nothing changed: the thread calls this from an
+     effect, so a fresh function or a fresh object per render is a render loop
+     (INCIDENT_2026-08-20 rule 2). */
+  const onCount = useCallback(
+    (n: number) =>
+      setTextCounts((prev) => (prev[activePhone] === n ? prev : { ...prev, [activePhone]: n })),
+    [activePhone],
+  );
+  const textCount = textCounts[activePhone];
 
   return (
     <aside className="pt-side">
@@ -106,6 +137,7 @@ export function PatientCommsColumn({
         <div className="side-tabs">
           <button type="button" className={side === "texts" ? "on" : ""} onClick={() => onSide("texts")}>
             <MessageSquare style={{ width: 13, height: 13 }} /> Texts
+            {textCount !== undefined && <span className="n">{textCount}</span>}
           </button>
           <button type="button" className={side === "calls" ? "on" : ""} onClick={() => onSide("calls")}>
             <Phone style={{ width: 13, height: 13 }} /> Calls
@@ -117,10 +149,29 @@ export function PatientCommsColumn({
           alternate number with the caregiver's name and his two actions. */}
       <div className="numline">
         <Phone style={{ width: 11, height: 11 }} />
-        <span className={!onAlt && phone ? "on" : ""}>{phone || "no phone on file"}</span>
+        <span className={!onAlt && phone ? "on" : ""}>{formatPhoneParen(phone) || "no phone on file"}</span>
         <span className="muted">
           primary{contacts?.primaryContact ? ` · ${contacts.primaryContact}` : ""}
         </span>
+        {/* The primary number's Call, beside the number it dials (§5.50) — the
+            dark Call button that used to do this is gone with the thread's
+            header on this screen. */}
+        {phone && (
+          <button
+            type="button"
+            className="numbtn"
+            onClick={() => dialNumber(phone)}
+            disabled={callingNumber(phone)}
+            title="Call this number from the Command Center"
+          >
+            {callingNumber(phone) ? (
+              <Loader2 className="animate-spin" style={{ width: 10, height: 10 }} />
+            ) : (
+              <Phone style={{ width: 10, height: 10 }} />
+            )}{" "}
+            Call
+          </button>
+        )}
 
         {alt ? (
           <>
@@ -128,44 +179,49 @@ export function PatientCommsColumn({
                 together — at the column's real 380px they land on different
                 lines, and a lone "·" at the end of a line reads as a typo. */}
             <span className={onAlt ? "on" : ""}>
-              · alt {contacts?.alternatePhone || alt}
+              · alt {formatPhoneParen(contacts?.alternatePhone || alt)}
               {contacts?.caregiverName ? ` · ${contacts.caregiverName}` : ""}
             </span>
             {onAlt ? (
-              <button type="button" className="numbtn on" onClick={() => setUseAlt(false)}>
-                Back to primary
+              <button
+                type="button"
+                className="numbtn on"
+                onClick={() => setUseAlt(false)}
+                title="Back to the primary number"
+              >
+                <MessageSquare style={{ width: 10, height: 10 }} /> Back to primary
               </button>
             ) : (
-              <>
-                {/* "Call alt" DIALS the alternate number (§5.50), and points
-                    the column at it so the thread beside the call is theirs.
-                    It used to show the alternate's call history instead, on
-                    the belief that a dialer here would spend a softphone slot —
-                    it does not; every tab shares one registration (§5.13b). */}
-                <button
-                  type="button"
-                  className="numbtn"
-                  onClick={() => {
-                    setUseAlt(true);
-                    onSide("texts");
-                  }}
-                  title="Text the alternate number instead"
-                >
-                  <MessageSquare style={{ width: 10, height: 10 }} /> Text alt
-                </button>
-                <button
-                  type="button"
-                  className="numbtn"
-                  onClick={() => {
-                    setUseAlt(true);
-                    dialNumber(alt);
-                  }}
-                  title="Call the alternate number from the Command Center"
-                >
-                  <Phone style={{ width: 10, height: 10 }} /> Call alt
-                </button>
-              </>
+              <button
+                type="button"
+                className="numbtn"
+                onClick={() => {
+                  setUseAlt(true);
+                  onSide("texts");
+                }}
+                title="Text the alternate number instead"
+              >
+                <MessageSquare style={{ width: 10, height: 10 }} /> Text alt
+              </button>
             )}
+            {/* "Call alt" DIALS the alternate number (§5.50), and points the
+                column at it so the thread beside the call is theirs. It stays
+                on while the column is on the alternate, as in Brandon's
+                numline. It used to show the alternate's call history instead,
+                on the belief that a dialer here would spend a softphone slot —
+                it does not; every tab shares one registration (§5.13b). */}
+            <button
+              type="button"
+              className="numbtn"
+              onClick={() => {
+                setUseAlt(true);
+                dialNumber(alt);
+              }}
+              disabled={callingNumber(alt)}
+              title="Call the alternate number from the Command Center"
+            >
+              <Phone style={{ width: 10, height: 10 }} /> Call alt
+            </button>
           </>
         ) : contacts?.caregiverName ? (
           <span className="muted">· caregiver {contacts.caregiverName}</span>
@@ -187,7 +243,9 @@ export function PatientCommsColumn({
               is its own thread, not the patient&apos;s.
             </div>
           )}
-          {/* Call dials the number on screen, in the page (§5.50).
+          {/* `bare` is Brandon's look here (item 14): no header of its own —
+              the number line above carries the Call — and the one-line
+              composer. The thread, its guards and the send are unchanged.
               ⚠️ Keyed on the number so a switch to the alternate cannot carry a
               half-typed message across to a different thread. */}
           <ConversationThread
@@ -197,6 +255,9 @@ export function PatientCommsColumn({
             onCall={() => dialNumber(activePhone)}
             calling={callingActive}
             canText={contacts?.canText}
+            bare
+            composerPlaceholder={onAlt ? `Write a text to ${formatPhoneParen(alt)}…` : "Write a text…"}
+            onCount={onCount}
           />
         </div>
       ) : (

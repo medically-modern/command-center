@@ -6,7 +6,9 @@
 > — then: *"read it and make a plan . note that his claude doesnt know shit. approve all ui asks,
 > 0 backend changes allowed."*
 
-**Status: PLAN. Nothing is built.** Brandon's instructions, with the patient in them redacted:
+**Status: Phase 1 BUILT on the test site (2026-09-24) — see "Phase 1 — as built" under §5; the
+other phases are not started.** CLAUDE.md §5.51 is the durable record. Brandon's instructions, with
+the patient in them redacted:
 [`_reference/brandon-redesign/PIXEL_MATCH_INSTRUCTIONS_2026-09-24.txt`](_reference/brandon-redesign/PIXEL_MATCH_INSTRUCTIONS_2026-09-24.txt).
 Every board fact below was read from the live Subscription board on 2026-09-24 (column names, types
 and labels only, no patient rows).
@@ -253,6 +255,34 @@ If a step fails, the message says which one, and whatever didn't save stays on s
     Onboarding view, which shows a different board's notes than the three it summarises.
 - **Calling:** his column has no Call button. The blue number in the top bar and the number on the
   phone line both dial in the app, with no change to how they look. Plus his Call back and Call alt.
+
+#### Phase 1 — as built (2026-09-24)
+Josh's answers changed four things from the plan above, and the build follows his answers:
+- *"leave communcaitons alone"* — Phase 4 is skipped, and item (14) is **look only**: the tabs, the
+  number line, the bare thread and the one-line composer are built; **the Calls tab keeps the
+  Communications button** (no inline list), and **the resolve bar stays at the top** of the column
+  where the Inbox plan put it.
+- *"Save moves from the bottom … The right column's notes lose their add box … — leave these"* —
+  **the Send stays in the bar pinned to the bottom**, and **Recent notes keep their composer**.
+  The §3 bullets for both are withdrawn.
+- *"1. YES"* · *"2. leave it"* · *"3. keep them editable"* — the eight columns are written (as a
+  delta); **the Email pencil stays**; address, insurance and doctor stay editable for an editor.
+- *"its so so critical that we are just changing the visuals and not the backend or label options"*
+  — every select offers the list the app already offered; nothing about the writers changed.
+
+Found while building, and decided without asking — each is in CLAUDE.md §5.51:
+- **Calling:** a small *Call* chip beside the primary number, rather than making the number itself
+  dial (a clickable number dials on the click a rep uses to select it — §5.31f's copy complaint).
+- ***Calls N*** has no number: counting calls would read RingCentral's call log for every patient
+  opened. ***Texts N*** is the thread's own count once it loads.
+- **The editable Contacts** are his three columns when they fit and two when they don't (three
+  selects at 1440 cut "Patient" to "Patien").
+- **Read-only** is native `disabled` on every control, so View and Download still work.
+- **The eight new writes were checked against the board's automations and webhooks** first: none
+  triggers anything; one webhook fires on every column change, as every existing save already does.
+
+Not fixed, and reported: every Subscription send turns Fax / Parachute "Email" or "Dashboard" into
+"Fax" (10 patients on 2026-09-24); Lifetime revenue has no column.
 
 ### Phase 2 — Subscription › Orders and the Onboarding view *(medium)*
 - **Orders:**

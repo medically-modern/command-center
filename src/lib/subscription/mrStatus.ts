@@ -117,3 +117,22 @@ export function mrRungForExpiry(
   if (days <= 30) return { index: MR_STATUS_INDEX.days30, label: "MR <30 Days" };
   return { index: MR_STATUS_INDEX.valid, label: "MR Valid" };
 }
+
+/**
+ * MN Expiry for a visit date: the visit plus six months, as YYYY-MM-DD.
+ *
+ * Update Clinicals computes this with `new Date(ymd + "T00:00:00")`,
+ * `setMonth(+6)` and `toISOString()` — right in a US browser, a day early east
+ * of UTC. This is the same arithmetic on the date's PARTS (`Date.UTC` rolls a
+ * month overflow exactly as `setMonth` does, so 08-31 → next 03-03 either way),
+ * which is what the patient screen's visit date uses so the answer cannot
+ * depend on the machine's timezone. Returns null for anything unreadable, and
+ * the caller then writes nothing.
+ */
+export function expiryForVisitDate(visitYmd: string | null | undefined): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((visitYmd ?? "").trim());
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1 + 6, +m[3]));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}

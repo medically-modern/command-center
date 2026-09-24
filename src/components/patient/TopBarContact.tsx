@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { Check, Mail, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 import { updatePatientContact } from "@/lib/commsHub/dossierApi";
+import { formatPhoneParen } from "@/lib/shared/phoneDisplay";
 import {
   contactWrites,
   emailRefusal,
@@ -105,7 +106,9 @@ export function TopBarContact({
           ) : field === "email" ? (
             <a href={`mailto:${value}`}>{value}</a>
           ) : (
-            <b>{value}</b>
+            /* Printed as (xxx) xxx-xxxx (Brandon's pixel-match, item 2); the
+               pencil still edits the value exactly as the board holds it. */
+            <b>{formatPhoneParen(value) || value}</b>
           )}
           {/* ⚠️ SHOWN and inert rather than hidden when it may not be pressed —
               §5.39h's AbilityLock rule, because a control that simply vanishes

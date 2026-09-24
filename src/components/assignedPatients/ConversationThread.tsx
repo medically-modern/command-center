@@ -37,9 +37,34 @@ interface Props {
    * Call boards carry it. The rule itself is `Composer`'s.
    */
   canText?: "yes" | "no" | "unknown";
+  /**
+   * The patient screen's look (Brandon's pixel-match item 14, 2026-09-24):
+   * no header — the name, the bell and the Call button are drawn by that
+   * screen's own top bar and number line — and the one-line composer.
+   * ⚠️ **OPT-IN, and LOOK ONLY:** absent, this renders exactly what it always
+   * has on the Communications hub; present, the thread, the guards and the send
+   * are the same code. The bell is still on the hub's thread and in the ring
+   * settings, which are the ways a number joins the ring list (§5.13).
+   */
+  bare?: boolean;
+  /** Placeholder for the one-line composer (e.g. naming the alternate number). */
+  composerPlaceholder?: string;
+  /** Told how many messages the thread holds once it has loaded — the
+   *  patient screen's "Texts N" tab. Never called while loading or on an error,
+   *  so a count is only ever one the thread actually read. */
+  onCount?: (n: number) => void;
 }
 
-export default function ConversationThread({ phone, patient, onCall, calling, canText }: Props) {
+export default function ConversationThread({
+  phone,
+  patient,
+  onCall,
+  calling,
+  canText,
+  bare = false,
+  composerPlaceholder,
+  onCount,
+}: Props) {
   const conversation = useConversation(phone, patient?.itemId);
   const { messages, loading, error } = conversation;
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -48,29 +73,35 @@ export default function ConversationThread({ phone, patient, onCall, calling, ca
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
 
+  useEffect(() => {
+    if (!loading && !error) onCount?.(messages.length);
+  }, [messages.length, loading, error, onCount]);
+
   return (
     <section className="flex-1 flex flex-col min-h-0 min-w-0">
-      <header className="px-4 py-3 border-b border-border bg-card shrink-0 flex items-center gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold truncate">{patient?.name || fmtPhone(phone)}</h2>
-          <p className="text-[11px] text-muted-foreground truncate">
-            {fmtPhone(phone)}
-            {patient?.boardName ? ` · ${patient.boardName}` : ""}
-          </p>
-        </div>
-        {/* The only way a number joins your ring list — see the component. */}
-        <div className="ml-auto shrink-0">
-          <WatchCallbackButton phone={phone} label={patient?.name || ""} />
-        </div>
-        <button
-          onClick={onCall}
-          disabled={calling}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--mm-teal,theme(colors.teal.600))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-        >
-          {calling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
-          Call
-        </button>
-      </header>
+      {!bare && (
+        <header className="px-4 py-3 border-b border-border bg-card shrink-0 flex items-center gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold truncate">{patient?.name || fmtPhone(phone)}</h2>
+            <p className="text-[11px] text-muted-foreground truncate">
+              {fmtPhone(phone)}
+              {patient?.boardName ? ` · ${patient.boardName}` : ""}
+            </p>
+          </div>
+          {/* The only way a number joins your ring list — see the component. */}
+          <div className="ml-auto shrink-0">
+            <WatchCallbackButton phone={phone} label={patient?.name || ""} />
+          </div>
+          <button
+            onClick={onCall}
+            disabled={calling}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--mm-teal,theme(colors.teal.600))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {calling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
+            Call
+          </button>
+        </header>
+      )}
 
       <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-2 bg-gradient-subtle">
         {loading ? (
@@ -87,7 +118,12 @@ export default function ConversationThread({ phone, patient, onCall, calling, ca
         <div ref={bottomRef} />
       </div>
 
-      <Composer conversation={conversation} canText={canText} />
+      <Composer
+        conversation={conversation}
+        canText={canText}
+        variant={bare ? "line" : "box"}
+        placeholder={composerPlaceholder}
+      />
     </section>
   );
 }
