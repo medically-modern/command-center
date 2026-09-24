@@ -4117,7 +4117,9 @@ yet, it'll just stay blank."* Rule: **`lib/careCoordinator/networkPill.ts`** (+ 
   failed" on the banner beside a red Check failed pill is one fact twice (§5.35's say-it-once
   rule). A check that has not run now shows **nothing** on the card — his *"it'll just stay
   blank"* — so a Review card whose only blocker was a missing check carries no banner at all.
-  `intakeBlocker` is unchanged, and still ends at the first thing it finds.
+  `intakeBlocker` behaves exactly as before — it is now `benefitsCheckBlocker(lead) ||
+  coveragePathBlocker(lead)`, the two halves `reviewCardBlocker` picks between — and still ends at
+  the first thing it finds.
 
 **2 + 8. The counts: one line, all-time, and out of Postgres.** *"For the inbound/outbound
 phone/texts, let's bring this up to a single line — First have the gray outbound, then next to it
