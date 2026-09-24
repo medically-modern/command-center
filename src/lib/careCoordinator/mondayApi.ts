@@ -377,6 +377,11 @@ const WC_COLS: string[] = [
   // Send Off's — verified live against the 156-column board the same day.
   WC_COL.referralSource, WC_COL.insulinPumpCoveragePath, WC_COL.cgmCoveragePath,
   WC_COL.doctorPhone, WC_COL.clinicName, WC_COL.clinicAddress, WC_COL.welcomeCallText,
+  // The card's "State:" (Brandon, 2026-09-24). This board carries no State
+  // column, so it is read out of the patient's address — one column on a
+  // ~40-row read. ⚠️ The PATIENT address, never `clinicAddress` beside it:
+  // the doctor's office is often across a state line from the patient.
+  WC_COL.address,
 ];
 
 function toWelcomeCallItem(item: RawItem): WelcomeCallItem {
@@ -410,6 +415,7 @@ function toWelcomeCallItem(item: RawItem): WelcomeCallItem {
     clinicName: text(item, WC_COL.clinicName),
     clinicAddress: text(item, WC_COL.clinicAddress),
     welcomeCallText: text(item, WC_COL.welcomeCallText),
+    address: text(item, WC_COL.address),
   };
 }
 
@@ -502,24 +508,14 @@ export async function fetchItemNotesBatch(
  */
 export interface CardPhoto { url: string; name: string }
 
-export async function fetchInsuranceCardAsset(itemId: string): Promise<CardPhoto | null> {
-  const data = await gql<{
-    items: {
-      column_values: { id: string; value: string | null }[];
-      assets: { id: string; name: string; url: string; public_url: string | null }[];
-    }[];
-  }>(
-    `query ($ids: [ID!], $cols: [String!]) {
-       items(ids: $ids) {
-         column_values(ids: $cols) { id value }
-         assets(assets_source: all) { id name url public_url }
-       }
-     }`,
-    { ids: [itemId], cols: [PROFILE_COL.formCardPhoto] },
-  );
-  const item = data.items?.[0];
-  if (!item) return null;
+interface CardItem {
+  column_values: { id: string; value: string | null; text?: string | null }[];
+  assets: { id: string; name: string; url: string; public_url: string | null }[];
+}
 
+/** The card photo out of one item's column value and assets — see above. */
+function cardPhotoFrom(item: CardItem | undefined): CardPhoto | null {
+  if (!item) return null;
   const raw = item.column_values?.find((c) => c.id === PROFILE_COL.formCardPhoto)?.value ?? "";
   let assetIds: string[] = [];
   try {
@@ -545,6 +541,48 @@ export async function fetchInsuranceCardAsset(itemId: string): Promise<CardPhoto
   // signed field degrades to "the viewer reports it cannot load" instead of a
   // crash.
   return { url: asset.public_url || asset.url, name: asset.name };
+}
+
+/** One request for everything the card dialog shows. */
+async function fetchCardItem(itemId: string, cols: string[]): Promise<CardItem | undefined> {
+  const data = await gql<{ items: CardItem[] }>(
+    `query ($ids: [ID!], $cols: [String!]) {
+       items(ids: $ids) {
+         column_values(ids: $cols) { id value text }
+         assets(assets_source: all) { id name url public_url }
+       }
+     }`,
+    { ids: [itemId], cols },
+  );
+  return data.items?.[0];
+}
+
+export async function fetchInsuranceCardAsset(itemId: string): Promise<CardPhoto | null> {
+  return cardPhotoFrom(await fetchCardItem(itemId, [PROFILE_COL.formCardPhoto]));
+}
+
+/**
+ * Everything the insurance-card dialog needs, in ONE read when it opens: the
+ * photo (as above) and the working Member ID already on the row.
+ *
+ * Brandon, 2026-09-24: *"let's also have them enter the member ID too (as
+ * optional)"*. The field has to open on what the board holds, or a coordinator
+ * re-typing an ID that is already there cannot tell theirs from the patient's
+ * — and the list read does not carry it (§5.25 keeps that read slim), so it is
+ * read here, on open, beside the photo it is typed off.
+ *
+ * ⚠️ `memberId` is the WORKING Member ID `text_mm4t8gbq` — the Stedi input
+ * (§5.11), the same column the profile page's benefits step writes — never
+ * Member ID 1 (`text_mm1x2qk2`), which the Clean-Up pane seeds FROM it.
+ */
+export async function fetchCardDialogData(
+  itemId: string,
+): Promise<{ photo: CardPhoto | null; memberId: string }> {
+  const item = await fetchCardItem(itemId, [PROFILE_COL.formCardPhoto, PROFILE_COL.memberIdWorking]);
+  return {
+    photo: cardPhotoFrom(item),
+    memberId: (item?.column_values?.find((c) => c.id === PROFILE_COL.memberIdWorking)?.text ?? "").trim(),
+  };
 }
 
 /**

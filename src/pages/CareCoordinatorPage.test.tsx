@@ -85,7 +85,7 @@ vi.mock("@/lib/careCoordinator/mondayApi", () => ({
     intake({ id: "mgr", name: "Escalated Person", intakeEscalation: "Manager Escalation Required" }),
   ],
   fetchWelcomeCallItems: async () => [
-    wc({ id: "now", name: "Amara Nwosu" }),
+    wc({ id: "now", name: "Amara Nwosu", address: "12 Oak St, Albany, NY 12207, USA" }),
     wc({ id: "snz", name: "Gerald Pham", followUp: "Done", followUpDate: shiftYmd(TODAY, 3) }),
     wc({ id: "esc", name: "Manager Case", escalation: "Escalation Required", escalationIndex: 0 }),
   ],
@@ -94,24 +94,22 @@ vi.mock("@/lib/careCoordinator/mondayApi", () => ({
 }));
 
 /**
- * The one account-wide RingCentral read behind the green icons and the call
- * count. Mocked rather than stubbed out so the page's wiring is exercised: a
- * patient we have reached, and `truncated` false so the count renders.
+ * The all-time call and text counts behind the card's counter line — ONE
+ * batched Postgres read through the gateway since 2026-09-24 (Brandon: "they're
+ * all 0's — can we connect this to how many outbound calls in total have ever
+ * gone to the patient?"). Mocked so the page's wiring is exercised: a patient
+ * we have reached, and a Welcome Call patient whose honest answer is zero.
  */
-vi.mock("@/hooks/useContactStates", () => ({
-  CONTACT_WINDOW_DAYS: 7,
-  useContactStates: () => ({
-    loading: false,
-    error: null,
-    truncated: false,
-    textsTruncated: false,
-    states: new Map([
-      ["3475550101", {
-        text: "weRepliedLast", call: "weCalledThem", textAt: "", callAt: "", voicemail: false,
-        reachedByText: true, reachedByCall: true, calls: 3,
-        callsOut: 2, callsIn: 1, textsOut: 4, textsIn: 2,
-      }],
+const invalidateContactTotals = vi.fn();
+vi.mock("@/hooks/careCoordinator/useContactTotals", () => ({
+  totalsKey: (raw: unknown) => String(raw ?? "").replace(/\D/g, "").slice(-10),
+  invalidateContactTotals: (...a: unknown[]) => invalidateContactTotals(...a),
+  useContactTotals: () => ({
+    byNumber: new Map([
+      ["3475550101", { callsOut: 2, callsIn: 1, textsOut: 4, textsIn: 2, reachedByCall: true }],
+      ["3475550103", { callsOut: 0, callsIn: 0, textsOut: 0, textsIn: 0, reachedByCall: false }],
     ]),
+    coverage: { callsSince: "2026-06-18T16:00:00Z", textsSince: "2026-08-01T16:00:00Z" },
   }),
 }));
 
@@ -254,8 +252,10 @@ describe("CareCoordinatorPage", () => {
     const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
     const name = await within(intakeCol).findByText("Eleanor Boyd");
     const card = name.closest("article")!;
-    // Doctor / Clinic from the PROVIDED columns.
-    expect(card).toHaveTextContent("Doctor: Dr. Okafor · Clinic: 5555550100");
+    // ⚠️ The row under the name LEADS WITH THE STATE (Brandon, 2026-09-24:
+    // "State: NY; Doctor: …"), from the web form's State. Doctor / Clinic
+    // from the PROVIDED columns.
+    expect(card).toHaveTextContent("State: NY; Doctor: Dr. Okafor · Clinic: 5555550100");
     // ⚠️ Brandon's fixed grid (2026-09-16): every slot renders, in this order,
     // with its caption, and a blank one is a faint em dash rather than nothing.
     // The captions lining up card to card IS the feature.
@@ -269,17 +269,24 @@ describe("CareCoordinatorPage", () => {
     expect(card).toHaveTextContent(/3 days/);
     expect(card).not.toHaveTextContent(/waiting/);
     // Counts, buttons.
-    // ⚠️⚠️ **THE COUNTERS ARE REAL RINGCENTRAL COUNTS FROM 2026-09-22, in two
-    // rows** (Brandon: *"i don't think the call/text counters are working …
-    // these icons should be showing outgoing texts/calls. we should then show
-    // incoming calls/texts below it, in green"*). They used to be the board's
-    // Attempt Counter and the automated-nudge counter, which is why a patient
-    // rung three times read `1`. The fixture's number has 2 out / 1 in calls
-    // and 4 out / 2 in texts, and each number is titled by its direction.
-    expect(within(card).getByTitle("2 calls to this patient — and they answered one")).toHaveTextContent("2");
-    expect(within(card).getByTitle("4 texts to this patient")).toHaveTextContent("4");
-    expect(within(card).getByTitle("1 call from this patient")).toHaveTextContent("1");
-    expect(within(card).getByTitle("2 texts from this patient")).toHaveTextContent("2");
+    // ⚠️⚠️ **ALL-TIME COUNTS, ON ONE LINE WITH THE DOCTOR, FROM 2026-09-24**
+    // (Brandon: "they're all 0's — can we connect this to how many outbound
+    // calls in total have ever gone to the patient?" and "bring this up to a
+    // single line — first the gray outbound, then next to it the green
+    // inbound — all on the same line as the doctor info"). The fixture's
+    // number has 2 out / 1 in calls and 4 out / 2 in texts, each titled by its
+    // direction and by how far back the archive reaches.
+    const since = (d: string) => new RegExp(`since ${d}(, \\d{4})?`);
+    expect(within(card).getByTitle(new RegExp(`^2 calls to this patient ${since("Jun 18").source} — and they picked up at least once$`)))
+      .toHaveTextContent("2");
+    expect(within(card).getByTitle(new RegExp(`^4 texts to this patient ${since("Aug 1").source}$`))).toHaveTextContent("4");
+    expect(within(card).getByTitle(new RegExp(`^1 call from this patient ${since("Jun 18").source}$`))).toHaveTextContent("1");
+    expect(within(card).getByTitle(new RegExp(`^2 texts from this patient ${since("Aug 1").source}$`))).toHaveTextContent("2");
+    // One line: the counts sit in the SAME row as State / Doctor, not a row of
+    // their own.
+    const detailRow = within(card).getByTitle(/^State: NY; Doctor:/).parentElement!;
+    expect(within(detailRow).getByTitle(/^2 calls to this patient/)).toBeInTheDocument();
+    expect(within(detailRow).getByTitle(/^2 texts from this patient/)).toBeInTheDocument();
     // ⚠️ `Call Log (3)` went with the Calls button it rode on (Josh,
     // 2026-09-24, §5.50): every Text and Calls button in the app became ONE
     // Communications button, which opens the patient's whole history.
@@ -326,14 +333,14 @@ describe("CareCoordinatorPage", () => {
     for (const pill of Array.from(wcCard.querySelectorAll("span.rounded-full"))) {
       expect(pill.className).toContain("border-border");
     }
-    expect(wcCard).toHaveTextContent("Doctor: Dr. Kaminski · Clinic: 1 Main St, Albany, NY 12207");
-    // ⚠️ This patient's number is NOT in the contact-state fixture, so every
-    // count on this card is a real ZERO — the read covers the whole account,
-    // so a number absent from it genuinely had no calls and no texts in the
-    // window. That is an answer, not a gap. (The case that shows no number at
-    // all is a read that came back CLIPPED; `truncated` is false here.)
-    expect(within(wcCard).getByTitle("0 calls to this patient")).toHaveTextContent("0");
-    expect(within(wcCard).getByTitle("0 texts from this patient")).toHaveTextContent("0");
+    // ⚠️ The State comes out of the PATIENT's address on this board — it has
+    // no State column (Josh, 2026-09-24) — and never out of the clinic's,
+    // which is the one printed right beside it.
+    expect(wcCard).toHaveTextContent("State: NY; Doctor: Dr. Kaminski · Clinic: 1 Main St, Albany, NY 12207");
+    // ⚠️ Zero is a real answer here: the gateway answers every number it is
+    // asked about, and this one has no call and no text in the archives.
+    expect(within(wcCard).getByTitle(/^0 calls to this patient since Jun 18/)).toHaveTextContent("0");
+    expect(within(wcCard).getByTitle(/^0 texts from this patient since Aug 1/)).toHaveTextContent("0");
     // The Welcome Call card carries the same one Communications button (§5.50).
     expect(within(wcCard).getByRole("button", { name: /^Communications$/ })).toBeInTheDocument();
     expect(wcCard.querySelector('a[href^="tel:"]')).toBeNull();

@@ -79,6 +79,11 @@ export function coverageActive(p: Patient): boolean {
  * for is a missing answer; reporting it as a negative is exactly what went
  * wrong. On the live board (2026-08-25) this column held Yes x2 and Unknown x9
  * across 500 rows — not one real negative had ever been written.
+ *
+ * ⚠️ Re-measured board-wide 2026-09-24: **Yes 485 · Unknown 224 · No 40 ·
+ * blank 2,034**, plus one free-text answer ("Check with patient: lives in NY,
+ * NJ, FL or TN?"). Real negatives ARE written now — and the free-text row is
+ * why an unrecognised value must stay `unknown` and be shown verbatim.
  */
 export type NetworkAnswer = "yes" | "no" | "unknown" | "none";
 
@@ -87,7 +92,7 @@ const NETWORK_NO = new Set([
   "no", "out of network", "out-of-network", "not in network", "oon", "false",
 ]);
 
-export function networkAnswer(p: Patient | null | undefined): NetworkAnswer {
+export function networkAnswer(p: Pick<Patient, "stediInNetwork"> | null | undefined): NetworkAnswer {
   const v = (p?.stediInNetwork ?? "").trim().toLowerCase();
   if (!v) return "none";
   if (NETWORK_YES.has(v)) return "yes";

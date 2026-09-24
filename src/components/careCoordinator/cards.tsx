@@ -26,7 +26,7 @@
  */
 import { displayTime } from "@/lib/scheduledCalls/workflow";
 import { Camera } from "lucide-react";
-import { coveragePathPill, intakeInsurance, type PillSlots } from "@/lib/careCoordinator/pills";
+import { PHOTO_OF_CARD, coveragePathPill, intakeInsurance, type PillSlots } from "@/lib/careCoordinator/pills";
 import { carrierFromPhoto } from "@/lib/careCoordinator/carrierAssign";
 import type { InsuranceCardTarget } from "./InsuranceCardDialog";
 import type { PillActions } from "./PatientCard";
@@ -37,6 +37,8 @@ import {
   type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
 import { isAlreadyInSystemResult } from "@/lib/profile/dupCheckFlag";
+import { networkPill } from "@/lib/careCoordinator/networkPill";
+import { stateCode, stateFromAddress } from "@/lib/shared/usState";
 import { PatientCard } from "./PatientCard";
 import type { CallTarget } from "./CallPatientDialog";
 
@@ -45,22 +47,26 @@ import type { CallTarget } from "./CallPatientDialog";
  *
  * ⚠️ `notes` arrives from the COLUMN's one batched read (`useCardNotes`), not
  * from the card — a card that fetched its own would be one Monday request per
- * patient per render. `reached` and `contact` come from the one account-wide
- * RingCentral read the page already makes. Both are `undefined` until they
- * land, and every renderer below treats that as "we don't know yet", never as
- * a negative.
+ * patient per render. `reached` and `contact` come from the page's one batched
+ * read of the gateway's call and text archives (`useContactTotals` — Postgres,
+ * never RingCentral, since 2026-09-24). Both are `undefined` until they land,
+ * and every renderer below treats that as "we don't know yet", never as a
+ * negative.
  */
 export interface CardExtras {
   notes: string | undefined;
   reached?: { byText: boolean; byCall: boolean };
   /**
-   * The four real counts behind the card's two counter rows, from the same
-   * account-wide read. ⚠️ `undefined` renders no rows at all — see
-   * `PatientCard`'s own note on why four zeroes would be a claim.
+   * The four all-time counts behind the card's counter line, from the page's
+   * one batched read of the call and text archives (`useContactTotals`).
+   * ⚠️ `undefined` renders no counters at all — see `PatientCard`'s own note
+   * on why four zeroes would be a claim. A `null` count is an archive that is
+   * not running.
    */
   contact?: {
-    callsOut: number; callsIn: number; textsOut: number; textsIn: number;
-    callsClipped?: boolean; textsClipped?: boolean;
+    callsOut: number | null; callsIn: number | null;
+    textsOut: number | null; textsIn: number | null;
+    callsSince?: string | null; textsSince?: string | null;
   };
   /**
    * Ring them in the page, and open the log-the-attempt pop-up.
@@ -127,10 +133,12 @@ function callHandler(
  * the button being pressed read as never contacted, and on Welcome Call, where
  * almost nothing writes that column, the edge was gray on everybody.
  *
- * The RingCentral half is the literal answer to his question and fixes both.
- * The board half STAYS because it is the only one that reaches past the shared
- * window: a patient called a fortnight ago has no RingCentral evidence left,
- * and dropping their edge back to gray would say we had never tried.
+ * The call-log half is the literal answer to his question and fixes both; it
+ * is ALL-TIME since 2026-09-24 (the call archive, back to its first backfill),
+ * where it used to be a seven-day RingCentral window. The board half STAYS
+ * because it is the only one that reaches past the archive's start: a call
+ * logged before the archive began has no call-log row, and dropping that
+ * patient's edge back to gray would say we had never tried.
  */
 function calledOut(attempts: number, extras: CardExtras): boolean {
   return attempts > 0 || (extras.contact?.callsOut ?? 0) > 0;
@@ -202,9 +210,10 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       variant="intake"
       attempted={calledOut(attempts, extras)}
       nextUp={nextUp}
+      state={stateCode(lead.state)}
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
-      network={lead.stediInNetwork}
+      networkPill={networkPill(lead)}
       when={<ScheduledWhen entry={entry} muted={entry.when === "today-passed"} />}
       pills={intakePills(lead, false)}
       pillActions={insurancePillAction(lead, extras)}
@@ -231,9 +240,10 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       name={lead.name}
       variant="intake"
       attempted={calledOut(entry.attempts, extras)}
+      state={stateCode(lead.state)}
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
-      network={lead.stediInNetwork}
+      networkPill={networkPill(lead)}
       when={<DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
       pillActions={insurancePillAction(lead, extras)}
@@ -282,14 +292,27 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
  */
 function insurancePillAction(lead: IntakeLead, extras: CardExtras): PillActions | undefined {
   const open = extras.onInsuranceCard;
-  if (!open || !lead.hasInsuranceCard) return undefined;
+  // ⚠️ The FILE, or the patient's own answer that they would send one — never
+  // the pill's words (see above). The second half is Ann Hawkins (Brandon,
+  // 2026-09-24: "why can't we click into the photo of the card for Ann
+  // Hawkins?"): she answered "Photo of card" and no file ever reached her row,
+  // so the pill read "Photo upload" and pressed nothing. It opens the dialog
+  // now, which says no photo came through and still takes the carrier and
+  // member ID. `insuranceProvidedVia` does not change when a carrier is set,
+  // so this half cannot make the press disable itself either.
+  const choseCard = (lead.insuranceProvidedVia ?? "").trim() === PHOTO_OF_CARD;
+  if (!open || !(lead.hasInsuranceCard || choseCard)) return undefined;
   const fromPhoto = carrierFromPhoto(lead);
   return {
     insurance: {
-      title: fromPhoto
-        ? `${intakeInsurance(lead)} — read off ${lead.name}'s card photo. Open it, or change the carrier.`
-        : `Open ${lead.name}'s insurance card and record the carrier`,
-      onClick: () => open({ itemId: lead.id, name: lead.name, carrier: lead.generalInsurance }),
+      title: !lead.hasInsuranceCard
+        ? `${lead.name} chose to send a card photo, but none came through — open to record the carrier and member ID`
+        : fromPhoto
+          ? `${intakeInsurance(lead)} — read off ${lead.name}'s card photo. Open it, or change the carrier or member ID.`
+          : `Open ${lead.name}'s insurance card and record the carrier and member ID`,
+      onClick: () => open({
+        itemId: lead.id, name: lead.name, carrier: lead.generalInsurance, hasPhoto: lead.hasInsuranceCard,
+      }),
       icon: fromPhoto ? <Camera className="h-2.5 w-2.5" /> : undefined,
     },
   };
@@ -318,15 +341,15 @@ export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
       name={lead.name}
       variant="intake"
       attempted={calledOut(attempts, extras)}
+      state={stateCode(lead.state)}
       doctor={lead.providedDoctorName}
       clinic={lead.providedClinicPhone}
-      network={lead.stediInNetwork}
+      networkPill={networkPill(lead)}
       when={<DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
       pillActions={insurancePillAction(lead, extras)}
       inSystem={inSystem(lead)}
       blocker={entry.blocker}
-      blockerDetail={entry.blockerDetail}
       contact={extras.contact}
       phone={lead.phone}
       notes={extras.notes}
@@ -383,6 +406,7 @@ export function WelcomeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       variant="welcome"
       attempted={calledOut(attempts, extras)}
       nextUp={nextUp}
+      state={stateFromAddress(item.address)}
       doctor={item.doctorName}
       clinic={welcomeClinic(item)}
       when={<ScheduledWhen entry={entry} muted={entry.when === "today-passed"} />}
@@ -409,6 +433,7 @@ export function WelcomeUnscheduledCard({ entry, today, onBookingLink, extras }: 
       name={item.name}
       variant="welcome"
       attempted={calledOut(entry.attempts, extras)}
+      state={stateFromAddress(item.address)}
       doctor={item.doctorName}
       clinic={welcomeClinic(item)}
       when={<DaysSince createdAt={item.createdAt} today={today} />}

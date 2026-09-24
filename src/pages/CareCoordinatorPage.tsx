@@ -69,8 +69,7 @@ import {
 } from "@/lib/careCoordinator/workflow";
 import { EMPTY_SELECTION, matchesFacets, type FacetSelection } from "@/lib/careCoordinator/intakeFilter";
 import { useCardNotes } from "@/hooks/careCoordinator/useCardNotes";
-import { useContactStates } from "@/hooks/useContactStates";
-import { contactKey } from "@/lib/contactState/contactState";
+import { invalidateContactTotals, totalsKey, useContactTotals } from "@/hooks/careCoordinator/useContactTotals";
 import { IntakeFilter } from "@/components/careCoordinator/IntakeFilter";
 import { PipelineColumn, Section } from "@/components/careCoordinator/PipelineColumn";
 import {
@@ -192,23 +191,7 @@ export default function CareCoordinatorPage() {
     [allIntakeLeads, facets],
   );
 
-  /**
-   * Who we have actually got through to this week, and how many calls and
-   * texts each way — ONE account-wide RingCentral read, shared by every card
-   * (Brandon, 2026-09-17: the green text/phone icons; 2026-09-22: the two
-   * counter rows). The `Call Log (3)` chip it also fed went with the Calls
-   * button it lived on (Josh, 2026-09-24, §5.50).
-   *
-   * ⚠️ **NOT a per-patient lookup, and it must never become one.** The call log
-   * is one of RingCentral's more rate-limited endpoints, which is why the
-   * Communications popup reads it on OPEN and why Josh declined a per-card count
-   * on 2026-09-16 (§5.16, §5.30c). `useContactStates` is the batched,
-   * module-cached, 5-minute-TTL read the manager sidebars already make, so a
-   * page full of cards costs exactly what one card costs. It is enabled
-   * unconditionally here — unlike the sidebars' `?mv=` gate — because this
-   * whole page IS the coordinator's queue, and the marks are the point of it.
-   */
-  const contacts = useContactStates(true);
+
 
   /**
    * The patient the coordinator is on the phone with, or null.
@@ -284,38 +267,61 @@ export default function CareCoordinatorPage() {
   const welcomeNotes = useCardNotes(welcomeNoteIds, NOTES_COLUMN.welcome);
 
   /**
+   * How many calls and texts have EVER passed between us and each patient on
+   * the page, both ways — ONE batched read for every card (Brandon,
+   * 2026-09-24: *"They're all 0's — can we connect this to how many outbound
+   * calls in total have ever gone to the patient? and is that a huge call that
+   * will get us blocked from rc on every page load?"*).
+   *
+   * ⚠️⚠️ **POSTGRES, NOT RINGCENTRAL.** This replaced `useContactStates(true)`
+   * — a SEVEN-DAY RingCentral window, so everybody nobody had rung this week
+   * read 0/0, and a read of up to ~18 RingCentral requests per load with the
+   * call log in its tightest (HEAVY) group. The gateway now counts out of the
+   * call and text archives (`/messaging/contact-totals`, §5.27 · §5.47), so the
+   * page's RingCentral traffic is zero and the numbers go back as far as the
+   * archives do.
+   *
+   * ⚠️ The numbers come from the BUCKETS — the patients these columns render —
+   * never the raw ~1,754-row read: counting the 8/25 import nobody can see is
+   * the §5.25 waste this page took out of the list query.
+   */
+  const cardPhones = useMemo(() => [
+    ...intakeB.scheduledToday, ...intakeB.scheduledFuture,
+    ...intakeB.unscheduledToday, ...intakeB.unscheduledFuture, ...intakeB.reviewProfile,
+  ].map((e) => e.item.phone).concat([
+    ...welcomeB.scheduledToday, ...welcomeB.scheduledFuture,
+    ...welcomeB.unscheduledToday, ...welcomeB.unscheduledFuture,
+  ].map((e) => e.item.phone)), [intakeB, welcomeB]);
+  const totals = useContactTotals(cardPhones);
+
+  /**
    * Everything a card needs that the column fetched once on its behalf.
    *
-   * ⚠️ The counts carry their window's clip flags. That read is a 7-day,
-   * page-capped window (`ACTIVITY_RECORD_LIMIT`), so on a busy week its oldest
-   * calls fall off the end — and a count rendered on screen as fact must not be
-   * quietly low, so a clipped lane prints an em dash instead (§5.30g). The
-   * green icons are unaffected: a clipped window can only fail to notice
-   * contact, which reads as "keep trying".
+   * ⚠️ `contact` is ABSENT until this patient's count has landed (or when they
+   * have no number on file) — the card then draws no counters at all, because
+   * four zeroes would be a claim that nobody has touched them. Once it has
+   * landed, a zero IS the answer: the archives hold no call and no text with
+   * this number since they began, and the card's tooltip says since when.
    */
   const extrasFor = useCallback((itemId: string, phone: string, notes: Map<string, string>): CardExtras => {
-    const state = contacts.states?.get(contactKey(phone));
+    const t = totals.byNumber.get(totalsKey(phone));
     return {
       onInsuranceCard: setCardTarget,
       notes: notes.get(itemId),
-      reached: contacts.states ? { byText: !!state?.reachedByText, byCall: !!state?.reachedByCall } : undefined,
-      /* ⚠️ Present only once the read has landed, and ZEROES when it has but
-         this patient is not in it — that is the honest reading: the window
-         held nothing for them. Before it lands there are no rows at all,
-         because four zeroes would be a claim nobody has touched them. */
-      contact: contacts.states
+      reached: t ? { byText: (t.textsIn ?? 0) > 0, byCall: t.reachedByCall } : undefined,
+      contact: t
         ? {
-            callsOut: state?.callsOut ?? 0,
-            callsIn: state?.callsIn ?? 0,
-            textsOut: state?.textsOut ?? 0,
-            textsIn: state?.textsIn ?? 0,
-            callsClipped: contacts.truncated,
-            textsClipped: contacts.textsTruncated,
+            callsOut: t.callsOut,
+            callsIn: t.callsIn,
+            textsOut: t.textsOut,
+            textsIn: t.textsIn,
+            callsSince: totals.coverage?.callsSince ?? null,
+            textsSince: totals.coverage?.textsSince ?? null,
           }
         : undefined,
       onCall: setCallTarget,
     };
-  }, [contacts.states, contacts.truncated, contacts.textsTruncated]);
+  }, [totals]);
   // ⚠️ The strip reads the UNFILTERED list on purpose. It is the day's
   // schedule, not a view of this column, and the mirror rows are also what
   // give a Calendly intake booking its monday item id — narrowing them would
@@ -544,7 +550,14 @@ export default function CareCoordinatorPage() {
         key={callTarget?.itemId ?? "none"}
         target={callTarget}
         onClose={() => setCallTarget(null)}
-        onLogged={() => { void intake.refetch(); void welcome.refetch(); }}
+        onLogged={() => {
+          void intake.refetch();
+          void welcome.refetch();
+          // The count on this card is about to be wrong — ask again rather
+          // than waiting out the two-minute TTL. (The capture tick puts the
+          // call itself into the archive within about a minute, §5.49.)
+          if (callTarget) invalidateContactTotals(callTarget.phone);
+        }}
       />
     </div>
   );

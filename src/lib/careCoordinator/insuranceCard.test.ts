@@ -132,7 +132,13 @@ describe("the lead cannot carry an openable card URL", () => {
    */
   it("opens the card through the asset resolver", () => {
     const dialog = read("src/components/careCoordinator/InsuranceCardDialog.tsx");
-    expect(dialog).toContain("fetchInsuranceCardAsset");
+    // ⚠️ `fetchCardDialogData` since 2026-09-24 — the same `cardPhotoFrom`
+    // resolver `fetchInsuranceCardAsset` uses, plus the member ID on file, in
+    // one read. The guarantee (a SIGNED url, never the column's) is unchanged.
+    expect(dialog).toContain("fetchCardDialogData");
+    const api = read("src/lib/careCoordinator/mondayApi.ts");
+    expect(api).toMatch(/photo:\s*cardPhotoFrom\(item\)/);
+    expect(api).toMatch(/return cardPhotoFrom\(await fetchCardItem\(itemId, \[PROFILE_COL\.formCardPhoto\]\)\)/);
     // Every render of the file must use a RESOLVED photo, never a lead field.
     expect(dialog).toMatch(/openFileViewer\(\{\s*url:\s*photo\.url/);
     expect(dialog).toMatch(/src=\{photo\.url\}/);
@@ -144,7 +150,12 @@ describe("the lead cannot carry an openable card URL", () => {
   it("tells the coordinator when the card cannot be opened", () => {
     const dialog = read("src/components/careCoordinator/InsuranceCardDialog.tsx");
     // A silent failure is what teaches somebody to stop pressing the pill.
-    expect(dialog).toMatch(/setPhotoError\(/);
-    expect(dialog).toMatch(/\{!loading && photoError &&/);
+    expect(dialog).toMatch(/setReadError\(/);
+    expect(dialog).toMatch(/\{!loading && readError &&/);
+    // …and a card that NEVER arrived is said as such, not as one that is
+    // "no longer on the row" — that would claim there had been one (Ann
+    // Hawkins, 2026-09-24).
+    expect(dialog).toContain("No photo came through");
+    expect(dialog).toMatch(/noPhoto && !target\.hasPhoto/);
   });
 });

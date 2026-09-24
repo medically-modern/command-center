@@ -40,8 +40,26 @@
  * ⚠️ **Outside clicks never close it.** The only things outside a full-screen
  * popup are the incoming-call cards (§5.13b), and answering one must not throw
  * away what the rep was reading. Esc and ✕ close it.
+ *
+ * ── `presentation="panel"` — the Care Coordinator dashboard only ──
+ * Brandon, 2026-09-24: *"When we click communications, let's just have it pop
+ * up on a right side-panel, don't need to have a pop-up covering the entire
+ * screen"*; Josh chose THAT PAGE ONLY — every other header keeps the
+ * full-screen pop-up above (`commsPanelScope.test.ts` pins it).
+ *
+ * The panel is the same view, docked to the right edge, and deliberately
+ * NON-MODAL: the dashboard beside it stays readable, scrollable and clickable,
+ * which is the point of not covering it. Two consequences, both handled here:
+ *  · ⚠️ **One panel at a time.** Every card carries its own button, so without
+ *    a rule a second card's Communications would open a second panel on top of
+ *    the first — two composers, one hidden. `PANEL` is a module-scope "who is
+ *    open", and opening one closes the other, so pressing another card's
+ *    button SWAPS the panel to that patient.
+ *  · Outside clicks still never close it, for the same incoming-call reason —
+ *    and because a coordinator clicking around the dashboard with the panel
+ *    open is the everyday case now, not an accident.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { MessagesSquare, X } from "lucide-react";
 import { draftAfterClose, draftOnOpen } from "@/lib/shared/textDraft";
@@ -49,6 +67,22 @@ import { numberKey } from "@/lib/comms/commsPopup";
 import { toE164 } from "@/lib/fax/ringcentralApi";
 import { CommunicationsView } from "./CommunicationsView";
 import { cn } from "@/lib/utils";
+
+/**
+ * Which side panel is open, if any — module scope, so opening one card's panel
+ * closes another's (see the header). Popups are modal and never need this.
+ */
+const PANEL = {
+  open: null as string | null,
+  listeners: new Set<(id: string | null) => void>(),
+  claim(id: string) {
+    this.open = id;
+    for (const l of this.listeners) l(id);
+  },
+  release(id: string) {
+    if (this.open === id) this.open = null;
+  },
+};
 
 /** The base look, inline so a page's `button { background:none; color:inherit;
  *  font:inherit }` reset cannot strip it (see the header). */
@@ -81,6 +115,12 @@ export interface CommunicationsButtonProps {
   /** "green" — the Care Coordinator card's light-green button (Brandon,
    *  2026-09-14, carried over from the Text button it replaced). */
   tone?: "green";
+  /**
+   * "panel" docks it to the right edge, non-modal, one at a time — the Care
+   * Coordinator dashboard only (Josh, 2026-09-24). Absent: the full-screen
+   * pop-up every other header uses (§5.50).
+   */
+  presentation?: "popup" | "panel";
   label?: string;
   className?: string;
 }
@@ -96,10 +136,13 @@ export function CommunicationsButton({
   onOpenChange,
   onTextSent,
   tone,
+  presentation = "popup",
   label = "Communications",
   className,
 }: CommunicationsButtonProps) {
   const [open, setOpen] = useState(false);
+  const panel = presentation === "panel";
+  const panelId = useId();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   /** The template WE put in the box, so a close can tell an untouched template
    *  apart from words the rep actually wrote (`draftAfterClose`). */
@@ -132,7 +175,7 @@ export function CommunicationsButton({
     setDrafts((d) => (d[key] === text ? d : { ...d, [key]: text }));
   }, []);
 
-  const handleOpenChange = (v: boolean) => {
+  const handleOpenChange = useCallback((v: boolean) => {
     if (!v) {
       // An untouched template is thrown away so the next one has an empty box
       // to land in; anything the rep typed survives the close.
@@ -144,7 +187,22 @@ export function CommunicationsButton({
     }
     setOpen(v);
     onOpenChange?.(v);
-  };
+  }, [primaryKey, onOpenChange]);
+
+  // One side panel at a time: claim the slot on open, and close when another
+  // card claims it. A popup is modal and never takes part.
+  useEffect(() => {
+    if (!panel || !open) return;
+    PANEL.claim(panelId);
+    const onClaim = (id: string | null) => {
+      if (id !== panelId) handleOpenChange(false);
+    };
+    PANEL.listeners.add(onClaim);
+    return () => {
+      PANEL.listeners.delete(onClaim);
+      PANEL.release(panelId);
+    };
+  }, [panel, open, panelId, handleOpenChange]);
 
   // No number on file, nothing to show. Guarded here so every header can drop
   // the button in unconditionally.
@@ -153,7 +211,7 @@ export function CommunicationsButton({
   const who = patientName?.trim() || "";
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
+    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange} modal={!panel}>
       <DialogPrimitive.Trigger asChild>
         <button
           type="button"
@@ -171,11 +229,23 @@ export function CommunicationsButton({
         </button>
       </DialogPrimitive.Trigger>
       <DialogPrimitive.Portal>
+        {/* A modal overlay for the popup only — Radix draws none for a
+            non-modal dialog, which is what keeps the dashboard beside the
+            panel visible and live. */}
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
           onInteractOutside={(e) => e.preventDefault()}
-          className="fixed inset-2 z-50 flex flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl outline-none sm:inset-4 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+          data-comms-presentation={presentation}
+          className={cn(
+            "fixed z-50 flex flex-col overflow-hidden bg-background outline-none data-[state=open]:animate-in data-[state=closed]:animate-out",
+            panel
+              ? /* Docked right, full height, the dashboard beside it. `100vw`
+                   is the cap on a narrow window, where the panel simply
+                   becomes the whole width rather than overflowing it. */
+                "inset-y-0 right-0 w-[min(760px,100vw)] border-l border-border shadow-2xl data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+              : "inset-2 rounded-xl border border-border shadow-2xl sm:inset-4 data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+          )}
         >
           <DialogPrimitive.Title className="sr-only">
             Communications{who ? ` with ${who}` : ""}
@@ -189,6 +259,7 @@ export function CommunicationsButton({
             draftFor={draftFor}
             setDraftFor={setDraftFor}
             onTextSent={onTextSent}
+            narrow={panel}
           />
           <DialogPrimitive.Close
             className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"

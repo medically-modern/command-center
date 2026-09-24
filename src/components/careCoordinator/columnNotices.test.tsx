@@ -121,13 +121,14 @@ describe("the column header cannot drift between the two columns", () => {
    */
   it("names BOTH green signals — the card edge and the counters", () => {
     expect(col).toContain("Green edge");
-    // ⚠️ The counters stopped being board columns on 2026-09-22 and became
-    // real RingCentral counts, split into an outbound row and an inbound one
-    // (§5.30 / PatientCard's `contact`). The legend has to say what each row
-    // COUNTS — the old "Green count = they answered or texted back" described
-    // the colour of a number that meant something else entirely.
-    expect(col).toContain("Top row");
-    expect(col).toContain("Green row");
+    // ⚠️ The counters stopped being board columns on 2026-09-22, and on
+    // 2026-09-24 became ALL-TIME counts on ONE line — gray outbound, green
+    // inbound (§5.30i / PatientCard's `contact`). The legend has to say what
+    // each COLOUR counts; "Top row" / "Green row" named rows that no longer
+    // exist.
+    expect(col).toContain("Gray = calls and texts we sent, all time");
+    expect(col).toContain("Green = calls and texts they sent us");
+    expect(col).not.toContain("Top row");
   });
 });
 

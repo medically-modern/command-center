@@ -627,9 +627,20 @@ export function DaysInStagePill({ value }: { value?: string }) {
 export function PatientContact({
   phone, altPhone, patientName, mondayItemId, canText,
   textPrefill, textOpen, onTextOpenChange, onTextSent,
-  commsTone, showCopy, onCall, callLabel,
+  commsTone, commsPresentation, showCopy, onCall, callLabel,
 }: {
   phone?: string;
+  /**
+   * "panel" opens Communications as a right-hand side panel instead of the
+   * full-screen pop-up.
+   *
+   * ⚠️ **The Care Coordinator card passes this and nothing else does** (Josh,
+   * 2026-09-24: that page only). Same shape as `showCopy` below: a note about
+   * one screen must not quietly change the other ten headers that render this
+   * row (§5.30's two-screens rule). `commsPanelScope.test.ts` fails the build
+   * if another caller picks it up.
+   */
+  commsPresentation?: "popup" | "panel";
   /**
    * The Call button's text when the number is ALREADY on screen beside it —
    * the Insurance header shows it in its DOB line, with the edit pencil — so
@@ -712,6 +723,7 @@ export function PatientContact({
         onOpenChange={onTextOpenChange}
         onTextSent={onTextSent}
         tone={commsTone}
+        presentation={commsPresentation}
       />
       {showCopy && <CopyPhoneButton display={display} />}
       {/* Mounted only while open: it subscribes to the softphone, and a page of

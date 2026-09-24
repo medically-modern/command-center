@@ -58,6 +58,13 @@ export interface CommunicationsViewProps {
   setDraftFor: (key: string, text: string) => void;
   /** Told with the body of every text sent from here. */
   onTextSent?: (body: string) => void;
+  /**
+   * Drawn in the Care Coordinator's side panel (~760px) rather than full
+   * screen. Only the fallback cares: its texts and calls sit side by side at
+   * `lg`, which is a VIEWPORT breakpoint and would squeeze each to ~380px in
+   * the panel, so there it stacks them.
+   */
+  narrow?: boolean;
 }
 
 /** Which number the popup is on, keyed by its last ten digits. */
@@ -112,6 +119,7 @@ export function CommunicationsView({
   draftFor,
   setDraftFor,
   onTextSent,
+  narrow = false,
 }: CommunicationsViewProps) {
   const config = useCommsConfig();
   const headerNumbers = useMemo(() => popupNumbers(phone, altPhone), [phone, altPhone]);
@@ -305,6 +313,7 @@ export function CommunicationsView({
                 : "The Communications inbox has nothing filed under this number yet, so this shows the text thread and the call history straight from RingCentral."
           }
           onRetry={config.enabled ? commsKey.retry : undefined}
+          narrow={narrow}
         />
       )}
     </div>
@@ -380,6 +389,7 @@ function FallbackView({
   onTextSent,
   reason,
   onRetry,
+  narrow = false,
 }: {
   phone: string;
   display: string;
@@ -390,6 +400,8 @@ function FallbackView({
   onTextSent?: (body: string) => void;
   reason: string;
   onRetry?: () => void;
+  /** Stack texts over calls — see `CommunicationsViewProps.narrow`. */
+  narrow?: boolean;
 }) {
   if (!phone) {
     return (
@@ -414,7 +426,7 @@ function FallbackView({
           )}
         </span>
       </p>
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
+      <div className={narrow ? "grid min-h-0 flex-1 grid-cols-1 grid-rows-2" : "grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2"}>
         {/* Keyed on the number: a switch must not carry a half-typed text into
             a different conversation. */}
         <FallbackTexts
@@ -426,7 +438,7 @@ function FallbackView({
           onDraftChange={onDraftChange}
           onTextSent={onTextSent}
         />
-        <section className="flex min-h-0 flex-col border-t border-border lg:border-l lg:border-t-0">
+        <section className={narrow ? "flex min-h-0 flex-col border-t border-border" : "flex min-h-0 flex-col border-t border-border lg:border-l lg:border-t-0"}>
           <h3 className="shrink-0 border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Calls &amp; recordings
           </h3>

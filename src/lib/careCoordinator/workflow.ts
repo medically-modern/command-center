@@ -206,6 +206,14 @@ export interface WelcomeCallItem {
   /** Welcome Call Text trigger `color_mm1xtqvv` — "Send" once pressed. The
    *  board has no text counter, so this is the one board fact about texts. */
   welcomeCallText: string;
+  /**
+   * The PATIENT's address `location_mm1xhw17` — read for one thing, the card's
+   * "State:" (Brandon, 2026-09-24). This board has no State column and the web
+   * form's State answer does not hop, so Josh chose the address
+   * (`shared/usState.stateFromAddress`). Optional because fixtures predate it;
+   * absent reads as N/A, which is what a blank address means too.
+   */
+  address?: string;
 }
 
 /* ── Small shared helpers ────────────────────────────────────── */
@@ -608,12 +616,13 @@ export interface ReviewEntry<T> {
   /** Days-since-intake ordering, oldest first — the same clock the Unscheduled
    *  list uses, because it is the same "who has waited longest" question. */
   waitingMs: number;
-  /** The first advance-unlock condition this patient fails, or "" when nothing
-   *  this dashboard can see is blocking them. ⚠️ NEVER read an empty string as
-   *  "ready to advance" — see `intakeBlocker`. */
+  /** What the card's rose banner says: the first advance-unlock condition this
+   *  patient fails that the network pill does not already say
+   *  (`reviewCardBlocker`), or "" when nothing this dashboard can see is
+   *  blocking them. ⚠️ NEVER read an empty string as "ready to advance" — see
+   *  `intakeBlocker`. The payer's own words for a failed check ride on the
+   *  network pill's hover now, not here. */
   blocker: string;
-  /** The payer's own words behind `blocker`, for the line's `title`. */
-  blockerDetail?: string;
 }
 
 export interface IntakeContext extends BucketContext {
@@ -722,10 +731,20 @@ export function needsProfileReview(
  * The order mirrors `evaluateUnlock`'s conditions, minus `authorised` — which
  * is the membership rule of this bucket and therefore always passes.
  */
-export function intakeBlocker(
-  lead: Pick<IntakeLead,
-    "stediError" | "stediActive" | "stediPlanName" | "requestType" | "pumpNeed" |
-    "cgmCoveragePath" | "ipCoveragePath">,
+type BlockerFacts = Pick<IntakeLead,
+  "stediError" | "stediActive" | "stediPlanName" | "requestType" | "pumpNeed" |
+  "cgmCoveragePath" | "ipCoveragePath">;
+
+export function intakeBlocker(lead: BlockerFacts): string {
+  return benefitsCheckBlocker(lead) || coveragePathBlocker(lead);
+}
+
+/**
+ * The benefits-check half of `intakeBlocker` — what the eligibility run says,
+ * or "" when it ran cleanly and came back active.
+ */
+export function benefitsCheckBlocker(
+  lead: Pick<IntakeLead, "stediError" | "stediActive" | "stediPlanName">,
 ): string {
   const err = (lead.stediError ?? "").trim();
   // ⚠️ `stediRanCleanly` treats ANY error text as a failed run, whatever else
@@ -743,9 +762,11 @@ export function intakeBlocker(
   // below it stop being scannable, which is what a triage column is for.
   //
   // ⚠️ It is NOT dropped: `intakeBlockerDetail` returns it, and the card hangs
-  // it off the line's `title`, so the reason is one hover away and the profile
-  // page still prints it in full. Losing the AAA code entirely would take the
-  // one thing that says WHICH identifier did not match.
+  // it off the red "Check failed" network pill's `title` (it hung off this
+  // banner's until 2026-09-24, when the pill replaced the banner), so the
+  // reason is one hover away and the profile page still prints it in full.
+  // Losing the AAA code entirely would take the one thing that says WHICH
+  // identifier did not match.
   if (err) return "Benefits check failed";
 
   const active = (lead.stediActive ?? "").trim();
@@ -754,7 +775,16 @@ export function intakeBlocker(
   if (!["yes", "active", "true"].includes(active.toLowerCase())) {
     return "Coverage came back inactive";
   }
+  return "";
+}
 
+/**
+ * The coverage-path half of `intakeBlocker` — the conditions a rep answers on
+ * the profile page, whatever the benefits check said.
+ */
+export function coveragePathBlocker(
+  lead: Pick<IntakeLead, "requestType" | "pumpNeed" | "cgmCoveragePath" | "ipCoveragePath">,
+): string {
   const req = lead.requestType ?? "";
   const cgmInPlay = Boolean((lead.cgmCoveragePath ?? "").trim()) || /cgm|monitor/i.test(req);
   if (cgmInPlay && !(lead.cgmCoveragePath ?? "").trim()) return "CGM Coverage Path not chosen";
@@ -766,10 +796,42 @@ export function intakeBlocker(
 }
 
 /**
+ * The two benefits-check sentences the card's NETWORK PILL now says instead
+ * (Brandon, 2026-09-24: *"instead of the benefits check failed banner or the
+ * benefits check hasn't run banner … let's just replace all of that with a
+ * pill"*). A failed check is the red "Check failed" pill, with the payer's
+ * reason on hover; a check that has not run is no pill at all, his "it'll just
+ * stay blank". See `networkPill.ts`.
+ */
+export const PILL_STATES_THE_CHECK = new Set(["Benefits check failed", "Benefits check hasn't run"]);
+
+/**
+ * What a Review Profile card's rose banner says — `intakeBlocker`, minus what
+ * the network pill above it already says.
+ *
+ * ⚠️ **It is NOT `intakeBlocker` with two strings filtered out afterwards.**
+ * `intakeBlocker` stops at the FIRST failure, so filtering its answer would
+ * leave a failed-check patient with no banner even when their CGM Coverage
+ * Path is missing too — the one blocker a coordinator can see the pill does
+ * not cover. So the halves are asked separately: the benefits half keeps only
+ * what the pill cannot say (coverage came back INACTIVE — the check ran, and
+ * its answer is not a network answer), and otherwise the coverage-path half
+ * speaks.
+ *
+ * ⚠️ Still "" for "nothing we can see", never "ready to advance" — the
+ * `intakeBlocker` rule, unchanged.
+ */
+export function reviewCardBlocker(lead: BlockerFacts): string {
+  const benefits = benefitsCheckBlocker(lead);
+  if (benefits && !PILL_STATES_THE_CHECK.has(benefits)) return benefits;
+  return coveragePathBlocker(lead);
+}
+
+/**
  * The long form of whatever `intakeBlocker` just said, or "" when there is no
  * more to say. Today only the failed benefits check has a longer form — the
- * payer's guidance plus its AAA code, which the card carries as a `title`
- * rather than on screen (see `intakeBlocker`).
+ * payer's guidance plus its AAA code, which the card carries as the network
+ * pill's `title` rather than on screen (see `networkPill.ts`).
  */
 export function intakeBlockerDetail(
   lead: Pick<IntakeLead, "stediError">,
@@ -857,7 +919,7 @@ export function intakeBuckets(leads: IntakeLead[], ctx: IntakeContext): IntakeBu
     if (attempts === 0 && needsProfileReview(lead)) {
       reviewProfile.push({
         item: lead, waitingMs: waited,
-        blocker: intakeBlocker(lead), blockerDetail: intakeBlockerDetail(lead),
+        blocker: reviewCardBlocker(lead),
       });
       continue;
     }

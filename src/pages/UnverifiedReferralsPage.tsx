@@ -103,6 +103,7 @@ import { DialPatientDialog } from "@/components/shared/DialPatientDialog";
 // The same stamped-note renderer Verified Referrals uses, so the two stages
 // display an identical log.
 import { NoteLog } from "@/components/profile/NoteLog";
+import { BenefitsCheckProgress } from "@/components/profile/BenefitsCheckProgress";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isNyMedicaidId,
@@ -1049,6 +1050,12 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const benefitsReady = benefitsMissing.length === 0;
 
   const stedi = useStediRun();
+  /** This patient's check is in flight — the in-progress card and "Running…". */
+  const stediHere = !!selected && stedi.state.runningId === selected.id;
+  /** Another patient's check is still in flight, which is what greys Run out here. */
+  const stediElsewhere = stedi.isRunning && !stediHere;
+  /** The latest run's failure or timeout is about THIS patient. */
+  const stediAbout = !!selected && stedi.state.forId === selected.id;
 
   // While a run is in flight the service streams results back one column at a
   // time, so poll and let the hook decide when the whole set has settled.
@@ -3111,8 +3118,9 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     onClick={runBenefitsCheck}
                     disabled={saving || stedi.isRunning || !benefitsReady}
                     className="btn primary sm"
+                    title={stediElsewhere ? "A check for another patient is still finishing" : undefined}
                   >
-                    {stedi.isRunning ? "Running benefits check…" : "Run benefits check"}
+                    {stediHere ? "Running…" : "Run benefits check"}
                   </button>
                   <button
                     onClick={() => { void startInsuranceFollowUp(); }}
@@ -3133,18 +3141,40 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     run with no Member ID — Stedi reads BOTH off the board, so
                     that run could only ever come back as an eligibility error. */}
                 {showBenefitCheck && !benefitsReady && (
-                  <p className="mt-2 text-xs text-muted-foreground">
+                  <p className="stedi-note">
                     The benefits check needs {benefitsMissing.join(" and ")} first — nothing else
                     on this card.
                   </p>
                 )}
-                {stedi.state.message && (
-                  <p className={
-                    "mt-2 text-xs " +
-                    (stedi.state.phase === "error" ? "text-destructive" : "text-muted-foreground")
-                  }>
-                    {stedi.state.message}
+                {/* ⚠️ Every line below is about ONE patient — the one the run was
+                    for (`forId` / `runningId`) — and renders only while that
+                    patient is open. Unscoped, a rep who pressed Run and moved on
+                    read "Running…" or "Details didn't save" on somebody else
+                    (Brandon, 2026-09-24; the restyle made that impossible to
+                    leave, because a card is louder than a grey line). The card
+                    and the notes use page classes — `.pf-root`'s reset zeroes a
+                    Tailwind margin, which is what made the old line sit flush
+                    against the buttons (§9). */}
+                {stediHere && (
+                  <BenefitsCheckProgress phase={stedi.state.phase} startedAt={stedi.state.startedAt} />
+                )}
+                {stediElsewhere && (
+                  <p className="stedi-note">
+                    A benefits check for another patient is still finishing. Run unlocks when it
+                    does — about a minute and a half at most.
                   </p>
+                )}
+                {stediAbout && stedi.state.phase === "error" && stedi.state.message && (
+                  <div className="bfail" role="alert">
+                    <div className="bfail-head">Benefits check didn't run</div>
+                    <div className="bfail-cause">
+                      {stedi.state.message.replace(/^Not run — (\w)/, (_, c: string) => c.toUpperCase())}
+                    </div>
+                    <div className="bfail-fix">Press Run benefits check to try again.</div>
+                  </div>
+                )}
+                {stediAbout && stedi.state.phase === "done" && stedi.state.message && (
+                  <p className="stedi-note">{stedi.state.message}</p>
                 )}
                 {(() => {
                   /* Structured, not a wall of red: the column is

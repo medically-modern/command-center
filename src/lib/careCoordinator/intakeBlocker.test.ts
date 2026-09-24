@@ -14,7 +14,8 @@
  * site — the dashboard may be narrower than the checklist, never different.
  */
 import { describe, it, expect } from "vitest";
-import { intakeBlocker, intakeBlockerDetail, needsProfileReview } from "./workflow";
+import { readFileSync } from "node:fs";
+import { intakeBlocker, intakeBlockerDetail, needsProfileReview, reviewCardBlocker } from "./workflow";
 
 const facts = (over: Partial<Parameters<typeof intakeBlocker>[0]> = {}) => ({
   stediError: "", stediActive: "Yes", stediPlanName: "Anthem PPO",
@@ -98,5 +99,43 @@ describe("needsProfileReview", () => {
 
   it("an ordinary partial lead is not a review", () => {
     expect(needsProfileReview(lead({ dropOffStep: "Step 4 - Doctor" }))).toBe(false);
+  });
+});
+
+/**
+ * What the Review Profile card's rose banner says once the network pill took
+ * over the benefits check's verdict (Brandon, 2026-09-24: "instead of the
+ * benefits check failed banner or the benefits check hasn't run banner … let's
+ * just replace all of that with a pill").
+ */
+describe("reviewCardBlocker", () => {
+  it("never repeats what the pill says: failed and hasn't-run are the pill's now", () => {
+    expect(reviewCardBlocker(facts({ stediError: "AAA 73", stediActive: "", stediPlanName: "" }))).toBe("");
+    expect(reviewCardBlocker(facts({ stediActive: "", stediPlanName: "" }))).toBe("");
+  });
+
+  it("⚠️ still names a missing coverage path BEHIND a failed check", () => {
+    // `intakeBlocker` stops at the first failure, so filtering its answer
+    // would have hidden this — the one blocker the pill does not cover.
+    expect(reviewCardBlocker(facts({ stediError: "AAA 73", requestType: "CGM" })))
+      .toBe("CGM Coverage Path not chosen");
+    expect(reviewCardBlocker(facts({ stediActive: "", stediPlanName: "", requestType: "Insulin Pump" })))
+      .toBe("Insulin Pump Coverage Path not chosen");
+  });
+
+  it("keeps INACTIVE coverage on the banner — that is not a network answer", () => {
+    expect(reviewCardBlocker(facts({ stediActive: "No" }))).toBe("Coverage came back inactive");
+    // And inactive still stops the search, as intakeBlocker does.
+    expect(reviewCardBlocker(facts({ stediActive: "No", requestType: "CGM" }))).toBe("Coverage came back inactive");
+  });
+
+  it("leaves intakeBlocker itself exactly as it was", () => {
+    expect(intakeBlocker(facts({ stediError: "AAA 73", requestType: "CGM" }))).toBe("Benefits check failed");
+    expect(intakeBlocker(facts({ stediActive: "", stediPlanName: "" }))).toBe("Benefits check hasn't run");
+  });
+
+  it("is what the Review Profile bucket carries on its entries", () => {
+    const src = readFileSync("src/lib/careCoordinator/workflow.ts", "utf8");
+    expect(src).toContain("blocker: reviewCardBlocker(lead),");
   });
 });

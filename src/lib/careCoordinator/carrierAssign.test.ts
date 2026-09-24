@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { carrierFromPhoto, carrierOptions, carrierWriteRefusal } from "./carrierAssign";
+import { cardWritePlan, carrierFromPhoto, carrierOptions, carrierWriteRefusal } from "./carrierAssign";
 import { PHOTO_OF_CARD, PHOTO_UPLOAD, intakeInsurance } from "./pills";
 import { COL } from "@/lib/profile/mondayApi";
 
@@ -116,6 +116,48 @@ describe("carrierOptions", () => {
   });
 });
 
+/**
+ * The card dialog writes what CHANGED — carrier, member ID, or both (Brandon,
+ * 2026-09-24: "let's also have them enter the member ID too (as optional) …
+ * put it in, not run the check").
+ */
+describe("cardWritePlan — only what changed, and a blank never clears", () => {
+  const idx = live({ Aetna: 4, Cigna: 7 });
+  const base = { carrier: "", memberId: "", boardCarrier: "", boardMemberId: "" };
+
+  it("writes a newly picked carrier and a newly typed member ID", () => {
+    const p = cardWritePlan({ ...base, carrier: "Aetna", memberId: " W123456789 " }, idx);
+    expect(p).toMatchObject({ carrier: "Aetna", memberId: "W123456789", refusal: "", nothing: false });
+  });
+
+  it("leaves alone what the board already holds", () => {
+    // Pressing Save on an untouched field must not overwrite a value a rep
+    // corrected on the profile page a minute ago.
+    const p = cardWritePlan({ carrier: "Aetna", memberId: "W1", boardCarrier: "Aetna", boardMemberId: "W1" }, idx);
+    expect(p).toMatchObject({ carrier: "", memberId: "", nothing: true });
+  });
+
+  it("can save a member ID alone — the carrier is already right", () => {
+    const p = cardWritePlan({ carrier: "Aetna", memberId: "W2", boardCarrier: "Aetna", boardMemberId: "W1" }, idx);
+    expect(p).toMatchObject({ carrier: "", memberId: "W2", nothing: false, refusal: "" });
+  });
+
+  it("⚠️ an emptied member ID box KEEPS the one on file, and says so", () => {
+    // `writeBenefitsInputs` skips a blank, so a cleared box would otherwise
+    // save green with the old ID still on the row.
+    const p = cardWritePlan({ carrier: "", memberId: "  ", boardCarrier: "", boardMemberId: "W1" }, idx);
+    expect(p.memberId).toBe("");
+    expect(p.keptMemberId).toBe(true);
+    expect(p.nothing).toBe(true);
+  });
+
+  it("refuses a carrier the board cannot resolve — only when it is being written", () => {
+    expect(cardWritePlan({ ...base, carrier: "Some New Payer" }, idx).refusal).toContain("Some New Payer");
+    // The board's own unresolvable value, left alone, is not written and not refused.
+    expect(cardWritePlan({ ...base, carrier: "Legacy Label", boardCarrier: "Legacy Label", memberId: "W9" }, idx).refusal).toBe("");
+  });
+});
+
 describe("the write itself", () => {
   it("delegates to the profile page's own writer and declares no mutation", () => {
     // ⚠️ Two writers for one column is how they disagree (§5.31c, §5.31d).
@@ -128,37 +170,45 @@ describe("the write itself", () => {
     expect(src).not.toMatch(/\bgql\s*[(<]/);
   });
 
-  it("does NOT run a Stedi check, or write anything else Stedi reads", () => {
-    // Josh, 2026-09-23: *"it writes to monday only the general insurance,
-    // doesnt run a stedi check"*. The member ID is the other half of that
-    // input and is on neither the photo nor this screen.
+  it("does NOT run a Stedi check — it writes the carrier and member ID and stops", () => {
+    // Josh, 2026-09-23: *"doesnt run a stedi check"*; Brandon, 2026-09-24,
+    // on the member ID: *"put it in, not run the check"*. The member ID DOES
+    // join the write now — it is printed on the card being read — but nothing
+    // here may start the check, or re-send the profile the check reads.
     const src = code(ASSIGN);
     expect(src).not.toContain("triggerStediRun");
     expect(src).not.toContain("writePatientProfile");
     expect(src).not.toContain("verifyProfileWritten");
-    expect(src).not.toContain("memberIdWorking");
-    // The blank second argument IS the "only the general insurance" guarantee.
-    expect(src).toMatch(/writeBenefitsInputs\(itemId,\s*carrier\.trim\(\),\s*""\)/);
+    // The two columns go through the plan, never raw input.
+    expect(src).toMatch(/writeBenefitsInputs\(itemId,\s*plan\.carrier,\s*plan\.memberId\)/);
   });
 
-  it("refuses BEFORE it writes", () => {
+  it("refuses BEFORE it writes, against a FRESH plan", () => {
     // ⚠️ `writeBenefitsInputs` skips an unresolvable label silently, so a check
     // after the write cannot tell a save from a no-op.
     const src = code(ASSIGN);
-    const refusal = src.indexOf("if (refusal) throw");
+    const refusal = src.indexOf("if (plan.refusal) throw");
+    const nothing = src.indexOf("if (plan.nothing) throw");
     const write = src.indexOf("await writeBenefitsInputs");
     expect(refusal).toBeGreaterThan(-1);
+    expect(nothing).toBeGreaterThan(-1);
     expect(write).toBeGreaterThan(refusal);
+    expect(write).toBeGreaterThan(nothing);
   });
 });
 
 describe("the wiring", () => {
-  it("keys the pressable pill on the FILE, never on the pill's words", () => {
+  it("keys the pressable pill on the FILE or the patient's answer, never on the pill's words", () => {
     // ⚠️ Gated on `PHOTO_UPLOAD` the pill would go inert the moment a carrier
     // was set — i.e. the press disables itself, leaving no way back to the
     // photo and no way to correct a carrier misread off it.
+    // The patient's own "Photo of card" answer joined the gate on 2026-09-24
+    // (Ann Hawkins — no file ever arrived, so the pill pressed nothing). That
+    // answer does not change when a carrier is set, so it cannot make the
+    // press disable itself either.
     const src = code(CARDS);
-    expect(src).toMatch(/if \(!open \|\| !lead\.hasInsuranceCard\) return undefined;/);
+    expect(src).toMatch(/if \(!open \|\| !\(lead\.hasInsuranceCard \|\| choseCard\)\) return undefined;/);
+    expect(src).toMatch(/choseCard = \(lead\.insuranceProvidedVia \?\? ""\)\.trim\(\) === PHOTO_OF_CARD/);
     expect(src).not.toContain("PHOTO_UPLOAD");
   });
 
@@ -186,9 +236,10 @@ describe("the wiring", () => {
 
   it("resolves the signed photo url on open, never off the list row", () => {
     // ⚠️ The file column's own text is a `protected_static` link that 302s to a
-    // login page, and the signed asset url expires in an hour (§5.30f).
+    // login page, and the signed asset url expires in an hour (§5.30f). One
+    // read on open fetches the photo and the member ID on file together.
     const src = code(DIALOG);
-    expect(src).toContain("fetchInsuranceCardAsset");
+    expect(src).toContain("fetchCardDialogData(itemId)");
   });
 });
 

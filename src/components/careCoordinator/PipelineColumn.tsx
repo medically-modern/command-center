@@ -225,25 +225,26 @@ export function PipelineColumn({
           <i className="inline-block h-3.5 w-1 shrink-0 rounded-sm bg-[color:var(--mm-green)]" aria-hidden />
           Green edge = we have called them
         </p>
-        {/* ⚠️ The counters STOPPED being board columns on 2026-09-22 and this
-            line moved with them (Brandon: *"we should add an icon to make it
-            clear that top row is outbound, and bottom row is inbound"*). They
-            used to be the Attempt Counter and the automated-nudge counter, so
-            the old wording — "they answered or texted back" — described the
-            COLOUR of a number that meant something else entirely. Both rows
-            now say what they count, and the arrows are what tell them apart:
-            two identical phone/message pairs stacked say nothing on their own. */}
+        {/* ⚠️ The counters STOPPED being board columns on 2026-09-22, and on
+            2026-09-24 they became ALL-TIME counts on ONE line — gray outbound,
+            then green inbound, beside the doctor (Brandon: *"bring this up to
+            a single line — first have the gray outbound, then next to it have
+            the green in-bound"*). So the legend says what each COLOUR counts,
+            not which row: there are no rows any more. The arrows still tell
+            the two apart, because two identical phone/message pairs side by
+            side say nothing on their own. "All time" means since the call and
+            text archives began, and each number's hover says since when. */}
         <p className="flex items-center gap-1.5">
           <ArrowUpRight className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
           <Phone className="h-3 w-3 shrink-0" aria-hidden />
           <MessageSquare className="h-3 w-3 shrink-0" aria-hidden />
-          Top row = calls and texts we sent
+          Gray = calls and texts we sent, all time
         </p>
         <p className="flex items-center gap-1.5">
           <ArrowDownLeft className="h-3 w-3 shrink-0 text-[color:var(--mm-green)] opacity-70" aria-hidden />
           <Phone className="h-3 w-3 shrink-0 text-[color:var(--mm-green)]" aria-hidden />
           <MessageSquare className="h-3 w-3 shrink-0 text-[color:var(--mm-green)]" aria-hidden />
-          Green row = calls and texts they sent us
+          Green = calls and texts they sent us
         </p>
       </div>
       {/* Always drawn, floor and all, even with nothing in it — see `controls`. */}

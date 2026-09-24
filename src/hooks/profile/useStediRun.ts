@@ -55,13 +55,23 @@ export type StediPhase = "idle" | "writing" | "verifying" | "running" | "done" |
 export interface StediRunState {
   phase: StediPhase;
   /** Which patient the run belongs to — so switching patients mid-run doesn't
-   *  leak the spinner onto someone else. */
+   *  leak the spinner onto someone else. Cleared once the run ends. */
   runningId: string | null;
+  /** The patient the latest run — or its failure, or its timeout — is about.
+   *  Unlike `runningId` it survives the run ending, which is what lets the page
+   *  print "didn't run: details didn't save" on THAT patient and not on the
+   *  next one a rep opens (2026-09-24). */
+  forId: string | null;
+  /** When the rep pressed Run (ms since epoch), for the elapsed clock on the
+   *  in-progress card. Null once the run has ended. */
+  startedAt: number | null;
   message: string | null;
 }
 
+const IDLE: StediRunState = { phase: "idle", runningId: null, forId: null, startedAt: null, message: null };
+
 export function useStediRun() {
-  const [state, setState] = useState<StediRunState>({ phase: "idle", runningId: null, message: null });
+  const [state, setState] = useState<StediRunState>(IDLE);
 
   const startSigRef = useRef("");
   const settleRef = useRef<{ sig: string; at: number } | null>(null);
@@ -72,20 +82,26 @@ export function useStediRun() {
     startSigRef.current = "";
     settleRef.current = null;
     deadlineRef.current = 0;
-    setState({ phase: "idle", runningId: null, message: null });
+    setState(IDLE);
   }, []);
 
   /** Steps 1–3. Resolves true when the run was actually triggered. */
   const start = useCallback(async (p: Patient): Promise<boolean> => {
-    setState({ phase: "writing", runningId: p.id, message: "Saving patient details…" });
+    const startedAt = Date.now();
+    /** A run that ended without reaching the payer — named against its own patient. */
+    const failed = (message: string): false => {
+      setState({ phase: "error", runningId: null, forId: p.id, startedAt: null, message });
+      return false;
+    };
+
+    setState({ phase: "writing", runningId: p.id, forId: p.id, startedAt, message: "Saving patient details…" });
     try {
       await writePatientProfile(p);
     } catch (e) {
-      setState({ phase: "error", runningId: null, message: e instanceof Error ? e.message : "Could not save to Monday." });
-      return false;
+      return failed(e instanceof Error ? e.message : "Could not save to Monday.");
     }
 
-    setState({ phase: "verifying", runningId: p.id, message: "Confirming the details landed…" });
+    setState({ phase: "verifying", runningId: p.id, forId: p.id, startedAt, message: "Confirming the details landed…" });
     const expected = {
       name: p.name,
       dob: p.dob ?? "",
@@ -109,12 +125,7 @@ export function useStediRun() {
       // Hard stop. Running Stedi now would check whatever IS on the board,
       // which is a different patient's answer — a wrong result is worse than
       // no result.
-      setState({
-        phase: "error",
-        runningId: null,
-        message: `Not run — details didn't save: ${verified.mismatches.join("; ")}`,
-      });
-      return false;
+      return failed(`Not run — details didn't save: ${verified.mismatches.join("; ")}`);
     }
 
     startSigRef.current = stediSignature(p);
@@ -125,11 +136,10 @@ export function useStediRun() {
     try {
       await triggerStediRun(p.id);
     } catch (e) {
-      setState({ phase: "error", runningId: null, message: e instanceof Error ? e.message : "Could not start the check." });
-      return false;
+      return failed(e instanceof Error ? e.message : "Could not start the check.");
     }
 
-    setState({ phase: "running", runningId: p.id, message: "Running benefits check…" });
+    setState({ phase: "running", runningId: p.id, forId: p.id, startedAt, message: "Running benefits check…" });
     return true;
   }, []);
 
@@ -138,13 +148,25 @@ export function useStediRun() {
    * has settled. Safe to call on each poll.
    */
   const observe = useCallback((p: Patient | null | undefined): boolean => {
-    if (!p || state.phase !== "running" || state.runningId !== p.id) return false;
+    if (state.phase !== "running") return false;
 
+    // ⚠️ The deadline is checked BEFORE the patient match, and that order is the
+    // fix (2026-09-24). It used to sit behind `state.runningId !== p.id`, so a
+    // rep who pressed Run and then opened another patient left this hook
+    // "running" for good: no poll of the other patient could ever match, the
+    // deadline was never reached, and Run stayed greyed out on every patient
+    // until they went back to the first. Ending the wait here costs nothing —
+    // the service writes its answer onto the first patient's row whatever this
+    // page is showing, and opening them reads it fresh.
     const now = Date.now();
     if (now > deadlineRef.current) {
-      setState({ phase: "done", runningId: null, message: "Check timed out — showing whatever came back." });
+      setState({
+        phase: "done", runningId: null, forId: state.runningId, startedAt: null,
+        message: "Check timed out — showing whatever came back.",
+      });
       return true;
     }
+    if (!p || state.runningId !== p.id) return false;
 
     const sig = stediSignature(p);
     const settle = settleRef.current;
@@ -163,13 +185,13 @@ export function useStediRun() {
       (!!p.stediEligibilityActive && p.stediEligibilityActive !== snapshotRef.current.eligibilityActive);
 
     if (terminal && changedSinceRun && stableFor >= STEDI_SETTLE_MS) {
-      setState({ phase: "done", runningId: null, message: null });
+      setState({ phase: "done", runningId: null, forId: p.id, startedAt: null, message: null });
       return true;
     }
     // A re-run that returned byte-identical values never "changes" — reveal
     // after a longer quiet window rather than spinning to the timeout.
     if (!changedSinceRun && stableFor >= STEDI_UNCHANGED_MS) {
-      setState({ phase: "done", runningId: null, message: null });
+      setState({ phase: "done", runningId: null, forId: p.id, startedAt: null, message: null });
       return true;
     }
     return false;

@@ -40,6 +40,7 @@ import { registerCallArchive } from "./callArchive.mjs";
 import { registerVoicemailArchive } from "./voicemailArchive.mjs";
 import { registerMmsArchive } from "./mmsArchive.mjs";
 import { registerCommsInbox } from "./commsInbox.mjs";
+import { registerContactTotals } from "./contactTotals.mjs";
 import { mergeConversation } from "./smsArchiveRules.mjs";
 import { attributeSenders } from "./sentAttribution.mjs";
 
@@ -198,6 +199,13 @@ export function registerMessaging({ app }) {
   // requireCaller, because every write it accepts is attributed. See
   // commsInbox.mjs.
   registerCommsInbox({ app, pool });
+
+  // "How many calls and texts have EVER passed between us and this patient?"
+  // (Brandon, 2026-09-24 — the Care Coordinator cards read 0/0 for everybody
+  // nobody had touched this week). Answered out of call_archive and
+  // sms_archive, so it spends nothing on RingCentral; registered on THIS pool
+  // because that is where those two tables live. See contactTotalsRules.mjs.
+  registerContactTotals({ app, pool, requireCaller });
 
   /**
    * Send a text to a patient and record who sent it.

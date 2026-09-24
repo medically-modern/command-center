@@ -123,6 +123,57 @@ export async function fetchCanTextEvidence(
 }
 
 /**
+ * All-time call and text counts for one patient number — what the Care
+ * Coordinator cards print (Brandon, 2026-09-24).
+ *
+ * `null` in a count means that archive is not running on the gateway: "we
+ * cannot say", never zero.
+ */
+export interface ContactTotals {
+  callsOut: number | null;
+  callsIn: number | null;
+  textsOut: number | null;
+  textsIn: number | null;
+  /** One of OUR calls to this number connected — somebody picked up. */
+  reachedByCall: boolean;
+}
+
+/** How far back each archive reaches (ISO), or null when it is not running. */
+export interface ContactCoverage {
+  callsSince: string | null;
+  textsSince: string | null;
+}
+
+/**
+ * "How many calls and texts have ever passed between us and these numbers?"
+ *
+ * ⚠️ **Answered from Postgres alone — the call and text archives (§5.27,
+ * §5.47) — with no RingCentral call.** That is what lets a page full of cards
+ * ask about every patient on it: the budget it spends is the gateway's
+ * database, not the phone account every rep's texting and calling share
+ * (INCIDENT_2026-08-20). If this route ever grows a RingCentral read, its one
+ * caller's batching has to change with it.
+ *
+ * ⚠️ Keyed by the string you SENT, like `fetchCanTextEvidence` — the gateway
+ * normalises to hash and maps back, so there is no second copy of `toE164`
+ * here. A number it could not read is simply absent.
+ */
+export async function fetchContactTotals(
+  numbers: string[],
+): Promise<{ results: Record<string, ContactTotals>; coverage: ContactCoverage | null }> {
+  const res = await call("/messaging/contact-totals", {
+    method: "POST",
+    body: JSON.stringify({ numbers }),
+  });
+  const out = await json<{
+    ok: boolean;
+    results?: Record<string, ContactTotals>;
+    coverage?: ContactCoverage | null;
+  }>(res, "Counting calls and texts");
+  return { results: out.results ?? {}, coverage: out.coverage ?? null };
+}
+
+/**
  * Send a text from the MM number, recording who sent it.
  *
  * ⚠️ Resolving means RingCentral ACCEPTED the message, not that it arrived — an

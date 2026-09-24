@@ -248,6 +248,52 @@
   line-height:1.45; overflow-wrap:anywhere }
 .pf-root .bfail-fix { margin-top:5px; font-size:.76rem; color:var(--muted-foreground); line-height:1.5 }
 
+/* ---- benefits check in progress (Brandon, 2026-09-24) ----
+   Builds on redesign.css's `.stedi-running` card — the one /profile already
+   draws for the same check — and adds the run's three real steps and a clock.
+   Tokens only, so dark mode follows on its own (§5.40): every colour here is
+   re-pointed by redesign.css's `.dark .pf-root` block, and `.stedi-running`'s
+   own mint wash already has its dark rule there. */
+.pf-root .stedi-running.bcp { align-items:flex-start; gap:14px; padding:16px 18px }
+.pf-root .bcp .stedi-spinner { margin-top:1px }
+.pf-root .bcp-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:10px;
+  container-type:inline-size }
+.pf-root .bcp-top { display:flex; align-items:baseline; justify-content:space-between; gap:12px }
+.pf-root .bcp-clock { font-size:.8rem; font-weight:700; color:var(--mm-teal); opacity:.75;
+  font-variant-numeric:tabular-nums; flex:none }
+.pf-root .bcp-steps { list-style:none; display:flex; align-items:center; flex-wrap:wrap; row-gap:8px }
+.pf-root .bcp-step { display:flex; align-items:center; gap:7px; font-size:.78rem; font-weight:600;
+  color:var(--muted-foreground) }
+/* The connector between two steps — green once the step before it is done. */
+.pf-root .bcp-step + .bcp-step::before { content:""; width:22px; height:2px; border-radius:2px;
+  background:var(--mm-mint-ring); margin:0 10px }
+.pf-root .bcp-step.done + .bcp-step::before { background:var(--mm-green) }
+.pf-root .bcp-dot { width:20px; height:20px; border-radius:50%; flex:none; display:inline-flex;
+  align-items:center; justify-content:center; font-size:.68rem; font-weight:800; line-height:1;
+  background:var(--card); color:var(--muted-foreground); box-shadow:inset 0 0 0 1.5px var(--mm-mint-ring) }
+.pf-root .bcp-step.done { color:var(--mm-teal) }
+.pf-root .bcp-step.done .bcp-dot { background:var(--mm-green); color:var(--card); box-shadow:none }
+.pf-root .bcp-step.now { color:var(--mm-teal); font-weight:800 }
+.pf-root .bcp-step.now .bcp-dot { color:var(--mm-teal); animation:bcppulse 1.4s ease-in-out infinite;
+  box-shadow:inset 0 0 0 2px var(--mm-teal) }
+@keyframes bcppulse {
+  0%, 100% { box-shadow:inset 0 0 0 2px var(--mm-teal), 0 0 0 0 var(--mm-green-12) }
+  50% { box-shadow:inset 0 0 0 2px var(--mm-teal), 0 0 0 5px var(--mm-green-12) }
+}
+@media (prefers-reduced-motion: reduce) { .pf-root .bcp-step.now .bcp-dot { animation:none } }
+/* Too narrow for one row (the left pane beside the right one): stack the steps
+   rather than letting them wrap, which leaves a connector dangling at the start
+   of the second line. Measured against the CARD, not the viewport — the pane's
+   width is set by the page's own container query, not by the window. */
+@container (max-width: 460px) {
+  .pf-root .bcp-steps { flex-direction:column; align-items:flex-start; row-gap:6px }
+  .pf-root .bcp-step + .bcp-step::before { display:none }
+}
+/* One quiet line under the buttons (a missing input, a timeout, a check still
+   running for someone else). A class rather than `mt-2 text-xs`, because
+   `.pf-root *` zeroes a Tailwind margin — the original "poor spacing". */
+.pf-root .stedi-note { margin-top:12px; font-size:.8rem; line-height:1.5; color:var(--muted-foreground) }
+
 /* ---- compact flat chip (used in the attachment row) ---- */
 .pf-root .chip-sm { font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
   border-radius:5px; padding:3px 7px; background:#fff; color:var(--mm-teal);

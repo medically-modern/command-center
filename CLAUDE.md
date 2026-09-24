@@ -3615,6 +3615,9 @@ handing it to `openFileViewer` (`file_mm5zhy1`, new in `INTAKE_COLS`).
 ⚠️ **Keyed on PRESENCE, never on the words** — one live row answers "Photo of card" with no file
 attached, and an action there is a button that opens nothing. The pill still says Photo upload,
 which is true: they told us they uploaded one.
+✅ **Superseded 2026-09-24 (§5.30i):** that row was Ann Hawkins's, and a pill that did nothing when
+pressed is what Brandon reported. It presses on the patient's own "Photo of card" answer too now,
+and the dialog says no photo came through. Still never keyed on the pill's words.
 
 ⚠️⚠️ **THE FIRST VERSION SHIPPED BROKEN AND ALL 3,900 TESTS WERE GREEN — a file column's `text`
 is a URL that does not work.** It read `insuranceCardUrl: text(item, PROFILE_COL.formCardPhoto)`
@@ -3810,7 +3813,8 @@ sent with it. **No board change; app only.**
 ⚠️⚠️ **THIS IS THE DASHBOARD'S SECOND WRITE** (§5.30's read-only line; `callAttempt.ts` was the
 first). It is crossed the same narrow way: `lib/careCoordinator/carrierAssign.ts` holds the RULE
 and calls **`profile/mondayWrite.writeBenefitsInputs`**, the profile page's own writer, with the
-member ID passed blank. No new mutation, no advancer, no group move. Two writers for one column is
+member ID passed blank (⚠️ from 2026-09-24 it passes a typed member ID too — §5.30i). No new
+mutation, no advancer, no group move. Two writers for one column is
 §5.31c/§5.31d's failure; calling the existing one from a second screen is what keeps there being one.
 
 **What Brandon asked for:** *"When i click photo upload, i should be able to see the photo, but also
@@ -3829,6 +3833,9 @@ twice). What changed is the scope, not the argument: recording the carrier is no
 benefits step. The dialog says so on screen, and `carrierAssign.test.ts` scans the module for
 `triggerStediRun` · `writePatientProfile` · `verifyProfileWritten` · `memberIdWorking` and fails on
 any of them. **Never widen this to run the check** — the member ID is still nowhere near this screen.
+⚠️ **The member ID reached this screen on 2026-09-24 (§5.30i), on Brandon's own words — "put it
+in, not run the check".** The half of this paragraph that stands is the one that matters: nothing
+here starts the check.
 
 ⚠️⚠️ **THE REFUSAL RUNS BEFORE THE WRITE.** `writeBenefitsInputs` resolves the label to an index and
 **skips the column silently** when it cannot (`if (generalInsurance && gi !== undefined)`), so an
@@ -3845,7 +3852,8 @@ General Insurance over the photo note, so writing the column IS the pill change.
 rule: that same function is what `intakeFilter.facetValue` derives the Insurance facet's options
 from (§5.30e), and the option and the pill must stay one string.
 
-⚠️ **The gate is the FILE, not the pill's words.** It used to also require the pill to read "Photo
+⚠️ **The gate is the FILE, not the pill's words** (from 2026-09-24, the file OR the patient's own
+"Photo of card" answer — §5.30i). It used to also require the pill to read "Photo
 upload" — right while the press only opened the photo, wrong now that the press is what makes the
 pill stop saying that. Keyed on the words, the pill would go inert on its own next poll: no way back
 to the photo and no way to correct a carrier misread off it.
@@ -3923,6 +3931,11 @@ is a logged attempt whose call fell outside the shared 7-day window; Evan's text
 no rep text has ever moved that counter. Only the COLOUR was RingCentral (green once
 `reachedByText`/`reachedByCall`), which is why it looked half-wired.
 
+⚠️⚠️ **SUPERSEDED 2026-09-24 (§5.30i): the counts are ALL-TIME, out of Postgres, on ONE line.**
+The seven-day RingCentral window below is why they read 0 for anybody not contacted that week;
+everything in this block about clip ceilings, two rows and a clipped window's em dash describes the
+read that was removed.
+
 **So they are real counts now, in two rows** — `contactState.callsOut · callsIn · textsOut ·
 textsIn`, folded out of the same account-wide read the green icons already used. Outbound on top
 (muted), inbound below (green), each led by an **arrow** — his ask, and load-bearing: two identical
@@ -3949,6 +3962,8 @@ the four to `C…`, `P…`, `I…` (pill area 273px at the 1024 breakpoint). On 
 get **385px** back. Re-measure before moving them back.
 
 ⚠️⚠️ **IN-NETWORK IS NOT ON THIS DASHBOARD AT ALL, AND THE COLUMN HAS NEVER CARRIED A REAL "NO".**
+(⚠️ **Superseded 2026-09-24 (§5.30i):** it is a colour-coded PILL now, and the column has carried
+real Nos since — 40 on that day's board-wide count.)
 *"Biggest concern is that the In-Network isn't working properly — Masani will have no idea which
 patients to pass through."* It renders on the intake PROFILE page, and `text_mm1xehx8` is written by
 `stedi-monday-integration`: §5.20's board scan found **Yes ×2 and Unknown ×9 across 500 rows**,
@@ -3962,8 +3977,9 @@ could never pass, and removing it is what unstranded them.
 the top item on the list.
 
 **The rest, in his order:**
-- **The blocker is one sentence and ROSE.** *"Shorten … to just 'Benefits check failed' and have it
-  be red."* Stedi returns its guidance and the raw AAA code as one string — four lines of runbook on
+- **The blocker is one sentence and ROSE.** (⚠️ From 2026-09-24 the benefits check's verdict is the
+  network PILL and the banner carries only what the pill cannot — §5.30i.) *"Shorten … to just
+  'Benefits check failed' and have it be red."* Stedi returns its guidance and the raw AAA code as one string — four lines of runbook on
   a triage card. ⚠️ It is **not dropped**: `intakeBlockerDetail` returns it and the card hangs it off
   the line's `title`, so the code naming WHICH identifier failed is one hover away. ⚠️ Rose reverses
   §5.30f's amber, which argued §5.17's severity rule correctly and lost on the population: the
@@ -4057,7 +4073,8 @@ drop-down"*) — Josh skipped it, and §5.30f has the standing reason: General I
 input**, so setting it from a photo with no member ID and no re-run sets the next eligibility check
 up to fail on a payer nobody verified.
 
-**Keep-in-agreement:** `contactState`'s four counts ⇄ `useContactStates`' two clip flags ⇄
+**Keep-in-agreement:** (⚠️ the counts' half is superseded by §5.30i's `useContactTotals` ⇄
+`contactTotalsRules`) `contactState`'s four counts ⇄ `useContactStates`' two clip flags ⇄
 `CardExtras.contact` ⇄ `ContactCountRow` ⇄ **the column legend's two lines** (`PipelineColumn`) ·
 `intakeBlocker` (the sentence) ⇄ `intakeBlockerDetail` (the `title`) ⇄ `ReviewEntry.blockerDetail` ·
 `cards.inSystem` ⇄ `profile/dupCheckFlag.isAlreadyInSystemResult` · `cards.calledOut`'s two halves ·
@@ -4065,6 +4082,196 @@ up to fail on a payer nobody verified.
 four existing writers it calls, and no fifth · `intakeNote.js`'s stamp ⇄ `shared/noteStamp.ts`.
 Tests: `careCoordinator/masaniNotes.test.ts` (15, eight verified to fail before the change),
 `contactState.test.ts`'s directional block, and `dtc-mm-form`'s `test-intake-note.mjs`.
+
+### 5.30i Brandon's 2026-09-24 notes on the Masani dashboard
+Nine notes (*"Masani dashboard notes (9/24/26)"*), eight of them on the Care Coordinator card and
+one on the intake profile page. Josh settled the three open choices the same day: a check that
+FAILED is its own red pill and the board's `Unknown` a gray one; the side panel is **Care
+Coordinator only**; a Welcome Call patient's State comes **from their address**. **No board
+change. One gateway route added; the rest is app.**
+
+**1. One network pill replaces two banners and a line.** *"Instead of the benefits check failed
+banner or the benefits check hasn't run banner or the in network: no/yes, let's just replace all of
+that with a pill … In-network (green pill) · Out-of-network (red pill) · And if it hasn't been run
+yet, it'll just stay blank."* Rule: **`lib/careCoordinator/networkPill.ts`** (+ tests).
+
+| the board says | the pill |
+|---|---|
+| a Stedi error (`stediErrorDescription`) | red **Check failed**, the payer's reason and AAA code in the hover |
+| In Network `Yes` | green **In-network** |
+| `No` | red **Out-of-network** |
+| the literal `Unknown` (Original Medicare has no network) | gray **Network unknown** |
+| any other text | gray, **verbatim** |
+| blank — no check has run | nothing |
+
+- ⚠️ **The yes/no reading is `profile/intakeUnlock.networkAnswer`, never a second copy** — the pill
+  and the profile page's own readout must agree about what counts as a Yes.
+- ⚠️ **A failed check outranks whatever the column still says.** A failure means the identifiers
+  did not match, so a network answer beside it is from an earlier run.
+- ⚠️ **§5.20's "the column has never carried a real No" is out of date.** Measured board-wide on
+  2026-09-24: **Yes 485 · Unknown 224 · No 40 · blank 2,034**, plus one free-text value
+  (*"Check with patient: lives in NY, NJ, FL or TN?"*) — which is why an unrecognised answer is
+  shown as written rather than reworded. It still blocks nothing (§5.20).
+- ⚠️ **The Review card's rose banner now says only what the pill cannot**
+  (`workflow.reviewCardBlocker`, which drops the two `PILL_STATES_THE_CHECK`). "Benefits check
+  failed" on the banner beside a red Check failed pill is one fact twice (§5.35's say-it-once
+  rule). A check that has not run now shows **nothing** on the card — his *"it'll just stay
+  blank"* — so a Review card whose only blocker was a missing check carries no banner at all.
+  `intakeBlocker` is unchanged, and still ends at the first thing it finds.
+
+**2 + 8. The counts: one line, all-time, and out of Postgres.** *"For the inbound/outbound
+phone/texts, let's bring this up to a single line — First have the gray outbound, then next to it
+have the green in-bound — This should be all on the same line as the doctor info"* and *"They're
+all 0's — can we connect this to how many outbound calls in total have ever gone to the patient?
+and is that a huge call that will get us blocked from rc on every page load?"*
+- ⚠️⚠️ **WHY THEY READ ZERO — most likely, and NOT verified against live data.** They were a
+  **seven-day** RingCentral window (`useContactStates`, §5.30g), so any patient nobody had rung or
+  texted this week read 0 however often we had before. No live check was possible from the session
+  that built this (no gateway credential), so treat that as the probable cause, not a measured one.
+- **Now: `POST /messaging/contact-totals`** (gateway, `services/monday-gateway/contactTotals.mjs` +
+  `contactTotalsRules.mjs`, + tests) → `messagingApi.fetchContactTotals` →
+  **`hooks/careCoordinator/useContactTotals`** → the card. Every call and text since each archive
+  began, per number, out of `call_archive` (§5.47) and `sms_archive` (§5.27).
+- ⚠️⚠️ **IT COSTS RINGCENTRAL NOTHING — the answer to his second question.** Two indexed reads of
+  tables we own. The read it replaces WAS RingCentral: up to **18 requests per tab every 5
+  minutes** (6 call-log pages of 100, then 6 pages each of SMS and MMS at 250), with the call log in
+  RingCentral's tightest HEAVY rate-limit group (§5.47). This page's counts now spend zero.
+  ⚠️ **Adding a RingCentral call behind this route re-creates INCIDENT_2026-08-20's shape** on a
+  page a coordinator sits on all day.
+- ⚠️ **"Ever" means "since the archive began", and the two began on different days** — calls since
+  the call archive's first 95-day pass (mid-June 2026), texts since 2026-08-01. `coverageSql` asks
+  the tables rather than hard-coding a date, and every count's hover says "since …".
+- ⚠️ **Counts are per NUMBER, across the shared line** — every rep's calls, and automated texts sent
+  from the MM number (the intake form's nudges, §5.24) as well as hand-typed ones. Faxes are
+  excluded (`call_type IS DISTINCT FROM 'Fax'`, §5.49's filter).
+- ⚠️ **Three states, never collapsed**: a number with no history is a real `0`; an archive whose kill
+  switch is on is `null` and prints an **em dash** (never 0); a failed request draws **no counters
+  at all** and is not cached, so the next load asks again.
+- ⚠️ The SQL **groups and never decides** (the `canTextEvidenceSql` rule, §5.31f): the green outbound
+  phone is `commsInboxRules.callConnected` reading grouped (direction, result, legs, has-duration)
+  shapes, the same rule parity-tested against the SPA's call history. It is **outbound-only**, as
+  §5.30e set it.
+- ⚠️ **One request per 200 numbers** (`TOTALS_BATCH` = the gateway's `MAX_TOTALS_NUMBERS`; the route
+  refuses more with a 400), a module-scope cache with a 2-minute TTL, a stable returned identity
+  (incident rule 2), and a re-ask for one number after a call is logged from the card.
+- **Layout**: ↗ gray calls · texts, then ↙ green calls · texts, on the **State/Doctor row**
+  (§5.30g's two stacked rows are gone). The pill grid below is untouched, so §5.30g's
+  pill-clipping measurement does not come back: the doctor and clinic text truncates first, full in
+  its `title`. Measured at 1024 · 1100 · 1440 in both themes: counts and detail on one line, no
+  horizontal overflow.
+- ⚠️ **The green edge (`cards.calledOut`) now reads the all-time count** — any archived outbound
+  call, OR a logged attempt. §5.30g kept the board half because the old window was seven days; it
+  still covers calls placed before the archive began.
+
+**3. State on the row under the name.** *"'State: NY; Doctor: …' — State info comes directly from
+the form they filled out and if for whatever reason we don't have it, just have it say N/A."* Rule:
+**`lib/shared/usState.ts`** (+ tests). Intake reads the web form's State (`text_mm5zc4vy`),
+normalised to its two-letter code; an unrecognised value prints **verbatim**, a blank prints
+**N/A**. ⚠️ **Welcome Call has no State column**, so it is read out of the patient's own Address
+`location_mm1xhw17` (added to `WC_COLS`) — **never the clinic address**, which is printed on the
+same card and is often in another state. All **297** live Welcome Call addresses sampled on
+2026-09-24 resolved, including a trailing `US`/`USA`/`United States` and a code run into its ZIP.
+A blank doctor or clinic is left out of the row, as before.
+
+**4. "Why can't we click into the photo of the card for Ann Hawkins?"** Because there is no photo.
+Her row (`13035347713`) answered **Photo of card** on 2026-09-13 and the file column is empty —
+nothing ever reached the board. The pill was keyed on the FILE (§5.30f · §5.30h), so it pressed
+nothing and said nothing. §5.30f had already counted one such row. It now presses on the file **or**
+the patient's own "Photo of card" answer (`insurancePillAction`'s `choseCard`), and the dialog says
+**"No photo came through"**, names **Start Insurance Follow-Up** as the way to get one, and still
+takes a carrier and member ID obtained some other way.
+⚠️ **Still never keyed on the pill's WORDS** — §5.30h's reason stands, and the patient's answer does
+not change when a carrier is set, so the press cannot disable itself.
+
+**5. A bigger photo, with the member ID beside it.** *"see the photo in larger size, while also have
+the drop-down for insurance and member ID available so it's easy to just read the card and type in
+the member ID … put it in, not run the check."* `InsuranceCardDialog` is `max-w-5xl`: the photo on
+the left with zoom and *Open full size*, General Insurance and an optional **Member ID** on the
+right. One read on open (`mondayApi.fetchCardDialogData`) brings the photo and the member ID
+already on file.
+- ⚠️⚠️ **THE MEMBER ID IS NOW WRITTEN, AND THE CHECK STILL DOES NOT RUN.** This reverses §5.30h's
+  *"never widen this — the member ID is still nowhere near this screen"*: it is printed on the card
+  being read. It goes through the same writer (`writeBenefitsInputs`) into the working Member ID
+  `text_mm4t8gbq`. Read off the live board 2026-09-24: **no automation on Profile Send Off names
+  that column or General Insurance** at all, and the board's one catch-all "any column changes"
+  webhook (560115738) is **deactivated** — it is still listed by `webhooks(board_id:)`, which is not
+  evidence of liveness (§5.48). The check runs only when **Run Stedi Eligibility** flips to index 1
+  (webhook 562943120, §5.11), and `carrierAssign.test.ts` still fails on `triggerStediRun` ·
+  `writePatientProfile` · `verifyProfileWritten` in that module.
+- ⚠️ **Only what CHANGED is written** (`carrierAssign.cardWritePlan`): Save on an untouched field
+  must not overwrite a value a rep corrected on the profile page a minute ago.
+- ⚠️ **An emptied box KEEPS the value on file, and says so** (`keptMemberId`). `writeBenefitsInputs`
+  skips a blank, so a cleared box would otherwise save green with the old ID still on the row.
+  Removing a member ID stays a profile-page job.
+- ⚠️ **The refusal still runs BEFORE the write**, and the plan is re-derived against a fresh label
+  index inside `assignFromCard`, so a stale plan cannot slip an unresolvable carrier through.
+- **The member ID in his note** belongs to **Debra Collins** (item `13042288343`), and it was
+  **already on her record** — entered on the profile page that day, where the check then ran three
+  times (AAA 75, then AAA 42 twice). Nothing needed writing. The ID itself is deliberately not
+  repeated here or anywhere in the repo.
+
+**6. "Running benefits check…" on the intake profile page** (*"it looks like 1990's arial font with
+poor spacing"*). It was a Tailwind `mt-2 text-xs` line whose margin `.pf-root *` zeroes (§9), under a
+washed-out disabled button that said the same words. It is now
+**`components/profile/BenefitsCheckProgress.tsx`** (+ tests) — the `.stedi-running` card `/profile`
+already draws, with the run's **three real steps** (save to Monday → confirm they saved → ask the
+payer), an elapsed clock, and *"taking longer than usual"* past 45 seconds. The button says
+**Running…**. Styles are page classes in `intake.css` (`.bcp*`, `.stedi-note`), tokens only; a
+container query stacks the steps below 460px of card width, where wrapping left a connector
+dangling. Rendered at 1440 · 1024 and dark before shipping.
+- ⚠️ **The steps are the hook's PHASES, never a timer** — a bar creeping forward on a clock would
+  say "almost done" about a check that has not reached the payer.
+- ⚠️⚠️ **Fixed with it: pressing Run and opening another patient greyed Run out for good.**
+  `useStediRun.observe` checked the patient BEFORE the deadline, so no poll of the other patient
+  could match and the 95-second timeout never fired: Run stayed disabled on every patient until the
+  rep went back to the first. The deadline is checked first now; the results land on the first
+  patient's row whatever the page shows. `useStediRun.test.tsx` fails on the old order.
+- ⚠️ **Every line is about ONE patient.** The hook's state gained **`forId`** (kept after the run
+  ends) and **`startedAt`**; the page shows the card only while `runningId` is the open patient,
+  a failure or timeout only on the patient it was about, and — when another patient's check holds
+  the button — one line saying so, rather than a greyed-out Run with no reason (§5.10's dead end).
+- A check that never reached the payer is a `.bfail` block, **"Benefits check didn't run"**, with
+  the reason and *Press Run benefits check to try again*.
+
+**7. "Already in System" sits beside the name.** Same pill, same rule — Dup Check Result, never
+the flag (§5.30g).
+
+**9. Communications opens as a right side panel — on this card only.** *"don't need to have a pop-up
+covering the entire screen"*. `CommunicationsButton` gained **`presentation="panel"`**, reached
+through `PatientContact`'s opt-in **`commsPresentation`**, and exactly one caller passes it:
+`careCoordinator/PatientCard`. Every other header keeps §5.50's full-screen pop-up.
+- A **non-modal** dialog (`modal={!panel}`): 760px, full height, the page beside it stays
+  clickable. Measured at 1440: the Patient Intake column stays usable; at 1024 the panel covers
+  about three quarters of the screen.
+- ⚠️ **One panel at a time** — a module-scope claim (`PANEL`), so another card's button SWAPS the
+  panel rather than stacking a second. Two open composers, one hidden, is how a text goes to the
+  wrong patient.
+- ⚠️ **Outside clicks never close it** (§5.50's rule, for the same reason: the incoming-call cards);
+  Escape and × do.
+- ⚠️ In the narrow panel the fallback view stacks texts over calls (`narrow`): `lg:grid-cols-2` is a
+  VIEWPORT breakpoint and would squeeze each half to ~380px.
+- `commsPanelScope.test.ts` fails the build when a second caller opts in — the §5.30 two-screens
+  hazard that once deleted a button off the wrong page.
+
+**Keep-in-agreement:** `networkPill` ⇄ `intakeUnlock.networkAnswer` ⇄
+`workflow.PILL_STATES_THE_CHECK` ⇄ `reviewCardBlocker` ⇄ `intakeBlockerDetail` (the hover) ·
+`useContactTotals.TOTALS_BATCH` ⇄ `contactTotalsRules.MAX_TOTALS_NUMBERS` · `foldTotals` ⇄
+`commsInboxRules.callConnected` (never restated in SQL) · `usState` ⇄ `WC_COL.address` in the read
+set · `cardWritePlan` ⇄ `writeBenefitsInputs`' skip-a-blank contract · `useStediRun`'s
+`runningId`/`forId`/`startedAt` ⇄ the page's `stediHere`/`stediElsewhere`/`stediAbout` ⇄
+`BenefitsCheckProgress`' phases · `commsPresentation="panel"` ⇄ exactly one caller.
+Tests: `components/careCoordinator/masaniNotes0924.test.tsx`, `lib/careCoordinator/networkPill.test.ts`,
+`lib/shared/usState.test.ts`, `hooks/careCoordinator/useContactTotals.test.tsx`,
+`services/monday-gateway/contactTotals.test.mjs`, `components/commsPanelScope.test.ts`,
+`components/profile/BenefitsCheckProgress.test.tsx`, `hooks/profile/useStediRun.test.tsx`, plus the
+updated `carrierAssign` · `insuranceCard` · `intakeBlocker` · `columnNotices` · page tests.
+Files: `lib/careCoordinator/{networkPill,workflow,mondayApi,carrierAssign}.ts`,
+`lib/shared/usState.ts`, `lib/profile/intakeUnlock.ts`, `lib/assignedPatients/messagingApi.ts`,
+`hooks/careCoordinator/useContactTotals.ts`, `hooks/profile/useStediRun.ts`,
+`components/careCoordinator/{PatientCard,cards,InsuranceCardDialog,PipelineColumn}.tsx`,
+`components/comms/{CommunicationsButton,CommunicationsView}.tsx`, `components/masheke/mmKit.tsx`,
+`components/profile/BenefitsCheckProgress.tsx`, `pages/{CareCoordinatorPage,UnverifiedReferralsPage}.tsx`,
+`pages/profile/intake.css`, `services/monday-gateway/{contactTotals,contactTotalsRules,messaging}.mjs`.
 
 ### 5.31 Welcome Call order rules — caps, 75 days, and "can we send a monitor?" (Sep 2026)
 Four decisions from Brandon's 2026-09-09 notes, landed together because they all key off
@@ -10517,6 +10724,10 @@ and the **Calls** pop-up (`shared/CallHistoryButton`, deleted) on every patient 
 Receipt, both Chase roles, Doctor Appointments, Benefits · Submit Auth · Auth Outstanding, Welcome
 Call (in its activity box), Final Confirm, Subscription, Patient Questions, Orders, Patient Intake,
 the Care Coordinator card and the patient screen's Calls tab.
+- ⚠️ **The Care Coordinator card opens it as a RIGHT SIDE PANEL, not full screen** (Brandon,
+  2026-09-24 — §5.30i): opt-in `commsPresentation="panel"`, non-modal, one panel at a time, and
+  exactly ONE caller, pinned by `commsPanelScope.test.ts`. Every other header keeps the pop-up
+  described here.
 - **The popup is the hub's middle pane in VIEW mode** — `ItemTimeline mode="view"`: every text, call,
   recording, voicemail (with transcript) and every resolution / left-voicemail note, oldest first,
   plus the shared `Composer`. ⚠️ **View mode drops the header and the ResolveBar** — Josh: *"there
@@ -12010,15 +12221,15 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The Welcome Call column says "Scheduled 0" for a moment on load | §5.30d — correct since 2026-09-16 only if the amber "Checking Calendly" line is showing with it. No line and Scheduled 0 means `useWelcomeCallBookings.ready` has gone back to latching on the first (empty) address list — `useWelcomeCallBookings.test.tsx` pins it |
 | A patient who clearly gave us insurance shows no Insurance pill | §5.30c · §5.30f — `lib/careCoordinator/pills.ts` `intakeInsurance`. A card photo reads **"Photo upload"** and the pill OPENS the card; **"Not provided"** is deliberately blank. If it is blank for somebody who sent a photo, check `color_mm5zv5pa` is still in `INTAKE_COLS`; if the pill is there but inert, the row has no file on `file_mm5zhy1` (one live row is exactly that) |
 | The Photo upload pill opens an error, or the wrong document | §5.30f — the click resolves the ASSET (`mondayApi.fetchInsuranceCardAsset`), because the file column's own `text` is a `protected_static` link that **302s to a login page** without a monday session. An error means the asset is gone from the item or monday returned no `public_url`; the WRONG file means something went back to `assets[0]` instead of matching the column's asset id. ⚠️ This is the general rule for every file column — read `UnverifiedReferralsPage`'s `FileColumnRow` comment before wiring one up |
-| Setting the carrier from a card photo does nothing / saves green and the board is unchanged | §5.30h — `lib/careCoordinator/carrierAssign.ts`. `writeBenefitsInputs` **skips a label it cannot resolve silently**, so the refusal runs BEFORE the write and names the label; a carrier added on monday since needs the live index (§5.33). ⚠️ It writes General Insurance and nothing else — no Stedi run, deliberately, because the member ID is the other half of that input and is on neither the photo nor this screen |
-| The Insurance pill won't open the photo, or won't change to the carrier | §5.30h — the pill is pressable whenever the row HAS a file (never gated on the words "Photo upload", or the press disables itself). The pill switching to the carrier is `pills.intakeInsurance` preferring a real General Insurance — no second rule, because `intakeFilter.facetValue` reads the same function. A pill still reading "Photo upload" a minute after a save means the page-level override was dropped |
+| Setting the carrier from a card photo does nothing / saves green and the board is unchanged | §5.30h — `lib/careCoordinator/carrierAssign.ts`. `writeBenefitsInputs` **skips a label it cannot resolve silently**, so the refusal runs BEFORE the write and names the label; a carrier added on monday since needs the live index (§5.33). ⚠️ It writes General Insurance and, since 2026-09-24, a typed Member ID — **only what changed**, and an emptied box KEEPS the ID on file and says so (§5.30i). It never runs the benefits check |
+| The Insurance pill won't open the photo, or won't change to the carrier | §5.30h · §5.30i — the pill is pressable whenever the row HAS a file **or the patient answered "Photo of card"** (never gated on the words "Photo upload", or the press disables itself). A dialog saying **"No photo came through"** is the answer, not a bug: the patient picked the photo option and no file ever reached the row (Ann Hawkins, 2026-09-24) — Start Insurance Follow-Up texts them an upload link. The pill switching to the carrier is `pills.intakeInsurance` preferring a real General Insurance — no second rule, because `intakeFilter.facetValue` reads the same function. A pill still reading "Photo upload" a minute after a save means the page-level override was dropped |
 | The photo glyph covers the label, or the pill captions fall out of line | §5.30h — `PillActions.icon` must be paired with `Pill`'s `iconPad` (15px reserved for a 10px glyph 3px from the edge). Reproduce by MEASURING the caption row across several cards; "Pump path" sitting 2px low is the em-dash slot and is pre-existing on cards with no glyph at all |
 | "Where did the Text and Calls buttons go?" | §5.50 — every header's Text and Calls became ONE **Communications** button (`components/comms/CommunicationsButton`), which opens the patient's whole history full screen with a composer. The call list lives on as `shared/CallHistoryList`, the popup's fallback |
 | The Communications popup shows an amber "couldn't be read" line and a plain thread | §5.50 — the FALLBACK: the Communications inbox is off, unreadable, or has no item for these numbers, so it shows the live thread and the RingCentral call list instead. Check `/comms/config` and `/comms/inbox-health` (§5.49); Try again re-asks |
 | A recording won't scrub, or snaps back to 0:00 | §5.50 — the source must answer byte-range requests. S3/Tigris presigned and `blob:` URLs do; anything served whole with a plain 200 cannot be seeked in Chrome. The player is `shared/AudioPlayer`; a link that expired resets to Play (§5.47's five minutes) |
 | "Can we transcribe calls cheaply?" | §5.50 part 4 — researched 2026-09-24, not built. AssemblyAI with speaker labels is the cheapest with a self-serve BAA (~$27/month + ~$81 backfill); RingCentral switches voicemail-to-text off under HIPAA mode; check Railway's $1,000/month BAA minimum first |
 | A phone number still opens the RingCentral app, or Call does nothing | §5.50 — there are NO `tel:` links left: `PatientContact`'s Call opens `DialPatientDialog` by default, and `onCall` only swaps in a page's own dial-then-log dialog (Patient Intake, the Care Coordinator card). `communicationsWiring.test.ts` fails the build on a `tel:` href. A dial that errors says why in the popup — usually the softphone could not register (§5.13b), never a silent no-op |
-| A patient a rep has worked is missing from the Care Coordinator dashboard | §5.30f — they are in **Review Profile** now, not an exclusion. `callDone` and `sendNow` were exclusions until 2026-09-18 and between them hid everybody who does not need a call. A Review card prints the **blocker** (`workflow.intakeBlocker`); a BLANK blocker means "nothing this dashboard can see", never "ready to advance" — the authority is `profile/intakeUnlock.evaluateUnlock` on the profile page |
+| A patient a rep has worked is missing from the Care Coordinator dashboard | §5.30f — they are in **Review Profile** now, not an exclusion. `callDone` and `sendNow` were exclusions until 2026-09-18 and between them hid everybody who does not need a call. A Review card prints the **blocker** (`workflow.reviewCardBlocker` since 2026-09-24 — the benefits check's verdict is the network pill, so the banner carries only what the pill cannot, §5.30i); a BLANK blocker means "nothing this dashboard can see", never "ready to advance" — the authority is `profile/intakeUnlock.evaluateUnlock` on the profile page |
 | A Review Profile card shows no blocker but the profile page won't advance | §5.30f — expected, and the narrower read is deliberate: `cgmInPlay` on the page also consults Provided CGM Preference and CGM Data Awareness, which this dashboard does not carry. Widening it means adding those columns to `INTAKE_COLS`, not special-casing the card |
 | Somebody wants the copy-number button on another screen | §5.30f — it is opt-in (`PatientContact` `showCopy`) and Welcome Call is the only caller, because Katie asked for it there and Brandon asked for it off the Care Coordinator card. Adding a caller is a decision; `copyPhoneScope.test.ts` will fail until this section and the test are updated |
 | The Welcome Call "Call scheduled" chip is missing or says it couldn't check | §5.31e — the chip needs the patient's **Email** on the board; that is the only join Calendly gives us. "Couldn't check" means the window read failed (a partial window is deliberately never reported as "not booked") — check `GET /calendly/patient/health` on the gateway, then `/api/calendly/health` on dtc-mm-form. No chip at all means no booking in the window, which is the normal case |
@@ -12027,8 +12238,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient is in the wrong Today / Future grouping on the Care Coordinator dashboard | §5.30 — `workflow.followUpHorizon` (unscheduled: the follow-up DATE; blank = Today) and `classifyBooking` (scheduled: the booking's ET day). Intake's date is written by *Log call attempt*, Welcome Call's by +1 — both through `lib/careCoordinator/followUp.ts`. A Welcome Call patient in "Scheduled" with no booking on the board is right: welcome calls live in Calendly only, read through `POST /calendly/patients` |
 | The Care Coordinator's Welcome Call column says it couldn't check Calendly | §5.30 — `useWelcomeCallBookings` → gateway `POST /calendly/patients`; check `GET /calendly/patient/health`, then dtc-mm-form's `/api/calendly/health`. While it shows, every patient falls to Unscheduled and the notice is the only thing saying so — never read that as "nobody is booked" |
 | Patient Intake takes ages to load / the load bar reads wrong | §5.30 — it is 1,754 rows in four sequential Monday pages and that is inherent; the bar is `lib/careCoordinator/loadProgress.ts`. A bar with no percentage is CORRECT on a first-ever visit (Monday reports no total, so the denominator is remembered from the last complete run); one stuck at 99% means the fetch has not resolved, not that the maths is off |
-| A call/text counter on a Care Coordinator card disagrees with the call log | §5.30g — they are **real RingCentral counts** since 2026-09-22 (`contactState.callsOut` and friends), two rows, outbound on top and inbound in green below. Before that they were BOARD columns — logged attempts and the form's two automated nudges — which is what every "the counters aren't working" report was. A number replaced by an em dash means that window came back at its page cap and the count would be low; calls and texts clip independently |
-| "In network" is missing, or says Unknown | §5.30g — it is on the intake card from 2026-09-22, printed **VERBATIM** from `text_mm1xehx8`. `Unknown` is the correct answer for Original Medicare (no network), and across 500 rows the column has never held a real "No" — so a blank or an Unknown is upstream (`stedi-monday-integration`), not a UI bug. It blocks nothing and must not start to |
+| A call/text counter on a Care Coordinator card disagrees with the call log, or reads 0 | §5.30i — since 2026-09-24 they are **ALL-TIME, out of Postgres** (`POST /messaging/contact-totals` → `useContactTotals`), one line: gray outbound, then green inbound. "Ever" is since each archive began (calls ~mid-June 2026, texts 2026-08-01) — the hover says since when. **No counters at all** = the request failed (is the gateway deployed with the route?); an **em dash** = that archive is switched off (`/calls/archive-health`, `/messaging/archive-health`); a **0** = nothing in the archive for that number. They cost RingCentral nothing. Before 2026-09-24 they were a 7-day RingCentral window (§5.30g), and before 2026-09-22 board columns |
+| "Running benefits check…" never finishes, or Run is greyed out with "still finishing for another patient" | §5.30i — `hooks/profile/useStediRun.ts`. Another patient's check holds the button; it now times out within ~95 seconds even while you are on someone else (before 2026-09-24 it waited for ever until you went back). The card's three steps are the hook's real phases, so one stuck on **Confirm they saved** means the details did not read back from Monday |
+| A Care Coordinator card says "State: N/A" | §5.30i — `lib/shared/usState.ts`. Intake reads the web form's State and prints N/A when it is blank; Welcome Call has no State column and reads it out of the patient's **own** address (never the clinic's), so N/A there means the Address is blank or has no readable state |
+| Communications opens full screen on the Care Coordinator card, or as a side panel somewhere else | §5.30i — the panel is opt-in (`commsPresentation="panel"`) and the Care Coordinator card is its ONLY caller; `commsPanelScope.test.ts` fails on a second. Everywhere else is §5.50's pop-up by design |
+| The network pill is missing, gray, or says "Check failed" | §5.30i — `lib/careCoordinator/networkPill.ts`. **Nothing** = no benefits check has run (Brandon's "stay blank"). Gray **Network unknown** = the board's own `Unknown`, which is correct for Original Medicare; any other gray text is the column printed verbatim. Red **Check failed** outranks the network answer — hover for the payer's reason. It reads `text_mm1xehx8`, written by `stedi-monday-integration`, so a wrong answer is upstream. It blocks nothing and must not start to |
 | The intake filter offers values for patients that never appear | §5.30g — `facetOptions` must be fed `bucketedLeads(intakeBuckets(allIntakeLeads, …))`, never the raw read: ~1,697 of ~1,754 rows are the 8/25 SNJ import the column excludes. Still bucketed with NO facet selection applied, or choosing one value hides the others |
 | The "Already in System" pill is missing on a duplicate | §5.30g — it reads **Dup Check Result**, never Already In System: on a partial lead the check is flag-only by design (§5.21), so the flag is blank for most of the population the pill exists for |
 | A pill's caption sits lower than its neighbours | §5.30g — that slot's pill is a `<button>` (the photo-upload one) and needs `inline-flex`. A button's line-box strut is sized from the card's ~14px font against an 11px pill; measured at 7px of drop |
