@@ -369,11 +369,24 @@ export function subscriptionCaption(item: DossierItem | null): string {
   return item.stageAdvancerText || item.groupTitle || "On the board";
 }
 
-/** The word under "Onboarding" in the view toggle. */
-export function onboardingCaption(dossier: PatientDossier | null): string {
+/**
+ * The word under "Onboarding" in the view toggle — Brandon's `vtoggle`:
+ * *In progress* · *Lead* · *Done 4/21/2026*.
+ *
+ * The date and the lead verdict are handed in by the caller
+ * (`infoStrip.onboardingCompletedOn` / `isWebFormLead`) rather than read here,
+ * because `infoStrip` imports this module and the reverse would be a cycle.
+ * ⚠️ They are the SAME readings the info strip prints, so the toggle and the
+ * strip's Stage fact cannot disagree about one patient on one card.
+ */
+export function onboardingCaption(
+  dossier: PatientDossier | null,
+  opts: { completedOn?: string; lead?: boolean } = {},
+): string {
   const steps = buildStages(dossier);
   if (steps.some((s) => s.state === "stuck")) return "Stuck";
-  if (steps.every((s) => s.state === "done")) return "Done";
+  if (steps.every((s) => s.state === "done")) return opts.completedOn ? `Done ${opts.completedOn}` : "Done";
+  if (opts.lead) return "Lead";
   if (steps.some((s) => s.state === "now")) return "In progress";
   return "Not started";
 }

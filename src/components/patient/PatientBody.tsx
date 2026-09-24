@@ -28,6 +28,7 @@ import { SubscriptionView, parseSubTab } from "@/components/patient/Subscription
 import { useAbility } from "@/components/shell/AbilityLock";
 import type { PatientDossier } from "@/lib/commsHub/dossier";
 import { contactTarget, patientEmail } from "@/lib/patient/contactEdit";
+import { isWebFormLead, onboardingCompletedOn } from "@/lib/patient/infoStrip";
 import {
   SNAP_PARAM,
   STEP_PARAM,
@@ -92,6 +93,16 @@ export function PatientBody({
   const target = useMemo(() => contactTarget(dossier), [dossier]);
   const canEditProfile = useAbility("editProfile");
   const facts = topBarFacts(dossier, email);
+  /** Brandon's caption under Onboarding — "Done 4/21/2026" once subscribed, "Lead"
+   *  for a web-form lead — from the same readings the info strip prints. */
+  const onboardingSt = useMemo(
+    () =>
+      onboardingCaption(dossier, {
+        completedOn: onboardingCompletedOn(dossier),
+        lead: isWebFormLead(dossier.items),
+      }),
+    [dossier],
+  );
 
   return (
     <>
@@ -136,7 +147,7 @@ export function PatientBody({
               onClick={() => setParam({ [VIEW_PARAM]: "onboarding" })}
             >
               <ClipboardList style={{ width: 14, height: 14 }} /> Onboarding
-              <span className="st">{onboardingCaption(dossier)}</span>
+              <span className="st">{onboardingSt}</span>
             </button>
             {/* ⚠️ Disabled by the ROW'S EXISTENCE, never by a status — the
                 row is created at Final Profile Confirmation, so a patient

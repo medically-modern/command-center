@@ -9999,6 +9999,21 @@ note is required), **Texted**, **No action needed**.
 ⚠️ While the switch is being read, and if that read fails, the SPA draws the OLD screens — never a
 half-built Inbox. ⚠️ **Plan §8's order is the rollout: ENABLED alone for a few business days, read
 `GET /comms/shadow-report`, THEN `COMMS_INBOX_UI=1`.**
+**An open tab RE-READS the switch every 3 minutes** (`CONFIG_RECHECK_MS`, Josh 2026-09-23: *"make tabs
+re-check every few minutes"*), so a flip on the gateway reaches every tab without a reload — the hub's
+rails already follow it both ways. It used to be read once per page load, which is how a tab opened
+before the switch went on sat on the old screens until somebody pressed Cmd+R. Measured end to end
+in a browser (off → on → off, no reload, three reads in seven minutes).
+- ⚠️ **One timer for the whole tab** (`watchConfig`), however many components read the switch, ticking
+  each MINUTE rather than every three: a read's "last checked" is stamped when it RESOLVES, so a tick
+  of exactly the period finds it a few ms too fresh and runs at twice the period.
+- ⚠️ **Hidden tabs don't ask**; a tab coming back into view re-reads a stale switch at once.
+- ⚠️ **A failed RE-check keeps what the tab had.** A network blip must not pull the Inbox out from
+  under a rep mid-resolve, nor put it up. A failed FIRST read is still "off, for now", and is now
+  retried by the same timer.
+- ⚠️ **An answer that changes nothing keeps the snapshot's identity**, so the re-check re-renders
+  nothing (INCIDENT_2026-08-20 rule 2). All four are pinned in `useInbox.test.tsx`, each verified to
+  fail when its protection is removed.
 
 ✅ **BOTH SWITCHES HAVE BEEN ON ON THE LIVE GATEWAY SINCE 2026-09-23, 7:20 PM ET** (Josh: *"turn it on
 fully so i can test"*). That skipped the shadow period above and the test call under *Not verified
@@ -10170,6 +10185,10 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
 - **The badge** — the header's Communications tab and the rail: the unresolved count, from Postgres
   (`useInboxBadge`, 60 seconds, hidden tabs don't ask). ⚠️ The badge and the list read the same route
   family, so they cannot disagree.
+  ⚠️ **Until 2026-09-23 the badge really ran every ~120s and the list every ~60s, not 60 and 30.**
+  Their freshness gates compared against exactly one period while the "last read" stamp lands when
+  the read RESOLVES, so every other tick found it too fresh. `POLL_SLACK_MS` (5s) fixes both, and a
+  test with a 300ms read pins each cadence.
 - **The logs** (Josh's D4, `lib/commsHub/logFilters.ts`): Texts All · Received · Sent; Calls All ·
   Inbound · Outbound · Missed (an inbound call nobody answered); VMs none. ⚠️ **Only the Unread /
   Unheard FILTERS retire** — the read flag is RingCentral's and stays: rows wear it, opening marks
@@ -10203,10 +10222,25 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
     what a rep on a call sees first. Plus *Open Profile Page* in the pane's header
     (`lib/patient/profileHref.ts`). `hubPatientPane.test.tsx` names every one, and fails if either
     pane defines its own fallback instead of importing the shared one.
+  - **The grid is Brandon's `.comms.ibcomms` once the Inbox is on** (Josh, 2026-09-23: *"make the
+    right profile view bigger to match his spec"*): the list is 400px, 340 at ≤1300 and 320 at
+    ≤1100, on EVERY rail; the thread and the profile split what is left in EQUAL halves (`flex-1`
+    each, his `1fr 1fr`). ⚠️ **Today's `clamp(23.5rem,36%,34rem)` is kept as the pane's FLOOR**: his
+    halves are wider than it only from ~1536px up (1920: 544 → 728px) and a little narrower below
+    it (1440: 518 → 488), so the floor is what keeps "bigger" true at every width. ⚠️ He hides the
+    profile at ≤1100px; ours stays from 1024 (lg), because the pane carries the notes box, the
+    switcher and the unknown-number flow. ⚠️ Our rail is 64px to his 44. Switched off, the list and
+    the pane are exactly what they were. `inboxWiring.test.ts` pins both halves.
   - ⚠️ **Narrow layout by CLASS** (`.cc-pt.embedded`, `pages/patient/redesign.css`): the pane is
-    ~376–544px, so the patient screen's viewport media queries never fire there. One scroller — the
-    pane, never the `.pt-main` inside it. The view toggle shrinks rather than overflowing (measured:
-    it ran 50px past the pane at 1100 before).
+    ~376px up (~730 at 1920), so the patient screen's viewport media queries never fire there. The
+    rules mirror his `.embedded` ones — a 2-column strip, stepper and rogrid at ANY pane width, his
+    own `!important`. One scroller — the pane, never the `.pt-main` inside it. The view toggle shrinks
+    rather than overflowing (measured: it ran 50px past the pane at 1100 before).
+  - ⚠️ **Where the pane still differs from his, on purpose:** the writable notes box (job 2) sits
+    between the top bar and the info strip, because his pane has no writable notes at all and his
+    *Notes from this stage* card sits under stand-in cards, where ours has the whole read-only
+    stage tool — the bottom would bury the composer. The stage section's heading is ours (record
+    tabs, state chip, Read-only chip, Open) rather than his stage title and sub-step summary.
   - ⚠️ **View state is per patient and forgotten on leaving** — the next conversation opens on its own
     live stage, not the previous patient's step.
   - ⚠️ **`useDossier.reload` re-derives the SELECTED person from the cached records** — what a top-bar
@@ -11559,7 +11593,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
 | A voicemail won't stay heard / unheard, or a call doesn't open the message it left | §5.28 — read state is RingCentral's `readStatus` (`applyMessageReadOverrides`, the same rule the fax list uses); the panel must render `voicemailList`, not `voicemails.data`. A call opens its message through `lib/commsHub/callVoicemail.ts`, a number-and-time match gated on the call log saying it reached voicemail — it fails closed, so "no voicemail shown" means no match in the window, and that window is **reasoned, not measured** (no token reaches RingCentral from here). `voicemailWiring.test.ts` scans both |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
-| The Inbox rail is missing / the hub looks exactly as it always did | §5.49 — two gateway switches, both OFF by default and both ON on the live gateway since 2026-09-23. **Reload the tab**: the page reads the switch once. `GET /comms/config` answers `{enabled, ui}`; the rail needs BOTH true. While that read is pending, or after it fails, the SPA deliberately draws the OLD screens — never a half-built Inbox. A failed read is asked again when a page that uses it next opens, no sooner than a minute later — not on a timer, so a tab left open stays on the old screens until then |
+| The Inbox rail is missing / the hub looks exactly as it always did | §5.49 — two gateway switches, both OFF by default and both ON on the live gateway since 2026-09-23. An open tab re-reads them every 3 minutes (hidden tabs wait until they are looked at), so a flip reaches it within ~3–4 minutes with no reload; Cmd+R is the instant route. `GET /comms/config` answers `{enabled, ui}`; the rail needs BOTH true. While the first read is pending, or after it fails, the SPA deliberately draws the OLD screens — never a half-built Inbox; a failed first read is retried each minute. A failed RE-check keeps whatever the tab had |
 | A patient texted or called and no Inbox item opened | §5.49 — `GET /comms/inbox-health` (unauthenticated) first: a stale `lastCompleteAt` means the capture tick isn't completing, and `feedsOff` names any archive whose own kill switch (`SMS_/CALL_/VOICEMAIL_ARCHIVE_ENABLED=0`) turned that feed off. By design, nothing opens for: a fax, our own numbers, a call RingCentral marks `Blocked`, a call that connected, or anything before the epoch. A missed call that left a voicemail is ONE item, not two |
 | Mark resolved is refused (409), or Called won't save | §5.49 — resolving is a compare-and-set: the 409 names who resolved it first, or says a newer message arrived after what the rep was shown (`seenThrough`), or that the item `moved` to a patient record. Reopen and look again; never retry blind. *Called* without a note is a 400 by design |
 | A resolve note isn't in the patient's Monday notes | §5.49 — it is copied when the rep MOVES ON (opens another item, leaves the patient, closes the page), by the resolver's browser only; a closed tab is caught up the next time that rep opens Communications. An Undo before then leaves nothing on Monday, by design. *Left voicemail*, a resolution with no note, and a number on no board never copy. After 3 failed tries it shows as `failedMirrors` in `/comms/inbox-health` |

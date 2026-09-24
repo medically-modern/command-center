@@ -45,7 +45,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight } from "lucide-react";
+import { User } from "lucide-react";
 import { PatientBody, type PatientViewParams } from "@/components/patient/PatientBody";
 import { FoundBySearchBanner, HouseholdSwitcher, LiveNotes } from "@/components/commsHub/PatientDossierPanel";
 import { dossierPaneFallback } from "@/components/commsHub/dossierPaneFallback";
@@ -67,7 +67,7 @@ export function HubPatientPaneHeader({ dossier }: { dossier: PatientDossier | nu
           className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
           title="The full patient screen — the profile first, texts and calls on the side"
         >
-          Open Profile Page <ArrowUpRight className="h-3 w-3" />
+          <User className="h-3 w-3" /> Open Profile Page
         </Link>
       )}
     </div>

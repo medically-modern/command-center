@@ -302,6 +302,32 @@ function stuckChip(items: readonly DossierItem[]): StripFact["chip"] {
 const SUBSCRIPTION_BOARD = 18407459988;
 
 /**
+ * ⚠️ The date is the Subscription row's creation — the moment onboarding
+ * actually ended — with the Welcome Call record's stage start behind it, which
+ * is Brandon's own fallback.
+ */
+function completionDate(items: DossierItem[]): string {
+  const sub = items.find((i) => i.boardId === SUBSCRIPTION_BOARD);
+  const wc = items.find((i) => i.boardId === WELCOME_CALL);
+  const when = (sub ? etDateOf(sub.createdAt) : "") || (wc ? col(wc, INFO_COL[WELCOME_CALL].stageStart) : "");
+  return when ? usDate(when) : "";
+}
+
+/**
+ * When onboarding ended — "" until every stage is done, or when no record says.
+ *
+ * Brandon prints this date twice: on the strip's Stage fact ("Onboarding
+ * complete 4/21/2026") and under the Onboarding half of the view toggle
+ * ("Done 4/21/2026"). ⚠️ ONE reading for both, or the two disagree on one card.
+ */
+export function onboardingCompletedOn(dossier: PatientDossier | null): string {
+  const items = dossier?.items ?? [];
+  if (!items.length) return "";
+  if (!buildStages(dossier).every((s) => s.state === "done")) return "";
+  return completionDate(items);
+}
+
+/**
  * The eight facts, in Brandon's order.
  *
  * ⚠️ **A blank renders as an em dash and is MARKED missing, never as a zero or
@@ -359,19 +385,11 @@ export function infoStripFacts(
   if (isWebFormLead(items)) {
     stage = { label: "Stage", value: "Web-form lead", chip };
   } else if (complete) {
-    /* ⚠️ The date is the Subscription row's creation — the moment onboarding
-       actually ended — with the Welcome Call record's stage start behind it,
-       which is Brandon's own fallback. */
-    const sub = items.find((i) => i.boardId === SUBSCRIPTION_BOARD);
-    const wc = items.find((i) => i.boardId === WELCOME_CALL);
-    const when =
-      (sub ? etDateOf(sub.createdAt) : "") ||
-      (wc ? col(wc, INFO_COL[WELCOME_CALL].stageStart) : "");
     stage = {
       label: "Stage",
       value: "Onboarding complete",
       tone: "good",
-      sub: when ? usDate(when) : "",
+      sub: completionDate(items),
       chip,
     };
   } else {

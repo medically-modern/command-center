@@ -40,8 +40,34 @@ import { pickActive } from "@/lib/commsHub/dossier";
 export const LIST_TTL_MS = 30_000;
 /** The badge rides on every page, so it is gentler. */
 export const BADGE_TTL_MS = 60_000;
+/**
+ * ⚠️ A poll's "last read" is stamped when the read RESOLVES, a few hundred ms
+ * after the tick that asked for it, so a freshness gate of exactly one period
+ * finds that read too fresh on the next tick and the poll quietly runs at TWICE
+ * its period. Measured 2026-09-23 with a 300ms read: the list was read every
+ * ~60s and the badge every ~120s. The slack lets a read that finished a little
+ * late still count as due on the next tick.
+ */
+const POLL_SLACK_MS = 5_000;
 /** A failed config read is asked again after this. */
 const CONFIG_RETRY_MS = 60_000;
+/**
+ * An open tab re-reads the switch this often (Josh, 2026-09-23: *"make tabs
+ * re-check every few minutes"*), so turning the Inbox on or off on the gateway
+ * reaches a tab without a reload. It used to be read once per page load, which
+ * is how a rep who opened Communications before the switch went on sat on the
+ * old screens for the rest of the afternoon.
+ */
+export const CONFIG_RECHECK_MS = 3 * 60_000;
+/**
+ * How often the shared timer looks at whether a read is due. ⚠️ Deliberately
+ * SHORTER than the period it serves: `configCheckedAt` is stamped when a read
+ * RESOLVES, so a timer ticking at exactly `CONFIG_RECHECK_MS` would find the
+ * last read a few milliseconds too fresh on every other tick and quietly run at
+ * twice the stated period. Ticking each minute puts a re-check 3–4 minutes
+ * apart, and a failed first read is retried on the same tick.
+ */
+const CONFIG_TICK_MS = CONFIG_RETRY_MS;
 
 const hidden = () => typeof document !== "undefined" && document.hidden;
 
@@ -71,24 +97,77 @@ type ConfigState = CommsConfig & { loaded: boolean };
 const configStore = createStore<ConfigState>({ enabled: false, ui: false, loaded: false });
 let configInflight: Promise<void> | null = null;
 let configFailedAt = 0;
+/** When the switch was last read successfully — what a re-check is timed from. */
+let configCheckedAt = 0;
 
+/**
+ * Read the switch. The FIRST read happens whatever the tab is doing — a page
+ * cannot decide which screens to draw without it, and `reportDial` waits on it.
+ * After that it is re-read every `CONFIG_RECHECK_MS`, and only from a tab
+ * somebody can see (INCIDENT_2026-08-20's rule: no polling from a hidden tab).
+ */
 function loadConfig(): void {
-  if (configInflight || configStore.get().loaded) return;
-  if (configFailedAt && Date.now() - configFailedAt < CONFIG_RETRY_MS) return;
+  if (configInflight) return;
+  const loaded = configStore.get().loaded;
+  if (loaded) {
+    if (Date.now() - configCheckedAt < CONFIG_RECHECK_MS) return;
+    if (hidden()) return;
+  } else if (configFailedAt && Date.now() - configFailedAt < CONFIG_RETRY_MS) {
+    return;
+  }
   if (!inboxConfigured()) {
-    configStore.set({ enabled: false, ui: false, loaded: true });
+    // A build with no gateway has nothing to ask, now or later.
+    if (!loaded) configStore.set({ enabled: false, ui: false, loaded: true });
+    configCheckedAt = Date.now();
     return;
   }
   configInflight = fetchCommsConfig()
-    .then((c) => configStore.set({ ...c, loaded: true }))
+    .then((c) => {
+      configCheckedAt = Date.now();
+      configFailedAt = 0;
+      const prev = configStore.get();
+      // An answer that changes nothing keeps the snapshot's identity, so a
+      // re-check every few minutes re-renders nothing (rule 2).
+      if (prev.loaded && prev.enabled === c.enabled && prev.ui === c.ui) return;
+      configStore.set({ enabled: c.enabled, ui: c.ui, loaded: true });
+    })
     .catch(() => {
-      // A failed read is "off, for now" — never a reason to show a half-built
-      // Inbox. Asked again after a minute, not on every render.
       configFailedAt = Date.now();
+      // ⚠️ A failed FIRST read is "off, for now" — never a reason to show a
+      // half-built Inbox. A failed RE-check keeps what the tab already had: a
+      // network blip must not pull the Inbox out from under a rep mid-resolve,
+      // nor put it up in front of one. The next re-check settles it.
+      if (loaded) configCheckedAt = Date.now();
     })
     .finally(() => {
       configInflight = null;
     });
+}
+
+/**
+ * ONE timer for the whole tab, however many components read the switch — the
+ * header, the hub, the patient screen and Reports all do. It runs while any of
+ * them is mounted, and a tab coming back into view re-reads a stale switch at
+ * once rather than on the next tick.
+ */
+let configWatchers = 0;
+let configTimer: ReturnType<typeof setInterval> | null = null;
+function onConfigVisible(): void {
+  if (!document.hidden) loadConfig();
+}
+function watchConfig(): () => void {
+  configWatchers += 1;
+  if (configWatchers === 1) {
+    configTimer = setInterval(loadConfig, CONFIG_TICK_MS);
+    document.addEventListener("visibilitychange", onConfigVisible);
+  }
+  return () => {
+    configWatchers -= 1;
+    if (configWatchers > 0) return;
+    if (configTimer) clearInterval(configTimer);
+    configTimer = null;
+    document.removeEventListener("visibilitychange", onConfigVisible);
+  };
 }
 
 /**
@@ -117,12 +196,16 @@ export function reportDial(number: string): void {
 
 /**
  * Is the Inbox switched on? `ui` false means every screen behaves exactly as it
- * did before the inbox existed (plan §8: additive first).
+ * did before the inbox existed (plan §8: additive first). Re-read every few
+ * minutes while the tab is open (`CONFIG_RECHECK_MS`), so a switch flipped on
+ * the gateway reaches the screen without a reload — the hub's rails already
+ * follow it both ways (`AssignedPatientsPage`'s `[inboxOn]` effect).
  */
 export function useCommsConfig(): ConfigState {
   const state = useSyncExternalStore(configStore.subscribe, configStore.get, configStore.get);
   useEffect(() => {
     loadConfig();
+    return watchConfig();
   }, []);
   return state;
 }
@@ -146,7 +229,7 @@ function setBadge(counts: { open: number; over: number }): void {
 
 function refreshBadge(force = false): void {
   if (badgeInflight) return;
-  if (!force && Date.now() - badgeStore.get().at < BADGE_TTL_MS) return;
+  if (!force && Date.now() - badgeStore.get().at < BADGE_TTL_MS - POLL_SLACK_MS) return;
   if (!force && hidden()) return;
   badgeInflight = fetchInboxCount()
     .then(setBadge)
@@ -207,7 +290,7 @@ function refreshList(force = false): Promise<void> {
   const cur = listStore.get();
   if (listInflight && listInflight.sig === sig) return listInflight.p;
   const sameQuery = cur.sig === sig;
-  if (!force && sameQuery && Date.now() - cur.fetchedAt < LIST_TTL_MS) return Promise.resolve();
+  if (!force && sameQuery && Date.now() - cur.fetchedAt < LIST_TTL_MS - POLL_SLACK_MS) return Promise.resolve();
   if (!force && sameQuery && hidden()) return Promise.resolve();
 
   // A NEW query keeps the previous rows on screen while it loads, so typing in
@@ -676,6 +759,11 @@ export function __resetInboxStoresForTest(): void {
   configStore.set({ enabled: false, ui: false, loaded: false });
   configInflight = null;
   configFailedAt = 0;
+  configCheckedAt = 0;
+  if (configTimer) clearInterval(configTimer);
+  configTimer = null;
+  configWatchers = 0;
+  if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onConfigVisible);
   badgeStore.set({ counts: null, at: 0 });
   badgeInflight = null;
   listStore.set({ sig: "", dataSig: "", data: null, loading: false, error: null, fetchedAt: 0 });

@@ -178,6 +178,19 @@ describe("subscription toggle", () => {
     expect(onboardingCaption(dossier([live], live))).toBe("In progress");
     expect(onboardingCaption(null)).toBe("Not started");
   });
+
+  it("Brandon's captions: 'Lead' for a web-form lead, 'Done <date>' once onboarding is over", () => {
+    const live = item({ boardId: MED });
+    expect(onboardingCaption(dossier([live], live), { lead: true })).toBe("Lead");
+    const done = (b: number) => item({ boardId: b, itemId: String(b), isCompleted: true, groupTitle: "Completed" });
+    const sub = item({ boardId: SUB, itemId: "sub" });
+    const finished = dossier([done(PROFILE), done(MED), done(INS), done(WC), sub], sub);
+    expect(onboardingCaption(finished, { completedOn: "4/21/2026" })).toBe("Done 4/21/2026");
+    // No date on any record is still "Done" — never a guessed date.
+    expect(onboardingCaption(finished)).toBe("Done");
+    // A finished patient is never called a lead, whatever the form group says.
+    expect(onboardingCaption(finished, { lead: true, completedOn: "4/21/2026" })).toBe("Done 4/21/2026");
+  });
 });
 
 describe("facts", () => {

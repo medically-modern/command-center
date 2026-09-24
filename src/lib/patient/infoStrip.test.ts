@@ -18,6 +18,7 @@ import {
   infoStripColumns,
   infoStripFacts,
   isWebFormLead,
+  onboardingCompletedOn,
   stageDaysText,
   usDate,
 } from "./infoStrip";
@@ -249,6 +250,18 @@ describe("the Stage fact", () => {
     });
 
     expect(facts(dossier([item(MED)], item(MED))).get("Stage")!.chip).toBeUndefined();
+  });
+
+  it("⚠️ the view toggle's date is the SAME reading as the strip's (onboardingCompletedOn)", () => {
+    const done = (b: number) => item(b, { isCompleted: true, groupTitle: "Completed" });
+    const sub = item(SUB, { createdAt: "2026-04-21T15:00:00Z" });
+    const d = dossier([done(SO), done(MED), done(INS), done(WC), sub], sub);
+    expect(onboardingCompletedOn(d)).toBe("4/21/2026");
+    expect(onboardingCompletedOn(d)).toBe(facts(d).get("Stage")!.sub);
+    // Not finished → no date, whatever the Subscription row says.
+    const live = item(MED);
+    expect(onboardingCompletedOn(dossier([done(SO), live, sub], live))).toBe("");
+    expect(onboardingCompletedOn(null)).toBe("");
   });
 
   it("reads 'Onboarding complete' with the date once every stage is done", () => {

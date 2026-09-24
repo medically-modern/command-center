@@ -6,7 +6,7 @@
  * it is about ordering: claim before writing, write only to the patient's live
  * record, and never let a failed copy un-resolve anything.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 
 const { api, dossierApi, toastError } = vi.hoisted(() => ({
@@ -35,6 +35,7 @@ vi.mock("sonner", () => ({ toast: { error: (...a: unknown[]) => toastError(...a)
 
 import {
   __resetInboxStoresForTest,
+  CONFIG_RECHECK_MS,
   COPY_RETRY_MS,
   COPY_UNCLAIMED_AFTER_MS,
   copyOne,
@@ -347,6 +348,130 @@ describe("the switch", () => {
   });
 });
 
+describe("⚠️ the switch is RE-READ while a tab is open (Josh, 2026-09-23)", () => {
+  function Probe({ id = "cfg" }: { id?: string }) {
+    const c = useCommsConfig();
+    return <span data-testid={id}>{`${c.loaded}:${c.enabled}:${c.ui}`}</span>;
+  }
+  const shown = (id = "cfg") => screen.getByTestId(id).textContent;
+  const advance = (ms: number) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  const setHidden = (v: boolean) => Object.defineProperty(document, "hidden", { configurable: true, get: () => v });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    // Back to jsdom's own getter on Document.prototype.
+    delete (document as unknown as { hidden?: boolean }).hidden;
+  });
+
+  it("a tab left open picks the Inbox up when the switch comes ON — no reload", async () => {
+    api.fetchCommsConfig.mockResolvedValueOnce({ enabled: false, ui: false });
+    render(<Probe />);
+    await advance(0);
+    expect(shown()).toBe("true:false:false");
+    api.fetchCommsConfig.mockResolvedValueOnce({ enabled: true, ui: true });
+    await advance(CONFIG_RECHECK_MS + 60_000);
+    expect(shown()).toBe("true:true:true");
+  });
+
+  it("…and takes it away again when the switch goes OFF", async () => {
+    api.fetchCommsConfig.mockResolvedValueOnce({ enabled: true, ui: true });
+    render(<Probe />);
+    await advance(0);
+    expect(shown()).toBe("true:true:true");
+    api.fetchCommsConfig.mockResolvedValueOnce({ enabled: true, ui: false });
+    await advance(CONFIG_RECHECK_MS + 60_000);
+    expect(shown()).toBe("true:true:false");
+  });
+
+  it("every few minutes — never faster, and never drifting to twice the period", async () => {
+    // ⚠️ A real read takes a moment, so the "last read" stamp lands just AFTER
+    // the tick that asked. A timer ticking at the full period would then find
+    // it a few hundred ms too fresh every other time and run at 6 minutes.
+    api.fetchCommsConfig.mockImplementation(
+      () => new Promise((r) => setTimeout(() => r({ enabled: true, ui: true }), 300)),
+    );
+    render(<Probe />);
+    await advance(300);
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(1);
+    await advance(CONFIG_RECHECK_MS - 1_000);
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(1);
+    // The ticks run every minute, so the re-check lands inside the next one.
+    await advance(61_000);
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(2);
+  });
+
+  it("⚠️ a failed RE-check keeps what the tab had — a blip never pulls the Inbox away", async () => {
+    api.fetchCommsConfig.mockResolvedValueOnce({ enabled: true, ui: true });
+    render(<Probe />);
+    await advance(0);
+    api.fetchCommsConfig.mockRejectedValueOnce(new Error("503"));
+    await advance(CONFIG_RECHECK_MS + 60_000);
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(2);
+    expect(shown()).toBe("true:true:true");
+  });
+
+  it("a failed FIRST read is retried by the timer, not only when another page opens", async () => {
+    api.fetchCommsConfig.mockRejectedValueOnce(new Error("503"));
+    render(<Probe />);
+    await advance(0);
+    expect(shown()).toBe("false:false:false");
+    api.fetchCommsConfig.mockResolvedValueOnce({ enabled: true, ui: true });
+    await advance(61_000);
+    expect(shown()).toBe("true:true:true");
+  });
+
+  it("an answer that changes nothing keeps the snapshot's identity — nothing re-renders (rule 2)", async () => {
+    api.fetchCommsConfig.mockResolvedValue({ enabled: true, ui: true });
+    const { result } = renderHook(() => useCommsConfig());
+    await advance(0);
+    const first = result.current;
+    await advance(CONFIG_RECHECK_MS + 60_000);
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(2);
+    expect(result.current).toBe(first);
+  });
+
+  it("⚠️ a hidden tab does not ask — and asks the moment somebody looks at it again", async () => {
+    api.fetchCommsConfig.mockResolvedValueOnce({ enabled: false, ui: false });
+    render(<Probe />);
+    await advance(0);
+    setHidden(true);
+    await advance(20 * 60_000);
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(1);
+    api.fetchCommsConfig.mockResolvedValueOnce({ enabled: true, ui: true });
+    setHidden(false);
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(2);
+    expect(shown()).toBe("true:true:true");
+  });
+
+  it("one read per period however many components read the switch — and none once they are gone", async () => {
+    api.fetchCommsConfig.mockResolvedValue({ enabled: true, ui: true });
+    const { unmount } = render(
+      <>
+        <Probe id="a" />
+        <Probe id="b" />
+        <Probe id="c" />
+      </>,
+    );
+    await advance(0);
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(1);
+    await advance(CONFIG_RECHECK_MS + 60_000);
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(2);
+    unmount();
+    await advance(30 * 60_000);
+    expect(api.fetchCommsConfig).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("the list and the badge", () => {
   const Q: InboxQuery = { view: "open", type: "", q: "", sort: "wait", sticky: "" };
   const list = (open: number, over: number) => ({
@@ -391,6 +516,51 @@ describe("the list and the badge", () => {
       slow(list(99, 99));
     });
     expect(screen.getByTestId("counts").textContent).toBe("3/0");
+  });
+});
+
+describe("⚠️ the list and the badge poll at the rate they state — not twice it", () => {
+  // A real read takes a moment, and its "last read" stamp lands just AFTER the
+  // tick that asked. Gated on exactly one period, the next tick found it too
+  // fresh, so the list ran at ~60s and the badge at ~120s (measured 2026-09-23).
+  const Q: InboxQuery = { view: "open", type: "", q: "", sort: "wait", sticky: "" };
+  const slow = <T,>(v: T) => () => new Promise<T>((r) => setTimeout(() => r(v), 300));
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("the list: about every 30 seconds", async () => {
+    api.fetchInbox.mockImplementation(
+      slow({ rows: [], counts: { open: 1, over: 0 }, total: 0, badge: { open: 1, over: 0 }, computedAt: T, epoch: 0 }),
+    );
+    function P() {
+      useInboxList(Q, true);
+      return null;
+    }
+    render(<P />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000 + 1_000);
+    });
+    // 1 on mount + 20 ticks.
+    expect(api.fetchInbox.mock.calls.length).toBeGreaterThanOrEqual(19);
+    expect(api.fetchInbox.mock.calls.length).toBeLessThanOrEqual(21);
+  });
+
+  it("the badge: about every minute", async () => {
+    api.fetchInboxCount.mockImplementation(slow({ open: 1, over: 0 }));
+    function P() {
+      useInboxBadge(true);
+      return null;
+    }
+    render(<P />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000 + 1_000);
+    });
+    expect(api.fetchInboxCount.mock.calls.length).toBeGreaterThanOrEqual(10);
+    expect(api.fetchInboxCount.mock.calls.length).toBeLessThanOrEqual(11);
   });
 });
 

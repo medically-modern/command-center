@@ -1200,9 +1200,11 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
         <aside
           className={cn(
             "flex w-80 shrink-0 flex-col border-r border-border bg-card",
-            // The Inbox row carries a name, a stage pill and a wait on one
-            // line — Brandon's list is 400px, given where there is room.
-            tab === "inbox" && "xl:w-[25rem]",
+            // Brandon's grid once the Inbox is on (`.comms.ibcomms`, on EVERY
+            // rail): the list is 400px, 340 at ≤1300 and 320 at ≤1100. The
+            // Inbox row carries a name, a stage pill and a wait on one line.
+            // Off, the list is exactly what it was.
+            inboxOn && "min-[1101px]:w-[340px] min-[1301px]:w-[25rem]",
           )}
         >
           {tab === "inbox" && (
@@ -1511,9 +1513,28 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
         </section>
 
         {/* ── Command Center profile widget ─────────────────── */}
-        {/* 30% wider than the original clamp(18rem,28%,26rem) (Josh, 2026-09-01) — the
-            pane now carries the per-stage call detail, not just notes. */}
-        <aside className="hidden w-[clamp(23.5rem,36%,34rem)] shrink-0 flex-col border-l border-border bg-card lg:flex">
+        {/* Off: 30% wider than the original clamp(18rem,28%,26rem) (Josh,
+            2026-09-01) — the pane carries the per-stage call detail, not just
+            notes — and exactly that, unchanged.
+            On: Brandon's grid (Josh, 2026-09-23: "make the right profile view
+            bigger to match his spec"). His `.comms.ibcomms` gives the thread and
+            the profile the width left after the list in EQUAL halves (`1fr
+            1fr`), which is what `flex-1` beside the thread's `flex-1` does.
+            ⚠️ With today's clamp as a FLOOR: his halves are wider than the
+            clamp only from ~1536px up (1920: 544 → 728px) and a little
+            narrower below it (1440: 518 → 488), so the floor is what keeps
+            "bigger" true at every width — identical to his where his is
+            bigger, today's width where it is not. ⚠️ He hides the profile at
+            ≤1100px; this keeps it from 1024 (lg) as before, because the pane
+            carries the notes box, the household switcher and the
+            unknown-number flow (plan §7), which the thread cannot. */}
+        <aside
+          className={cn(
+            "hidden flex-col border-l border-border bg-card lg:flex",
+            inboxOn ? "min-w-[clamp(23.5rem,36%,34rem)] flex-1" : "w-[clamp(23.5rem,36%,34rem)] shrink-0",
+          )}
+          data-hub-profile-pane
+        >
           {/* With the Inbox on, the pane is the patient screen itself
               (COMMS_INBOX_PLAN.md §7) under the mockup's header; off, it is the
               profile pane exactly as it was. */}

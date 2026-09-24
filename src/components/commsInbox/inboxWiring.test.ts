@@ -354,3 +354,18 @@ describe("phase 4 — the SLA card on Reports & Metrics (plan §1.2, Josh's D8)"
     expect(CARD).toMatch(/aria-disabled="true"/);
   });
 });
+
+describe("the hub's grid is Brandon's once the Inbox is on (Josh, 2026-09-23)", () => {
+  it("the thread and the profile split the width after the list — his `1fr 1fr` — with today's width as a floor", () => {
+    // `flex-1` beside the thread's own `flex-1` is his equal halves; the clamp
+    // as a MIN is what keeps "bigger" true below ~1536px, where his halves are
+    // narrower than the pane already was.
+    expect(PAGE).toContain('inboxOn ? "min-w-[clamp(23.5rem,36%,34rem)] flex-1" : "w-[clamp(23.5rem,36%,34rem)] shrink-0"');
+    expect(PAGE).toContain('<section className="flex min-w-0 flex-1 flex-col border-r border-border">');
+  });
+
+  it("the list is 400px, 340 at ≤1300 and 320 at ≤1100 — on every rail, and only while the Inbox is on", () => {
+    expect(PAGE).toContain('"flex w-80 shrink-0 flex-col border-r border-border bg-card"');
+    expect(PAGE).toContain('inboxOn && "min-[1101px]:w-[340px] min-[1301px]:w-[25rem]"');
+  });
+});

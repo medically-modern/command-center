@@ -37,6 +37,7 @@ import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
 import { itemOpenHref, snapStateLabel, snapTabLabel, stepCaption, subStageOpenHref, type StageStep } from "@/lib/patient/patientScreen";
 import { infoStripFacts } from "@/lib/patient/infoStrip";
+import { noteEntries } from "@/lib/patient/recentNotes";
 import { defaultSubStage, subStagesFor, type SubStageStep } from "@/lib/patient/stagePanels";
 import { StagePanelEmbed, StagePanelUnavailable } from "@/components/patient/StagePanelEmbed";
 
@@ -88,6 +89,7 @@ export function OnboardingView({
   // the current stage.
   const wanted = subs.find((t) => t.key === toolKey && t.reached);
   const tool = wanted ?? subs.find((t) => t.key === defaultSubStage(subs)) ?? null;
+  const stageNotes = noteEntries(snap?.notes);
 
   return (
     <>
@@ -230,11 +232,24 @@ export function OnboardingView({
         <section className="card pad">
           <div className="section-h">
             <b className="small">Notes from this stage</b>
-            <span className="xs muted">{snap.boardName}</span>
+            <span className="xs muted">{snap.boardName} · newest first</span>
           </div>
+          {/* Brandon's card: one entry per note, newest first, the author and
+              the time on their own line. ⚠️ The SAME parser the Recent notes
+              strip uses (`noteEntries`), so a block that doesn't match the
+              stamp is shown verbatim rather than dropped, and the two can
+              never read one notes column differently. */}
           <div className="notes">
-            {snap.notes.trim() ? (
-              <div className="note">{snap.notes.trim()}</div>
+            {stageNotes.length ? (
+              stageNotes.map((e, i) => (
+                // Keyed by position: two identical notes are legitimate.
+                <div className="note" key={i}>
+                  {(e.when || e.who || e.stage) && (
+                    <div className="who">{[e.who, e.stage, e.when].filter(Boolean).join(" · ")}</div>
+                  )}
+                  {e.text}
+                </div>
+              ))
             ) : (
               <div className="note muted">
                 <i>No notes on this board.</i>
