@@ -336,6 +336,14 @@ export const PAUSE_REASON_OPTIONS = [
  * 200 with nothing in the logs. `Dashboard` is id 3 there, the same id it
  * carries on Medical Evaluation and the Doctor Database — but that agreement
  * is a coincidence of those columns' histories, not a rule (§5.33).
+ *
+ * ⚠️ The SEND does not write these indices directly: `faxParachute.ts`
+ * resolves the label against the LIVE board and falls back to this list only
+ * when the board cannot be read. It used to hardcode `Parachute ? 1 : 0`,
+ * which turned every Email and Dashboard patient into Fax on save (fixed
+ * 2026-09-24). Re-read live 2026-09-24: `0 Fax · 1 Parachute · 2 Email ·
+ * 3 Dashboard`, none deactivated — `faxParachute.test.ts` pins this list to
+ * that payload.
  */
 export const FAX_PARACHUTE_OPTIONS = [
   { index: 0, label: "Fax" },

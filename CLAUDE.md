@@ -10954,10 +10954,22 @@ Send pinned to the bottom edge; controls in one row within 4px of each other (a 
 taller than a select).
 
 **Known, found on the way, NOT fixed** (the visuals-only rule):
-- ⚠️⚠️ **Every Subscription send rewrites Fax / Parachute `color_mm25t5q` to Fax unless it reads
-  "Parachute"** (`mondayWrite`, `faxVal === "Parachute" ? 1 : 0`) — pre-existing on /subscription
-  too. The live column also has Email (2) and Dashboard (3); **10 Subscription items** carried one
-  on 2026-09-24 (6 Email, 4 Dashboard), and any save of them flips it to Fax.
+- ✅ **FIXED 2026-09-24 (separately from this visuals-only work): Fax / Parachute `color_mm25t5q` no
+  longer flips to Fax on save.** Every Subscription send wrote `faxVal === "Parachute" ? 1 : 0`, so
+  saving an **Email** or **Dashboard** patient (10 on 2026-09-24: 6 Email, 4 Dashboard) rewrote
+  them to Fax, green toast, from /subscription AND this tab (both use the one send).
+  `lib/subscription/faxParachute.ts` now resolves the LABEL against the live board (`settings_str`
+  re-read 2026-09-24: `0 Fax · 1 Parachute · 2 Email · 3 Dashboard`), and uses
+  `FAX_PARACHUTE_OPTIONS` only when the board can't be READ, never for a label the board it read
+  lacks. A board value it cannot name is left alone (no task). A rep's pick the board cannot hold
+  REFUSES the send before anything is written, rather than saving the rest green and dropping the
+  pick. `faxParachute.test.ts` pins the round trip through the real read mapping and the real
+  send; 9 of its 18 tests fail on the old ternary.
+  **Nobody was flipped:** the column's full activity log (185 entries, since it was created
+  2026-04-06) holds no Email → Fax or Dashboard → Fax change. Its 125 Parachute → Fax changes were
+  one batch change by a single user on 2026-04-21, made in three seconds, which the old ternary
+  could not produce. ⚠️ The pickers still render the hardcoded four, so a label added on Monday is
+  left alone on save but can't be PICKED until it joins `FAX_PARACHUTE_OPTIONS`.
 - The right column hands the patient's Can Text to the thread even while it is on the ALTERNATE
   number, where the Calls tab correctly does not — pre-existing (§5.49 rule: Can Text is the primary
   line's answer).
@@ -12112,7 +12124,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The Subscription profile won't save, or says "Read-only" | §5.45b — the Send is the green button in the bar pinned to the BOTTOM of the Profile tab (the patient screen and the hub's right pane alike). `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). Since 2026-09-24 the visit date and MN documents ARE on the tab (§5.51): the Send runs three steps and its message names the one that failed — the visit date goes through `saveVisitDateVerified`, a file that failed stays queued |
 | A new Subscription profile field (Frequency, a quantity, a Contact) doesn't save, or saves something the rep didn't touch | §5.51 — `lib/subscription/profileExtras.ts`. Only the DELTA is written (`diffExtras`), so an untouched field is never re-written; a refusal (a phone Monday can't read, a quantity that isn't a whole number) stops the Send before any write. A contact that saved but reads blank means its label id is not on the live column — the ids come from `useStatusOptions`, never code |
 | A select on the Subscription profile offers the wrong list | §5.51 — every list is the one `/subscription` already offered (`subscription/workflow.ts`, the live infusion sets, `usePayerOptions`), never the mockup's. A value the list lacks is shown as the CURRENT one (`withCurrent`), not replaced. 75-Days is Aetna-only (§5.31) |
-| A Subscription patient's Fax / Parachute flipped from Email or Dashboard to Fax | §5.51's known list — every Subscription send maps anything but "Parachute" to Fax (`mondayWrite`, pre-existing on /subscription too). Not fixed under the visuals-only rule |
+| A Subscription patient's Fax / Parachute flipped from Email or Dashboard to Fax | §5.51 — FIXED 2026-09-24: `lib/subscription/faxParachute.ts` resolves the label against the live board. A flip after that date is not this bug: a rep picked Fax, or another writer set it. Read the board's activity log for `color_mm25t5q` to see the before and after, and the gateway audit for who made the change (every app write shows as the shared account on Monday) |
+| A Subscription save is refused with *"Fax / Parachute: the board has no "X" option"* | §5.51 — the rep picked a method the live board no longer has (the picker renders the hardcoded `FAX_PARACHUTE_OPTIONS`). Nothing was written. Pick another method, or add the label back on Monday and then to that list |
 | A fact shows TWICE on the Subscription profile — once editable, once as a card | §5.51 — since 2026-09-24 the tab is Brandon's grid (`components/patient/SubscriptionCards.tsx`) and draws NO `stageDetail` cards, so `FORM_SECTIONS` is gone. A repeat now means a card was added twice to `ProfileTab`; `subscriptionView.test.ts` pins his card order. ⚠️ The teal overview strip restating Next order is NOT that bug — it is Brandon's overview |
 | The order history table mangles its rows on a narrow window | §5.45 — `.cc-pt .otable`'s `min-width: 720px`. Without it the table squeezes instead of scrolling inside `.scroll-x` and the Items cell collapses to one word per line. Reproduce at **1100**, where the 380px comms rail leaves the main column at ~672px — at 1440 it fits and looks correct whatever is broken |
 | The Cardinal stock page / "where is Inventory?" | §5.39i — `/orders?view=stock`, one table with category chips, `components/orders/SkuTrackerView.tsx`. OOP price is the board's column, never `cost × 1.25`; Status sorts by the VERDICT, not the raw label; the order sidebar is hidden there by design |

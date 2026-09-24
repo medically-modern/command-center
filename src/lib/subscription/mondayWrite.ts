@@ -6,6 +6,7 @@ import type { Patient } from "./workflow";
 import { mrRungForExpiry } from "./mrStatus";
 import { appendNoteEntry, stampNoteEntry } from "../shared/noteStamp";
 import { EXTRA_COL, extrasRefusals, type ExtrasEdit } from "./profileExtras";
+import { resolveFaxParachuteWrite } from "./faxParachute";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -205,10 +206,16 @@ export async function sendPatientToMonday(
     tasks.push({ label: "MN Expiry (from Visit Date)", columnId: COL.mnExpiry, value: { date: newExpiry }, fn: () => writeDate(p.id, COL.mnExpiry, newExpiry) });
   }
 
-  // Fax / Parachute
-  const faxVal = p.faxParachuteEdited ?? p.faxParachute;
-  if (faxVal)
-    tasks.push({ label: "Fax/Parachute", columnId: COL.faxParachute, value: { index: faxVal === "Parachute" ? 1 : 0 }, fn: () => writeStatusIndex(p.id, COL.faxParachute, faxVal === "Parachute" ? 1 : 0) });
+  // Fax / Parachute — resolved from the LABEL, live board first (`faxParachute.ts`).
+  // This was `faxVal === "Parachute" ? 1 : 0`, which rewrote every Email and
+  // Dashboard patient to Fax on save. A value the board cannot name is left
+  // alone; a rep's pick it cannot hold refuses the send here, before any write.
+  const faxPlan = await resolveFaxParachuteWrite(p);
+  if (faxPlan.action === "refuse") throw new Error(faxPlan.reason);
+  if (faxPlan.action === "write") {
+    const faxIdx = faxPlan.index;
+    tasks.push({ label: "Fax/Parachute", columnId: COL.faxParachute, value: { index: faxIdx }, fn: () => writeStatusIndex(p.id, COL.faxParachute, faxIdx) });
+  }
 
   // Patient screen only — see `buildExtrasTasks`. Rides the SAME verified
   // transaction, so the Order details card and the Contacts block land (or

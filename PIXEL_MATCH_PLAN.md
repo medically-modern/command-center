@@ -282,7 +282,8 @@ Found while building, and decided without asking — each is in CLAUDE.md §5.51
   triggers anything; one webhook fires on every column change, as every existing save already does.
 
 Not fixed, and reported: every Subscription send turns Fax / Parachute "Email" or "Dashboard" into
-"Fax" (10 patients on 2026-09-24); Lifetime revenue has no column.
+"Fax" (10 patients on 2026-09-24; **fixed separately the same day**, see CLAUDE.md §5.51); Lifetime
+revenue has no column.
 
 ### Phase 2 — Subscription › Orders and the Onboarding view *(medium)*
 - **Orders:**
