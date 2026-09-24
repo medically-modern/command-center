@@ -4,8 +4,12 @@
  *
  *  · the STAGE pill — the four onboarding stages light green, Subscription
  *    dark green, Inactive red, Unmatched grey (Brandon's mockup). The name is
- *    the patient screen's: *Medical Necessity*, not the mockup's *Medical
- *    Evaluation* (COMMS_INBOX_PLAN.md §9.3).
+ *    *Medical Necessity*, not the mockup's *Medical Evaluation*
+ *    (COMMS_INBOX_PLAN.md §9.3), and it comes from the gateway's
+ *    `STAGE_PILLS`. ⚠️ The patient screen's stepper reads "Medical
+ *    Evaluation" from 2026-09-24 (pixel-match Phase 2); this pill was left
+ *    alone with the rest of Communications (Josh: "leave communcaitons
+ *    alone"), so the two screens now name that stage differently.
  *  · the KIND edge — what opened the item: a text blue, a missed call orange, a
  *    voicemail purple.
  */

@@ -305,6 +305,37 @@ revenue has no column.
     - A grey *Read-only* chip.
     - *Open <tool>*.
 
+#### Phase 2 — as built (2026-09-24)
+Built as planned above, with the visuals-only rule applied throughout: every fact on the order card
+is the orders slice's own rule, and nothing about any writer changed. Details in CLAUDE.md §5.51c.
+
+Found while building, and decided without asking — each is in CLAUDE.md §5.51c:
+- **"Medical Evaluation" is on the patient screen only** — the stepper and the info strip. The
+  Communications Inbox pill still says "Medical Necessity" (*"leave communcaitons alone"*), and so do
+  System Management's search rows, because their label is shared with the Communications
+  find-a-patient pane. §3's "across the wrapper … inbox stage pill, search chips" is therefore
+  narrowed to the stepper and the strip.
+- **Shipments are tracking numbers, not his per-item boxes.** His `shipmentsOf` guesses which items
+  went in which box; the board holds no such data (§7). Items go inside a box only when there is one
+  box and nothing still to come.
+- **Pre-tracking orders** (shipped before Cardinal records began) get a grey "Shipped · no tracking"
+  pill, no box and no tracker, and aren't counted as open. His mockup calls these "Ordered via DDP";
+  we don't know that of ours, so the card doesn't say it.
+- **The swap sentence** ("can be swapped below") appears only where the swap really is: an open
+  order, for somebody with Adjust orders.
+- **Kept, not in his mockup:** *Open on Orders* on the selected order (the old rows' door to placing,
+  the cash-pay card and the full details), and the record picker on the Onboarding view (his sample
+  has one record per stage; ours can have several).
+- **One chip his two don't cover:** a live record opened on a step the patient already passed reads
+  "Live record · today's values" — it is neither a snapshot nor where the patient is.
+- **His stage sub-line** ("as it looked when the patient left it") is only true of a completed
+  record, so on a live one it says the tool shows today's values.
+- **His `.pill.lightgreen`** is never styled in his file; it is drawn light green.
+- **Fixed on the way:** Tailwind's own `outline` utility matched his `.btn.outline` and drew a 3px
+  black ring on every outline button on the patient screen, two of them since they shipped.
+
+Not built: nothing from the Phase 2 list above.
+
 ### Phase 3 — the shell *(medium)*
 - **Header:** his tabs, badge, Users and gear, measured against his CSS. The Stage Manager tab isn't
   in his header, and stays for the people you granted it (CLAUDE.md §5.41).

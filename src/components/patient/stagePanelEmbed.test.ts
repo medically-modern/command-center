@@ -86,6 +86,15 @@ describe("which tools a record has been through", () => {
     }
   });
 
+  it("⚠️ 'passed' (the tab's check) needs POSITIVE evidence — never an unreadable advancer", () => {
+    const at = subStagesFor(item({ stageAdvancerText: "Confirm Receipt" }));
+    expect(at.filter((s) => s.passed).map((s) => s.key)).toEqual(["Evaluate MN", "Send Request"]);
+    expect(subStagesFor(item({ isCompleted: true, stageAdvancerText: "x" })).every((s) => s.passed)).toBe(true);
+    // A blank or unknown advancer reaches everything (nothing greyed out) and
+    // passes NOTHING — a check there would claim steps nobody saw done.
+    expect(subStagesFor(item({ stageAdvancerText: "" })).some((s) => s.passed)).toBe(false);
+  });
+
   it("opens on where the patient is, else the last step they reached", () => {
     expect(defaultSubStage(subStagesFor(item({ stageAdvancerText: "Chase Clinicals" })))).toBe("Chase Clinicals");
     expect(defaultSubStage(subStagesFor(item({ isCompleted: true, stageAdvancerText: "x" })))).toBe("Doctor Appointment");

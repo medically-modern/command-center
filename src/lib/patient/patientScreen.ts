@@ -90,7 +90,12 @@ export interface MacroStage {
 
 export const MACRO_STAGES: readonly MacroStage[] = [
   { key: "intake", label: "Intake", boards: [18392794310, 18406352652] },
-  { key: "mn", label: "Medical Necessity", boards: [18406060017] },
+  /* "Medical Evaluation" — Brandon's name for the stage, and the board's own
+     (pixel-match Phase 2; Josh, 2026-09-24: "medical eval … yes go forward").
+     It was "Medical Necessity" until then. ⚠️ The Communications Inbox's stage
+     pill still says "Medical Necessity": that word comes from the gateway
+     (`commsInboxRules.STAGE_PILLS`), and Communications is left as it is. */
+  { key: "mn", label: "Medical Evaluation", boards: [18406060017] },
   { key: "insurance", label: "Insurance", boards: [18410601299] },
   { key: "welcome", label: "Welcome Call", boards: [18410804557] },
 ] as const;
@@ -248,6 +253,63 @@ export function snapStateLabel(item: DossierItem | null): string {
   if (item.isStuck) return "Stuck — out of the pipeline until a manager moves them back";
   if (item.isProposedStuck) return "Live — stuck proposed, waiting on a manager's decision";
   return "Live — the patient is here now";
+}
+
+/**
+ * Brandon's stamp chip over the snapshot (pixel-match Phase 2): green
+ * "Snapshot · as it looked when … was left" or blue "Live — the patient is
+ * here now", in his colours, with `snapStateLabel`'s words.
+ *
+ * ⚠️ One case his sample data never meets, and ours does every day: a LIVE
+ * record opened on a step the patient has already passed. It is not a
+ * snapshot — Monday keeps no per-step history, so the values are today's — and
+ * it is not where the patient is, so neither of his two chips is true of it.
+ * It says "Live record · today's values", and the line under the tool carries
+ * the rest (§5.38's per-board granularity).
+ */
+export interface SnapStamp {
+  tone: "green" | "blue" | "amber" | "red";
+  icon: "check" | "live" | "alert";
+  text: string;
+}
+
+export function snapStamp(
+  item: DossierItem | null,
+  tool: { current: boolean; passed: boolean } | null,
+): SnapStamp | null {
+  if (!item) return null;
+  if (item.isCompleted) return { tone: "green", icon: "check", text: snapStateLabel(item) };
+  if (item.isStuck) return { tone: "red", icon: "alert", text: snapStateLabel(item) };
+  if (item.isProposedStuck) return { tone: "amber", icon: "alert", text: snapStateLabel(item) };
+  if (tool && !tool.current && tool.passed) return { tone: "blue", icon: "live", text: "Live record · today's values" };
+  return { tone: "blue", icon: "live", text: snapStateLabel(item) };
+}
+
+/**
+ * The line under Brandon's stage heading: how many steps, where the stage
+ * stands, and what the tool below is showing.
+ *
+ * ⚠️ His says "each sub-stage below is the tool as it looked when the patient
+ * left it" for every stage. That is true of a COMPLETED record only — a live
+ * one shows today's values (§5.38) — so the tail follows the record.
+ */
+export function stageSubline(
+  step: StageStep,
+  subStepCount: number,
+  item: DossierItem | null,
+): string {
+  const where =
+    step.state === "done" ? "all complete"
+      : step.state === "todo" ? "not started"
+        : step.state === "stuck" ? stepCaption(step).toLowerCase()
+          : "in progress";
+  const count = subStepCount > 1 ? `${subStepCount} steps` : "";
+  const tail = !item
+    ? ""
+    : item.isCompleted
+      ? "the tool below is as the patient left it — read-only"
+      : "the tool below shows today's values — read-only";
+  return [count, where, tail].filter(Boolean).join(" · ");
 }
 
 /**

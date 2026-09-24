@@ -57,6 +57,14 @@ export interface OverviewFact {
   note?: string;
   /** Rendered in the warning colour: only ever a next order that has passed. */
   warn?: boolean;
+  /** Next order only: whole ET days until it (negative once it has passed),
+   *  or null when the date is unreadable. The Orders tab's "places in N days"
+   *  chip reads it (pixel-match Phase 2); the Profile strip does not. */
+  days?: number | null;
+  /** Subscription only: the cadence on its own. Brandon's Upcoming order strip
+   *  shows "Sensors · 90-Days" where the Profile strip shows
+   *  "Sensors · First Order · 90-Days" (pixel-match Phase 2). */
+  frequency?: string;
 }
 
 /** "2026-09-26" → "9/26/2026"; anything else passes through verbatim.
@@ -144,10 +152,11 @@ export function subscriptionOverview(
       value: usDate(nextRaw),
       note: dueText(days),
       warn: days !== null && days < 0,
+      days,
     },
     /* "Sensors · First Order · 90-Days" — the order type and the cadence ride
        as the quieter clause, Brandon's `<span class="xs muted">`. */
-    { label: "Subscription", value: sub, note: [type, freq].filter(Boolean).join(" · ") },
+    { label: "Subscription", value: sub, note: [type, freq].filter(Boolean).join(" · "), frequency: freq },
     { label: "First order", value: first },
   ];
 }

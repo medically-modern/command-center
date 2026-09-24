@@ -76,14 +76,36 @@ describe("fetchOrdersForPatient", () => {
 
 describe("⚠️ the view reads the ORDERS page's own rules, never a second copy", () => {
   it("stage and lines come from the shared modules", () => {
-    const text = src("src/components/patient/SubscriptionView.tsx");
     // The group is not the stage on that board and the API status is (§5.35),
     // so a local reading of the status columns would disagree with the page a
-    // row opens.
-    expect(text).toMatch(/from "@\/lib\/orders\/workflow"/);
-    expect(text).toContain("orderStage(o)");
-    expect(text).toMatch(/orderLines/);
-    expect(text).toMatch(/StagePill/);
+    // row opens. From pixel-match Phase 2 the pill words live in
+    // `lib/patient/orderCard.ts`, which may only turn the slice's answer into
+    // Brandon's vocabulary.
+    const rules = src("src/lib/patient/orderCard.ts");
+    expect(rules).toMatch(/from "@\/lib\/orders\/workflow"/);
+    expect(rules).toContain("orderStage(o)");
+    expect(rules).toContain("cardinalStatus(o.apiStatus, o.holdReason, o.apiMessage)");
+    const card = src("src/components/patient/PatientOrderCard.tsx");
+    expect(card).toMatch(/orderLines\(o\)/);
+    expect(card).toMatch(/orderTimeline\(o\)/);
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    expect(view).toMatch(/orderLines\(o\)/);
+    expect(view).toMatch(/<PillView pill=\{orderPill\(o\)\} \/>/);
+    // ⚠️ No file on this screen reads a status column itself.
+    for (const text of [rules, card, view]) {
+      expect(text).not.toMatch(/apiStatus\s*(===|!==|\.toLowerCase|\.includes|\.match)/);
+      expect(text).not.toMatch(/\.test\(\s*o\.(apiStatus|orderStatus)/);
+    }
+  });
+
+  it("⚠️⚠️ the selected order is drawn from the FULL read, never a history row", () => {
+    // A history row is LIST columns (§5.25): the signed-by, the substitution
+    // and the ship-to it did not ask for read "", the same as a blank cell.
+    const view = src("src/components/patient/SubscriptionView.tsx");
+    expect(view).toContain("usePatientOrderDetail(selRow?.id ?? null)");
+    expect(view).toMatch(/detail\.order && detail\.order\.id === selRow\.id \? detail\.order : null/);
+    expect(view).toMatch(/<PatientOrderCard key=\{full\.id\} order=\{full\}/);
+    expect(view).not.toMatch(/<PatientOrderCard[^>]*order=\{selRow\}/);
   });
 
   it("⚠️ rows are marked PARTIAL — a list row must never render as an open order", () => {
@@ -324,9 +346,13 @@ describe("⚠️ Expected items is WIRED", () => {
     /* His `upcomingOrder` is Next order · Subscription · Expected items ·
        Reorder form. Status is not lost: it is the first fact on the Profile
        tab's own overview strip, which `subscriptionOverview` still returns. */
-    expect(view()).toMatch(
-      /f\.label !== "First order" && f\.label !== "Status"/,
-    );
+    const text = view();
+    const start = text.indexOf("function UpcomingOrder(");
+    const body = text.slice(start, text.indexOf("\nfunction ", start + 1));
+    const labels = [...body.matchAll(/<div className="k">([^<]+)<\/div>/g)].map((m) => m[1]);
+    expect(labels).toEqual(["Next order", "Subscription", "Expected items"]);
+    expect(body).toContain("{reorder && <ReorderFact form={reorder} />}");
+    expect(body).not.toMatch(/"Status"|"First order"/);
     expect(src("src/lib/patient/subscriptionOverview.ts")).toMatch(
       /label: "Status"/,
     );

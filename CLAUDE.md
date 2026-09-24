@@ -6784,7 +6784,9 @@ below it. Verified to fail when a `mondayWrite` import is added.
   refused for the call log, and Josh declined again for the Care Coordinator card (§5.30c).
 - ⚠️ Rows are mapped with **`partial: true`** — they come from `LIST_COLUMN_IDS`, so every column
   the list did not ask for is `""`, which is indistinguishable from a blank board cell (§5.25). A
-  row here is only ever a summary; clicking opens the real order on `/orders`.
+  row here is only ever a summary. ⚠️ **From 2026-09-24 clicking a row shows it in the card above
+  (§5.51c)**, and that card is read at FULL width by `usePatientOrderDetail` — never drawn from the
+  row. `/orders` is one click away from the card's header.
 
 ⚠️ **The stage on a row comes from `orderStage` + `StagePill`, the same pair the orders page wears
 — never a second reading of the status columns.** The group is not the stage on that board and the
@@ -7246,7 +7248,9 @@ that did not come from it (§9).
 never a second reading of the status columns — the group is not the stage on that board and the API
 status is (§5.35), so a local rule would disagree with the page the card's own button opens. The
 card is a SUMMARY: everything that acts on an order stays on `/orders`, because each of those
-writes.
+writes. ⚠️ **One exception from 2026-09-24 (§5.51c): the backorder swap**, which is `/orders`' own
+Substitution card rendered unchanged, behind `adjustOrders`. Placing, the cash-pay card and the full
+details stay on `/orders`.
 ⚠️ The orders read moved up to `SubscriptionView` and runs for the whole view rather than per tab,
 so the strip has a First order and the tab badge carries the count before a rep presses it (as
 Brandon draws it). That is still "on open, never on render" — the view is mounted only when
@@ -7685,8 +7689,8 @@ completed record is never a lead whatever group it sits in.
 (out of the pipeline), a **proposal** is amber *"Stuck proposed"* (a manager decision nobody has
 made). One word for both tells a rep a patient has left when they are sitting in somebody's queue.
 ⚠️ **Two separators, and they are his**: a bracketed note — *"9/18/2026 (4 days ago)"* — reads as
-an aside about the value, while the Stage fact's dot-led `sub` — *"Medical Necessity · Chase
-Clinicals"* — reads as the next part of it. `note` and `sub` are separate fields so the view
+an aside about the value, while the Stage fact's dot-led `sub` — *"Medical Evaluation · Chase
+Clinicals"* (*"Medical Necessity"* until 2026-09-24, §5.51c) — reads as the next part of it. `note` and `sub` are separate fields so the view
 cannot pick the wrong one.
 
 **Four facts left the strip, and none is lost.** `patientScreen.infoFacts` is **DELETED** — it
@@ -11152,6 +11156,118 @@ digits, `totalsKey`) ⇄ the gateway's `contactTotalsRules.foldTotals` — never
 Tests: `lib/patient/callTotals.test.ts` (all-or-nothing and archive-off each verified to fail when
 reverted), `components/patient/CallCountsCard.test.tsx`, `components/patient/patientCommsColumn.test.tsx`.
 
+### 5.51c Brandon's pixel-match, Phase 2 — the Orders tab and the Onboarding header (Sep 2026)
+Josh, 2026-09-24: *"Move forward with pahse 2"*, under §5.51's rules — visuals only, no backend
+change, the board's own labels. Plan: [`PIXEL_MATCH_PLAN.md`](PIXEL_MATCH_PLAN.md) Phase 2.
+**No board change; app only.** Files: `lib/patient/orderCard.ts` (+ tests),
+`components/patient/PatientOrderCard.tsx`, `hooks/patient/usePatientOrderDetail.ts`,
+`components/patient/{SubscriptionView,OnboardingView}.tsx`,
+`lib/patient/{patientScreen,stagePanels,infoStrip,subscriptionOverview}.ts`,
+`pages/patient/redesign.css`.
+
+**Subscription › Orders is his `ordersPage`:** the Upcoming order strip (a *"places in N days"* chip
+in its header, 0–14 days out only; Subscription reads "Sensors & Supplies · 90-Days") → the SELECTED
+order (the latest by default; *Back to latest*; *"N orders still open"* when more than one) → Order
+history, newest first, where clicking a row shows it in the card above.
+- ⚠️⚠️ **The card is read at FULL WIDTH**, never drawn from the history row:
+  `usePatientOrderDetail` → `fetchOrderById` + `mondayItemToOrder`. A list row is `partial` (§5.25),
+  and the card reads the backordered list and the tracking numbers, which a row lacks. Incident
+  guards: read on selection only, a module cache that paints and then always re-reads, one request
+  in flight per id with the `finally` on the chained promise, a `want` ref, failures never cached.
+- ⚠️ `null` means "the latest", never a remembered id — a newer order arriving on the next read is
+  what the tab then shows. A picked row is scrolled into view, or a click low in the table looks
+  like nothing happened.
+- *Open on Orders* is kept (not in his mockup): it is the old rows' door to placing, the cash-pay
+  card and the full details. Same link as before.
+
+⚠️⚠️ **Every FACT on the card is the orders slice's rule.** `orderStage` + `cardinalStatus` decide;
+`orderPill` only turns their answer into his words (Delivered · Partially shipped · In transit ·
+Backordered · On hold — <reason> · Waiting to be placed …), and a Cardinal label it has no rule for
+is printed verbatim (§5.20). `orderHeadline`, `orderTimeline`, `orderLines`, `backorderedEntries`,
+`trackingUrl` and `isOpenStage` are reused, never restated.
+
+⚠️⚠️ **His mockup INVENTS which items went in which box; the board has no per-line shipment data**
+(PIXEL_MATCH_PLAN.md §7). So a shipment is a TRACKING NUMBER, the items are drawn inside a box only
+when there is exactly one box and nothing is still to come, and a date or signature goes on a box
+only when the order has one box. Guessing would be a confident wrong answer on the one call where a
+patient asks what arrived.
+- ⚠️ **"Still to come" is CARDINAL's verdict** — partial, backordered or a substitution — not the
+  stage. A partially shipped order's stage is `shipped` and `isOpenStage` calls it closed, so a rule
+  keyed on open stages never drew the part that hadn't shipped. The first cut did exactly that; its
+  test caught it.
+- ⚠️ **The backordered column is a daily sweep on EVERY order** (§5.35), so it is read only on an
+  open order or beside Cardinal's own partial / backordered / substitution verdict. On a finished
+  order it is history.
+- ⚠️ **Pre-tracking orders** (§5.35's 609 rows — shipped, no API Status, no ship date):
+  `isPreTracking` is the slice headline's own condition (*"Before Cardinal records began — no
+  tracking on file"*), and `orderCard.test.ts` holds the two together. A grey *"Shipped · no
+  tracking"* pill, no box, no tracker, and not counted as open. His mockup calls its version of
+  these *"Ordered via DDP"*; we don't know that of ours, so the card doesn't say it.
+
+⚠️⚠️ **The backorder swap is `/orders`' own Substitution card, unchanged** — its pick IS the email to
+Cardinal (§5.35) — rendered when the order has a substitution story, and only for somebody with
+**Adjust orders** (the signed-in person, never a borrowed view, §5.39h). Without it the order still
+reads in full, the backordered set is named in the still-to-come block, and on an open order one
+grey line says who can swap. The sentence *"the backordered set can be swapped below"* appears only
+where the swap really is: the card sends from an OPEN order alone. `patientScreen.test.ts` lists it
+as the screen's fourth write carve-out.
+
+**The tracker** is the slice's own steps (five, or six for a return or a cancellation), the columns
+set inline. A step Cardinal reports partly done wears the class `part` — ⚠️ **never `note`**:
+`.cc-pt .note` is the notes card's box (§5.39c3), and that collision drew a grey box inside the
+tracker until the render caught it. With no current step, only the LAST reached one wears the ring.
+His `.pill.lightgreen` is named in his file and never styled, so it is drawn as the light green its
+name asks for.
+
+**The Onboarding header is his `stageSnapshot`:**
+- The stepper's second stage reads **"Medical Evaluation"** (`MACRO_STAGES`), and so does the info
+  strip's Stage fact. ⚠️ Three places still say *"Medical Necessity"*: the Communications Inbox pill
+  (the gateway's `STAGE_PILLS`), and — through one shared `systemMgmt/boardTone.BOARD_STAGE_LABEL` —
+  System Management's search rows and the Communications hub's find-a-patient pane. Communications is
+  left alone (Josh), and that label is shared with it.
+- A stage heading with a sub-line (`stageSubline`: *"5 steps · in progress · the tool below shows
+  today's values — read-only"*). ⚠️ His says *"as it looked when the patient left it"* for every
+  stage; that is true of a COMPLETED record only (§5.38), so the tail follows the record.
+- *"N days here"* on the stage the patient is in — amber, red past 14 (his thresholds) — from
+  `infoStrip.daysInStage`, the Stage start fact's own count, so the chip and the strip can't disagree.
+- The sub-step tabs are his `segc snap-tabs`, inside the snapshot header (the separate tool row is
+  gone): a check on a step passed, a dot on the current one, unreached steps disabled.
+  `SubStageStep.passed` needs positive evidence — a finished record, or a step before the item's
+  own — so an unrecognised advancer marks nothing passed.
+- The stamp chip (`snapStamp`): green completed · red stuck · amber proposed · blue *"Live — the
+  patient is here now"* — plus a case his sample data never meets: a LIVE record opened on a step
+  already passed is not a snapshot and not where the patient is, so it reads *"Live record · today's
+  values"*.
+- A grey Read-only chip and *"Open <tool>"*. A completed record still opens in review mode (the link
+  carries `?completedStage=`, §5.38); the tooltip says so, where the label used to say *"Open
+  read-only"*.
+- ⚠️ The record picker keeps a row of its own (`.snap-recs`, *"N records on this stage"*): his sample
+  has one record per stage and ours does not (§5.42).
+- The tool header is his *"📋 <tool> · <patient name>"*.
+
+⚠️⚠️ **TAILWIND HAS A UTILITY NAMED `outline`, AND IT MATCHES BRANDON'S `.btn.outline`** (found by
+rendering). Tailwind compiles `.outline { outline-style: solid }`, and the default width drew a 3px
+currentColor ring that read as a heavy black border — on the new *Open <tool>* and on two buttons
+that had carried it since they shipped (the reorder form's *Open form*, the patient screen's *Try
+again*). It is cancelled under `.cc-pt`, with a `:focus-visible` ring of its own, because author CSS
+outranks the browser's focus style and cancelling alone would leave keyboard users nothing.
+`outlineCollision.test.ts` pins both. ⚠️ **Check any other bare class of his against Tailwind before
+porting it** — `.container`, `.hidden`, `.block`, `.table` and `.grow` would all do the same.
+
+**Rendered in a browser before shipping** (a throwaway harness with fake data, not committed): Orders
+at 1440, 1100, dark, read-only, the 480px hub pane, loading and no orders; Onboarding at 1440, 1100,
+dark, a passed step and the 480px pane. No horizontal overflow and no console errors in any of them.
+
+**Keep-in-agreement:** `orderCard.ts` ⇄ the orders slice (`orderStage` · `cardinalStatus` ·
+`orderHeadline` · `backorderedEntries` · `isOpenStage`) — never a second reading of the status
+columns · `isPreTracking` ⇄ `orderHeadline`'s pre-tracking branch · the tracker's `part` class ⇄
+`.cc-pt .note`, which it must never reuse · `MACRO_STAGES`' "Medical Evaluation" ⇄ the Inbox pill and
+`BOARD_STAGE_LABEL`, deliberately different today · `daysInStage` ⇄ `infoStripFacts`' Stage start —
+one computation · `SubStageStep.passed` ⇄ `snapStamp`'s "Live record" case. Tests:
+`orderCard.test.ts`, `ordersTab.test.tsx`, `patientOrderCard.test.tsx`, `usePatientOrderDetail.test.tsx`,
+`onboardingHeader.test.tsx`, `outlineCollision.test.ts`, `patientScreen.test.ts`, `infoStrip.test.ts`,
+`stagePanelEmbed.test.ts`, `subscriptionView.test.ts`.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -12288,6 +12404,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The text composer is blocked and the patient never replied STOP | §5.46e — their **Can Text** column reads **No**; the banner says so and names where to change it. ⚠️ It blocks on an EXPLICIT No only — a blank is unknown (§5.31d) and blocks nobody. A STOP reply outranks the column and shows its own message |
 | The patient screen's Email is blank, or a pencil won't save | §5.46g — `lib/patient/contactEdit.ts`. Blank on EVERY patient ⇒ `emailColumns` dropped out of `dossierApi.dossierCols`. A greyed pencil says why in its tooltip: no `editProfile`, a **completed** record (refused by design, §5.38), or a board with no such column. A refusal under the box is the shape test — the email one is permissive because it must accept `<digits>@rcfax.com`. ⚠️ Saving a NUMBER also clears Can Text on Welcome Call and Subscription; that is §5.31d's rule, not a bug |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
+| The Orders tab shows the wrong order, a stale one, or a click on a history row does nothing visible | §5.51c — the card shows `picked ?? latest`, where `null` means "the latest" (never a remembered id), and a click scrolls the card into view. The card is read at FULL width by `usePatientOrderDetail`, never drawn from the row; a card stuck on "Reading this order…" means `fetchOrderById` has not answered, and a failure offers Try again |
+| An order card's shipments look wrong — no box, one box for everything, or "Shipped · no tracking" | §5.51c — `lib/patient/orderCard.ts`. A shipment is a TRACKING NUMBER, because the board has no per-line shipment data; items sit inside a box only when there is one box and nothing still to come. "Still to come" is Cardinal's verdict (partial · backordered · substitution), not the stage. "Shipped · no tracking" is a pre-tracking row (§5.35's 609), matching the slice headline's own condition |
+| The backorder swap is missing from a patient's Orders tab | §5.51c — it is `/orders`' own Substitution card, rendered only when the order has a substitution story AND the signed-in person holds **Adjust orders**. Without the ability, an open order shows one grey line saying who can swap. "Can be swapped below" appears only on an OPEN order, because the card sends from nowhere else |
+| A button on the patient screen has a heavy black border | §5.51c — Tailwind's `outline` utility matches Brandon's `.btn.outline` class name. `.cc-pt .btn.outline { outline-style: none }` cancels it; if it is back, `outlineCollision.test.ts` should have failed. Any other bare class of his that is also a Tailwind utility name does the same |
+| The patient screen says "Medical Evaluation" and the Inbox or System Management says "Medical Necessity" | §5.51c — deliberate for now. The stepper reads `MACRO_STAGES`; the Inbox pill comes from the gateway's `STAGE_PILLS`, and System Management's rows share `BOARD_STAGE_LABEL` with the Communications find-a-patient pane. Communications is left alone (Josh), so those two keep the old name |
 | The Subscription profile won't save, or says "Read-only" | §5.45b — the Send is the green button in the bar pinned to the BOTTOM of the Profile tab (the patient screen and the hub's right pane alike). `editProfile`, gated TWICE (`useAbility` on the bar, `if (!canEdit) return` in the handler). Read-only is the correct state without it, and the lock note names the switch. A save that fails with "Queued — Monday is still writing this save" is `GatewayPendingError`: durably queued, WILL run, **do not press it again** (§5.2). Since 2026-09-24 the visit date and MN documents ARE on the tab (§5.51): the Send runs three steps and its message names the one that failed — the visit date goes through `saveVisitDateVerified`, a file that failed stays queued |
 | A new Subscription profile field (Frequency, a quantity, a Contact) doesn't save, or saves something the rep didn't touch | §5.51 — `lib/subscription/profileExtras.ts`. Only the DELTA is written (`diffExtras`), so an untouched field is never re-written; a refusal (a phone Monday can't read, a quantity that isn't a whole number) stops the Send before any write. A contact that saved but reads blank means its label id is not on the live column — the ids come from `useStatusOptions`, never code |
 | A select on the Subscription profile offers the wrong list | §5.51 — every list is the one `/subscription` already offered (`subscription/workflow.ts`, the live infusion sets, `usePayerOptions`), never the mockup's. A value the list lacks is shown as the CURRENT one (`withCurrent`), not replaced. 75-Days is Aetna-only (§5.31) |

@@ -39,21 +39,33 @@
  * `saveVisitDateVerified` (MN Expiry AND the MR rung, §5.36), and MN documents
  * through the same `uploadFileToColumn` `/subscription`'s panel uses.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
-import { AlertTriangle, ArrowUpRight, Copy, Eye, Package, RotateCcw, User } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowUpRight,
+  Clock,
+  Copy,
+  Eye,
+  Loader2,
+  Package,
+  RotateCcw,
+  User,
+} from "lucide-react";
 import type { DossierItem } from "@/lib/commsHub/dossier";
 import { subscriptionOverview, type OverviewFact } from "@/lib/patient/subscriptionOverview";
 import { mondayItemToOrder } from "@/lib/orders/mondayMapping";
-import { fmtDate, orderStage, type Order } from "@/lib/orders/workflow";
-import { orderHeadline } from "@/lib/orders/headline";
+import { fmtDate, type Order } from "@/lib/orders/workflow";
 import { orderLines } from "@/lib/orders/skuJoin";
-import { StagePill } from "@/components/orders/pills";
+import { orderIsSettled, orderNumberLabel, orderPill, selectedOrderSentence } from "@/lib/patient/orderCard";
+import { PatientOrderCard, PillView } from "@/components/patient/PatientOrderCard";
 import { buildReorderForm, responseTone, type ReorderForm } from "@/lib/patient/reorderForm";
 import { expectedItems } from "@/lib/patient/expectedItems";
 import { usePatientOrders } from "@/hooks/patient/usePatientOrders";
+import { usePatientOrderDetail } from "@/hooks/patient/usePatientOrderDetail";
 import { useSubscriptionRecord } from "@/hooks/patient/useSubscriptionRecord";
 import { useMnDocFiles } from "@/hooks/patient/useMnDocFiles";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
@@ -207,6 +219,7 @@ export function SubscriptionView({
         />
       ) : (
         <OrdersTab
+          key={item.itemId}
           orders={orders}
           loading={loading}
           error={error}
@@ -653,20 +666,28 @@ function SendBar({
 }
 
 /**
- * Brandon's `ordersPage`: the **upcoming order**, then the **latest order**,
- * then the history table (§5.46b).
+ * Brandon's `ordersPage` (pixel-match Phase 2): the **upcoming order**, then
+ * the **selected order** as his order card — the latest by default — then the
+ * history table, where clicking a row shows that order above.
  *
- * Josh, 2026-09-22: *"Order tab should look identical to the redesign view,
- * like: Should show the upcoming order and latest order information on top"*.
- * What shipped was the history table alone, so the answer to the question this
- * tab exists for — *where is my order, and when is the next one* — was a row a
- * rep had to find and read across.
+ * Josh, 2026-09-22: *"Order tab should look identical to the redesign view"*,
+ * and 2026-09-24, on this phase: *"its so so critical that we are just
+ * changing the visuals and not the backend or label options"*. So every fact
+ * on the card is the orders slice's own rule (`lib/patient/orderCard.ts` maps
+ * their answers to his pill words), and the one control that writes — the
+ * backordered-set swap — is `/orders`' own Substitution card, reused and gated
+ * on Adjust orders exactly as there.
  *
- * ⚠️ **They are two different orders and the card says which.** The upcoming
- * one is the Subscription board's NEXT ORDER DATE — a box that does not exist
- * yet — and the latest is the most recent row on the New Order Board. Merging
- * them into one "current order" card is how a rep tells a patient their next
- * delivery has shipped.
+ * ⚠️ **The upcoming and the selected order are two different orders, and each
+ * card says which.** The upcoming one is the Subscription board's NEXT ORDER
+ * DATE — a box that does not exist yet — and the selected one is a row on the
+ * New Order Board. Merging them into one "current order" card is how a rep
+ * tells a patient their next delivery has shipped.
+ *
+ * ⚠️⚠️ **The card is drawn from ONE full-width read, never from a history
+ * row** (`usePatientOrderDetail`). The history rows are LIST columns, so a
+ * signed-by, a substitution or a ship-to they did not ask for reads "" — the
+ * same as a blank board cell (§5.25 · §5.35). The rows are only ever a summary.
  */
 function OrdersTab({
   orders,
@@ -688,9 +709,31 @@ function OrdersTab({
   /** The reorder form, also the Subscription board's own (§5.46c). */
   reorder: ReorderForm | null;
 }) {
-  // ⚠️ A patient with no number on file gets an honest sentence, never an
-  // unfiltered board read — that would hand one patient's screen every order in
-  // the company (`fetchOrdersForPatient` fails closed for the same reason).
+  const canAdjust = useAbility("adjustOrders");
+  // Newest first — "where is my order" means the latest one. Ties keep Monday's
+  // own order, which is item id, i.e. the order in which they were created.
+  const rows = useMemo(
+    () => (orders ? [...orders].sort((a, b) => (b.orderDate || "").localeCompare(a.orderDate || "")) : []),
+    [orders],
+  );
+  /* ⚠️ `null` means "the latest", never a remembered id: when the list is read
+     again and a newer order has arrived, the tab shows THAT one, as Brandon's
+     does. A picked id that is no longer on the list (deleted off the board)
+     falls back to the latest rather than showing nothing. */
+  const [picked, setPicked] = useState<string | null>(null);
+  /* A row is usually clicked well BELOW the card it fills, so the card is
+     brought into view — otherwise the click looks like it did nothing. */
+  const selRef = useRef<HTMLElement | null>(null);
+  const pick = useCallback((id: string | null) => {
+    setPicked(id);
+    window.requestAnimationFrame(() =>
+      selRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" }),
+    );
+  }, []);
+  const latest = rows[0] ?? null;
+  const selRow = (picked ? rows.find((r) => r.id === picked) : undefined) ?? latest;
+  const detail = usePatientOrderDetail(selRow?.id ?? null);
+
   /* ⚠️ The upcoming card rides on EVERY branch below, the failures included:
      it is read from the Subscription board, which this screen already has in
      hand, so "we could not reach the order board" must not also take away the
@@ -732,58 +775,194 @@ function OrdersTab({
       </>
     );
   }
-  if (!orders?.length) {
+  if (!selRow) {
     return (
       <>
         {upcoming}
-        <section className="card pad small muted">
-          No orders on the order board for this number. The first one is created at Final Profile
-          Confirmation.
+        <section className="card pad">
+          <b className="small">No orders on the order board</b>
+          <div className="xs muted">
+            Nothing matched this patient&apos;s number on the New Order Board. The first order is created at
+            Final Profile Confirmation.
+          </div>
         </section>
       </>
     );
   }
 
-  // Newest first — "where is my order" means the latest one. Ties keep Monday's
-  // own order, which is item id, i.e. the order in which they were created.
-  const rows = [...orders].sort((a, b) => (b.orderDate || "").localeCompare(a.orderDate || ""));
+  const isLatest = selRow.id === latest?.id;
+  /* ⚠️ Only the FULL read may say what the order is: the sentence reads the
+     backordered list and the tracking numbers, and a history row that happened
+     to lack one would say "Still in progress" over a part that is stuck. */
+  const full = detail.order && detail.order.id === selRow.id ? detail.order : null;
+  const openCount = rows.filter((r) => !orderIsSettled(r)).length;
+  const sentence = full
+    ? selectedOrderSentence(full, { canSwap: canAdjust })
+    : detail.error
+      ? "This order couldn't be read."
+      : detail.gone
+        ? "This order is no longer on the order board."
+        : "Reading this order from the order board…";
 
   return (
     <>
       {upcoming}
-      <LatestOrder order={rows[0]} />
-      <section className="card">
-      <div className="section-h ordhead">
-        <div>
-          <b className="small">Order history</b>
-          <div className="xs muted">
-            {rows.length} order{rows.length === 1 ? "" : "s"} on the order board · newest first ·
-            click a row to open it
+      <section className="sel-order" aria-live="polite" ref={selRef}>
+        <div className="section-h">
+          <div>
+            <h2>
+              {isLatest ? "Latest order" : `Order ${orderNumberLabel(selRow)}`}
+              {!isLatest && (
+                <span className="xs muted"> · placed {selRow.orderDate ? fmtDate(selRow.orderDate) : "—"}</span>
+              )}
+            </h2>
+            <div className="xs muted">{sentence}</div>
+          </div>
+          <div className="row wrap" style={{ gap: 8, justifyContent: "flex-end" }}>
+            {!isLatest && (
+              <button type="button" className="btn ghost xs" onClick={() => pick(null)}>
+                <ArrowLeft style={{ width: 12, height: 12 }} /> Back to latest
+              </button>
+            )}
+            {openCount > 1 && <span className="chip amber">{openCount} orders still open</span>}
+            {/* Not in his mockup, and kept: every row used to open the order on
+                /orders, and that page is where placing, the cash-pay link and
+                the full details live. One door, so nothing is lost. */}
+            <Link
+              className="btn ghost xs"
+              to={`/orders?orderId=${selRow.id}&from=patient`}
+              title="Opens this order on the Orders page"
+            >
+              Open on Orders <ArrowUpRight style={{ width: 12, height: 12 }} />
+            </Link>
           </div>
         </div>
-      </div>
-      <div className="scroll-x">
-        <table className="otable">
-          <thead>
-            <tr>
-              <th>Order #</th>
-              <th>Created</th>
-              <th>Type</th>
-              <th>Items</th>
-              <th>Status</th>
-              <th>Shipped</th>
-              <th>Delivered</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((o, i) => (
-              <OrderRow key={o.id} order={o} latest={i === 0} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+        {full ? (
+          <PatientOrderCard key={full.id} order={full} canAdjust={canAdjust} />
+        ) : detail.error ? (
+          <div className="ord open">
+            <div className="small">
+              <b>Couldn&apos;t read this order.</b> <span className="muted">{detail.error}</span>
+            </div>
+            <div>
+              <button type="button" className="btn outline xs" onClick={detail.reload}>
+                <RotateCcw style={{ width: 11, height: 11 }} /> Try again
+              </button>
+            </div>
+          </div>
+        ) : detail.gone ? (
+          <div className="ord done small muted">
+            It may have been deleted, or moved off the New Order Board. The history below is from when this
+            tab was opened.
+          </div>
+        ) : (
+          <div className="ord open small muted row">
+            <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} /> Reading this order…
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <div className="section-h ordhead">
+          <div>
+            <b className="small">Order history</b>
+            <div className="xs muted">
+              {rows.length} order{rows.length === 1 ? "" : "s"} on the order board · newest first · click a row
+              to show it above
+            </div>
+          </div>
+        </div>
+        <div className="scroll-x">
+          <table className="otable">
+            <thead>
+              <tr>
+                <th>Order #</th>
+                <th>Created</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th>Status</th>
+                <th>Shipped</th>
+                <th>Delivered</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((o, i) => (
+                <HistoryRow
+                  key={o.id}
+                  order={o}
+                  latest={i === 0}
+                  selected={o.id === selRow.id}
+                  onPick={() => pick(i === 0 ? null : o.id)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </>
+  );
+}
+
+/**
+ * One row of Brandon's history table — click it and the card above shows it.
+ *
+ * ⚠️ The Status pill is `orderPill`, which reads only `orderStage` and
+ * `cardinalStatus` — the orders page's own rules (§5.35) — and only columns a
+ * list row DOES carry, so a row and the card above it cannot name one order
+ * two ways.
+ */
+function HistoryRow({
+  order: o,
+  latest,
+  selected,
+  onPick,
+}: {
+  order: Order;
+  latest: boolean;
+  selected: boolean;
+  onPick: () => void;
+}) {
+  const lines = orderLines(o);
+  return (
+    <tr
+      className={`pick${selected ? " sel" : ""}`}
+      onClick={onPick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onPick();
+        }
+      }}
+      tabIndex={0}
+      aria-selected={selected}
+      title="Show this order above"
+    >
+      <td className="mono">
+        {orderNumberLabel(o).replace(/^#/, "")}
+        {latest && <span className="chip blue latest" style={{ marginLeft: 6 }}>latest</span>}
+      </td>
+      <td>{o.orderDate ? fmtDate(o.orderDate) : "—"}</td>
+      <td>
+        {o.orderType || "—"}
+        {o.subscriptionType && <div className="xs muted">{o.subscriptionType}</div>}
+      </td>
+      <td className="items">
+        {lines.length ? lines.map((l) => `${l.quantity} × ${l.product}`).join(", ") : "—"}
+      </td>
+      <td>
+        <PillView pill={orderPill(o)} />
+      </td>
+      <td>
+        {o.shipDate ? fmtDate(o.shipDate) : "—"}
+        {o.carrier && (
+          <div className="xs muted">
+            {o.carrier}
+            {o.tracking[0] ? ` · ${o.tracking[0]}` : ""}
+          </div>
+        )}
+      </td>
+      <td>{o.deliveryDate ? fmtDate(o.deliveryDate) : "—"}</td>
+    </tr>
   );
 }
 
@@ -794,6 +973,11 @@ function OrdersTab({
  * there is no item for a delivery that has not been created. So it renders
  * even when the order read failed, and it renders "—" rather than borrowing
  * the latest order's date, which would answer a different question.
+ *
+ * His layout, value for value: the date with "(in N days)" beside it, amber
+ * once it has passed; the Subscription with its cadence; the header chip
+ * "places in N days" ONLY inside the fortnight before the order (0–14 days),
+ * never for one already overdue — that is said on the date itself.
  */
 function UpcomingOrder({
   facts,
@@ -805,36 +989,50 @@ function UpcomingOrder({
   expected: string[];
 }) {
   const next = facts.find((f) => f.label === "Next order");
+  const sub = facts.find((f) => f.label === "Subscription");
+  const days = next?.days ?? null;
+  const soon = days !== null && days >= 0 && days <= 14;
   return (
     <section className="card pad left-teal">
       <div className="section-h" style={{ marginBottom: 10 }}>
         <div className="eyebrow">Upcoming order</div>
-        {next?.note && (
-          <span className={`chip${next.warn ? " amber" : ""}`}>{next.note}</span>
+        {soon && (
+          <span className="chip amber">
+            <Clock style={{ width: 11, height: 11 }} /> places {days === 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}
+          </span>
         )}
       </div>
+      {/* ⚠️ Brandon's strip is Next order · Subscription · Expected items ·
+          Reorder form — his `upcomingOrder` carries neither First order nor
+          **Status**, and Status is not lost by dropping it: it is the first
+          fact on the Profile tab's own overview strip, one click away. */}
       <div className="strip upstrip">
-        {facts
-          /* ⚠️ Brandon's strip is Next order · Subscription · Expected items ·
-             Reorder form — his `upcomingOrder` carries neither First order nor
-             **Status**, and Status is not lost by dropping it: it is the first
-             fact on the Profile tab's own overview strip, one click away. The
-             "3 days overdue" chip in the header above already answers the
-             question Status is read for here. */
-          .filter((f) => f.label !== "First order" && f.label !== "Status")
-          .map((f) => (
-            <div className="fact" key={f.label}>
-              <div className="k">{f.label}</div>
-              <div className="v">
-                {f.value || "—"}
-                {f.label !== "Next order" && f.note && (
-                  <span className="xs muted" style={{ marginLeft: 6 }}>
-                    {f.note}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
+        <div className="fact">
+          <div className="k">Next order</div>
+          <div className="v">
+            {next?.value || "—"}
+            {next?.value && next.note && (
+              <span
+                className={`xs ${next.warn ? "warn" : "muted"}`}
+                style={{ marginLeft: 6 }}
+                title="Calculated from the date, not the board's days-to-order status"
+              >
+                ({next.note})
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="fact">
+          <div className="k">Subscription</div>
+          <div className="v">
+            {sub?.value || "—"}
+            {sub?.value && sub.frequency && (
+              <span className="xs muted" style={{ marginLeft: 6 }}>
+                · {sub.frequency}
+              </span>
+            )}
+          </div>
+        </div>
         {/* Brandon's third column (§5.46d). ⚠️ One line per product, and a
             line with no quantity is a product whose quantity nobody has filled
             in — 82% of the CGM-serving rows measured — never a zero. */}
@@ -843,7 +1041,7 @@ function UpcomingOrder({
           <div className="v exp">
             {expected.length
               ? expected.map((l) => <div key={l}>{l}</div>)
-              : "\u2014"}
+              : "—"}
           </div>
         </div>
         {/* Brandon's fourth column. ⚠️ Rendered as a FACT in the same grid,
@@ -940,118 +1138,5 @@ function CopyLink({ url }: { url: string }) {
     >
       <Copy style={{ width: 11, height: 11 }} /> {copied ? "Copied" : "Copy link"}
     </button>
-  );
-}
-
-/**
- * Brandon's "Latest order" header — the most recent row on the New Order
- * Board, answered in ONE sentence.
- *
- * ⚠️ **`orderHeadline` and `orderStage` are the orders page's own rules, never
- * a second reading of the status columns here** (§5.35): the group is not the
- * stage on that board and the API status is, so a local rule would have this
- * card disagreeing with the page its own button opens.
- *
- * ⚠️ It is a SUMMARY. Everything that acts on an order — placing it, the
- * backorder substitution, the cash-pay link — stays on `/orders`, because each
- * of those writes, and two writers for one column is the failure this codebase
- * keeps recording (§5.31c · §5.31d).
- */
-function LatestOrder({ order: o }: { order: Order }) {
-  const head = orderHeadline(o);
-  const lines = orderLines(o);
-  return (
-    <section className="card pad">
-      <div className="section-h" style={{ marginBottom: 10 }}>
-        <div>
-          <div className="eyebrow">Latest order</div>
-          <b style={{ fontSize: 15 }}>{head.text}</b>
-          {head.detail && <div className="xs muted">{head.detail}</div>}
-        </div>
-        <Link className="btn outline sm" to={`/orders?orderId=${o.id}&from=patient`}>
-          Open order <ArrowUpRight style={{ width: 13, height: 13 }} />
-        </Link>
-      </div>
-      <div className="strip">
-        <div className="fact">
-          <div className="k">Order #</div>
-          <div className="v mono">{o.cahOrderNumber || o.poNumber || `#${o.id.slice(-4)}`}</div>
-        </div>
-        <div className="fact">
-          <div className="k">Placed</div>
-          <div className="v">{o.orderDate ? fmtDate(o.orderDate) : "—"}</div>
-        </div>
-        <div className="fact">
-          <div className="k">Status</div>
-          <div className="v">
-            <StagePill stage={orderStage(o)} size="sm" />
-          </div>
-        </div>
-        <div className="fact">
-          <div className="k">{o.deliveryDate ? "Delivered" : "Shipped"}</div>
-          <div className="v">
-            {o.deliveryDate
-              ? fmtDate(o.deliveryDate)
-              : o.shipDate
-                ? fmtDate(o.shipDate)
-                : "—"}
-            {!o.deliveryDate && o.carrier && (
-              <span className="xs muted" style={{ marginLeft: 6 }}>
-                {o.carrier}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-      {!!lines.length && (
-        <p className="xs muted" style={{ margin: "10px 2px 0" }}>
-          {lines.map((l) => `${l.quantity} × ${l.product}`).join(", ")}
-        </p>
-      )}
-    </section>
-  );
-}
-
-function OrderRow({ order: o, latest }: { order: Order; latest: boolean }) {
-  // ⚠️ The stage comes from `orderStage`/`StagePill`, the same pair the orders
-  // page wears — never a second reading of the status columns here. The group
-  // is not the stage on that board and the API status is (§5.35), so a local
-  // rule would disagree with the page this row opens.
-  const lines = orderLines(o);
-  const to = `/orders?orderId=${o.id}&from=patient`;
-
-  return (
-    <tr>
-      <td className="mono">
-        <Link to={to} className="ordlink">
-          {o.cahOrderNumber || o.poNumber || `#${o.id.slice(-4)}`}
-          {latest && <span className="chip blue latest">latest</span>}
-          <ArrowUpRight style={{ width: 12, height: 12 }} />
-        </Link>
-      </td>
-      <td>{o.orderDate ? fmtDate(o.orderDate) : "—"}</td>
-      <td>
-        {o.orderType || "—"}
-        {o.subscriptionType && <div className="xs muted">{o.subscriptionType}</div>}
-      </td>
-      <td className="items">
-        {lines.length
-          ? lines.map((l) => `${l.quantity} × ${l.product}`).join(", ")
-          : "—"}
-      </td>
-      <td>
-        <StagePill stage={orderStage(o)} size="sm" />
-      </td>
-      <td>
-        {o.shipDate ? fmtDate(o.shipDate) : "—"}
-        {o.carrier && (
-          <div className="xs muted">
-            {o.carrier}
-            {o.tracking[0] ? ` · ${o.tracking[0]}` : ""}
-          </div>
-        )}
-      </td>
-      <td>{o.deliveryDate ? fmtDate(o.deliveryDate) : "—"}</td>
-    </tr>
   );
 }

@@ -13,6 +13,7 @@ import {
   STAGE_DAYS_WARN,
   agoText,
   anchorItem,
+  daysInStage,
   daysSince,
   etDateOf,
   infoStripColumns,
@@ -225,6 +226,16 @@ describe("the facts", () => {
     expect(f.get("Stage start date")!.note).toBe("4 days");
   });
 
+  it("⚠️ the stage heading's 'N days here' is the SAME count as the strip's", () => {
+    // Pixel-match Phase 2: one computation, so the chip and the fact cannot
+    // disagree — including on Profile Send Off, where it is the creation date.
+    const med = item(MED, { cols: { [INFO_COL[MED].stageStart!]: "2026-09-01" } });
+    expect(daysInStage(dossier([med], med), TODAY)).toBe(21);
+    const so = item(SO, { createdAt: "2026-09-18T20:19:13Z" });
+    expect(daysInStage(dossier([so], so), TODAY)).toBe(4);
+    expect(daysInStage(dossier([]), TODAY)).toBeNull();
+  });
+
   it("intake date carries the days since", () => {
     const med = item(MED, { cols: { [INFO_COL[MED].intakeDate!]: "2026-09-18" } });
     expect(facts(dossier([med], med)).get("Intake date")!.note).toBe("4 days ago");
@@ -235,7 +246,7 @@ describe("the Stage fact", () => {
   it("names the macro stage and the sub-step", () => {
     const med = item(MED, { stageAdvancerText: "Chase Clinicals" });
     const s = facts(dossier([med], med)).get("Stage")!;
-    expect(s.value).toBe("Medical Necessity");
+    expect(s.value).toBe("Medical Evaluation");
     expect(s.sub).toBe("Chase Clinicals");
   });
 

@@ -21,8 +21,10 @@ import {
   onboardingCaption,
   parseSide,
   parseView,
+  snapStamp,
   snapStateLabel,
   snapTabLabel,
+  stageSubline,
   stepCaption,
   subscriptionCaption,
   SUBSCRIPTION_STATUS_COL,
@@ -246,8 +248,8 @@ describe("the patient screen is READ-ONLY", () => {
 
   /**
    * ⚠️⚠️ **THE CARVE-OUTS, AND EACH IS A NARROWING OF THE PROMISE RATHER THAN A
-   * HOLE IN IT.** Both are pinned below by what they must satisfy in place of
-   * the blanket ban, so neither can quietly widen into a second writer.
+   * HOLE IN IT.** Each is pinned below by what it must satisfy in place of
+   * the blanket ban, so none can quietly widen into a second writer.
    *
    * 1. **The Subscription Profile tab** (§5.45b; Josh, 2026-09-21: *"if the
    *    person has edit profile access they should be able to edit from this
@@ -261,6 +263,8 @@ describe("the patient screen is READ-ONLY", () => {
    *    `appendNoteToRecord`. ⚠️ Deliberately NOT gated on `editProfile`, per
    *    §5.39h: a running case history is not the profile, and it is how a rep
    *    records what they just learned on the call they are on.
+   * 3. **The top bar's two pencils** and 4. **the Orders tab's backorder
+   *    swap** — listed where they are declared, below.
    *
    * Everything else on this screen still writes nothing.
    */
@@ -272,8 +276,30 @@ describe("the patient screen is READ-ONLY", () => {
     //    and the edit pencils to the top bar"*) — Brandon's own card. They call
     //    the Comms Hub's OWN `updatePatientContact`, behind `editProfile`.
     "src/components/patient/TopBarContact.tsx",
+    // 4. **The backorder swap on the Orders tab** (§5.51c; pixel-match Phase 2)
+    //    — renders `/orders`' OWN Substitution card, whose pick IS the email
+    //    to Cardinal (§5.35), behind `adjustOrders`. The card file holds no
+    //    writer of its own; it is listed so the promise above stays true.
+    "src/components/patient/PatientOrderCard.tsx",
   ];
   const files = all.filter((f) => !EDIT_PATH.includes(f));
+
+  it("⚠️⚠️ the Orders tab's swap is /orders' OWN card, behind Adjust orders", () => {
+    // The pick is the send — no draft, no undo (§5.35) — so a second copy of
+    // that card would be a second way to email Cardinal, with its own drift.
+    const card = src("src/components/patient/PatientOrderCard.tsx");
+    const code = card.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+    expect(code).toMatch(/import \{ SubstitutionCard \} from "@\/components\/orders\/SubstitutionCard"/);
+    expect(code).not.toMatch(/requestSubstitution|mondayWrite/);
+    // Rendered in ONE place, and only for somebody who holds the ability — and
+    // it is the tab that asks: the signed-in person, never a borrowed view
+    // (§5.39h).
+    expect(code.match(/<SubstitutionCard\b/g) ?? []).toHaveLength(1);
+    expect(code.match(/<SwapCard\b/g) ?? []).toHaveLength(1);
+    expect(code).toMatch(/canAdjust \? \(\s*<SwapCard/);
+    expect(code).toMatch(/function SwapCard[\s\S]{0,300}<SubstitutionCard/);
+    expect(src("src/components/patient/SubscriptionView.tsx")).toMatch(/useAbility\("adjustOrders"\)/);
+  });
 
   it("⚠️ Recent notes calls the EXISTING writer — never a second implementation", () => {
     // ⚠️ `appendNoteToRecord` carries three rules a local copy would lose: it
@@ -757,5 +783,45 @@ describe("⚠️ a proposed stuck record is stuck HERE too, and says which kind"
     // active record at all.
     expect(proposed.isStuck).toBe(false);
     expect(proposed.isProposedStuck).toBe(true);
+  });
+});
+
+describe("Brandon's snapshot header (pixel-match Phase 2)", () => {
+  const live = item({ stageAdvancerText: "Confirm Receipt" });
+  const done = item({ isCompleted: true });
+  const here = { current: true, passed: false };
+  const passed = { current: false, passed: true };
+
+  it("the stamp: green snapshot, blue live — his two chips, in his colours", () => {
+    expect(snapStamp(done, passed)).toMatchObject({ tone: "green", icon: "check" });
+    expect(snapStamp(done, passed)!.text).toContain("Snapshot");
+    expect(snapStamp(live, here)).toEqual({ tone: "blue", icon: "live", text: "Live — the patient is here now" });
+    expect(snapStamp(null, here)).toBeNull();
+  });
+
+  it("⚠️ a live record opened on a step already PASSED is neither of his chips", () => {
+    // Not a snapshot (Monday keeps no per-step history) and not where the
+    // patient is — so it says what it is: today's values.
+    expect(snapStamp(live, passed)).toEqual({ tone: "blue", icon: "live", text: "Live record · today's values" });
+  });
+
+  it("stuck is red and a stuck proposal amber — named as they are named elsewhere (§5.43)", () => {
+    expect(snapStamp(item({ isStuck: true }), here)).toMatchObject({ tone: "red" });
+    expect(snapStamp(item({ isProposedStuck: true }), here)).toMatchObject({ tone: "amber" });
+  });
+
+  it("⚠️ the sub-line only says 'as the patient left it' of a COMPLETED record", () => {
+    const d = dossier([done], null);
+    const step = buildStages(d).find((s) => s.stage.key === "mn")!;
+    expect(stageSubline(step, 5, done)).toBe(
+      "5 steps · all complete · the tool below is as the patient left it — read-only",
+    );
+    const d2 = dossier([live], live);
+    const step2 = buildStages(d2).find((s) => s.stage.key === "mn")!;
+    expect(stageSubline(step2, 5, live)).toBe("5 steps · in progress · the tool below shows today's values — read-only");
+  });
+
+  it("the second stage is 'Medical Evaluation' — Brandon's word and the board's", () => {
+    expect(MACRO_STAGES.map((s) => s.label)).toEqual(["Intake", "Medical Evaluation", "Insurance", "Welcome Call"]);
   });
 });

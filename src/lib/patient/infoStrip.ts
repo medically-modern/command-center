@@ -328,6 +328,25 @@ export function onboardingCompletedOn(dossier: PatientDossier | null): string {
 }
 
 /**
+ * When the patient arrived where they are now: the anchor record's Date of
+ * Stage Start, else — on Profile Send Off, which has no such column — the
+ * item's creation date. "" when there is no record.
+ */
+function stageStartOf(anchor: DossierItem | null): string {
+  if (!anchor) return "";
+  return col(anchor, INFO_COL[anchor.boardId]?.stageStart ?? null).trim() || etDateOf(anchor.createdAt);
+}
+
+/**
+ * How many days the patient has been where they are now — the Stage start
+ * fact's own count, for the Onboarding view's "N days here" chip (pixel-match
+ * Phase 2). ⚠️ ONE computation, so the chip and the strip cannot disagree.
+ */
+export function daysInStage(dossier: PatientDossier | null, today: string = etToday()): number | null {
+  return daysSince(stageStartOf(anchorItem(dossier)), today);
+}
+
+/**
  * The eight facts, in Brandon's order.
  *
  * ⚠️ **A blank renders as an em dash and is MARKED missing, never as a zero or
@@ -355,12 +374,8 @@ export function infoStripFacts(
   const intakeDays = daysSince(intake, today);
 
   /* 2 · Stage start — the ANCHOR record's, because the whole point of the fact
-     is how long the patient has been where they are now. Profile Send Off has
-     no such column, so it falls back to the item's creation date. */
-  const anchorCols = anchor ? INFO_COL[anchor.boardId] : undefined;
-  const stageStart = anchor
-    ? col(anchor, anchorCols?.stageStart ?? null).trim() || etDateOf(anchor.createdAt)
-    : "";
+     is how long the patient has been where they are now. */
+  const stageStart = stageStartOf(anchor);
   const stageDays = daysSince(stageStart, today);
 
   /* 4 · Primary insurance. ⚠️ On Profile Send Off it falls back to GENERAL

@@ -269,23 +269,19 @@
   font-size: 12px; font-weight: 600; display: flex; align-items: center;
   gap: 6px; color: var(--mfg); padding: 0 2px;
 }
-/* ── The sub-stage toggle and the embedded stage tool (§5.39c) ───────────── */
-/* Same language as `.snap-tabs` one row up, because they answer neighbouring
-   questions — that one picks the RECORD, this one picks the TOOL. */
-.cc-pt .tool-tabs {
-  display: flex; flex-wrap: wrap; gap: 2px; padding: 2px;
-  background: var(--mut); border: 1px solid var(--bd); border-radius: 8px;
-}
-.cc-pt .tool-tabs button {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 5px 11px; border-radius: 6px; font-size: 12px; font-weight: 600;
-  color: var(--mfg); background: none; border: none; cursor: pointer;
-}
-.cc-pt .tool-tabs button.on { background: var(--cd); color: var(--tfg); box-shadow: var(--sh-sm); }
-.cc-pt .tool-tabs button.off { opacity: 0.4; cursor: not-allowed; }
-.cc-pt .tool-tabs button .dot {
+/* ── The sub-stage tabs and the embedded stage tool (§5.39c) ─────────────── */
+/* From pixel-match Phase 2 the sub-stage tabs are Brandon's own — his
+   `segc snap-tabs` in the snapshot header, at his `a` sizes — and the record
+   picker (ours alone: his sample has one record per stage) is the second row,
+   `.snap-recs`. The check marks a step the patient went through; the dot, the
+   one they are in. */
+.cc-pt .segc.snap-tabs button { padding: 5px 10px; }
+.cc-pt .snap-tabs button .dot {
   width: 6px; height: 6px; border-radius: 50%; background: var(--mm-green); flex: none;
 }
+.cc-pt .snap-recs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cc-pt .stage-h { margin: 4px 0 0; align-items: flex-start; }
+.cc-pt .stage-h h2 { font-size: 16px; }
 
 /* The one line that says whether the values are historical or current. */
 .cc-pt .snap-stamp {
@@ -346,6 +342,13 @@
 .cc-pt .btn.xs { padding: 3px 8px; font-size: 11px; border-radius: 6px; font-weight: 500; }
 .cc-pt .btn.primary { background: var(--p); color: hsl(var(--primary-foreground)); }
 .cc-pt .btn.outline { background: var(--cd); border-color: var(--bd); color: var(--tfg); }
+/* ⚠️ Tailwind has a utility literally named `outline` (`outline-style: solid`)
+   and it matches Brandon's class name, so every outline button drew a 3px
+   currentColor ring that read as a black border (found by rendering, 2026-09-24).
+   Cancel it here, and give keyboard focus a ring of its own — author CSS
+   outranks the browser's own focus style, so cancelling alone would lose it. */
+.cc-pt .btn.outline { outline-style: none; }
+.cc-pt .btn:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; }
 .cc-pt .btn.ghost { color: var(--mfg); background: none; }
 .cc-pt .btn.ghost:hover { background: var(--mut); color: var(--tfg); opacity: 1; }
 .cc-pt .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
@@ -410,6 +413,101 @@
 }
 .cc-pt .ordlink:hover { text-decoration: underline; }
 .cc-pt .chip.latest { font-size: 10px; padding: 0 5px; }
+/* Brandon's clickable history (pixel-match Phase 2): a row shows its order in
+   the card above, and the shown one wears his blue band and left rule. */
+.cc-pt .otable tr.pick { cursor: pointer; }
+.cc-pt .otable tr.pick:hover td { background: var(--mut); }
+.cc-pt .otable tr.pick:focus-visible { outline: 2px solid var(--p20); outline-offset: -2px; }
+.cc-pt .otable tr.sel td { background: var(--blue-bg); }
+.cc-pt .otable tr.sel td:first-child { font-weight: 600; box-shadow: inset 3px 0 0 var(--p); }
+.cc-pt .otable .pill { white-space: nowrap; }
+
+/* ── The order card — Brandon's `orderCard`, value for value ────────────────
+   ⚠️ Every selector keeps the `.cc-pt` prefix: `.ord`, `.tile`, `.tracker` and
+   `.notice` are bare classes in his file, and `.tile` alone is used elsewhere
+   in this app. Colours are this app's tokens, so dark mode and the accent
+   themes follow with nothing added (§5.40). */
+.cc-pt .sel-order .section-h { margin-bottom: 8px; align-items: flex-start; }
+.cc-pt .sel-order h2 { font-size: 16px; }
+.cc-pt .sel-order h2 .xs { font-weight: 400; }
+.cc-pt .notice.red { background: var(--bad-bg); border: 1px solid var(--bad-bd); color: var(--bad-fg); }
+.cc-pt .notice.grey { background: var(--mut); color: var(--tfg); }
+/* His pill vocabulary names "lightgreen" and his file never styles it, so it
+   renders there as a bare outline. It is drawn as the lighter green its name
+   asks for: a part of the order is out, which is good news, not yet done. */
+.cc-pt .pill.lightgreen { background: hsl(152 68% 38% / 0.06); color: var(--ok-fg); border-color: hsl(152 68% 38% / 0.22); }
+.cc-pt .ord {
+  border: 1px solid var(--bd); border-radius: 12px; background: var(--cd);
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.cc-pt .ord.open { border-left: 4px solid hsl(38 92% 50%); }
+.cc-pt .ord.done { border-left: 4px solid var(--ok); }
+.cc-pt .ord.oc { gap: 12px; }
+.cc-pt .ord .line { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; }
+.cc-pt .oc-band {
+  display: flex; gap: 22px; align-items: center; flex-wrap: wrap;
+  background: var(--mut); border-radius: 10px; padding: 10px 14px;
+}
+.cc-pt .oc-band .eyebrow { margin-bottom: 2px; }
+.cc-pt .oc-band b { font-size: 13px; }
+.cc-pt .oitems { display: flex; flex-direction: column; gap: 8px; }
+.cc-pt .oi {
+  display: flex; gap: 10px; align-items: center; padding: 8px 10px;
+  border: 1px solid var(--bd); border-radius: 10px; background: var(--cd);
+}
+.cc-pt .oi .tile {
+  width: 40px; height: 40px; border-radius: 10px; background: var(--mut); color: var(--mfg);
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.cc-pt .oi b { font-size: 13px; }
+.cc-pt .shipments { display: flex; flex-direction: column; gap: 10px; }
+.cc-pt .shp {
+  border: 1px solid var(--bd); border-radius: 12px; padding: 10px 12px; background: var(--cd);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.cc-pt .shp.dlv { border-color: hsl(152 68% 38% / 0.35); background: hsl(152 68% 38% / 0.04); }
+.cc-pt .shp.trn { border-color: var(--p20); background: var(--blue-bg); }
+.cc-pt .shp.pend { border-color: var(--warn-bd); background: var(--warn-bg); }
+.cc-pt .shp-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.cc-pt .shp-h b { font-size: 13px; }
+.cc-pt .shp .trk { color: var(--p); font-family: ui-monospace, Menlo, monospace; text-decoration: none; }
+.cc-pt .shp a.trk:hover { text-decoration: underline; }
+.cc-pt .shp .oi { background: var(--cd); }
+/* His `.tracker` — the orders slice's own steps (created → placed → accepted →
+   shipped → delivered, plus a sixth for a return), so the column count is set
+   inline and the connecting line runs centre to centre via `--edge`. */
+.cc-pt .tracker {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; text-align: center;
+  position: relative; margin: 6px 0;
+}
+.cc-pt .tracker::before {
+  content: ""; position: absolute; left: var(--edge, 10%); right: var(--edge, 10%);
+  top: 14px; height: 2px; background: var(--bd);
+}
+.cc-pt .tracker .st .c {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--bd);
+  display: grid; place-items: center; margin: 0 auto 6px; background: var(--cd);
+  color: var(--mfg); position: relative; z-index: 1;
+}
+.cc-pt .tracker .st .t { font-size: 12px; font-weight: 600; }
+.cc-pt .tracker .st .s { font-size: 10px; color: var(--mfg); overflow-wrap: anywhere; }
+.cc-pt .tracker .st.done .c { background: hsl(215 25% 40%); border-color: hsl(215 25% 40%); color: #fff; }
+.cc-pt .tracker .st.now .c { background: var(--p); border-color: var(--p); color: hsl(var(--primary-foreground)); box-shadow: 0 0 0 4px var(--p10); }
+.cc-pt .tracker .st.now .t { color: var(--p); }
+/* ⚠️ `part`, never `note` — `.cc-pt .note` is the notes card's box (§5.39c3). */
+.cc-pt .tracker .st.part .c { background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn-fg); }
+.cc-pt .tracker .st.part .t { color: var(--warn-fg); }
+.cc-pt .tracker .st.err .c { background: var(--bad-bg); border-color: hsl(0 75% 55%); color: hsl(0 75% 55%); }
+.cc-pt .tracker .st.err .t { color: hsl(0 75% 55%); }
+/* ⚠️ The icon takes the CARD colour, not white: in dark mode `--ok-fg` is a
+   light green, and white on it is unreadable (§5.40). */
+.cc-pt .tracker.delivered .st.done .c { background: var(--ok-fg); border-color: var(--ok-fg); color: var(--cd); }
+.cc-pt .tracker.delivered .st.now .t { color: var(--ok-fg); }
+@media (max-width: 640px) {
+  .cc-pt .oi { flex-wrap: wrap; }
+  .cc-pt .tracker { gap: 2px; }
+  .cc-pt .tracker .st .s { display: none; }
+}
 
 /* ── The reorder form, the strip's fourth column (§5.46c) ─────────────────── */
 /* ⚠️ It is a `.fact` in the SAME four-column grid as Status · Next order ·

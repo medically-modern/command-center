@@ -97,6 +97,14 @@ export interface SubStageStep extends SubStage {
   reached: boolean;
   /** The item's sub-stage is this one — "Live — the patient is here now". */
   current: boolean;
+  /**
+   * The patient went THROUGH this tool and on — the check on its tab
+   * (pixel-match Phase 2). Only on positive evidence: a finished record, or a
+   * step before the item's own. ⚠️ An unrecognised advancer marks NOTHING
+   * passed — the mirror of `reached`, which for the same reason greys nothing
+   * out: a read we could not make sense of proves neither.
+   */
+  passed: boolean;
 }
 
 /** The board's sub-stages, or `[]` for a board with no embeddable tools. */
@@ -115,6 +123,7 @@ export function subStagesFor(item: DossierItem | null): SubStageStep[] {
     // is greyed out on the strength of a read we could not make sense of.
     reached: item.isCompleted || at < 0 || i <= at,
     current: !item.isCompleted && at >= 0 && i === at,
+    passed: item.isCompleted || (at >= 0 && i < at),
   }));
 }
 

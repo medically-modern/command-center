@@ -55,7 +55,9 @@ describe("the read", () => {
 
 describe("the render", () => {
   it("⚠️ the view builds the strip from infoStrip, not a local copy", () => {
-    expect(VIEW).toContain('import { infoStripFacts } from "@/lib/patient/infoStrip"');
+    // The stage heading's "N days here" chip imports from the same module
+    // (pixel-match Phase 2), so the import names more than one thing now.
+    expect(VIEW).toMatch(/import \{[^}]*\binfoStripFacts\b[^}]*\} from "@\/lib\/patient\/infoStrip"/);
     expect(code(VIEW)).toContain("infoStripFacts(dossier)");
   });
 

@@ -31,12 +31,20 @@
  * sub-stage: a manager reading the Confirm Receipt panel who presses Open
  * expects Confirm Receipt, not the board's default tool.
  */
-import { ArrowUpRight, Check, Eye } from "lucide-react";
+import { Activity, AlertTriangle, ArrowUpRight, Check, ClipboardList, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
-import { itemOpenHref, snapStateLabel, snapTabLabel, stepCaption, subStageOpenHref, type StageStep } from "@/lib/patient/patientScreen";
-import { infoStripFacts } from "@/lib/patient/infoStrip";
+import {
+  itemOpenHref,
+  snapStamp,
+  snapTabLabel,
+  stageSubline,
+  stepCaption,
+  subStageOpenHref,
+  type StageStep,
+} from "@/lib/patient/patientScreen";
+import { STAGE_DAYS_WARN, daysInStage, infoStripFacts } from "@/lib/patient/infoStrip";
 import { noteEntries } from "@/lib/patient/recentNotes";
 import { defaultSubStage, subStagesFor, type SubStageStep } from "@/lib/patient/stagePanels";
 import { StagePanelEmbed, StagePanelUnavailable } from "@/components/patient/StagePanelEmbed";
@@ -90,6 +98,10 @@ export function OnboardingView({
   const wanted = subs.find((t) => t.key === toolKey && t.reached);
   const tool = wanted ?? subs.find((t) => t.key === defaultSubStage(subs)) ?? null;
   const stageNotes = noteEntries(snap?.notes);
+  const stamp = snapStamp(snap, tool);
+  /* His "N days here" chip, on the stage the patient is IN — the info strip's
+     own Stage start count (`daysInStage`), so the two cannot disagree. */
+  const here = step && (step.state === "now" || step.state === "stuck") ? daysInStage(dossier) : null;
 
   return (
     <>
@@ -158,74 +170,109 @@ export function OnboardingView({
       </div>
 
       {step && (
-        <section className="snap">
-          <div className="snap-h">
-            {step.items.length > 1 ? (
-              <div className="snap-tabs">
-                {step.items.map((it) => (
-                  <button
-                    key={it.itemId}
-                    type="button"
-                    className={it.itemId === snap?.itemId ? "on" : ""}
-                    onClick={() => onSnap(it.itemId)}
-                  >
-                    {it.isCompleted && <Check style={{ width: 11, height: 11 }} />}
-                    {snapTabLabel(step.items, it)}
-                  </button>
-                ))}
+        <>
+          {/* Brandon's stage heading (pixel-match Phase 2): the stage, how far
+              it has got, and — on the stage the patient is in — how long they
+              have been there, amber, red past a fortnight (§5.46f's rule). */}
+          <div className="section-h stage-h">
+            <div>
+              <h2>{step.stage.label}</h2>
+              <div className="xs muted">{stageSubline(step, subs.length, snap)}</div>
+            </div>
+            {here !== null && here >= 0 && (
+              <span className={`chip ${here > STAGE_DAYS_WARN ? "red" : "amber"}`}>
+                <AlertTriangle style={{ width: 11, height: 11 }} /> {here} day{here === 1 ? "" : "s"} here
+              </span>
+            )}
+          </div>
+
+          <section className="snap">
+            <div className="snap-h">
+              {/* His sub-step tabs, where our separate tool row used to be — a
+                  check on a step the patient went through, a dot on the one
+                  they are in, and a step never reached cannot be opened. */}
+              {subs.length > 1 ? (
+                <div className="segc snap-tabs" role="tablist" aria-label="Steps on this board">
+                  {subs.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={t.key === tool?.key}
+                      className={`${t.key === tool?.key ? "on" : ""}${t.reached ? "" : " off"}`}
+                      disabled={!t.reached}
+                      onClick={() => t.reached && onTool(t.key)}
+                      title={
+                        t.reached
+                          ? t.current
+                            ? "Where the patient is now"
+                            : `The ${t.tool} tool as this record has it`
+                          : `${t.tool} — the patient never reached this step`
+                      }
+                    >
+                      {t.passed && <Check style={{ width: 11, height: 11 }} />}
+                      {t.label}
+                      {t.current && <i className="dot" />}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <b className="small">{tool ? tool.tool : snap?.boardName || step.stage.label}</b>
+              )}
+
+              <div className="row wrap" style={{ gap: 6, marginLeft: "auto" }}>
+                {stamp && (
+                  <span className={`chip ${stamp.tone}`}>
+                    {stamp.icon === "check" ? (
+                      <Check style={{ width: 11, height: 11 }} />
+                    ) : stamp.icon === "alert" ? (
+                      <AlertTriangle style={{ width: 11, height: 11 }} />
+                    ) : (
+                      <Activity style={{ width: 11, height: 11 }} />
+                    )}
+                    {stamp.text}
+                  </span>
+                )}
+                <span
+                  className="chip grey"
+                  title="Nothing on this panel writes to Monday — it is the record of what the tool saw"
+                >
+                  <Eye style={{ width: 11, height: 11 }} /> Read-only
+                </span>
+                <OpenTool item={snap} tool={tool} />
               </div>
-            ) : (
-              <b className="small">{snap?.boardName || step.stage.label}</b>
+            </div>
+
+            {/* ⚠️ Not in his mockup, whose sample has one record per stage. Ours
+                does not — a stage run twice, or two intake boards, is two
+                records — so the record picker keeps a row of its own under the
+                steps rather than disappearing (§5.42). */}
+            {step.items.length > 1 && (
+              <div className="snap-recs">
+                <span className="xs muted">
+                  {step.items.length} records on this stage
+                </span>
+                <div className="segc snap-tabs" aria-label="Records on this stage">
+                  {step.items.map((it) => (
+                    <button
+                      key={it.itemId}
+                      type="button"
+                      className={it.itemId === snap?.itemId ? "on" : ""}
+                      onClick={() => onSnap(it.itemId)}
+                    >
+                      {it.isCompleted && <Check style={{ width: 11, height: 11 }} />}
+                      {snapTabLabel(step.items, it)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
 
-            <div className="row wrap" style={{ gap: 6, marginLeft: "auto" }}>
-              {snap && (
-                <span
-                  className={`chip ${
-                    snap.isCompleted ? "green" : snap.isStuck || snap.isProposedStuck ? "amber" : "blue"
-                  }`}
-                >
-                  {snapStateLabel(snap)}
-                </span>
-              )}
-              <span
-                className="chip"
-                title="Nothing on this panel writes to Monday — it is the record of what the tool saw"
-              >
-                <Eye style={{ width: 11, height: 11 }} /> Read-only
-              </span>
-              <OpenTool item={snap} tool={tool} />
+            <div className="snap-page">
+              <Snapshot step={step} item={snap} tool={tool} detailFirst={embedded} />
             </div>
-          </div>
-
-          {subs.length > 1 && (
-            <div className="tool-tabs">
-              {subs.map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  className={`${t.key === tool?.key ? "on" : ""}${t.reached ? "" : " off"}`}
-                  disabled={!t.reached}
-                  onClick={() => t.reached && onTool(t.key)}
-                  title={
-                    t.reached
-                      ? t.current
-                        ? "Where the patient is now"
-                        : `The ${t.tool} tool as this record has it`
-                      : `${t.tool} — the patient never reached this step`
-                  }
-                >
-                  {t.label}
-                  {t.current && <i className="dot" />}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="snap-page">
-            <Snapshot step={step} item={snap} tool={tool} detailFirst={embedded} />
-          </div>
-        </section>
+          </section>
+        </>
       )}
 
       {snap && !(embedded && snap.itemId === dossier.active?.itemId) && (
@@ -305,10 +352,21 @@ function OpenTool({ item, tool }: { item: DossierItem | null; tool: SubStageStep
       </span>
     );
   }
+  /* His "Open <tool>". ⚠️ A finished record still opens in REVIEW MODE — the
+     link carries `?completedStage=`, which disables the send there (§5.38) —
+     so the label names the tool and the tooltip says what the page will be. */
   return (
-    <Link className="btn outline xs" to={href}>
+    <Link
+      className="btn outline xs"
+      to={href}
+      title={
+        item.isCompleted
+          ? "Opens in review mode — a finished record can't be advanced from there"
+          : undefined
+      }
+    >
       <ArrowUpRight style={{ width: 12, height: 12 }} />
-      {item.isCompleted ? "Open read-only" : `Open ${tool ? tool.tool : "the tool"}`}
+      Open {tool ? tool.tool : item.boardName}
     </Link>
   );
 }
@@ -340,10 +398,12 @@ function Snapshot({
 
   return (
     <>
+      {/* His "📋 <tool> · <patient>". */}
       <div className="snap-tool">
+        <ClipboardList style={{ width: 13, height: 13 }} />
         {tool ? (
           <>
-            {tool.tool} <span className="muted">· {item.boardName}</span>
+            {tool.tool} <span className="muted">· {item.name}</span>
           </>
         ) : (
           <>
