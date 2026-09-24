@@ -624,6 +624,16 @@
   background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-bd);
 }
 .cc-pt .side-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* "We called N · They called M" — the Calls tab's first block, from our own
+   call archive (CallCountsCard). ⚠️ `flex: none`, like every block in
+   `.side-body`, and every colour a token so dark mode follows. */
+.cc-pt .callcounts {
+  flex: none; border: 1px solid var(--bd); border-radius: 10px; background: var(--mut);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.cc-pt .callcounts .cc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cc-pt .callcounts .fact .v.big { font-size: 20px; font-weight: 700; line-height: 1.2; color: var(--tfg); }
+.cc-pt .callcounts .bad { color: var(--bad-fg); }
 .cc-pt .empty-pane {
   flex: 1; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--mfg);
 }

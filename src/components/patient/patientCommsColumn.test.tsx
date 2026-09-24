@@ -28,6 +28,25 @@ vi.mock("@/components/comms/CommunicationsButton", () => ({
   CommunicationsButton: () => <button type="button">Communications</button>,
 }));
 vi.mock("@/components/patient/RecentNotes", () => ({ RecentNotes: () => <div>Recent notes</div> }));
+/* The Postgres call counts (Josh, 2026-09-24) — the hook is tested on its own;
+   here it is the view it hands the column. */
+const callView = vi.hoisted(() => ({
+  current: {
+    available: true,
+    counts: null as null | Record<string, number | boolean>,
+    altTotal: 0,
+    loading: true,
+    failed: false,
+    since: null as string | null,
+  },
+}));
+const callArgs = vi.hoisted(() => [] as string[][]);
+vi.mock("@/hooks/callHistory/useCallCounts", () => ({
+  useCallCounts: (p: string, a: string) => {
+    callArgs.push([p, a]);
+    return callView.current;
+  },
+}));
 vi.mock("@/components/commsInbox/PatientResolveBar", () => ({ PatientResolveBar: () => null }));
 
 import { PatientCommsColumn } from "./PatientCommsColumn";
@@ -66,7 +85,19 @@ beforeEach(() => {
   dial.mockClear();
   reported.length = 0;
   threadProps.last = null;
+  callArgs.length = 0;
+  callView.current = { available: true, counts: null, altTotal: 0, loading: true, failed: false, since: null };
 });
+
+const COUNTS = {
+  weCalled: 12,
+  weReached: 9,
+  theyCalled: 5,
+  theyMissed: 2,
+  theyVoicemail: 1,
+  total: 17,
+  capped: false,
+};
 
 describe("Brandon's right column (item 14) — the look", () => {
   it("the header is the two tabs and nothing else", () => {
@@ -82,20 +113,76 @@ describe("Brandon's right column (item 14) — the look", () => {
     expect(threadProps.last?.composerPlaceholder).toBe("Write a text…");
   });
 
-  it("Texts shows the thread's count once it has loaded; ⚠️ Calls shows none", () => {
+  it("Texts shows the thread's count once it has loaded", () => {
     const { container } = renderColumn();
     const onCount = threadProps.last?.onCount as (n: number) => void;
     act(() => onCount(7));
-    const [texts, calls] = Array.from(container.querySelectorAll(".side-tabs button"));
+    const [texts] = Array.from(container.querySelectorAll(".side-tabs button"));
     expect(texts.querySelector(".n")?.textContent).toBe("7");
-    // Counting calls means reading RingCentral's call log for every patient
-    // opened (§5.16) — no number beats one we cannot stand behind.
-    expect(calls.querySelector(".n")).toBeNull();
   });
 
-  it("before the thread loads there is no count at all — never a 0 we did not read", () => {
+  it("before anything loads there is no count at all — never a 0 we did not read", () => {
     const { container } = renderColumn();
     expect(container.querySelector(".side-tabs .n")).toBeNull();
+  });
+});
+
+describe("⚠️ Calls N — from OUR call archive in Postgres (Josh, 2026-09-24)", () => {
+  it("asks about the patient's BOTH numbers", () => {
+    renderColumn();
+    expect(callArgs.at(-1)).toEqual(["15555550100", "5555550199"]);
+  });
+
+  it("the Calls tab carries the total once the archive answers", () => {
+    callView.current = { ...callView.current, counts: COUNTS, loading: false };
+    const { container } = renderColumn();
+    const calls = Array.from(container.querySelectorAll(".side-tabs button"))[1];
+    expect(calls.querySelector(".n")?.textContent).toBe("17");
+  });
+
+  it("a capped answer reads as a floor", () => {
+    callView.current = { ...callView.current, counts: { ...COUNTS, total: 1000, capped: true }, loading: false };
+    const { container } = renderColumn();
+    const calls = Array.from(container.querySelectorAll(".side-tabs button"))[1];
+    expect(calls.querySelector(".n")?.textContent).toBe("1000+");
+  });
+
+  it("the Calls tab leads with we called / they called, and says when our records begin", () => {
+    callView.current = {
+      ...callView.current,
+      counts: COUNTS,
+      altTotal: 2,
+      loading: false,
+      since: "2026-06-18T14:00:00.000Z",
+    };
+    renderColumn("calls");
+    const card = screen.getByTestId("call-counts");
+    expect(card.textContent).toContain("Calls on record · since Jun 18, 2026");
+    expect(card.textContent).toContain("We called12");
+    expect(card.textContent).toContain("9 answered");
+    expect(card.textContent).toContain("They called5");
+    expect(card.textContent).toContain("2 missed (1 left a voicemail)");
+    expect(card.textContent).toContain("Includes 2 with the alternate number (Sam Helper).");
+  });
+
+  it("⚠️ a failed read shows NO numbers — never a 0 standing in for an answer", () => {
+    callView.current = { ...callView.current, failed: true, loading: false };
+    const { container } = renderColumn("calls");
+    const card = screen.getByTestId("call-counts");
+    expect(card.textContent).toContain("Couldn't read the call records");
+    expect(card.textContent).not.toMatch(/\d/);
+    expect(container.querySelector(".side-tabs .n")).toBeNull();
+  });
+
+  it("counting says so rather than showing zeros", () => {
+    renderColumn("calls");
+    expect(screen.getByTestId("call-counts").textContent).toContain("Counting calls");
+  });
+
+  it("no archive (no gateway): nothing is drawn at all", () => {
+    callView.current = { ...callView.current, available: false, loading: false };
+    renderColumn("calls");
+    expect(screen.queryByTestId("call-counts")).toBeNull();
   });
 
   it("the number line formats both numbers (xxx) xxx-xxxx", () => {

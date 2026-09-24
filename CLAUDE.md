@@ -9578,6 +9578,8 @@ number that called and the time date etc is important"*). `POST /calls/archive/q
 for these" the SPA needs to draw a Play button **at all** on a call whose log row carries no
 recording. Both take a Google employee identity **or** `CALL_ARCHIVE_SERVICE_TOKEN` (the
 `CALENDLY_DAY_TOKEN` device — other Railway services have no Google identity).
+The Command Center itself reads `/calls/archive/query` for the patient screen's *"We called · They
+called"* counts (§5.51b) — one query per number, on patient open.
 ⚠️ **Every call is stored, not just the recorded ones** — RingCentral's call LOG ages out too, so
 this is a durable call log as well as a recording store, at a few hundred bytes a row.
 ⚠️ **It answers with `last4`, never the number.** The archive holds an HMAC; a caller who knows a
@@ -10930,9 +10932,10 @@ neighbour's (the label takes the row's slack); a section title never wraps besid
 
 **Right column — LOOK ONLY** (Josh, *"leave communcaitons alone"*):
 - The header is the two tabs. **Texts N** is the loaded thread's own count (`ConversationThread`'s
-  opt-in `onCount`, called only after a successful load). ⚠️ **Calls has no count**: counting calls
-  means reading RingCentral's call log for every patient opened (§5.16) — no number beats one we
-  cannot stand behind.
+  opt-in `onCount`, called only after a successful load). **Calls N** and the Calls tab's *"We
+  called · They called"* block come from OUR call archive in Postgres — see **§5.51b**. (It shipped
+  with no Calls count on 2026-09-24 because the only source then considered was RingCentral's call
+  log, a per-patient RingCentral read on every open; the archive has no such cost.)
 - The thread is drawn **`bare`** (no name block, bell or dark Call) and its composer is his one
   line (`Composer`'s opt-in `variant="line"`). ⚠️ Both are OPT-IN: absent, the Communications hub
   renders byte-for-byte what it did, and either way the guards and the send are the same code.
@@ -10984,6 +10987,55 @@ the one Send, the delta, the visit date's writer, read-only disables EVERY contr
 `subscriptionView.test.ts`, `profileExtras.test.ts`, `patientScreen.test.ts`,
 `contactsWiring.test.ts`, `patientCommsColumn.test.tsx`, `conversationThread.test.tsx`,
 `mrStatus.test.ts`, `subscriptionOverview.test.ts`, `phoneDisplay.test.ts`.
+
+### 5.51b "We called · They called" — call counts from our own archive (Sep 2026)
+Josh, 2026-09-24: *"i want to read this info from our post gres, see how many times total ever weve
+called and theyve called us"*. The patient screen's Calls tab leads with the two numbers, and the tab
+carries the total. **No gateway change and no board change — app only.** Files:
+`lib/callHistory/callCounts.ts` (rule + fetch), `hooks/callHistory/useCallCounts.ts`,
+`components/patient/CallCountsCard.tsx`, `components/patient/PatientCommsColumn.tsx`, and one small
+export (`archiveFetch`) in `lib/callHistory/archivedRecordings.ts`.
+
+**It reads the route that already existed for other services** — `POST /calls/archive/query`
+(§5.47), one query per number, `sinceDays` 3650 and `limit` 1000 (both are the route's own ceilings).
+The call archive keeps a row for EVERY call on the line, recorded or not, so this is a count of
+calls, not of recordings. ⚠️ **It touches RingCentral not at all** — the only reason a per-patient
+read is allowed on a screen a rep clicks through (§5.31f's argument, for Can Text).
+- ⚠️⚠️ **"EVER" MEANS "SINCE OUR RECORDS BEGIN"**, and the heading says so: *"Calls on record · since
+  Jun 18, 2026"*, the date read live from `/calls/archive-health`'s `oldest` (never hardcoded — it
+  moves if the archive's window is ever widened). The archive's first run was 2026-09-21 and reached
+  back its 95-day window; calls before that were RingCentral's alone and are gone (§5.16).
+- ⚠️ **The verdict is the SPA's own `callConnected` / `isVoicemail`**, fed the archive's raw leg
+  results — the gateway deliberately stores legs and computes no verdict (`toCallRow`), so
+  "answered" here and "Missed" in the call list are one rule. We called = Outbound (N answered);
+  They called = Inbound (N missed, of which N left a voicemail — a voicemail is still a missed call).
+- **Both of the patient's numbers** (the primary and the Contacts block's alternate), one read each,
+  merged with a call counted once; a line says how many were with the alternate number.
+- ⚠️ **All or nothing across the two numbers** — no total from one of two (an under-report reads as
+  a fact). ⚠️ **A failed read shows NO numbers** — *"Couldn't read the call records"* — never a 0,
+  because "we have never called this patient" is the reading a rep acts on. ⚠️ **Every open
+  re-reads and the last answer only PAINTS** (§5.45b's rule): the Inbox capture tick puts a new call
+  in the archive within about a minute (§5.49), so a count cached for the session would be wrong
+  exactly when a rep has just called. One read per number at a time; no polling; a failure is not
+  cached and a failed RE-read keeps the earlier answer on screen.
+- A full page (1,000 rows) makes every number a floor ("1000+"), and the card says so.
+
+**What it cannot see — said here, not on screen, because on screen it would be noise on every
+patient:** a call a rep made from their own phone (it never touched this line); and a **fax** to or
+from the number — the archive keeps faxes too (§5.47's `call_type`) and this route returns no type.
+Patients' own numbers do not fax in practice; **that is reasoned, not measured.** Filtering them
+exactly needs the route to return or filter `call_type`, which is a gateway change.
+
+**Rendered before shipping** (a throwaway harness with the hook faked): 1440 · 1100 · 1440 dark, the
+counting, failed and ready states — no horizontal overflow, the big numbers following the foreground
+token in dark mode.
+
+**Keep-in-agreement:** `callCounts.countArchivedCalls` ⇄ `callHistory.callConnected` /
+`isVoicemail` (called, never re-implemented) ⇄ the gateway's `callArchiveRules.toCallRow`, which
+decides what `legResults` holds · `ARCHIVE_QUERY_LIMIT` / `ARCHIVE_QUERY_DAYS` ⇄ the route's clamps
+in `callArchive.mjs`. Tests: `lib/callHistory/callCounts.test.ts`,
+`hooks/callHistory/useCallCounts.test.tsx` (all-or-nothing and failure-not-cached each verified to
+fail when reverted), `components/patient/patientCommsColumn.test.tsx`.
 
 ---
 
@@ -12148,6 +12200,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
 | A recording won't play, or a call has no Play/⤓ at all | §5.16 — first check the call's AGE: RingCentral deletes recordings at **90 days** and keeps the log row, so an old call looks identical to one never recorded and the audio is unrecoverable. Inside 90 days, no audio means the call never connected (auto-recording is on for both directions, measured 760/774). A 403 on download is the `ReadCallRecording` permission |
+| "How many times have we called this patient?" / the Calls tab's counts look wrong | §5.51b — our call archive in Postgres (`POST /calls/archive/query`), both numbers, since the archive's oldest call (mid-June 2026 — "ever" means since our records begin). No numbers and "Couldn't read" means the read failed, never zero. It counts every call on the line and cannot see a rep's personal-phone calls, nor tell a fax from a call |
 | "Are we actually saving the recordings?" | §5.47 — `GET /calls/archive-health` on the gateway (unauthenticated). `ok:false` with *no successful run* means the job has never completed one; `storeConfigured:false` means no bucket is wired up. A **pending** backlog is normal and is not a fault — that is a backfill draining |
 | A recording is in the archive but the Command Center won't play it | §5.47 — the chain is `useArchivedAudio` → `hasPlayableAudio` (draws the button) → `recordingSource` (picks archive over RingCentral) → `archivedPlaybackUrl` (presigned). ⚠️ If the button is simply ABSENT, the render gate has gone back to `c.recording`, which is false for every purged call — `archivedRecordings.test.ts` should have failed |
 | Another service needs call metadata (who called, when) | §5.47 — `POST /calls/archive/query` with a Google identity or `CALL_ARCHIVE_SERVICE_TOKEN`. ⚠️ It answers `last4`, never the number: send the number you already hold and it hashes it, the `/directory/lookup` posture |

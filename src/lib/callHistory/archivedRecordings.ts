@@ -44,6 +44,17 @@ function authHeaders(): Record<string, string> {
   return token ? { "X-MM-Auth": token } : {};
 }
 
+/**
+ * A request to one of the gateway's other archive routes (`callCounts.ts`),
+ * with the same base and the same identity header as the two below — one
+ * definition, so a change to how this client authenticates reaches every
+ * archive route at once.
+ */
+export function archiveFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = { ...(init.headers as Record<string, string> | undefined), ...authHeaders() };
+  return fetch(`${GATEWAY}${path}`, { ...init, headers });
+}
+
 export interface ArchivedAudio {
   hasAudio: boolean;
   /** none | pending | stored | gone | failed — see callArchiveRules.mjs. */

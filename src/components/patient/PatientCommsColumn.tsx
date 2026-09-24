@@ -42,10 +42,11 @@
  *  - **Call** — a chip on the number line, beside the number it dials, the way
  *    his "Call alt" sits beside the alternate. Dropping it would bring back the
  *    button that does nothing (§5.50), which Josh reported the same day.
- *  - **Texts N** — the thread's own count once it has loaded; ⚠️ **Calls has no
- *    count**, because counting calls means reading RingCentral's call log for
- *    every patient opened (§5.16) — no number beats a number we cannot stand
- *    behind.
+ *  - **Texts N** — the thread's own count once it has loaded. **Calls N** is
+ *    every call with the patient's numbers from OUR call archive in Postgres
+ *    (Josh, 2026-09-24 — `useCallCounts`), never RingCentral's call log, which
+ *    would be a per-patient RingCentral read on every open (§5.16). The Calls
+ *    tab leads with the split — we called / they called.
  *  - The bell stays on the Communications hub's thread and in the ring
  *    settings, the two ways a number joins the ring list (§5.13).
  * ⚠️ The resolve bar stays at the TOP of the column, where the Inbox plan put
@@ -65,6 +66,9 @@ import { RecentNotes } from "@/components/patient/RecentNotes";
 import { PatientResolveBar } from "@/components/commsInbox/PatientResolveBar";
 import type { NoteTarget } from "@/lib/commsInbox/api";
 import { formatPhoneParen } from "@/lib/shared/phoneDisplay";
+import { useCallCounts } from "@/hooks/callHistory/useCallCounts";
+import { countLabel } from "@/lib/callHistory/callCounts";
+import { CallCountsCard } from "@/components/patient/CallCountsCard";
 
 export function PatientCommsColumn({
   phone,
@@ -124,6 +128,9 @@ export function PatientCommsColumn({
     [activePhone],
   );
   const textCount = textCounts[activePhone];
+  /* The patient's calls, BOTH numbers — "how many times have we called them"
+     is about the patient, whichever of their lines it rang. Postgres only. */
+  const callCounts = useCallCounts(phone, alt);
 
   return (
     <aside className="pt-side">
@@ -141,6 +148,9 @@ export function PatientCommsColumn({
           </button>
           <button type="button" className={side === "calls" ? "on" : ""} onClick={() => onSide("calls")}>
             <Phone style={{ width: 13, height: 13 }} /> Calls
+            {callCounts.counts && (
+              <span className="n">{countLabel(callCounts.counts.total, callCounts.counts.capped)}</span>
+            )}
           </button>
         </div>
       </div>
@@ -262,6 +272,7 @@ export function PatientCommsColumn({
         </div>
       ) : (
         <div className="side-body" style={{ padding: 14, gap: 10, overflowY: "auto" }}>
+          <CallCountsCard view={callCounts} caregiverName={contacts?.caregiverName} />
           <p className="xs muted" style={{ margin: 0 }}>
             Every text, call, recording and voicemail with{" "}
             {onAlt ? "the alternate number" : "this patient"}, full screen — and a composer to text them.
