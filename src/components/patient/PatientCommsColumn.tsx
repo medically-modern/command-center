@@ -5,15 +5,21 @@
  * ⚠️ **Both halves are the EXISTING components, not new ones.** The thread is
  * `assignedPatients/ConversationThread`, which is the only surface RingCentral's
  * late `SendingFailed` verdict ever reaches (§5.5) and which already carries the
- * opt-out guard; the call history is `shared/CallHistoryButton`, which already
- * fetches ON OPEN rather than on render (§5.16), already plays and downloads a
- * recording, and already paces a bulk download against `rcLimiter`. Rebuilding
- * either here would be a second copy of a rule whose drift is silent.
+ * opt-out guard; the Calls tab is `comms/CommunicationsButton` (§5.50), whose
+ * popup reads the patient's whole history from the archives and falls back to
+ * the call log ON OPEN (§5.16). Rebuilding either here would be a second copy
+ * of a rule whose drift is silent.
  *
  * ⚠️ **Only the OPEN tab reads RingCentral** — the §5.28 rule, and the reason
- * the Calls tab renders the button rather than an inline list: a list would have
+ * the Calls tab renders a button rather than an inline list: a list would have
  * to fetch on mount, which is a per-patient RingCentral read on a screen a rep
  * clicks through. INCIDENT_2026-08-20 is that shape.
+ *
+ * ⚠️ **Call dials in the page** (Josh, 2026-09-24, §5.50). This column's Call
+ * button was a deliberate no-op on the belief that a dialer here would spend a
+ * second softphone slot. It would not: `useWebPhone` is a view over the ONE
+ * registration every tab shares (§5.13b), so a rep pressed Call and nothing
+ * happened for no benefit at all.
  *
  * ⚠️ **Recent notes sits UNDER both tabs, outside the tab body** (§5.39c3) —
  * Brandon's spec, and it falls out of what the block is: a fact about the
@@ -31,7 +37,9 @@
 import { useState } from "react";
 import { MessageSquare, Phone } from "lucide-react";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
-import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
+import { CommunicationsButton } from "@/components/comms/CommunicationsButton";
+import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
+import { reportDial } from "@/hooks/commsInbox/useInbox";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
 import type { PatientSide } from "@/lib/patient/patientScreen";
 import type { DossierItem } from "@/lib/commsHub/dossier";
@@ -72,6 +80,19 @@ export function PatientCommsColumn({
    *  onto somebody else (§9's notes-box rule). */
   const onAlt = useAlt && !!alt;
   const activePhone = onAlt ? alt : phone;
+
+  // Dials through the browser's one shared registration (§5.13b); the app-wide
+  // call overlay shows the call. Who dialed is reported first, because the
+  // call log cannot say — the whole team is one extension (§5.49).
+  const webPhone = useWebPhone();
+  const last10 = (n: string) => n.replace(/\D/g, "").slice(-10);
+  const dialNumber = (n: string) => {
+    if (!n) return;
+    reportDial(n);
+    void webPhone.dial(n);
+  };
+  const callingActive =
+    !!webPhone.call && !!activePhone && last10(webPhone.call.phone) === last10(activePhone);
 
   return (
     <aside className="pt-side">
@@ -116,15 +137,11 @@ export function PatientCommsColumn({
               </button>
             ) : (
               <>
-                {/* ⚠️⚠️ **"Call alt" shows the alternate number's call HISTORY
-                    rather than dialling, and that is the one place this column
-                    departs from the mockup.** His `callalt` handler is a toast
-                    standing in for placing a call; placing one from this screen
-                    is deliberately not done — the softphone registration is the
-                    Communications Hub's and RingCentral caps the shared
-                    extension at five (§5.13b), so a dialer here would spend a
-                    slot. Switching the Calls tab is a real move his sample data
-                    could not offer, and it costs nothing. */}
+                {/* "Call alt" DIALS the alternate number (§5.50), and points
+                    the column at it so the thread beside the call is theirs.
+                    It used to show the alternate's call history instead, on
+                    the belief that a dialer here would spend a softphone slot —
+                    it does not; every tab shares one registration (§5.13b). */}
                 <button
                   type="button"
                   className="numbtn"
@@ -141,9 +158,9 @@ export function PatientCommsColumn({
                   className="numbtn"
                   onClick={() => {
                     setUseAlt(true);
-                    onSide("calls");
+                    dialNumber(alt);
                   }}
-                  title="Show the alternate number's call history"
+                  title="Call the alternate number from the Command Center"
                 >
                   <Phone style={{ width: 10, height: 10 }} /> Call alt
                 </button>
@@ -170,34 +187,37 @@ export function PatientCommsColumn({
               is its own thread, not the patient&apos;s.
             </div>
           )}
-          {/* ⚠️ `onCall` is a no-op on purpose: placing a call is the
-              Communications Hub's job — it owns the softphone registration, and
-              RingCentral caps the shared extension at five (§5.13b). A second
-              dialer here would spend a slot. The Calls tab is the door.
+          {/* Call dials the number on screen, in the page (§5.50).
               ⚠️ Keyed on the number so a switch to the alternate cannot carry a
               half-typed message across to a different thread. */}
           <ConversationThread
             key={activePhone}
             phone={activePhone}
             patient={patient}
-            onCall={() => {}}
-            calling={false}
+            onCall={() => dialNumber(activePhone)}
+            calling={callingActive}
             canText={contacts?.canText}
           />
         </div>
       ) : (
         <div className="side-body" style={{ padding: 14, gap: 10, overflowY: "auto" }}>
           <p className="xs muted" style={{ margin: 0 }}>
-            Call history, recordings and voicemail for {onAlt ? "the alternate number" : "this number"},
-            from RingCentral.
+            Every text, call, recording and voicemail with{" "}
+            {onAlt ? "the alternate number" : "this patient"}, full screen — and a composer to text them.
           </p>
           <div>
-            <CallHistoryButton phone={activePhone} />
+            <CommunicationsButton
+              phone={activePhone}
+              altPhone={onAlt ? phone : alt}
+              patientName={patient?.name}
+              mondayItemId={patient?.itemId}
+              canText={onAlt ? undefined : contacts?.canText}
+            />
           </div>
-          {/* ⚠️ Says WHY the list is behind a press rather than just showing a
-              button — the call log is one of RingCentral's more rate-limited
-              endpoints (§5.16) and this screen renders for every patient a rep
-              clicks through. */}
+          {/* ⚠️ Says WHY the history is behind a press rather than just shown —
+              the call log is one of RingCentral's more rate-limited endpoints
+              (§5.16) and this screen renders for every patient a rep clicks
+              through. */}
           <p className="xs muted" style={{ margin: 0 }}>
             Loaded when you open it, so a patient you only glance at costs nothing.
           </p>

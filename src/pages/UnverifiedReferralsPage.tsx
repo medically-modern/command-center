@@ -2365,24 +2365,25 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     </span>
                     <PatientContact
                       phone={selected.ptPhone}
-                      /* ⚠️ Opt-in: given `onCall`, the number becomes a
-                         <button> that dials the shared registration instead of
-                         an `<a href="tel:">` that hands the call to the
-                         RingCentral desktop app and takes the rep off the page.
-                         Every other header in the app passes nothing and is
-                         byte-identical (§5.30g). */
+                      patientName={selected.name}
+                      mondayItemId={selected.id}
+                      /* ⚠️ This page passes `onCall` because it owns its own
+                         dial-then-log flow: its dialog dials AND hands off to
+                         this page's Log call attempt. Without it the button
+                         would open the plain dial-only popup every other
+                         header uses (§5.50) — never a `tel:` handoff. */
                       onCall={() => setDialOpen(true)}
                       textPrefill={textPrefill}
                       textOpen={textComposerOpen}
                       onTextSent={logTextSent}
                       onTextOpenChange={(o) => {
                         setTextComposerOpen(o);
-                        // Drop the template once the dialog closes, so the next
-                        // plain "Text" click opens an empty composer.
+                        // Drop the template once the popup closes, so the next
+                        // plain "Communications" click opens an empty composer.
                         if (!o) setTextPrefill(undefined);
                       }}
                     />
-                    {/* Up here with Call and Text rather than in the booking
+                    {/* Up here with Call and Communications rather than in the booking
                         block below, because that block only renders for "Wants
                         a call first" — and the patients most worth sending a
                         booking link to are the ones who never answered that

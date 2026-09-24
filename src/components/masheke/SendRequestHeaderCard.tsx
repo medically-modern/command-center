@@ -106,7 +106,7 @@ export function SendRequestHeaderCard({
       </div>
       <div className="mt-2 flex items-center gap-3 flex-wrap">
         <span className="text-lg text-muted-foreground">DOB {dash(patient.dob)}</span>
-        <PatientContact phone={patient.phone} />
+        <PatientContact phone={patient.phone} patientName={patient.name} mondayItemId={patient.id} />
       </div>
 
       {/* three info groups — always visible (outside the drawer) */}

@@ -20,12 +20,14 @@
  * linking. The phone comes from the same match, so the two are blank together —
  * which is why the disabled button says WHY rather than just being dead.
  */
+import { useState } from "react";
 import { CalendarClock, ExternalLink, Mail, Phone, User } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { displayTime } from "@/lib/scheduledCalls/workflow";
 import type { ScheduleEntry } from "@/lib/careCoordinator/scheduleEntries";
-import { formatPhoneNice } from "@/components/masheke/mmKit";
+import { formatPhoneNice } from "@/lib/shared/phoneDisplay";
+import { DialPatientDialog } from "@/components/shared/DialPatientDialog";
 import { cn } from "@/lib/utils";
 
 /** "Thu, Sep 17" — the day, for a popup that can be opened on any day. */
@@ -62,6 +64,11 @@ export function BookingDetailsDialog({
   onOpenProfile: (href: string) => void;
 }) {
   const kindLabel = entry?.kind === "welcome" ? "Welcome call" : "Intake call";
+  /** The number being dialled from this popup, or null. Rendered INSIDE the
+   *  popup's content (Radix's nested-dialog pattern), so closing the booking
+   *  closes the dial popup with it — the call itself carries on in the
+   *  app-wide overlay. */
+  const [dialing, setDialing] = useState<string | null>(null);
   return (
     <Dialog open={entry !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
@@ -88,10 +95,20 @@ export function BookingDetailsDialog({
                   words rather than rendering an empty line the coordinator has
                   to interpret. */}
               <Row icon={<Phone className="h-4 w-4" />} label="Patient phone">
+                {/* ⚠️ A button that dials in the Command Center, never a
+                    `tel:` link — that handed the call to the RingCentral app,
+                    or to nothing at all on a machine without it (§5.50). */}
                 {entry.phone
-                  ? <a className="text-[color:var(--mm-teal)] hover:underline" href={`tel:${entry.phone.replace(/[^\d+]/g, "")}`}>
+                  ? (
+                    <button
+                      type="button"
+                      className="text-[color:var(--mm-teal)] hover:underline"
+                      title={`Call ${formatPhoneNice(entry.phone)} from the Command Center`}
+                      onClick={() => setDialing(entry.phone)}
+                    >
                       {formatPhoneNice(entry.phone)}
-                    </a>
+                    </button>
+                  )
                   : <Missing>Not on file</Missing>}
               </Row>
 
@@ -121,6 +138,14 @@ export function BookingDetailsDialog({
                 This booking isn&apos;t matched to a patient on the board — usually because it was
                 made under an email address we don&apos;t hold for them.
               </p>
+            )}
+            {dialing && (
+              <DialPatientDialog
+                open
+                phone={dialing}
+                name={entry.name}
+                onClose={() => setDialing(null)}
+              />
             )}
           </>
         )}

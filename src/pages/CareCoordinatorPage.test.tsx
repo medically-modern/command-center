@@ -280,9 +280,16 @@ describe("CareCoordinatorPage", () => {
     expect(within(card).getByTitle("4 texts to this patient")).toHaveTextContent("4");
     expect(within(card).getByTitle("1 call from this patient")).toHaveTextContent("1");
     expect(within(card).getByTitle("2 texts from this patient")).toHaveTextContent("2");
-    // `Call Log (3)` — the count comes from the same shared read, never a
-    // per-card fetch (§5.16: the call log is rate-limited and opens on click).
-    expect(within(card).getByRole("button", { name: /Call Log \(3\)/ })).toBeInTheDocument();
+    // ⚠️ `Call Log (3)` went with the Calls button it rode on (Josh,
+    // 2026-09-24, §5.50): every Text and Calls button in the app became ONE
+    // Communications button, which opens the patient's whole history.
+    expect(within(card).getByRole("button", { name: /^Communications$/ })).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: /Call Log/ })).toBeNull();
+    // ⚠️ And the number DIALS IN THE PAGE — a <button>, never a `tel:` link.
+    // This card took `onCall` from 2026-09-22 and never handed it on, so every
+    // Call here was a handoff to the RingCentral app until 2026-09-24.
+    expect(card.querySelector('a[href^="tel:"]')).toBeNull();
+    expect(within(card).getByTitle(/from the Command Center$/).tagName).toBe("BUTTON");
     expect(within(card).getByRole("button", { name: /Booking Link/ })).toBeInTheDocument();
     expect(within(card).queryByText("Active")).toBeNull();
     expect(within(card).queryByText(/Web form/)).toBeNull();
@@ -327,12 +334,9 @@ describe("CareCoordinatorPage", () => {
     // all is a read that came back CLIPPED; `truncated` is false here.)
     expect(within(wcCard).getByTitle("0 calls to this patient")).toHaveTextContent("0");
     expect(within(wcCard).getByTitle("0 texts from this patient")).toHaveTextContent("0");
-    // ⚠️ `Call Log (0)`, not a bare "Call Log". The shared read covers the whole
-    // ACCOUNT, so a number missing from it really has had no calls this week —
-    // that is an answer, not a gap, and every card carries one once the read
-    // lands. (A read that came back CLIPPED is the case that shows no number at
-    // all; `truncated` is false in this fixture.)
-    expect(within(wcCard).getByRole("button", { name: /Call Log \(0\)/ })).toBeInTheDocument();
+    // The Welcome Call card carries the same one Communications button (§5.50).
+    expect(within(wcCard).getByRole("button", { name: /^Communications$/ })).toBeInTheDocument();
+    expect(wcCard.querySelector('a[href^="tel:"]')).toBeNull();
   });
 
   it("shows the newest note by default, in ONE batched read per column", async () => {

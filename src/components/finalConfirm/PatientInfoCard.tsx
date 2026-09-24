@@ -19,7 +19,6 @@ import {
   needsPriorPumpDate,
   needsMonitorPurchaseDate,
   deriveMonitorPurchaseDate,
-  formatPhone,
   formatDateMDY,
 } from "@/lib/finalConfirm/workflow";
 import type { CheckFinding, CheckSeverity } from "@/lib/finalConfirm/checkPack";
@@ -91,7 +90,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
-import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
+import { PatientContact } from "@/components/masheke/mmKit";
 import { CardinalAddressNote } from "@/components/shared/CardinalAddressNote";
 import { WelcomeCallProfileStatus } from "@/components/shared/PatientProfileStatus";
 import { pumpQtyApplies } from "@/lib/shared/servingLines";
@@ -840,13 +839,16 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
         {patient.phone && (
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Phone</p>
+            {/* Call dials in the Command Center and Communications opens the
+                whole back-and-forth (§5.50). ⚠️ Both read the EDITED number:
+                the `tel:` link this replaced dialled `patient.phone` while
+                displaying `phoneEdited`, i.e. a corrected number on screen
+                and the old one on the line. */}
             <div className="flex items-center justify-end gap-1.5">
-              <a href={`tel:${patient.phone}`} className="text-lg font-semibold text-primary hover:underline">
-                {formatPhone(patient.phoneEdited ?? patient.phone)}
-              </a>
-              <CallHistoryButton
+              <PatientContact
                 phone={patient.phoneEdited ?? patient.phone}
-                display={formatPhone(patient.phoneEdited ?? patient.phone)}
+                patientName={patient.name}
+                mondayItemId={patient.id}
               />
             </div>
           </div>

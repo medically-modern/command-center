@@ -32,6 +32,10 @@ h3 { font-size: 1.125rem; font-weight: 600; }
     --mm-rose-12: oklch(0.62 0.13 18 / 0.12);
     --mm-rose-soft: oklch(0.94 0.03 18);
     --mm-card-border: oklch(0.929 0.013 255.508);
+    /* Text and icons ON a solid `--mm-teal` fill (the Call button, the audio
+       player's play button, §5.50). White here; the `.dark` block flips it,
+       because there `--mm-teal` is a LIGHT teal and white on it is unreadable. */
+    --mm-on-teal: #fff;
 
     --card: 0 0% 100%;
     --card-foreground: 215 40% 12%;
@@ -140,6 +144,8 @@ h3 { font-size: 1.125rem; font-weight: 600; }
     --mm-rose-12: oklch(0.75 0.13 18 / 0.18);
     --mm-rose-soft: oklch(0.29 0.06 18);
     --mm-card-border: oklch(0.32 0.012 255.508);
+    /* Dark ink on the light dark-mode teal — see `:root`. */
+    --mm-on-teal: oklch(0.2 0.03 200);
 
     /* Status hues lift just enough to read on an 11% card while keeping their
        white foregrounds legible as badges — both jobs, one pair of tokens. */

@@ -150,8 +150,9 @@ export function PatientDetailCard({ patient, onMarkCompleted }: Props) {
         {patient.phone && (
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Phone</p>
-            {/* Same Call + Text (RingCentral thread) buttons as Evaluate */}
-            <PatientContact phone={patient.phone} />
+            {/* Same Call + Communications buttons as every patient header
+                (§5.50). */}
+            <PatientContact phone={patient.phone} patientName={patient.name} mondayItemId={patient.id} />
           </div>
         )}
       </Card>

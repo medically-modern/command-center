@@ -440,7 +440,7 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
         >
           <p className="text-xl font-bold tracking-tight min-w-0 truncate">{patient.name}</p>
           <div className="ml-auto shrink-0">
-            <PatientContact phone={patient.phone} />
+            <PatientContact phone={patient.phone} patientName={patient.name} mondayItemId={patient.id} />
           </div>
         </div>
 

@@ -209,8 +209,9 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
 > delivers ~30s later). Reproduced on two separate OAuth apps (2026-07) — account-level, not
 > app-record rot. `sendSms` therefore confirms a 5xx against the message store (exact text +
 > recipient, created since the POST) before surfacing an error; without that, reps would retry and
-> double-text patients. The masheke Text popup (`components/masheke/mmKit.tsx` `TextCompose`) rides
-> on this. The RC OAuth app also needs the **Read Messages** scope or the popup's thread read fails.
+> double-text patients. Every composer in the app rides on this — the Communications popup (§5.50),
+> the hub and the intake page. The RC OAuth app also needs the **Read Messages** scope or a thread
+> read fails.
 
 > **Gotcha — an ACCEPTED text is not a DELIVERED text** (Brandon, 2026-08-20). RingCentral's own
 > guide says it outright: a successful `POST /sms` "only confirms that the request was accepted by
@@ -234,9 +235,10 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
 >    to the patient who was open at send time, so a timer surviving a patient switch paints the
 >    PREVIOUS patient's conversation into the open one. Cancel on every phone/patient change.
 >
-> Rendered by **one** component on all three texting surfaces —
-> `components/shared/SmsDeliveryNote.tsx`, used by `assignedPatients/ConversationThread`, the
-> `masheke/mmKit` `TextCompose` pop-up and `profile/IntakeMessages`; a rep can text from any of them,
+> Rendered by **one** component on every texting surface —
+> `components/shared/SmsDeliveryNote.tsx`, used by `assignedPatients/MessageBubble` (the hub's
+> thread and the Communications popup's fallback, §5.50) and `profile/IntakeMessages`; the old
+> `masheke/mmKit` `TextCompose` pop-up is gone (2026-09-24). A rep can text from any of them,
 > so a marker on one alone is the same gap one surface further along. ⚠️ It takes **`skin="page"`**
 > inside `.pf-root` for the §9 reason (`.pf-root *` zeroes margin/padding and forces `border-color`,
 > which ties with a single-class Tailwind utility and then wins on source order — the note would
@@ -1527,12 +1529,17 @@ not the gate. It also fires only while a Command Center tab is open, and announc
 per day (`announced` resets at ET midnight, or a tab left open overnight carries yesterday's set
 into today and the first morning call goes unannounced).
 
-### 5.16 Patient call history — the "Calls" button in every stage header (Aug 2026)
-A **Calls** button sits beside the Call and Text buttons on every patient header and opens the
-patient's call history with the MM line: both directions, how long each call lasted, and a player
-for any call RingCentral recorded. Pure logic in **`lib/callHistory/callHistory.ts`** (+ tests),
-REST in `lib/fax/ringcentralApi.ts` (`fetchPatientCallHistory` / `fetchRecordingBlobUrl`), UI in
-**`components/shared/CallHistoryButton.tsx`**.
+### 5.16 Patient call history — the call log with the MM line (Aug 2026)
+> ⚠️ **The "Calls" button this section describes is GONE (2026-09-24, §5.50).** Every Text and Calls
+> button became ONE **Communications** button, whose full-screen popup shows the whole history. The
+> call list itself survives as **`components/shared/CallHistoryList.tsx`** — the popup's FALLBACK
+> Calls pane, drawn when the Communications inbox cannot be read — and every rule below still holds
+> for it. `CallHistoryButton.tsx` was deleted.
+
+The call history with the MM line: both directions, how long each call lasted, and a player for any
+call RingCentral recorded. Pure logic in **`lib/callHistory/callHistory.ts`** (+ tests), REST in
+`lib/fax/ringcentralApi.ts` (`fetchPatientCallHistory` / `fetchRecordingBlobUrl`), UI in
+**`components/shared/CallHistoryList.tsx`**.
 
 **⚠️ The call-log `phoneNumber` filter takes DIGITS, not E.164 — a leading `+` returns NOTHING.**
 Not an error: **HTTP 200 with an empty `records` list**, which is indistinguishable from a patient
@@ -1564,15 +1571,13 @@ substring: "Answered Not Accepted" is a MISSED call that contains "answered".
 **Fetched on OPEN, never on render** — the call-log is one of RingCentral's more rate-limited
 endpoints and a header renders for every patient a rep clicks through. That's the deliberate trade
 behind the button showing no missed-count badge until it's opened.
-> ⚠️ **The Care Coordinator card DOES show a count from 2026-09-17** — `Call Log (3)` — and it does
-> not break this rule: the number is PASSED IN by a caller holding the account-wide
-> `useContactStates` read it was making anyway, and this component still fetches nothing until it is
-> opened. It means **calls this week**, and it is withheld when that read was truncated (§5.30e).
-> A count that costs a request per patient is still the version Josh declined on 2026-09-16.
+> ⚠️ The Care Coordinator card's `Call Log (3)` chip (2026-09-17, §5.30e) went with the button it
+> rode on (§5.50). The card's two counter rows (§5.30g) still show the same account-wide read. A
+> count that costs a request per patient is still the version Josh declined on 2026-09-16.
 
 **Recordings can be DOWNLOADED, not just played** (Josh, 2026-09-16 — *"all of the calls today i
 want the option to download them"*). Rule: **`lib/callHistory/recordingDownload.ts`** (+ tests);
-a per-call ⤓ beside Play in `CallHistoryButton`, a **Download all (N)** in its footer, and in the
+a per-call ⤓ beside Play in `CallHistoryList`, a **Download all (N)** in its footer, and in the
 Comms Hub Phone tab a per-row ⤓ plus a **Today** filter pill and a **Download N** that saves
 exactly what the list is currently showing.
 
@@ -1626,11 +1631,9 @@ a fax attachment ends `/content/{attachmentId}`, a recording ends AT `/content` 
 fax pattern silently 403s every recording. `rcAllowlist.test.mjs` pins both, plus host-suffix
 smuggling (`notringcentral.com`, `ringcentral.com.evil.com`).
 
-`PatientContact` (masheke/mmKit) carries the button, so the five headers that already use it get it
-for free; the other five render it directly — welcomeCall / finalConfirm / subscription
-`PatientInfoCard`, `samantha/BenefitsPatientHeader` (Benefits · Submit Auth · Auth Outstanding) and
-`masheke/ConfirmReceiptHeaderCard`. The button self-hides when there's no number on file, so a
-header can drop it in unconditionally.
+Every patient header now renders `PatientContact` (masheke/mmKit) — Call + Communications — and
+the history is one press into the Communications popup (§5.50). `CommunicationsButton` self-hides
+when there's no number on file, so a header can drop it in unconditionally.
 
 ### 5.17 Cardinal address format — checked at Welcome Call + Final Profile Confirmation (Aug 2026)
 Cardinal Health orders carry **two** addresses and validate both: the patient's (`shipTo`) and the
@@ -3115,7 +3118,7 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
 - ⚠️ **Voicemail transcription is written defensively and is UNVERIFIED against this account.**
   RingCentral returns transcripts as a `text/plain` attachment with `vmTranscriptionStatus` saying
   whether one exists, but transcription is a per-account feature that may be off here. It degrades
-  to a plain "no transcript" note rather than an error — the same posture `CallHistoryButton`
+  to a plain "no transcript" note rather than an error — the same posture the call history (§5.16)
   takes for absent recordings, where an account that doesn't produce them is the NORMAL case.
   Confirm against the live account before relying on it.
 
@@ -3333,7 +3336,8 @@ intake bookings ever, and the gateway's welcome index reported `indexed: 0` acro
   never earns one.
 - **A "Call Log (N)" count was declined** (Josh, same day). §5.16 is the reason: the call log is one
   of RingCentral's more rate-limited endpoints and is fetched ON OPEN, never on render. A count per
-  card is a request per card per render — INCIDENT_2026-08-20's shape.
+  card is a request per card per render — INCIDENT_2026-08-20's shape. (It shipped the next day from
+  the shared read, §5.30e, and left with the Call Log button on 2026-09-24, §5.50.)
 
 **Keep-in-agreement:** `useCalendlyDay`'s `KINDS` ⇄ the gateway's `calendlyDayRules.KNOWN_KINDS` ⇄
 dtc-mm-form's `/api/calendly/day`. `PILL_SLOTS`' columns (1 · 3 · 5 · 6 · 8) ⇄
@@ -3509,6 +3513,8 @@ badge that could only ever say one thing.
   ⚠️ it is WITHHELD when that read came back at its page cap (`activityTruncated`), because
   a clipped window under-counts and a number on screen is read as fact. `Call Log (0)` is a
   real answer and renders; no number at all means we could not stand behind one.
+  ⚠️ **GONE 2026-09-24 with the Call Log button it rode on (§5.50)** — every Text and Calls
+  button became one Communications button. The two counter rows (§5.30g) carry the same read.
 - **The copy-number button is deleted** (`CopyPhoneButton`, from every header).
   ⚠️⚠️ **It was asked for on a DIFFERENT SCREEN and the deletion over-reached.** Katie wanted it on
   the **Welcome Call stage page** (§5.31f) the day before; it shipped inside `masheke/mmKit`'s
@@ -3593,7 +3599,7 @@ Files: `lib/careCoordinator/{intakeFilter,pills,scheduleEntries}.ts` (+ tests),
 `hooks/careCoordinator/{useBoardPoll,useCardNotes}.ts`,
 `components/careCoordinator/{BookingDetailsDialog,IntakeFilter,PatientCard,cards,ScheduleGrid}.tsx`,
 `lib/contactState/contactState.ts`, `components/masheke/mmKit.tsx`,
-`components/shared/{CallHistoryButton,StageActionBar}.tsx`,
+`components/shared/StageActionBar.tsx` (and the since-deleted `CallHistoryButton`, §5.50),
 `components/profile/IntakeMessages.tsx`, `pages/UnverifiedReferralsPage.tsx`,
 `pages/profile/intake.css`, `components/welcomeCall/WelcomeCallForm.tsx`.
 
@@ -3878,8 +3884,9 @@ save not having taken. Written only on a confirmed write and dropped as soon as 
    `PatientContact`'s opt-in `onCall`. ⚠️ **DIAL ONLY**: this page already owns its attempt step, with
    its own writer and its own required-note gate, so the popup hands off to it rather than carrying a
    second form — two dialogs onto one write is what §5.30e records finding on this very page with
-   Propose Stuck. ⚠️ No `<CallOverlay>` (one is mounted app-wide). ⚠️ Every other header still passes
-   nothing and keeps its `tel:` anchor byte for byte; only this page and the dashboard card opt in.
+   Propose Stuck. ⚠️ No `<CallOverlay>` (one is mounted app-wide). ⚠️ **Superseded 2026-09-24
+   (§5.50):** every header's Call now dials in the page by default; `onCall` is only how a page with
+   its OWN attempt step (this one, the Care Coordinator card) swaps in its own dialog.
 3. **All four exit-row buttons are the same size** (Josh: *"advance and log call attempt are huge"*).
    The left pair took `flex:1 1 0` inside a `flex:1 1 320px` group and grew to fill whatever the right
    pair left. ⚠️ This reverses Brandon's 2026-09-17 *"a bit smaller"*; his LAYOUT point is kept — Propose
@@ -3923,7 +3930,8 @@ phone/message pairs stacked say nothing without it.
 ⚠️ **Nothing says "this week"** (Josh, 2026-09-22: *"no need to explicitly say its this week ill
 tell him thats all thats possible"*). Seven days is all the shared read reaches.
 ⚠️ **`calls` stays the pair's SUM** and is not re-derived in the view — the `Call Log (N)` chip
-beside these means both directions, and two readings of one fact is how they drift.
+that sat beside these meant both directions (it left with the button on 2026-09-24, §5.50), and
+two readings of one fact is how they drift.
 ⚠️ **The green emphasis on the outbound phone is NOT the count.** `reachedByCall` means they PICKED
 UP one of ours, which no number here can express (a call that rang out counts identically).
 ⚠️ **A clipped window prints an em dash, never the number it has** — §5.30e's rule for
@@ -3969,6 +3977,7 @@ the top item on the list.
   means "blocks the advance" on this card and this is a routing fact.
 - **The call log names the patient** — `CallHistoryButton` gained an opt-in `who`; the number stays
   beside it, because a patient with two numbers on file needs to know which one is on screen.
+  (That pop-up is gone — §5.50's Communications popup is titled with the patient's name.)
 - **The Booking Link is lighter** — a bordered `bg-sky-500/15`, the least urgent of three controls
   on its row.
 - ⚠️ **The photo-upload pill's caption dropped 7px, MEASURED.** A `<button>` establishes a line box
@@ -4011,9 +4020,12 @@ monday has no compare-and-set and this dashboard memoises notes per column load.
   raising a registration for the call — so this works for anybody; Masani being one of the five
   (§5.13b) only means hers is already warm. ⚠️ **No `<CallOverlay>` here**: one is mounted app-wide
   by `IncomingCallHost` and `softphoneRules.test.ts` pins that callers must not mount their own.
-  ⚠️ `PatientContact`'s `onCall` is **opt-in and only this card passes it** — absent, every other
-  header keeps its `tel:` anchor byte for byte. It becomes a `<button>`, not an anchor with a
-  handler: a live `tel:` href still hands off on a middle-click or a long-press.
+  ⚠️⚠️ **THE CARD NEVER ACTUALLY PASSED `onCall` ON — found 2026-09-24 (§5.50).** `PatientCard`
+  took the prop and did not hand it to `PatientContact`, so every Call on this card was still a
+  `tel:` handoff while `CallPatientDialog` sat unused. It is passed now; and every OTHER header's
+  Call dials in the page too (`DialPatientDialog`, §5.50), so no `tel:` link is left anywhere.
+  It is a `<button>`, not an anchor with a handler: a live `tel:` href still hands off on a
+  middle-click or a long-press.
 - ⚠️ The dialog is **keyed on the patient** and dials once per ITEM, not per render — on a polling
   dashboard a render-keyed effect is a call placed every minute.
 
@@ -4229,7 +4241,8 @@ contradiction of the note AND the cause of the narrow-screen overflow review fla
 now live in **`components/welcomeCall/PatientActivityCard`**, directly under the banner
 (*"put text and call history on top"*), with Call and Text in its header — *"this is where
 the user will press to call them"*. `PatientContact` gained `hideCallHistory` so its Calls
-pop-up doesn't sit beside a Calls tab showing the same history. Editing the number moved to
+pop-up doesn't sit beside a Calls tab showing the same history (both props gone since
+2026-09-24 — the header row is Call + Communications, §5.50). Editing the number moved to
 its own card.
 ⚠️ **This is a per-patient RingCentral read on a stage page — INCIDENT_2026-08-20's shape.**
 `hooks/welcomeCall/usePatientActivity` fetches **on open, never on render**, caches one
@@ -7192,12 +7205,12 @@ from one `phone`, so **Text alt** points the column at the alternate number and 
 **Back to primary** returns. An amber note says the thread is the alternate's own, not the
 patient's — which is more honest than the mockup, whose thread stayed on the primary because its
 sample data is fake.
-⚠️⚠️ **"Call alt" shows the alternate number's call HISTORY rather than dialling, and that is the
-one deliberate departure from the mockup.** His `callalt` handler is a toast standing in for
-placing a call; placing one from this screen is deliberately not done — the softphone registration
-is the Communications Hub's and RingCentral caps the shared extension at five (§5.13b), so a
-dialer here would spend a slot (`onCall` is a documented no-op for the same reason). Switching the
-Calls tab is a real move his sample data could not offer, and it costs nothing.
+⚠️⚠️ **"Call alt" DIALS the alternate number (2026-09-24, §5.50).** It first shipped showing the
+alternate's call HISTORY instead, and the column's own Call button was a deliberate no-op, both on
+the belief that a dialer here would spend a second softphone slot. That was wrong: `useWebPhone` is
+a thin view over the ONE registration every tab shares (§5.13b), so dialling from here costs
+nothing — while a Call button that does nothing is exactly Josh's *"clicked call and nothing
+happened"*. Both dial now, reporting who dialed first (§5.49).
 ⚠️ **The selection falls back BY CONSTRUCTION** (`useAlt && !!alt`), so it can never outlive the
 number it named, and `PatientPage` keys the whole column on the record — §9's notes-box rule, one
 level up: a switch surviving a patient change would point the composer at the PREVIOUS patient's
@@ -7612,7 +7625,8 @@ change to the screen that asked for it, or say out loud that it is going to both
 > counts (intake: Attempt Counter · Drop-off Attempt clamped to 2; Welcome Call: Call Attempts ·
 > **0/1 from the Welcome Call Text trigger**, the board's only text fact); time `x:xx` today or
 > `MM/DD x:xx`; "N days" / "<1 day" since intake. Buttons: Call · Text (light green) · **Call
-> Log** (list icon — `PatientContact` `callHistoryLabel`/`callHistoryIcon`, this page only) ·
+> Log** (list icon — `PatientContact` `callHistoryLabel`/`callHistoryIcon`, this page only; Text
+> and Call Log became one light-green **Communications** button on 2026-09-24, §5.50) ·
 > quiet *See notes* / *Open* (Open is how the attempt gets logged, so it stays) · **Booking Link**
 > (light blue, every card). The booking dialog gained an **Intake call / Welcome call dropdown**;
 > the welcome URL is `bookingLink.BOOKING_URLS.welcome`, pasted from the Calendly console (no
@@ -9393,7 +9407,8 @@ switch), `_SERVICE_TOKEN`, `_WINDOW_DAYS`, `_SCAN_DAYS`, `_DEEP_EVERY_HOURS`, `_
 
 **The Command Center plays them back** — `lib/callHistory/archivedRecordings.ts` (the rule) +
 `hooks/callHistory/useArchivedAudio.ts` (one batched lookup per list, the `useDirectoryNames`
-shape) + `CallHistoryButton`.
+shape) + `CallHistoryList` (the Communications popup's fallback call list, §5.50) and the Inbox
+timeline's `PlayAudio`.
 ⚠️⚠️ **THE HALF THAT IS EASY TO MISS IS DRAWING THE BUTTON AT ALL.** A purged call arrives with no
 `recording` object, so `{c.recording && …}` renders nothing and a fallback on the *download* path
 can never run — the screen looks exactly as it did before the archive existed and the bytes sit in
@@ -10302,8 +10317,10 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
   hub, the Care Coordinator's `CallPatientDialog` and §5.30h's `DialPatientDialog` (which arrived on
   `main` while this was being built and was wired in the merge). ⚠️ `inboxWiring.test.ts` finds
   dialers by SCANNING `src/` for a dial call, not from a list, so a fourth that forgets to report
-  fails the build. ⚠️ The `tel:` links in `PatientContact` do not report — they hand off to the
-  RingCentral app; only the screens that pass `onCall` (§5.30h) dial in the page.
+  fails the build. ⚠️ From 2026-09-24 there are no `tel:` links left (§5.50): every header's Call
+  opens `DialPatientDialog` (or the page's own dialog), and the Communications popup, the patient
+  screen's column and the doctor's-office `CallBox` all dial through ONE of these, each reporting
+  first.
 - **The hub's right pane IS the patient screen** (plan §7, Josh's D3;
   `components/commsHub/HubPatientPane.tsx`). `PatientPage` was split into a route shell and
   `components/patient/PatientBody.tsx`, and both render the same body — its view state arrives as a
@@ -10415,6 +10432,160 @@ on the dashboard's Communications bar (⚠️ that last is a §5.8 counting-cont
    still renders `PatientDossierPanel`.
 10. **`PatientBody`** is the one top bar and view for both hosts — `topBarWiring.test.ts` scans the
     body and asserts both hosts render it.
+### 5.50 Communications — one button, the whole history full screen, calls that dial here (Sep 2026)
+Josh, 2026-09-24, four asks in one message: *"its impossible to scrub the calls and voicemails
+cause the areas too small, make it large so i can scrub back and forth"* · *"all of the text /
+calls buttons on command center need to be replaces with this new 'all activity notes call
+recordings voicemails etc' button. lets call it Communications … a full screen pop up of the back
+and forth with the patient, basically just porting the middle text call voicemail notes back and
+forth there … no action items here … with the ability to text them from there"* · *"the phone
+number throughout the command center doesnt call. i just went to my name in subscription and
+clicked call and nothing happened. it should NOT open ring central and should call directly from
+the app"* (*"the app being command center"*) · *"is there any way to transcribe these calls?
+cheaply?"*. **No board change; app only.**
+
+**1. A player you can scrub — `components/shared/AudioPlayer.tsx` + `lib/shared/audioScrub.ts`.**
+Every recording and voicemail player in the app was the browser's own `<audio controls>`, squeezed
+to h-8/h-9 inside a row capped at 78% of a half-screen pane: Chrome gives that control's timeline
+what is left after the play button, both clocks, the volume and the ⋮ menu — about a hundred pixels,
+so a six-minute call moved three seconds per pixel. The player draws its own controls around a
+hidden `<audio>`: a full-width bar with a 36px hit area that seeks WHILE dragging (one seek per
+frame) and shows the time under the pointer; a 44px play/pause; ⟲15/⟳15; a clock; a speed button
+(1× → 2×); and keys on the focused bar (arrows ±5s, Shift ±15s, PageUp/Down ±30s, Home/End, Space).
+Measured in Chromium: a 394px bar in a 420px card, and 770px inside the popup at both 1440 and 1024.
+- ⚠️ **It never fetches bytes.** Callers resolve `src` on the press of a Play button — a blob URL
+  from RingCentral, or the archive's presigned link used as a BARE `src`, never `fetch()`ed (§5.47).
+- ⚠️ **`onError` is the caller's cue to hand the Play button back** — an archive link dies after five
+  minutes (§5.47), so a paused recording can fail on resume; every caller resets on it.
+- ⚠️⚠️ **A SOURCE MUST ANSWER BYTE-RANGE REQUESTS OR IT CANNOT BE SCRUBBED.** Measured: served whole
+  with a plain 200, Chrome snaps every seek back to 0:00; with `Accept-Ranges` + 206 it seeks and
+  plays on. S3/Tigris presigned URLs and `blob:` URLs both support ranges, so every live source is
+  fine today — but if the gateway's `?mode=proxy` streaming (§5.47) ever becomes a player's source,
+  it must honour `Range` or scrubbing silently breaks.
+- `durationHint` (the call log's or archive's length) makes the bar scrubbable before the file has
+  reported its own; an unknown length prints `--:--`, never a fabricated `0:00`.
+- Older engines return nothing from `play()`; the handler only chains `.catch` onto a real promise.
+- ⚠️ **No `<audio controls>` is left anywhere in `src/`** — `communicationsWiring.test.ts` scans.
+
+**2. One Communications button — `components/comms/CommunicationsButton.tsx` (+ `CommunicationsView.tsx`,
+`lib/comms/commsPopup.ts`).** It replaced the old **Text** composer (`mmKit`'s `TextCompose`, deleted)
+and the **Calls** pop-up (`shared/CallHistoryButton`, deleted) on every patient header:
+`PatientContact` is now **Call + Communications** and renders on Evaluate, Send Request, Confirm
+Receipt, both Chase roles, Doctor Appointments, Benefits · Submit Auth · Auth Outstanding, Welcome
+Call (in its activity box), Final Confirm, Subscription, Patient Questions, Orders, Patient Intake,
+the Care Coordinator card and the patient screen's Calls tab.
+- **The popup is the hub's middle pane in VIEW mode** — `ItemTimeline mode="view"`: every text, call,
+  recording, voicemail (with transcript) and every resolution / left-voicemail note, oldest first,
+  plus the shared `Composer`. ⚠️ **View mode drops the header and the ResolveBar** — Josh: *"there
+  are no action items here"* — so nothing in the popup resolves, undoes or logs anything. Texting is
+  the one action it keeps, and it is the same `Composer` the hub uses, so the opt-out, delivery and
+  Can Text guards (§5.5, §5.46e) come with it.
+- ⚠️ **"Notes" here means the timeline's own notes** — each resolution's note and each attempt. The
+  patient's Monday case notes stay on the stage page and are NOT in the popup; that was a reading of
+  the ask, not a decision anybody made, so it is a one-line addition if wanted.
+- **It finds the patient's item by the header's numbers** (`POST /comms/state`, Postgres only, no
+  RingCentral) and reads it with `useInboxItem`, so opening it costs no RingCentral call at all.
+- ⚠️ **It never dead-ends** (§5.39f's rule). Inbox switched off, unreadable, or no item for these
+  numbers ⇒ the FALLBACK view: the live thread (`useConversation` + `MessageBubble` + `Composer`)
+  beside `CallHistoryList` — the old Calls pop-up's body, kept for exactly this — under an amber
+  sentence naming why, with Try again.
+- **Numbers** (`commsPopup.ts`, tested): the header's own number first, then the alternate; a
+  select appears only with two. ⚠️ `withHeaderNumbers` GUARANTEES the page's number is offered even
+  when the item does not carry it — the patient directory is up to a day old (§5.29), and a composer
+  quietly aimed at another number sends a patient's text to their caregiver. `activeNumber` is the
+  rep's choice → the page's number → the Inbox's default. ⚠️ Can Text applies only to the header's
+  PRIMARY number — it is that line's answer (§5.31d).
+- **Drafts are per number and cleared on a change of patient**, and the clear is declared BEFORE the
+  template seeding because effects run in order (§9's notes-box rule).
+- ⚠️ **The old Text button's contract is kept word for word**, because Patient Intake depends on it:
+  `open` pushes the popup open, `textPrefill` seeds the primary number's draft through
+  `lib/shared/textDraft` (a template never overwrites typed words; an untouched one is dropped on
+  close), and `onTextSent` gets every body — *Start Insurance Follow-Up*, *Generate CGM data link*
+  and the Call Log stamp all ride on it.
+- ⚠️ **Outside clicks never close it** — the only things outside a full-screen popup are the
+  incoming-call cards (§5.13b), and answering one must not throw away what the rep was reading.
+- ⚠️ **It carries its OWN live-call bar** (status, timer, Mute, Hang up): a Radix modal sets
+  `pointer-events: none` on the body, so the app-wide `CallOverlay` is visible but unclickable under
+  it. `softphoneRules.test.ts` still holds — nothing here mounts a second `<CallOverlay>`.
+- ⚠️ The trigger's base look is INLINE, because `.bnr` and `.pf-root` reset `background`, `color`
+  and `font` on every button beneath them (§9) — verified inside `.bnr` in a real browser.
+- Outbound texts are attributed to the patient's board record (`mondayItemId`, §5.28) — but NOT from
+  Orders: an order item is not a patient record, so a text from there is attributed to nobody.
+- The Care Coordinator card keeps its light-green button (`commsTone="green"`); its `Call Log (N)`
+  chip went with the Calls button (the two counter rows, §5.30g, show the same read).
+
+**3. Every Call dials in the Command Center.** ⚠️ **There is no `tel:` link left in the app** —
+`communicationsWiring.test.ts` fails the build on one. `PatientContact`'s Call opens
+`DialPatientDialog` by default; `onCall` only swaps in a page's OWN dial-then-log dialog (Patient
+Intake, the Care Coordinator card). Converted, each one a place a rep pressed Call and was handed to
+the RingCentral app — or to nothing:
+- **Subscription** — Josh's exact report: a `tel:` link on a machine with no handler does nothing.
+- **Final Confirm** — also DIALLED `patient.phone` while DISPLAYING `phoneEdited`: a corrected number
+  on screen and the old one on the line. Both read the edited number now.
+- **Insurance** (Benefits · Submit Auth · Auth Outstanding) — a new `callLabel="Call"`, because the
+  DOB line already prints the number with its edit pencil (§5.32d).
+- **Confirm Receipt's header**, the **booking popup** on the Care Coordinator strip (a nested dial
+  dialog), and the **doctor's-office Call** on Confirm Receipt and Chase Clinicals — two
+  byte-identical copies, now one `masheke/CallBox`.
+- ⚠️⚠️ **The Care Coordinator card took `onCall` from 2026-09-22 and NEVER HANDED IT ON** — §5.30g
+  said it did; `git log -S` says no commit ever passed it. So its Call was a `tel:` handoff while
+  the page's `CallPatientDialog` sat unused. Passed now; a test pins it.
+- ⚠️⚠️ **The patient screen's Call was a deliberate NO-OP**, and its "Call alt" showed history instead
+  of dialling, both on the belief that a dialer there would spend a second softphone slot. Wrong:
+  `useWebPhone` is a view over the ONE registration every tab shares (§5.13b). Both dial now.
+- Every dial reports who dialed before dialling (§5.49); a dial that cannot register says why in the
+  popup ("Browser calling isn't available: …") rather than doing nothing.
+
+**4. Transcription — researched 2026-09-24, NOT built.** From the vendors' own pages (all fetched
+that day; nothing tested against our audio). At ~7,000 minutes a month plus a ~21,000-minute
+backfill:
+| Option | Monthly | Backfill | BAA | Speakers |
+|---|---|---|---|---|
+| **AssemblyAI Universal-3.5 Pro + speaker labels** (recommended) | ~$27 | ~$81 | self-serve on any paid account; turns training off; deletion timer 1–30 days | yes |
+| AssemblyAI Universal-2 + speaker labels | ~$20 | ~$60 | same | yes |
+| Azure AI Speech batch | ~$21 | ~$63 | in Microsoft's Product Terms — **not confirmed** Speech is on the HIPAA in-scope list | yes |
+| OpenAI gpt-transcribe | ~$31.50 | ~$94.50 | by email, case by case | **no** |
+| Deepgram Nova-3 | ~$30 | ~$90 | **Enterprise plan only** (the published rate carries none) | yes |
+| AWS Transcribe | ~$42 | ~$126 | self-serve in AWS Artifact; audio must sit in S3 | yes |
+| AWS / Google medical models | ~$525–546 | — | yes | — |
+- ⚠️ **RingCentral turns voicemail-to-text OFF when its HIPAA setting is on** (its own support page).
+  That is a plausible explanation for §5.28/§5.47b's "no transcript" being the normal reading — a
+  hypothesis, not verified against this account's settings.
+- ⚠️ RingCentral's old speech-to-text API is deprecated; its replacement (AI Conversation Expert) is
+  on RingCentral's BAA and "starts at $60", but only covers calls recorded under a license, so it
+  cannot do the backfill, and whether one license covers the single shared extension is unconfirmed.
+- ⚠️ **Railway's pricing page says a HIPAA BAA needs a $1,000/month minimum commitment** — relevant
+  regardless of transcription, because the archived recordings (§5.47) are stored there today.
+  Nobody has checked whether that agreement is in place.
+- Building it would be a gateway job over the call archive (§5.47): send mono audio (AssemblyAI bills
+  stereo per channel), set deletion to 1 day, store the text beside the recording on the messaging
+  pool. A decision, not a tidy-up.
+
+**Verified** — `tsc -b` clean, the full suite green, and a real-browser pass (Chromium, a throwaway
+harness against a FAKE gateway — nothing touched RingCentral or Monday) at 1440×900 and 1024×768 in
+dark mode: zero `tel:` links; the Insurance header's Call keeps its colours inside `.bnr`; the bar
+click-seeks to 1:30 and drag-seeks back to 0:45; the popup at 1408/992px with no horizontal overflow,
+the resolution note, voicemail transcript, composer and no resolve bar; a draft surviving close and
+reopen; the fallback's texts + call list; and the dial popups from a header, the doctor's-office
+button and the booking popup. ⚠️ **Dark mode needed one token** — `--mm-teal` turns LIGHT there, so
+white-on-teal buttons were unreadable; `--mm-on-teal` (white / dark ink) now carries the text on
+every teal fill this change touches. The app has ~15 older white-on-teal Tailwind spots (plus
+~12 in the page stylesheets) with the same problem, untouched here.
+
+**Keep-in-agreement:** `PatientContact` ⇄ `CommunicationsButton` ⇄ `CommunicationsView` ⇄
+`ItemTimeline`'s view mode (never a second copy of the timeline) · `Composer` shared with the hub
+(§5.49 rule 5) · `commsPopup.ts` ⇄ `lib/commsInbox/timeline`'s `fillNumbers`/`defaultNumber` ·
+`AudioPlayer` on every player ⇄ the `<audio controls>` scan · `DialPatientDialog` / `CallBox` /
+`useWebPhone` ⇄ `reportDial` before every `.dial(` (§5.49's scan) · `--mm-on-teal` in BOTH `:root`
+and `.dark` (§5.40's rule). Tests: `components/comms/{communicationsWiring,CommunicationsButton}.test`,
+`components/masheke/patientContactCall.test.tsx`, `components/shared/AudioPlayer.test.tsx`,
+`lib/shared/audioScrub.test.ts`, `lib/comms/commsPopup.test.ts`, and `canTextForNumber` in
+`lib/welcomeCall/activityNumbers.test.ts` — every scan verified to match the code it replaced.
+Files: `components/comms/*`, `components/shared/{AudioPlayer,CallHistoryList,DialPatientDialog}.tsx`,
+`components/masheke/{mmKit,CallBox}.tsx`, `lib/shared/{audioScrub,phoneDisplay}.ts`,
+`lib/comms/commsPopup.ts`, `components/commsInbox/ItemTimeline.tsx`,
+`components/assignedPatients/Composer.tsx`, and every header named above.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -11546,7 +11717,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | "Did the patient answer the reorder text?" / the Reorder form column is blank or says the wrong thing | §5.46c — `lib/patient/reorderForm.ts`. **"No Response" is a RESET, not an answer**, and the timestamp does not reset with it, so a stamp reading *last answered* beside *No response yet* is correct. **"Not sent yet" keys on the LINK**, never on Reorder Text Sent (blank on 195 of 300 live rows that were plainly texted). Every field blank on EVERY patient ⇒ `reorderFormColumns` dropped out of `dossierApi.dossierCols`. ⚠️ There is no Resend and no Send now — the board has no trigger column for the reorder text, so Copy link is the move |
 | "What's supposed to be in this order?" / Expected items is empty or lists "Not Serving" | §5.46d — `lib/patient/expectedItems.ts`. A line with **no quantity** is a product whose quantity nobody filled in (82% of CGM-serving rows), never a zero; a quantity of **0** correctly drops the line. Empty on EVERY patient ⇒ `expectedItemsColumns` dropped out of `dossierApi.dossierCols`. ⚠️ Cartridges have no product column here — Supplies Type is the PUMP — so "3 × cartridges" is all the board can say |
 | "Who's the caregiver?" / the Contacts block is all em dashes | §5.46e — `lib/patient/contacts.ts`. Mostly blank is CORRECT today: measured 2026-09-22 over 875 Subscription rows, only 16 carry a Primary Contact and **2** an alternate phone. Blank on EVERY patient ⇒ `contactsColumns` dropped out of `dossierApi.dossierCols`. ⚠️ Caregiver authorized shows **Yes or an em dash, never No** — a Monday checkbox has two states, so unticked means nobody recorded an authorisation. ⚠️ A ticked box reads `"v"`, not `"Yes"` |
-| No "alt" line in the right column, or Text alt / Call alt are missing | §5.46e — the segment renders only when the record HAS an alternate phone, which is 2 patients board-wide. It reads the LIVE record and falls back to any record carrying a block, so a Welcome Call caregiver still shows for a patient sitting in Insurance. ⚠️ **"Call alt" shows that number's call HISTORY rather than dialling** — deliberate: the softphone is the Comms Hub's and caps at five (§5.13b) |
+| No "alt" line in the right column, or Text alt / Call alt are missing | §5.46e — the segment renders only when the record HAS an alternate phone, which is 2 patients board-wide. It reads the LIVE record and falls back to any record carrying a block, so a Welcome Call caregiver still shows for a patient sitting in Insurance. "Call alt" DIALS the alternate number since 2026-09-24 (§5.50) — the old "it would spend a softphone slot" reason was wrong: every tab shares one registration (§5.13b) |
 | The text composer is blocked and the patient never replied STOP | §5.46e — their **Can Text** column reads **No**; the banner says so and names where to change it. ⚠️ It blocks on an EXPLICIT No only — a blank is unknown (§5.31d) and blocks nobody. A STOP reply outranks the column and shows its own message |
 | The patient screen's Email is blank, or a pencil won't save | §5.46g — `lib/patient/contactEdit.ts`. Blank on EVERY patient ⇒ `emailColumns` dropped out of `dossierApi.dossierCols`. A greyed pencil says why in its tooltip: no `editProfile`, a **completed** record (refused by design, §5.38), or a board with no such column. A refusal under the box is the shape test — the email one is permissive because it must accept `<digits>@rcfax.com`. ⚠️ Saving a NUMBER also clears Can Text on Welcome Call and Subscription; that is §5.31d's rule, not a bug |
 | A patient's Subscription tab is empty, or their orders are missing from it | §5.45 — the **Orders** tab reads the order board by PHONE and **fails closed below ten digits**, so a record with no number on file says so rather than listing every order in the company. An empty Profile tab means nothing on that board's mapped columns is filled in; Financials and Contacts are deliberately not rendered there (both are a section in `stageDetail.ts` away, and both widen the Comms Hub dossier read). The count on the tab appears only once the tab has been opened — the read is on-open, never on render |
@@ -11661,7 +11832,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Setting the carrier from a card photo does nothing / saves green and the board is unchanged | §5.30h — `lib/careCoordinator/carrierAssign.ts`. `writeBenefitsInputs` **skips a label it cannot resolve silently**, so the refusal runs BEFORE the write and names the label; a carrier added on monday since needs the live index (§5.33). ⚠️ It writes General Insurance and nothing else — no Stedi run, deliberately, because the member ID is the other half of that input and is on neither the photo nor this screen |
 | The Insurance pill won't open the photo, or won't change to the carrier | §5.30h — the pill is pressable whenever the row HAS a file (never gated on the words "Photo upload", or the press disables itself). The pill switching to the carrier is `pills.intakeInsurance` preferring a real General Insurance — no second rule, because `intakeFilter.facetValue` reads the same function. A pill still reading "Photo upload" a minute after a save means the page-level override was dropped |
 | The photo glyph covers the label, or the pill captions fall out of line | §5.30h — `PillActions.icon` must be paired with `Pill`'s `iconPad` (15px reserved for a 10px glyph 3px from the edge). Reproduce by MEASURING the caption row across several cards; "Pump path" sitting 2px low is the em-dash slot and is pre-existing on cards with no glyph at all |
-| A phone number still opens the RingCentral app | §5.30h — `PatientContact`'s `onCall` is **opt-in**, and only the Care Coordinator card and the intake profile page pass it. Adding it elsewhere is one prop; the popup is `components/shared/DialPatientDialog`, which **dials only** — a screen that owns its own attempt step must hand off to it rather than grow a second form |
+| "Where did the Text and Calls buttons go?" | §5.50 — every header's Text and Calls became ONE **Communications** button (`components/comms/CommunicationsButton`), which opens the patient's whole history full screen with a composer. The call list lives on as `shared/CallHistoryList`, the popup's fallback |
+| The Communications popup shows an amber "couldn't be read" line and a plain thread | §5.50 — the FALLBACK: the Communications inbox is off, unreadable, or has no item for these numbers, so it shows the live thread and the RingCentral call list instead. Check `/comms/config` and `/comms/inbox-health` (§5.49); Try again re-asks |
+| A recording won't scrub, or snaps back to 0:00 | §5.50 — the source must answer byte-range requests. S3/Tigris presigned and `blob:` URLs do; anything served whole with a plain 200 cannot be seeked in Chrome. The player is `shared/AudioPlayer`; a link that expired resets to Play (§5.47's five minutes) |
+| "Can we transcribe calls cheaply?" | §5.50 part 4 — researched 2026-09-24, not built. AssemblyAI with speaker labels is the cheapest with a self-serve BAA (~$27/month + ~$81 backfill); RingCentral switches voicemail-to-text off under HIPAA mode; check Railway's $1,000/month BAA minimum first |
+| A phone number still opens the RingCentral app, or Call does nothing | §5.50 — there are NO `tel:` links left: `PatientContact`'s Call opens `DialPatientDialog` by default, and `onCall` only swaps in a page's own dial-then-log dialog (Patient Intake, the Care Coordinator card). `communicationsWiring.test.ts` fails the build on a `tel:` href. A dial that errors says why in the popup — usually the softphone could not register (§5.13b), never a silent no-op |
 | A patient a rep has worked is missing from the Care Coordinator dashboard | §5.30f — they are in **Review Profile** now, not an exclusion. `callDone` and `sendNow` were exclusions until 2026-09-18 and between them hid everybody who does not need a call. A Review card prints the **blocker** (`workflow.intakeBlocker`); a BLANK blocker means "nothing this dashboard can see", never "ready to advance" — the authority is `profile/intakeUnlock.evaluateUnlock` on the profile page |
 | A Review Profile card shows no blocker but the profile page won't advance | §5.30f — expected, and the narrower read is deliberate: `cgmInPlay` on the page also consults Provided CGM Preference and CGM Data Awareness, which this dashboard does not carry. Widening it means adding those columns to `INTAKE_COLS`, not special-casing the card |
 | Somebody wants the copy-number button on another screen | §5.30f — it is opt-in (`PatientContact` `showCopy`) and Welcome Call is the only caller, because Katie asked for it there and Brandon asked for it off the Care Coordinator card. Adding a caller is a decision; `copyPhoneScope.test.ts` will fail until this section and the test are updated |

@@ -38,7 +38,7 @@ import { reportDial } from "@/hooks/commsInbox/useInbox";
 import { defaultFollowUpDate } from "@/lib/careCoordinator/followUp";
 import { logCallAttempt, type CallAttemptTarget } from "@/lib/careCoordinator/callAttempt";
 import { etToday } from "@/lib/masheke/etDate";
-import { formatPhoneNice } from "@/components/masheke/mmKit";
+import { formatPhoneNice } from "@/lib/shared/phoneDisplay";
 
 export interface CallTarget extends CallAttemptTarget {
   phone: string;

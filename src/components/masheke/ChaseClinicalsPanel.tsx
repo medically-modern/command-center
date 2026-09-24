@@ -80,12 +80,13 @@ import { getIdToken } from "@/lib/shared/auth";
 import { ESCALATION_INDEX, MN_ATTEMPTS_INDEX } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
-import { AlertTriangle, Check, CheckCircle2, ChevronRight, ExternalLink, FileText, Loader2, Phone, Send } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ChevronRight, ExternalLink, FileText, Loader2, Send } from "lucide-react";
 import { CalendarClock } from "lucide-react";
 import { isParachuteRoleMethod } from "@/lib/masheke/chaseMethods";
 import { GenerateScriptsControl } from "@/components/masheke/GenerateScriptButtons";
 import { DISTRICT_ENDOCRINE_DASHBOARD_URL } from "@/lib/shared/partnerDashboard";
 import { FileList, LoadingRow, MmStep } from "@/components/masheke/mmKit";
+import { CallBox } from "@/components/masheke/CallBox";
 import { MissingChecklist } from "@/components/masheke/MissingChecklist";
 import { MethodBar } from "@/components/masheke/MethodBar";
 import { ActivityRow, formatActivityDate } from "@/components/masheke/PreviousActivityCard";
@@ -598,7 +599,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
             {doctorDisplayName(patient.doctorName)}
           </p>
           <div className="ml-auto shrink-0">
-            <CallBox phone={patient.doctorPhone} />
+            <CallBox phone={patient.doctorPhone} who={doctorDisplayName(patient.doctorName)} />
           </div>
         </div>
 
@@ -1163,22 +1164,6 @@ function doctorDisplayName(name?: string): string {
   return /^dr\.?\s/i.test(n) ? n : `Dr. ${n}`;
 }
 
-/** Right-side "Call" button on the method bar — a tel: link styled as a
- *  button so the rep can click to dial. */
-function CallBox({ phone }: { phone?: string }) {
-  const display = formatPhoneDisplay(phone);
-  const tel = (phone ?? "").replace(/[^\d+]/g, "");
-  return (
-    <a
-      href={tel ? `tel:${tel}` : undefined}
-      className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-base font-bold text-white shadow-sm transition-opacity hover:opacity-90 bg-[color:var(--mm-teal)] aria-disabled:opacity-50"
-      aria-disabled={!tel}
-    >
-      <Phone className="h-4 w-4 shrink-0" /> Call {display}
-    </a>
-  );
-}
-
 function FilesLabel({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <p className={`text-xs font-medium uppercase tracking-wide text-muted-foreground mt-[18px] mb-2 ${className ?? ""}`}>
@@ -1211,18 +1196,6 @@ function nextMnAttempt(currentAttempt: number): "Attempt 2" | "Attempt 3" | "Esc
   return "Escalate";
 }
 
-/** Format raw phone digits for the Call button. */
-function formatPhoneDisplay(raw?: string): string {
-  if (!raw) return "—";
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  if (digits.length === 11 && digits.startsWith("1")) {
-    return `+1 (${digits.slice(1, 4)})-${digits.slice(4, 7)}-${digits.slice(7)}`;
-  }
-  return raw;
-}
 
 /** Hint under the "Chase Clinicals Completed" button. */
 function saveHint({

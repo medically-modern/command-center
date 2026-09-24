@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MessageSquare, Phone, PhoneIncoming, PhoneOutgoing, Voicemail, RefreshCw, ChevronRight, Loader2, Play } from "lucide-react";
+import { AudioPlayer } from "@/components/shared/AudioPlayer";
 import { PatientContact } from "@/components/masheke/mmKit";
 import { usePatientActivity, type ActivityTab } from "@/hooks/welcomeCall/usePatientActivity";
 import type { ActivityNumber } from "@/lib/welcomeCall/activityMatch";
@@ -60,7 +61,21 @@ function mmss(sec: number): string {
  * wrong, one of which had the Text button in this very header composing to a
  * number the rep had already corrected.
  */
-export function PatientActivityCard({ numbers }: { numbers: ActivityNumber[] }) {
+export function PatientActivityCard({
+  numbers,
+  patientName,
+  mondayItemId,
+  canTextFor,
+}: {
+  numbers: ActivityNumber[];
+  /** Named in the Communications popup's title. */
+  patientName?: string;
+  /** The Welcome Call record an outbound text is attributed to (§5.28). */
+  mondayItemId?: string;
+  /** The Can Text answer for a number on screen (§5.31d) — an explicit No
+   *  blocks the popup's composer for that number. */
+  canTextFor?: (number: string) => "yes" | "no" | "unknown";
+}) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<ActivityTab>("texts");
   /* Which number is on screen, by DIGITS rather than by index: the slots are
@@ -117,10 +132,11 @@ export function PatientActivityCard({ numbers }: { numbers: ActivityNumber[] }) 
                 {n.label}
               </button>
             ))}
-          {/* Brandon: "this is where the user will press to call them". The Calls
-              pop-up is suppressed because the Calls TAB below is the same
-              history. ⚠️ It dials and texts the SELECTED number, so a rep
-              reading the alternate's thread replies on the alternate. */}
+          {/* Brandon: "this is where the user will press to call them". Call
+              dials in the Command Center and Communications opens the full
+              back-and-forth (§5.50). ⚠️ Both work on the SELECTED number, so a
+              rep reading the alternate's thread replies on the alternate — and
+              the popup is also handed the other number to switch to. */}
           {/* ⚠️ `showCopy` is THIS SCREEN's, and nowhere else's (Josh,
               2026-09-18). Katie asked for a copy-number control here because
               the number is a `tel:` link label and cannot be dragged to
@@ -128,7 +144,14 @@ export function PatientActivityCard({ numbers }: { numbers: ActivityNumber[] }) 
               then removed on a note about the Care Coordinator CARD, which
               took it off this page too. The prop is what keeps the two
               screens apart — see §5.30's two-screens table. */}
-          <PatientContact phone={phone} hideCallHistory showCopy />
+          <PatientContact
+            phone={phone}
+            altPhone={numbers.find((n) => n.number !== phone)?.number}
+            patientName={patientName}
+            mondayItemId={mondayItemId}
+            canText={canTextFor?.(phone)}
+            showCopy
+          />
         </div>
       </div>
 
@@ -261,7 +284,7 @@ function dayOf(iso: string): string {
  * "Play" → fetch the bytes → an inline <audio>.
  *
  * Brandon, 2026-09-11: *"is there a way to listen to the calls/voicemails from
- * the tool?"* — yes, and the plumbing already existed: `CallHistoryButton` has
+ * the tool?"* — yes, and the plumbing already existed: the call history has
  * played call recordings since §5.16 and the Comms Hub plays voicemail audio.
  * This just surfaces it where he asked for it.
  *
@@ -276,7 +299,7 @@ function dayOf(iso: string): string {
  * the account to record AND the `ReadCallRecording` permission, and voicemail
  * audio needs an attachment RingCentral may not give us. No URI ⇒ no button.
  */
-function AudioPlay({ uri, kind }: { uri: string; kind: "recording" | "voicemail" }) {
+function AudioPlay({ uri, kind, durationHint }: { uri: string; kind: "recording" | "voicemail"; durationHint?: number }) {
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -284,7 +307,18 @@ function AudioPlay({ uri, kind }: { uri: string; kind: "recording" | "voicemail"
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
 
   if (!uri) return null;
-  if (url) return <audio controls autoPlay src={url} className="mt-1.5 w-full h-9" />;
+  /* The scrubbable player (§5.50): the browser's own `controls` bar gives a
+     long call a seek track a few pixels tall, which nobody can scrub. */
+  if (url) {
+    return (
+      <AudioPlayer
+        src={url}
+        durationHint={durationHint}
+        label={kind === "recording" ? "Recording" : "Voicemail"}
+        className="mt-1.5"
+      />
+    );
+  }
 
   return (
     <div className="mt-1">
@@ -344,7 +378,7 @@ function Calls({ rows }: { rows?: import("@/lib/callHistory/callHistory").Patien
               </span>
               <span className="text-xs text-muted-foreground ml-auto shrink-0">{when(c.startTime)}</span>
             </div>
-            <AudioPlay uri={c.recording?.contentUri ?? ""} kind="recording" />
+            <AudioPlay uri={c.recording?.contentUri ?? ""} kind="recording" durationHint={c.durationSec} />
           </div>
         );
       })}
@@ -376,7 +410,7 @@ function Voicemails({ rows }: { rows?: import("@/lib/fax/ringcentralApi").Voicem
               ? "Transcript available — open it in Communications."
               : "No transcript."}
           </p>
-          <AudioPlay uri={v.audioUri} kind="voicemail" />
+          <AudioPlay uri={v.audioUri} kind="voicemail" durationHint={v.durationSec} />
         </div>
       ))}
     </div>

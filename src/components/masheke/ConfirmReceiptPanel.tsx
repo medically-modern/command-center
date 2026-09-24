@@ -53,7 +53,6 @@ import {
   Clock,
   FileText,
   Loader2,
-  Phone,
   Plus,
   X,
   XCircle,
@@ -68,6 +67,7 @@ import {
   SentChip,
   type TaggedFile,
 } from "@/components/masheke/mmKit";
+import { CallBox } from "@/components/masheke/CallBox";
 import { useFaxStatus } from "@/hooks/masheke/useFaxStatus";
 // Shared with Send Request — one fax-status pill on every surface that faxes.
 import { FaxStatusChip, DeliveredChip } from "@/components/shared/FaxStatusChip";
@@ -640,7 +640,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false, on
             {doctorDisplayName(patient.doctorName)}
           </p>
           <div className="ml-auto shrink-0">
-            <CallBox phone={patient.doctorPhone} />
+            <CallBox phone={patient.doctorPhone} who={doctorDisplayName(patient.doctorName)} />
           </div>
         </div>
 
@@ -1319,22 +1319,6 @@ function doctorDisplayName(name?: string): string {
   return /^dr\.?\s/i.test(n) ? n : `Dr. ${n}`;
 }
 
-/** Right-side "Call" button on the method bar — a tel: link styled as a
- *  button so the rep can click to dial. */
-function CallBox({ phone }: { phone?: string }) {
-  const display = formatPhoneDisplay(phone);
-  const tel = (phone ?? "").replace(/[^\d+]/g, "");
-  return (
-    <a
-      href={tel ? `tel:${tel}` : undefined}
-      className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-base font-bold text-white shadow-sm transition-opacity hover:opacity-90 bg-[color:var(--mm-teal)] aria-disabled:opacity-50"
-      aria-disabled={!tel}
-    >
-      <Phone className="h-4 w-4 shrink-0" /> Call {display}
-    </a>
-  );
-}
-
 /** "Request sent" context banner — kept from the previous design so the
  *  agent knows whether the request actually went out before calling. */
 function RequestSentBanner({ patient }: { patient: Patient }) {
@@ -1577,18 +1561,6 @@ function formatDateTimeShort(d: Date): string {
 /** True when an ET-rendered Monday timestamp is today's ET date. The "Delivered"
  *  chip only shows for a same-day send; older sends are covered by attempt history. */
 
-/** Format raw phone digits for the Call box (same as profile card). */
-function formatPhoneDisplay(raw?: string): string {
-  if (!raw) return "—";
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  if (digits.length === 11 && digits.startsWith("1")) {
-    return `+1 (${digits.slice(1, 4)})-${digits.slice(4, 7)}-${digits.slice(7)}`;
-  }
-  return raw;
-}
 
 /** Save-area hint. */
 function saveHint({

@@ -3,8 +3,7 @@
  * (send-request / confirm-receipt mockup aesthetic). Pure presentation:
  * no Monday writes, no workflow logic.
  */
-import { MessageAttachments } from "@/components/shared/MessageAttachments";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,33 +14,18 @@ import {
   FileText,
   Loader2,
   Mail,
-  MessageSquare,
   Pencil,
   Phone,
-  RefreshCw,
-  Send,
   Trash2,
   XCircle,
 } from "lucide-react";
 import type { MondayFileEntry } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
-import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
+import { CommunicationsButton } from "@/components/comms/CommunicationsButton";
+import { DialPatientDialog } from "@/components/shared/DialPatientDialog";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
-import SmsDeliveryNote from "@/components/shared/SmsDeliveryNote";
-import { useDeliveryRecheck } from "@/hooks/useDeliveryRecheck";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
-import { draftOnOpen, draftAfterClose } from "@/lib/shared/textDraft";
-// Sends go through the gateway (not RingCentral directly) so WHO sent the text
-// is recorded from the verified token. This popup is behind every Text button in
-// the app, so routing it here is what makes the attribution log complete.
-import { fetchConversation, sendMessage, type ConversationMessage as SmsMessage } from "@/lib/assignedPatients/messagingApi";
-// TCPA/CTIA guard, shared with the Assigned Patients inbox — nothing upstream
-// stops a send to someone who replied STOP, so every composer needs it.
-import { consentState } from "@/lib/assignedPatients/optOut";
+import { formatPhoneNice } from "@/lib/shared/phoneDisplay";
 
 // =====================================================================
 // Step shell
@@ -532,15 +516,6 @@ export function openInGoogleViewer(url: string) {
   window.open(viewerUrl, "_blank");
 }
 
-/** Format raw phone digits as (xxx)-xxx-xxxx / +1 (xxx)-xxx-xxxx. */
-export function formatPhoneNice(raw?: string): string {
-  if (!raw) return "—";
-  const d = raw.replace(/\D/g, "");
-  if (d.length === 10) return `(${d.slice(0, 3)})-${d.slice(3, 6)}-${d.slice(6)}`;
-  if (d.length === 11 && d[0] === "1") return `+1 (${d.slice(1, 4)})-${d.slice(4, 7)}-${d.slice(7)}`;
-  return raw;
-}
-
 /**
  * Copy the patient's number to the clipboard.
  *
@@ -621,52 +596,74 @@ export function DaysInStagePill({ value }: { value?: string }) {
   );
 }
 
-/** Patient phone shown as a Call button (with the number) + a Text button.
- *  Uses tel:/sms: so the rep's device handles it. */
+/**
+ * The patient's number as a Call button, and the Communications button beside
+ * it. Rendered in every patient header in the app.
+ *
+ * Josh, 2026-09-24 (CLAUDE.md §5.50):
+ *  · *"the phone number throughout the command center doesnt call … it should
+ *    NOT open ring central and should call directly from the app"* — so the
+ *    number is a <button> that dials through the browser's ONE softphone
+ *    registration (§5.13b) in a small popup (`DialPatientDialog`). It used to
+ *    be an `<a href="tel:">`, which hands the call to whatever the operating
+ *    system has registered — the RingCentral desktop app, or nothing at all,
+ *    which is the "clicked call and nothing happened" report.
+ *  · *"all of the text / calls buttons … need to be replaces with this new …
+ *    button. lets call it Communications"* — the Text and Calls buttons are
+ *    gone; `CommunicationsButton` opens the patient's whole back-and-forth
+ *    full screen, with a composer.
+ *
+ * ⚠️ **A screen that owns its own attempt step passes `onCall`** (Patient
+ * Intake's dial-then-log flow, the Care Coordinator card's CallPatientDialog):
+ * its dialog dials instead of this one, so a page never grows two attempt
+ * forms onto one write (§5.30e, §5.30h).
+ *
+ * ⚠️ **Both buttons carry their base look INLINE.** The Insurance pages' `.bnr`
+ * and the Profile pages' `.pf-root` reset `background`, `color` and `font` on
+ * every <button> beneath them, beating any single-class Tailwind utility (§9) —
+ * and this row renders inside `.bnr` on Benefits / Submit Auth / Auth
+ * Outstanding. An inline style is the one thing no stylesheet rule beats.
+ */
 export function PatientContact({
-  phone, textPrefill, textOpen, onTextOpenChange, onTextSent, hideCallHistory,
-  textTone, callHistoryLabel, callHistoryIcon, callHistoryCount,
-  patientName, showCopy, onCall,
+  phone, altPhone, patientName, mondayItemId, canText,
+  textPrefill, textOpen, onTextOpenChange, onTextSent,
+  commsTone, showCopy, onCall, callLabel,
 }: {
   phone?: string;
   /**
-   * Ring them HERE instead of handing the number to the operating system.
+   * The Call button's text when the number is ALREADY on screen beside it —
+   * the Insurance header shows it in its DOB line, with the edit pencil — so
+   * the row does not print it twice. Absent, the button IS the number, which
+   * is what every other header has always rendered. The number stays in the
+   * button's title either way.
+   */
+  callLabel?: string;
+  /** The patient's other number, when the page holds one — the popup shows
+   *  and can text both. */
+  altPhone?: string;
+  /**
+   * Ring them through the page's OWN dialog instead of the dial-only one here.
    *
-   * ⚠️ **OPT-IN, and only the Care Coordinator card passes it** (Brandon,
-   * 2026-09-22: *"when i make a call it takes me out of command center"*).
-   * Absent — which is every other header in the app — this renders the
-   * `tel:` anchor it always has, byte for byte, so nothing else moves. The
-   * dashboard passes it because a coordinator works a queue and a call that
-   * navigates away loses their place in it.
-   *
-   * ⚠️ It becomes a <button>, not an anchor with a click handler: an anchor
-   * whose href is a live `tel:` still hands off on a middle-click, a
-   * long-press or "open in new tab", which is the one behaviour this exists
-   * to stop.
+   * ⚠️ Only for a screen with its own attempt step — Patient Intake and the
+   * Care Coordinator card. Absent (every other header), the Call button opens
+   * `DialPatientDialog`, which dials and offers nothing to log.
    */
   onCall?: () => void;
   /**
-   * Who the number belongs to, shown in the text composer's title bar before
-   * the number (Brandon, 2026-09-17: "when we open up the text box, let's have
-   * patient's name on the top bar too before their phone number").
-   *
-   * ⚠️ Worth the prop rather than leaving the header as a bare number: this
-   * dialog opens from a dashboard where a coordinator moves between patients
-   * quickly, and the number alone does not say who is about to be texted. A
-   * text sent to the wrong patient is not recoverable.
+   * Who the number belongs to — shown in the call popup and the
+   * Communications popup's title bar (Brandon, 2026-09-17: the number alone
+   * does not say who is about to be texted, and a text sent to the wrong
+   * patient is not recoverable).
    */
   patientName?: string;
-  /** Passed straight to `CallHistoryButton` — see the note on its own `count`
-   *  prop for why this is handed in rather than fetched. */
-  callHistoryCount?: number;
-
-  /** Care Coordinator only (Brandon, 2026-09-14): a light-green Text button,
-   *  and the Calls pop-up relabelled "Call Log" behind a list icon. Every other
-   *  header keeps the defaults — the change is display-only and scoped. */
-  textTone?: "green";
-  callHistoryLabel?: string;
-  callHistoryIcon?: "list";
-  /** Render the Copy-number button between Text and Call Log.
+  /** The board record an outbound text from the popup is about (§5.28). */
+  mondayItemId?: string | null;
+  /** The primary line's Can Text answer, when the page reads it (§5.31d). */
+  canText?: "yes" | "no" | "unknown";
+  /** "green" — the Care Coordinator card's light-green button (Brandon,
+   *  2026-09-14, carried over from the Text button it replaced). */
+  commsTone?: "green";
+  /** Render the Copy-number button after Communications.
    *
    *  ⚠️ **Welcome Call passes this and nothing else does** (Josh, 2026-09-18).
    *  See `CopyPhoneButton` above: the ask was for the Welcome Call stage page,
@@ -674,334 +671,64 @@ export function PatientContact({
    *  prop is what keeps the two screens apart. `copyPhoneScope.test.ts` fails
    *  the build if another caller picks it up. */
   showCopy?: boolean;
-  /** Drop the "Calls" pop-up button.
-   *
-   *  Only Welcome Call passes this: its RingCentral activity box has a Calls
-   *  TAB showing the same history, so the button beside it would be a second
-   *  door to the same room on a screen Brandon asked to simplify. Everywhere
-   *  else the pop-up is the only way in and the default keeps it. */
-  hideCallHistory?: boolean;
-  /** Seeds the composer the first time it opens — e.g. an insurance follow-up
-   *  template. Never overwrites something the rep has already typed. */
+  /** Seeds the Communications popup's composer the first time it opens — e.g.
+   *  an insurance follow-up template. Never overwrites something the rep has
+   *  already typed. */
   textPrefill?: string;
-  /** Lets a button elsewhere on the page open the composer (Patient Intake's
-   *  "Start Insurance Follow-Up"). Optional: omitted, the Text button is the
-   *  only way in, exactly as before. */
+  /** Lets a button elsewhere on the page open the popup (Patient Intake's
+   *  "Start Insurance Follow-Up"). Optional: omitted, the Communications
+   *  button is the only way in. */
   textOpen?: boolean;
   onTextOpenChange?: (open: boolean) => void;
-  /** Fired after a text is actually sent, with its body. Patient Intake stamps
-   *  the Call Log from this so a texted upload link leaves a record on the
-   *  patient; omit it and nothing is written, as before. */
+  /** Fired after a text is actually sent from the popup, with its body.
+   *  Patient Intake stamps the Call Log from this; omit it and nothing is
+   *  written. */
   onTextSent?: (body: string) => void;
 }) {
+  // ⚠️ Before the early return: hooks may not be conditional.
+  const [dialOpen, setDialOpen] = useState(false);
   const tel = (phone ?? "").replace(/[^\d+]/g, "");
   if (!tel) return <span className="text-base text-muted-foreground">No phone on file</span>;
   const display = formatPhoneNice(phone);
-  const callClass =
-    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90 bg-[color:var(--mm-teal)]";
   return (
-    <span className="inline-flex items-center gap-2">
-      {onCall ? (
-        <button type="button" onClick={onCall} className={callClass}>
-          <Phone className="h-3.5 w-3.5 shrink-0" /> {display}
-        </button>
-      ) : (
-        <a href={`tel:${tel}`} className={callClass}>
-          <Phone className="h-3.5 w-3.5 shrink-0" /> {display}
-        </a>
-      )}
-      <TextCompose
-        tel={tel}
-        display={display}
-        who={patientName}
-        prefill={textPrefill}
-        openSignal={textOpen}
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={onCall ?? (() => setDialOpen(true))}
+        title={`Call ${display} from the Command Center`}
+        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 shadow-sm transition-opacity hover:opacity-90"
+        style={CALL_STYLE}
+      >
+        <Phone className="h-3.5 w-3.5 shrink-0" /> {callLabel || display}
+      </button>
+      <CommunicationsButton
+        phone={phone}
+        altPhone={altPhone}
+        patientName={patientName}
+        mondayItemId={mondayItemId}
+        canText={canText}
+        textPrefill={textPrefill}
+        open={textOpen}
         onOpenChange={onTextOpenChange}
-        onSent={onTextSent}
-        tone={textTone}
+        onTextSent={onTextSent}
+        tone={commsTone}
       />
       {showCopy && <CopyPhoneButton display={display} />}
-      {!hideCallHistory && (
-        <CallHistoryButton
-          phone={tel}
-          display={display}
-          who={patientName}
-          label={callHistoryLabel}
-          icon={callHistoryIcon}
-          count={callHistoryCount}
-        />
+      {/* Mounted only while open: it subscribes to the softphone, and a page of
+          fifty cards must not re-render fifty dialogs every second of a call. */}
+      {!onCall && dialOpen && (
+        <DialPatientDialog open phone={tel} name={patientName ?? ""} onClose={() => setDialOpen(false)} />
       )}
     </span>
   );
 }
 
-/** "Text" → opens the full SMS conversation (pulled from RingCentral) in a
- *  scrollable pop-up, with a reply box at the bottom. Sending refreshes the
- *  thread so the new message shows immediately. */
-function TextCompose({
-  tel, display, who, prefill, openSignal, onOpenChange, onSent, tone,
-}: {
-  tel: string; display: string;
-  /** The patient's name, for the title bar. Optional: without it the header
-   *  reads exactly as it did before. */
-  who?: string;
-  prefill?: string;
-  /** "green" — the Care Coordinator's light-green Text button. */
-  tone?: "green";
-  openSignal?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  /** Called with the sent body after RingCentral accepts it. Patient Intake
-   *  uses this to stamp the Call Log; every other caller omits it and the
-   *  RingCentral thread stays the only record, exactly as before. */
-  onSent?: (body: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [messages, setMessages] = useState<SmsMessage[]>([]);
-  /** Whether the whole history was readable. NOT cosmetic — the opt-out guard
-   *  treats an incomplete history as consent UNKNOWN and blocks on it. */
-  const [historyComplete, setHistoryComplete] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // A delivery failure lands seconds AFTER the send resolves — see the hook.
-  const recheck = useDeliveryRecheck();
-
-  const load = async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const c = await fetchConversation(tel);
-      setMessages(c.messages);
-      setHistoryComplete(c.complete);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-      // A thread we couldn't read is NOT an empty thread. Leaving this true
-      // would let the guard below fail open.
-      setHistoryComplete(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
-   * TCPA/CTIA opt-out. This composer had NO guard — the Assigned Patients
-   * inbox blocked opted-out patients and this one didn't, so the same rep
-   * could text them from Evaluate, Patient Questions, Doctor Appointments or
-   * Patient Intake instead. Our sends go through the plain /sms endpoint, not
-   * High Volume SMS, so nothing upstream stops it.
-   */
-  const consent = consentState(messages, historyComplete);
-
-  // An outside button (Patient Intake's "Start Insurance Follow-Up") pushing
-  // the composer open. One-way: the dialog still closes itself.
-  useEffect(() => {
-    if (openSignal) setOpen(true);
-  }, [openSignal]);
-
-  /** The template WE put in the box, so a close can tell an untouched template
-   *  apart from words the rep actually wrote. */
-  const seeded = useRef<string | null>(null);
-
-  // Seed the draft, and never over what the rep has already typed. The rule is
-  // in lib/shared/textDraft.ts with the close rule it has to agree with —
-  // getting this pair wrong shows the WRONG TEMPLATE with no error at all.
-  useEffect(() => {
-    if (!open || !prefill) return;
-    setMsg((m) => draftOnOpen(m, prefill));
-    seeded.current = prefill;
-  }, [open, prefill]);
-
-  // Pull the conversation each time the pop-up opens, and drop any pending
-  // delivery recheck on close — this component outlives the dialog, so a timer
-  // left running would reload a thread nobody is looking at (and, after a
-  // patient switch, the WRONG one).
-  useEffect(() => {
-    if (open) void load();
-    else recheck.cancel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  // Same guard for a patient switch behind an open dialog.
-  useEffect(() => {
-    recheck.cancel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tel]);
-
-  // Keep the newest message in view.
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, loading]);
-
-  const send = async () => {
-    if (!msg.trim() || consent.optedOut) return;
-    setSending(true);
-    try {
-      const body = msg.trim();
-      await sendMessage({ to: tel, text: body });
-      setMsg("");
-      // Fired only AFTER RingCentral accepted it, so a caller logging the send
-      // can never record a text that didn't go. Best-effort by contract: a
-      // listener that throws must not surface as a failed send, because the
-      // patient has the message either way.
-      try { onSent?.(body); } catch { /* caller's problem, not the send's */ }
-      await load(); // refresh so the sent text appears in the thread
-      // ...which shows it Queued. A failed delivery only lands a few seconds
-      // later, so look again while the rep still has the pop-up open.
-      recheck.schedule(load);
-    } catch (e) {
-      toast.error("Couldn't send text", { description: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const fmtTime = (iso: string) => {
-    if (!iso) return "";
-    try {
-      return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    } catch {
-      return "";
-    }
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        // Closing on an UNTOUCHED template throws it away. The seeding effect
-        // above only fills an empty box, and `msg` outlives the dialog — so
-        // without this the first template a rep opened stuck forever: open
-        // Generate CGM link, close it, then click Start Insurance Follow-Up and
-        // the CGM text is still sitting there, because the box was no longer
-        // empty for the insurance template to land in. Two templates, one
-        // visible, no error.
-        //
-        // Anything the rep actually typed survives the close — an outside click
-        // or Esc must not eat their words.
-        if (!v) {
-          const t = seeded.current;
-          seeded.current = null;
-          setMsg((m) => draftAfterClose(m, t));
-        }
-        setOpen(v);
-        onOpenChange?.(v);
-      }}
-    >
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors",
-            tone === "green"
-              ? "bg-[color:var(--mm-green-12)] text-[color:var(--mm-teal)] hover:bg-[color:var(--mm-mint)]"
-              : "text-[color:var(--mm-teal)] hover:bg-muted/40",
-          )}
-          style={{ boxShadow: "inset 0 0 0 1px var(--mm-card-border)" }}
-        >
-          <MessageSquare className="h-3.5 w-3.5 shrink-0" /> Text
-        </button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg p-0 gap-0 flex flex-col max-h-[80vh]">
-        <DialogHeader className="px-4 py-3 border-b">
-          {/* ⚠️ Name FIRST, then the number (Brandon, 2026-09-17). The number is
-              kept rather than replaced: it is the thing being texted, and on a
-              patient with two numbers on file it is the only way to tell which
-              one this composer is pointed at. */}
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <MessageSquare className="h-4 w-4 shrink-0 text-[color:var(--mm-teal)]" />
-            <span className="min-w-0 truncate">
-              {who?.trim() ? `Text ${who.trim()}` : "Text"}
-              <span className="font-normal text-muted-foreground"> · {display}</span>
-            </span>
-          </DialogTitle>
-        </DialogHeader>
-
-        {/* Conversation (scrollable) */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-[220px] bg-muted/20">
-          {loading && messages.length === 0 ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading conversation…
-            </div>
-          ) : err ? (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              <div>Couldn't load the conversation. {err}</div>
-            </div>
-          ) : messages.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">No messages yet. Send the first text below.</p>
-          ) : (
-            messages.map((m) => {
-              const out = m.direction === "Outbound";
-              return (
-                <div key={m.id} className={cn("flex flex-col", out ? "items-end" : "items-start")}>
-                  <div
-                    className={cn(
-                      "max-w-[78%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words",
-                      out ? "bg-[color:var(--mm-teal)] text-white rounded-br-sm" : "bg-card border border-border rounded-bl-sm",
-                    )}
-                  >
-                    <div>{m.text}</div>
-                    <MessageAttachments attachments={m.attachments} />
-                    <div className={cn("mt-1 text-[10px]", out ? "text-white/70" : "text-muted-foreground")}>{fmtTime(m.time)}</div>
-                  </div>
-                  {/* Undeliverable texts, marked the way RingCentral marks them.
-                      Outside the teal bubble so the red actually reads. */}
-                  <SmsDeliveryNote
-                    direction={m.direction}
-                    messageStatus={m.messageStatus}
-                    deliveryError={m.deliveryError}
-                    className="max-w-[78%]"
-                  />
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Reply box */}
-        <div className="space-y-2 border-t p-3">
-          {consent.optedOut && !loading && (
-            <p className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
-              {consent.unknown
-                ? "Can’t confirm this patient hasn’t opted out — the full text history didn’t load. Texting is blocked until it does. Call them instead."
-                : `This patient opted out of texts${consent.keyword ? ` (“${consent.keyword}”)` : ""}. Call them instead.`}
-            </p>
-          )}
-          <Textarea
-            value={msg}
-            onChange={(e) => setMsg(e.target.value)}
-            rows={2}
-            disabled={consent.optedOut}
-            placeholder={consent.optedOut ? "Texting is blocked for this patient" : `Reply to ${display}…`}
-            className="resize-none text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => void load()}
-              disabled={loading}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-            >
-              <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} /> Refresh
-            </button>
-            <Button
-              size="sm"
-              onClick={send}
-              disabled={!msg.trim() || sending || consent.optedOut}
-              className="gap-1.5 text-white bg-[color:var(--mm-teal)] hover:opacity-90 disabled:opacity-50"
-            >
-              {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
+/** The Call button's base look, inline for the `.bnr` / `.pf-root` reason in
+ *  `PatientContact`'s header. */
+const CALL_STYLE: React.CSSProperties = {
+  background: "var(--mm-teal)",
+  color: "var(--mm-on-teal, #fff)",
+  fontSize: "0.875rem",
+  lineHeight: "1.25rem",
+  fontWeight: 700,
+};

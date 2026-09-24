@@ -10,9 +10,8 @@
  */
 import { useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { DoctorEditGrid, EditToggle } from "@/components/masheke/mmKit";
+import { DoctorEditGrid, EditToggle, PatientContact } from "@/components/masheke/mmKit";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
-import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 
 /** Format raw phone digits into (xxx)-xxx-xxxx or +1 (xxx)-xxx-xxxx
  *  (same format as PatientProfileCard). */
@@ -66,13 +65,14 @@ export function ConfirmReceiptHeaderCard({
         {onDoctorEdit && <EditToggle editing={editing} onToggle={() => setEditing((e) => !e)} />}
       </div>
       <h1 className="text-3xl font-black tracking-tight">{patient.name}</h1>
-      <p className="mt-1 text-lg text-muted-foreground">
-        DOB {dash(patient.dob)}
-        {patient.gender ? ` · ${patient.gender}` : ""}
-        {` · ${formatPhone(patient.phone)}`}
-      </p>
-      <div className="mt-2">
-        <CallHistoryButton phone={patient.phone} display={formatPhone(patient.phone)} />
+      {/* The number rides on the Call button now (§5.50), which dials in the
+          Command Center — so it left the DOB line rather than show twice. */}
+      <div className="mt-1 flex items-center gap-3 flex-wrap">
+        <span className="text-lg text-muted-foreground">
+          DOB {dash(patient.dob)}
+          {patient.gender ? ` · ${patient.gender}` : ""}
+        </span>
+        <PatientContact phone={patient.phone} patientName={patient.name} mondayItemId={patient.id} />
       </div>
 
       {/* three info groups */}

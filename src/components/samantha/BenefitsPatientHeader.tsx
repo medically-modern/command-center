@@ -43,7 +43,7 @@ import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import type { Patient } from "@/lib/samantha/workflow";
 import { authHomePlan } from "@/lib/samantha/submitAuthRules";
-import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
+import { PatientContact } from "@/components/masheke/mmKit";
 import "./benefitsRedesign.css";
 import { InsuranceProfileStatus } from "@/components/shared/PatientProfileStatus";
 
@@ -216,12 +216,24 @@ export function BenefitsPatientHeader({ patient, onSavePhone }: Props) {
             onSavePhone={onSavePhone}
           />
         </div>
-        <div className="mt-1.5">
-          <CallHistoryButton
-            phone={patient.patientPhone ?? ""}
-            display={formatPhone(patient.patientPhone ?? "")}
-          />
-        </div>
+        {/* Call dials in the Command Center; Communications replaced the
+            Calls button (§5.50). The number is already in the DOB line above,
+            with its edit pencil on Auth Outstanding, so the Call button says
+            "Call" rather than printing it twice. ⚠️ Both are inside `.bnr`,
+            whose `button` reset strips any Tailwind background/colour — their
+            base look is inline for exactly this. */}
+        {/* No number ⇒ no row: the DOB line already says "—", and a second
+            "No phone on file" under it says nothing new. */}
+        {(patient.patientPhone ?? "").trim() && (
+          <div className="mt-1.5">
+            <PatientContact
+              phone={patient.patientPhone ?? ""}
+              patientName={patient.name}
+              mondayItemId={patient.id}
+              callLabel="Call"
+            />
+          </div>
+        )}
       </div>
 
       <div className="ph-groups">

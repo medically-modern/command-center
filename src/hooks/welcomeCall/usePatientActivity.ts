@@ -13,7 +13,8 @@
  *
  * 1. **Fetched on OPEN, never on render.** A Welcome Call header renders for
  *    every patient a rep clicks through; only the tab they actually look at is
- *    loaded. Same trade `CallHistoryButton` makes (§5.16).
+ *    loaded. Same trade the call history makes (§5.16): the Communications
+ *    popup reads it when opened, never on render (§5.50).
  * 2. **One request per (phone, tab), ever.** Answers are cached at module
  *    scope, MISSES INCLUDED, and an `inflight` map coalesces simultaneous
  *    mounts of the same key. There is **no polling and no TTL**: a rep reading

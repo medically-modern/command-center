@@ -308,7 +308,7 @@ function ContactCountRow({ dir, calls, texts, callsClipped, textsClipped, highli
 
 export function PatientCard({
   name, attempted, nextUp = false, doctor, clinic, network, when, pills, pillActions, variant, contact,
-  phone, notes, notesLabel, openHref, openLabel, onBookingLink, onCall, reached, callCount, blocker,
+  phone, notes, notesLabel, openHref, openLabel, onBookingLink, onCall, reached, blocker,
   blockerDetail, inSystem = false,
 }: {
   name: string;
@@ -378,9 +378,9 @@ export function PatientCard({
   onBookingLink: () => void;
   /**
    * Ring them without leaving the page (Brandon, 2026-09-22: *"when i make a
-   * call it takes me out of command center"*). Absent — for anybody the
-   * browser softphone is not assigned to — leaves `PatientContact`'s ordinary
-   * `tel:` handoff in place, which is what every other header in the app does.
+   * call it takes me out of command center"*). The page's `CallPatientDialog`
+   * dials AND offers Log call attempt. Absent, `PatientContact` falls back to
+   * its own dial-only popup — never a `tel:` handoff (§5.50).
    */
   onCall?: () => void;
   /**
@@ -401,9 +401,6 @@ export function PatientCard({
    * never read as "we have not reached them", because that is a claim.
    */
   reached?: { byText: boolean; byCall: boolean };
-  /** Calls with this number in the same window, or undefined when we can't
-   *  stand behind a number (see `CallHistoryButton`'s own `count` note). */
-  callCount?: number;
   /**
    * The advance-unlock condition this patient fails, from
    * `workflow.intakeBlocker` — Review Profile cards only.
@@ -551,13 +548,15 @@ export function PatientCard({
 
       <div className="mt-3 border-t pt-2.5">
         <div className="flex flex-wrap items-center gap-2">
+          {/* ⚠️ `onCall` IS passed now. The card has taken it since 2026-09-22
+              and never handed it on, so every Call here was a `tel:` handoff
+              to the RingCentral app while the page's in-app CallPatientDialog
+              sat unused (found 2026-09-24, §5.50). */}
           <PatientContact
             phone={phone}
             patientName={name}
-            textTone="green"
-            callHistoryLabel="Call Log"
-            callHistoryIcon="list"
-            callHistoryCount={callCount}
+            commsTone="green"
+            onCall={onCall}
           />
           <button
             type="button"

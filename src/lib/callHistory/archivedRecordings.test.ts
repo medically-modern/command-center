@@ -84,8 +84,10 @@ describe("withRecordings", () => {
 /* ── Source scans: the wiring whose absence is invisible on screen ─────────── */
 const read = (f: string) => readFileSync(resolve(process.cwd(), f), "utf8");
 
-describe("CallHistoryButton is wired to the archive", () => {
-  const src = read("src/components/shared/CallHistoryButton.tsx");
+// The body of the old "Calls" pop-up, which lives on as the Communications
+// popup's fallback call list (§5.50). Same rules, same scans.
+describe("the call history list is wired to the archive", () => {
+  const src = read("src/components/shared/CallHistoryList.tsx");
 
   // ⚠️⚠️ THE ONE THAT MATTERS. `c.recording` is false for every purged call, so
   // leaving this gate alone means the buttons are never drawn and the fallback
@@ -129,7 +131,7 @@ describe("the Comms Hub Phone tab is wired the same way", () => {
 
   // ⚠️ Half the places a rep reaches a recording is not "wired". This panel has
   // its own per-row and bulk download, so leaving it on `r.recording` means a
-  // purged call shows nothing here while showing fine in the Calls pop-up.
+  // purged call shows nothing here while showing fine in the call history.
   it("draws its download button from playable audio", () => {
     expect(src).toMatch(/\{hasPlayableAudio\(toDownloadable\(r\), archived\) && \(/);
     expect(src).not.toMatch(/\{r\.recording && \(/);

@@ -7,8 +7,9 @@
  * with `vmTranscriptionStatus` saying whether one exists, but transcription is
  * a per-account feature that may simply be switched off here. When it is, the
  * status comes back `NotAvailable` and there is no text part — so this renders
- * a plain note rather than an error, exactly as `CallHistoryButton` treats an
- * absent recording: an account that doesn't produce them is the NORMAL case.
+ * a plain note rather than an error, exactly as the call history treats an
+ * absent recording (§5.16): an account that doesn't produce them is the NORMAL
+ * case.
  */
 import { useEffect, useState } from "react";
 import { Loader2, Play, Voicemail } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   type VoicemailRecord,
 } from "@/lib/fax/ringcentralApi";
 import { fmtPhone } from "@/lib/assignedPatients/format";
+import { AudioPlayer } from "@/components/shared/AudioPlayer";
 import { cn } from "@/lib/utils";
 
 /** Statuses that mean "a transcript exists" — anything else is an absence. */
@@ -120,7 +122,22 @@ export function VoicemailDetail({
             Play message
           </button>
         )}
-        {audio && <audio controls src={audio} className="w-full" />}
+        {/* The scrubbable player (§5.50) — the browser's own controls gave a
+            long message a seek track a few pixels tall. It plays on arrival:
+            "Play message" was already the press. */}
+        {audio && (
+          <AudioPlayer
+            src={audio}
+            durationHint={voicemail.durationSec}
+            label="Voicemail"
+            onError={() => {
+              // Drop the blob (the effect above revokes it) so "Play message"
+              // comes back and a second press fetches it afresh.
+              setAudio(null);
+              setAudioErr("Couldn't play this message — press Play message to try again.");
+            }}
+          />
+        )}
         {audioErr && <p className="mt-1.5 text-xs text-destructive break-words">{audioErr}</p>}
       </div>
 

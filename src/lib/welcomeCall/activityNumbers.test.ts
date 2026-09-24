@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { activityNumbers } from "./activityMatch";
+import { activityNumbers, canTextForNumber } from "./activityMatch";
 import { slotsFromPatient, starSlot } from "./phoneSlots";
 
 const patient = {
@@ -54,5 +54,26 @@ describe("activityNumbers", () => {
 
   it("is empty for a patient with no number on file", () => {
     expect(activityNumbers(slotsFromPatient({ ...patient, phone: "", alternatePhone: "" }))).toEqual([]);
+  });
+});
+
+describe("canTextForNumber — the Can Text answer for the number on screen (§5.50)", () => {
+  const slots = [
+    { number: "(555) 555-0100", canText: "yes" as const },
+    { number: "555.555.0199", canText: "no" as const },
+    { number: "5555550177", canText: "" as const },
+  ];
+
+  it("matches on DIGITS, the same identity the box de-duplicates on", () => {
+    expect(canTextForNumber(slots, "+15555550100")).toBe("yes");
+    expect(canTextForNumber(slots, "(555) 555-0199")).toBe("no");
+  });
+
+  // ⚠️ Only an explicit No blocks the composer (§5.31d). A blank is unknown,
+  // and a number no slot holds says nothing at all.
+  it("reads a blank answer, an unknown number or no number as unknown — never a No", () => {
+    expect(canTextForNumber(slots, "555-555-0177")).toBe("unknown");
+    expect(canTextForNumber(slots, "555-555-0000")).toBe("unknown");
+    expect(canTextForNumber(slots, "")).toBe("unknown");
   });
 });

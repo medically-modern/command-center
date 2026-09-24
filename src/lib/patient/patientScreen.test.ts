@@ -393,11 +393,11 @@ describe("the patient screen is READ-ONLY", () => {
 
   it("⚠️ reuses the EXISTING comms components rather than copying their rules", () => {
     // ConversationThread is the only surface RingCentral's late SendingFailed
-    // verdict reaches (§5.5); CallHistoryButton is the one that fetches on open
-    // and paces a bulk download (§5.16). A local copy of either drifts silently.
+    // verdict reaches (§5.5); the Communications button is the one that reads
+    // the history on open (§5.16, §5.50). A local copy of either drifts silently.
     const col = src("src/components/patient/PatientCommsColumn.tsx");
     expect(col).toMatch(/assignedPatients\/ConversationThread/);
-    expect(col).toMatch(/shared\/CallHistoryButton/);
+    expect(col).toMatch(/comms\/CommunicationsButton/);
   });
 });
 

@@ -549,7 +549,7 @@ export function PatientProfileCard({
         <span className="text-lg text-muted-foreground">
           DOB {patient.dob || "—"}{patient.gender ? ` · ${patient.gender}` : ""}
         </span>
-        <PatientContact phone={patient.phone} />
+        <PatientContact phone={patient.phone} patientName={patient.name} mondayItemId={patient.id} />
       </div>
 
       {/* ── Three grouped boxes — all gray, no serving colors ── */}

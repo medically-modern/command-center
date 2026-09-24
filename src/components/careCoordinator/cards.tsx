@@ -45,7 +45,7 @@ import type { CallTarget } from "./CallPatientDialog";
  *
  * ⚠️ `notes` arrives from the COLUMN's one batched read (`useCardNotes`), not
  * from the card — a card that fetched its own would be one Monday request per
- * patient per render. `reached` and `callCount` come from the one account-wide
+ * patient per render. `reached` and `contact` come from the one account-wide
  * RingCentral read the page already makes. Both are `undefined` until they
  * land, and every renderer below treats that as "we don't know yet", never as
  * a negative.
@@ -53,7 +53,6 @@ import type { CallTarget } from "./CallPatientDialog";
 export interface CardExtras {
   notes: string | undefined;
   reached?: { byText: boolean; byCall: boolean };
-  callCount?: number;
   /**
    * The four real counts behind the card's two counter rows, from the same
    * account-wide read. ⚠️ `undefined` renders no rows at all — see
@@ -70,7 +69,7 @@ export interface CardExtras {
    * knows which BOARD this patient is on — the two columns keep separate
    * attempt counters, follow-up dates and notes columns, and a target built
    * one place for both is how an attempt gets written against the wrong one.
-   * Absent leaves `PatientContact`'s ordinary `tel:` handoff.
+   * Absent, `PatientContact` falls back to its own dial-only popup (§5.50).
    */
   onCall?: (target: CallTarget) => void;
   /**
@@ -215,7 +214,6 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       notes={extras.notes}
       notesLabel="Profile Send Off notes"
       reached={extras.reached}
-      callCount={extras.callCount}
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake"
       onCall={callHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
@@ -245,7 +243,6 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       notes={extras.notes}
       notesLabel="Profile Send Off notes"
       reached={extras.reached}
-      callCount={extras.callCount}
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake — log the attempt there"
       onCall={callHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
@@ -335,7 +332,6 @@ export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
       notes={extras.notes}
       notesLabel="Profile Send Off notes"
       reached={extras.reached}
-      callCount={extras.callCount}
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake — review and advance"
       onCall={callHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
@@ -396,7 +392,6 @@ export function WelcomeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       notes={extras.notes}
       notesLabel="Welcome Call notes"
       reached={extras.reached}
-      callCount={extras.callCount}
       openHref={welcomeHref(item)}
       openLabel="Open on Welcome Call"
       onCall={callHandler(extras, "welcome", item, welcomeAttemptsOf(item), welcomeHref(item))}
@@ -423,7 +418,6 @@ export function WelcomeUnscheduledCard({ entry, today, onBookingLink, extras }: 
       notes={extras.notes}
       notesLabel="Welcome Call notes"
       reached={extras.reached}
-      callCount={extras.callCount}
       openHref={welcomeHref(item)}
       openLabel="Open on Welcome Call — log the attempt there"
       onCall={callHandler(extras, "welcome", item, welcomeAttemptsOf(item), welcomeHref(item))}

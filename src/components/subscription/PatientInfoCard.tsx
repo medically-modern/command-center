@@ -14,7 +14,7 @@ import { usePayerOptions } from "@/hooks/shared/usePayerOptions";
 import { AddressAutocomplete } from "@/components/welcomeCall/AddressAutocomplete";
 import type { AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
-import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
+import { PatientContact } from "@/components/masheke/mmKit";
 import { SubscriptionProfileStatus } from "@/components/shared/PatientProfileStatus";
 
 interface Props {
@@ -36,10 +36,14 @@ function PhoneField({
   phone,
   phoneEdited,
   onFieldChange,
+  patientName,
+  mondayItemId,
 }: {
   phone: string;
   phoneEdited: string | null;
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+  patientName?: string;
+  mondayItemId?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const displayPhone = phoneEdited ?? phone;
@@ -59,10 +63,13 @@ function PhoneField({
         />
       ) : (
         <div className="flex items-center justify-end gap-1.5">
-          <a href={`tel:${displayPhone}`} className="text-lg font-semibold text-primary hover:underline">
-            {formatPhone(displayPhone)}
-          </a>
-          <CallHistoryButton phone={displayPhone} display={formatPhone(displayPhone)} />
+          {/* ⚠️ This was a `tel:` link, i.e. a handoff to whatever app the
+              computer maps phone links to — and on a machine with none it did
+              NOTHING (Josh, 2026-09-24: *"i just went to my name in
+              subscription and clicked call and nothing happened"*). Call now
+              dials in the Command Center and Communications replaced the Calls
+              button (§5.50). Both read the number on screen, edits included. */}
+          <PatientContact phone={displayPhone} patientName={patientName} mondayItemId={mondayItemId} />
           <button onClick={() => setEditing(true)} className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors" title="Edit phone number">
             <Pencil className="h-3.5 w-3.5" />
           </button>
@@ -454,7 +461,13 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             <a href={`mailto:${patient.email}`} className="text-sm font-medium text-primary hover:underline">{patient.email}</a>
           </div>
         )}
-        <PhoneField phone={patient.phone} phoneEdited={patient.phoneEdited} onFieldChange={onFieldChange} />
+        <PhoneField
+          phone={patient.phone}
+          phoneEdited={patient.phoneEdited}
+          onFieldChange={onFieldChange}
+          patientName={patient.name}
+          mondayItemId={patient.id}
+        />
       </Card>
 
       {/* Subscription Status Row */}

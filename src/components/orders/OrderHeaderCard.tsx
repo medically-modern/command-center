@@ -114,7 +114,10 @@ export function OrderHeaderCard({ order, allOrders, ordersLoaded = true, onSelec
           {meta.length > 0 && <p className="mt-1 text-xs text-muted-foreground break-words">{meta.join(" · ")}</p>}
         </div>
         <div className="shrink-0">
-          <PatientContact phone={order.phone} />
+          {/* ⚠️ No `mondayItemId`: an order is not a patient record (§5.35),
+              so a text sent from here is attributed to nobody rather than to
+              an order item that `sent_messages` would read as a patient. */}
+          <PatientContact phone={order.phone} patientName={order.name} />
         </div>
       </div>
 

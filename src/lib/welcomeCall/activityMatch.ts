@@ -82,3 +82,27 @@ export function activityNumbers(
   }
   return out;
 }
+
+/**
+ * The Can Text answer (§5.31d) held for ONE of the numbers the activity box
+ * offers, in the shape the Communications popup takes (§5.50).
+ *
+ * ⚠️ Matched on `phoneIdentity` — this file's canonical E.164 identity — so
+ * "(555) 555-0100" and "+15555550100" are one number, and the box switches
+ * between numbers by what is on screen rather than by slot index. A value
+ * `toE164` cannot read falls back to its bare digits, so it still finds its
+ * own slot. ⚠️ A blank answer is UNKNOWN, never a No (§5.31d) — only an
+ * explicit No blocks the composer, and a number no slot holds says nothing.
+ */
+export function canTextForNumber(
+  slots: { number: string; canText: "yes" | "no" | "" }[],
+  number: string,
+): "yes" | "no" | "unknown" {
+  const id = (raw: string) => phoneIdentity(raw) || String(raw ?? "").replace(/\D/g, "");
+  const want = id(number);
+  if (!want) return "unknown";
+  const slot = slots.find((s) => id(s.number) === want);
+  if (slot?.canText === "yes") return "yes";
+  if (slot?.canText === "no") return "no";
+  return "unknown";
+}

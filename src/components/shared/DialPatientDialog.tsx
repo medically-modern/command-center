@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
 import { reportDial } from "@/hooks/commsInbox/useInbox";
-import { formatPhoneNice } from "@/components/masheke/mmKit";
+import { formatPhoneNice } from "@/lib/shared/phoneDisplay";
 
 const STATUS_TEXT: Record<string, string> = {
   connecting: "Connecting…",

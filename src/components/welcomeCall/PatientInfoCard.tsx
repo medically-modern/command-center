@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { WelcomeCallProfileStatus } from "@/components/shared/PatientProfileStatus";
 import { PatientActivityCard } from "@/components/welcomeCall/PatientActivityCard";
-import { activityNumbers } from "@/lib/welcomeCall/activityMatch";
+import { activityNumbers, canTextForNumber } from "@/lib/welcomeCall/activityMatch";
 import { phoneSlotsFor } from "@/lib/welcomeCall/phoneSlots";
 
 interface Props {
@@ -301,7 +301,12 @@ export function PatientInfoCard({ patient, onFieldChange, onSaveSecondaryInsuran
           header is where a rep presses Call and Text. A corrected number, or a
           moved star, reached the form and not this box. `activityNumbers` has
           the full note. */}
-      <PatientActivityCard numbers={activityNumbers(phoneSlotsFor(patient))} />
+      <PatientActivityCard
+        numbers={activityNumbers(phoneSlotsFor(patient))}
+        patientName={patient.name}
+        mondayItemId={patient.id}
+        canTextFor={(n) => canTextForNumber(phoneSlotsFor(patient), n)}
+      />
 
       {/* ⚠️ THE THREE ROWS UNDER THE ACTIVITY CARD WERE DELETED (Brandon,
           2026-09-11: *"get rid of the next 3 rows … right after ringcentral

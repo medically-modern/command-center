@@ -193,13 +193,15 @@ export default function CareCoordinatorPage() {
   );
 
   /**
-   * Who we have actually got through to this week, and how many calls with
-   * each number — ONE account-wide RingCentral read, shared by every card
-   * (Brandon, 2026-09-17: the green text/phone icons, and `Call Log (3)`).
+   * Who we have actually got through to this week, and how many calls and
+   * texts each way — ONE account-wide RingCentral read, shared by every card
+   * (Brandon, 2026-09-17: the green text/phone icons; 2026-09-22: the two
+   * counter rows). The `Call Log (3)` chip it also fed went with the Calls
+   * button it lived on (Josh, 2026-09-24, §5.50).
    *
    * ⚠️ **NOT a per-patient lookup, and it must never become one.** The call log
-   * is one of RingCentral's more rate-limited endpoints, which is why
-   * `CallHistoryButton` fetches on OPEN and why Josh declined a per-card count
+   * is one of RingCentral's more rate-limited endpoints, which is why the
+   * Communications popup reads it on OPEN and why Josh declined a per-card count
    * on 2026-09-16 (§5.16, §5.30c). `useContactStates` is the batched,
    * module-cached, 5-minute-TTL read the manager sidebars already make, so a
    * page full of cards costs exactly what one card costs. It is enabled
@@ -284,12 +286,12 @@ export default function CareCoordinatorPage() {
   /**
    * Everything a card needs that the column fetched once on its behalf.
    *
-   * ⚠️ `callCount` is withheld whenever the shared read came back at its page
-   * cap. That read is a 7-day, page-capped window (`ACTIVITY_RECORD_LIMIT`), so
-   * on a busy week its oldest calls fall off the end — and a count rendered on
-   * screen as fact must not be quietly low. Undefined renders no parentheses at
-   * all, which is the honest answer. The green icons are unaffected: a clipped
-   * window can only fail to notice contact, which reads as "keep trying".
+   * ⚠️ The counts carry their window's clip flags. That read is a 7-day,
+   * page-capped window (`ACTIVITY_RECORD_LIMIT`), so on a busy week its oldest
+   * calls fall off the end — and a count rendered on screen as fact must not be
+   * quietly low, so a clipped lane prints an em dash instead (§5.30g). The
+   * green icons are unaffected: a clipped window can only fail to notice
+   * contact, which reads as "keep trying".
    */
   const extrasFor = useCallback((itemId: string, phone: string, notes: Map<string, string>): CardExtras => {
     const state = contacts.states?.get(contactKey(phone));
@@ -297,7 +299,6 @@ export default function CareCoordinatorPage() {
       onInsuranceCard: setCardTarget,
       notes: notes.get(itemId),
       reached: contacts.states ? { byText: !!state?.reachedByText, byCall: !!state?.reachedByCall } : undefined,
-      callCount: contacts.states && !contacts.truncated ? (state?.calls ?? 0) : undefined,
       /* ⚠️ Present only once the read has landed, and ZEROES when it has but
          this patient is not in it — that is the honest reading: the window
          held nothing for them. Before it lands there are no rows at all,

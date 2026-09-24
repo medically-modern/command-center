@@ -41,13 +41,29 @@ interface Props {
    * warning buys a green toast and a patient who heard nothing.
    */
   canText?: "yes" | "no" | "unknown";
-  /** Told after a text went out — the inbox uses it to re-read the item. */
-  onSent?: () => void;
+  /** Told after a text went out, with what was sent — the inbox uses it to
+   *  re-read the item; Patient Intake stamps its Call Log from the body. */
+  onSent?: (body: string) => void;
+  /**
+   * The draft, held by the CALLER. The Communications popup (§5.50) keeps it
+   * on its button, which outlives the dialog, so a template seeded before the
+   * popup opens lands in this box and words the rep typed survive a close
+   * (the rule `lib/shared/textDraft` keeps). Absent — the hub's thread, the
+   * patient screen — the composer keeps its own, exactly as it always has.
+   *
+   * ⚠️ Both halves or neither: a `draft` with no `onDraftChange` is a box that
+   * cannot be typed in.
+   */
+  draft?: string;
+  onDraftChange?: (text: string) => void;
 }
 
-export default function Composer({ conversation, canText, onSent }: Props) {
+export default function Composer({ conversation, canText, onSent, draft: heldDraft, onDraftChange }: Props) {
   const { consent, loading, error } = conversation;
-  const [draft, setDraft] = useState("");
+  const [ownDraft, setOwnDraft] = useState("");
+  const held = heldDraft !== undefined && !!onDraftChange;
+  const draft = held ? heldDraft : ownDraft;
+  const setDraft: (text: string) => void = held && onDraftChange ? onDraftChange : setOwnDraft;
   const [sending, setSending] = useState(false);
 
   /** ⚠️ Explicit No only — see the prop's note. */
@@ -61,7 +77,13 @@ export default function Composer({ conversation, canText, onSent }: Props) {
       // ⚠️ Cleared when RingCentral ACCEPTS the text, not after the re-read
       // that follows — see `ConversationView.send`.
       await conversation.send(text, () => setDraft(""));
-      onSent?.();
+      // Best-effort by contract: the text has gone, so a listener that throws
+      // (a Call Log stamp that failed, say) must never read as a failed send.
+      try {
+        onSent?.(text);
+      } catch {
+        /* the caller's problem, not the send's */
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {

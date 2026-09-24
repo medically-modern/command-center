@@ -27,6 +27,7 @@ import MessageBubble from "@/components/assignedPatients/MessageBubble";
 import WatchCallbackButton from "@/components/inboundCalls/WatchCallbackButton";
 import Composer from "@/components/assignedPatients/Composer";
 import { MessageAttachments } from "@/components/shared/MessageAttachments";
+import { AudioPlayer } from "@/components/shared/AudioPlayer";
 import { useConversation } from "@/hooks/assignedPatients/useConversation";
 import { archivedMediaUrl, type NoteTarget } from "@/lib/commsInbox/api";
 import { archivedPlaybackUrl } from "@/lib/callHistory/archivedRecordings";
@@ -69,6 +70,30 @@ type Props = {
   onChanged: () => void;
   /** A signal that the item was re-read, so the live thread re-reads too. */
   refreshSeq: number;
+  /**
+   * `"inbox"` (the default) is the Communications hub's item detail: a header,
+   * the timeline, the composer and the resolve bar.
+   *
+   * `"view"` is the Communications POPUP that every patient header opens
+   * (CLAUDE.md §5.50): the timeline and the composer, and nothing else. No
+   * header — the popup draws its own, with the number picker and the live
+   * call — and ⚠️ **NO resolve bar**. Josh, 2026-09-24: *"there are no action
+   * items here, viewing the notes or the texts and calls vms etc are what we
+   * want, with the ability to text them from there"*. Resolving belongs to
+   * the Inbox, where the queue is.
+   */
+  mode?: "inbox" | "view";
+  /**
+   * The composer's draft, held by a caller that OUTLIVES this view — the
+   * popup's button, so a template seeded before it opens lands in the box and
+   * a half-typed text survives a close (the rule `lib/shared/textDraft` keeps).
+   * Absent — the hub — the composer keeps its own, exactly as before.
+   */
+  draft?: string;
+  onDraftChange?: (text: string) => void;
+  /** Told with the BODY once a text went out — Patient Intake stamps its
+   *  Call Log from it. Absent, nothing is told. */
+  onTextSent?: (body: string) => void;
 };
 type StickyHandler = Parameters<typeof ResolveBar>[0]["onResolved"];
 
@@ -117,12 +142,22 @@ function TimelineShell({
   onResolved,
   onUndone,
   onChanged,
+  mode = "inbox",
+  draft,
+  onDraftChange,
+  onTextSent,
   entries,
   live,
 }: Props & { entries: TimelineEntry[]; live: ReturnType<typeof useConversation> | null }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const view = mode === "view";
+  // ⚠️ The SCROLL CONTAINER is moved, never `scrollIntoView`: that walks every
+  // scrollable ancestor, and in the popup one of those is the page underneath
+  // — the trap `IntakeMessages` recorded dragging a whole page mid-screen
+  // (§5.30e). The hub's pane has no scrolling ancestor, so it is unchanged.
+  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [entries.length, item.key]);
 
   const state = useMemo(() => effectiveState(item, sticky, entries), [item, sticky, entries]);
@@ -132,6 +167,7 @@ function TimelineShell({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {!view && (
       <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-card px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="truncate text-sm font-semibold">{name}</h2>
@@ -181,24 +217,34 @@ function TimelineShell({
           Call
         </button>
       </header>
+      )}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-gradient-subtle p-4">
-        {live?.error && (
-          <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100">
-            The live thread didn't load ({live.error}) — showing the archive, which can be a minute behind.
-          </p>
-        )}
-        {entries.length === 0 ? (
-          <p className="py-16 text-center text-sm text-muted-foreground">Nothing on file for this number yet.</p>
-        ) : (
-          entries.map((e) => <Entry key={entryKey(e)} e={e} entries={entries} numbers={numbers} />)
-        )}
-        <div ref={bottomRef} />
+      <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-gradient-subtle p-4">
+        {/* ⚠️ In the popup the column is CENTRED at a readable width — a text
+            bubble stretched across a 1,900px screen is unreadable, and a call
+            row at that width is a scrub bar you have to turn your head to
+            follow. The hub's pane is already narrow and keeps its full width. */}
+        <div className={cn("flex flex-col gap-2", view && "mx-auto w-full max-w-4xl")}>
+          {live?.error && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100">
+              The live thread didn't load ({live.error}) — showing the archive, which can be a minute behind.
+            </p>
+          )}
+          {entries.length === 0 ? (
+            <p className="py-16 text-center text-sm text-muted-foreground">Nothing on file for this number yet.</p>
+          ) : (
+            entries.map((e) => <Entry key={entryKey(e)} e={e} entries={entries} numbers={numbers} />)
+          )}
+        </div>
       </div>
 
       <div className="shrink-0 border-t border-border bg-card">
+        <div className={cn(view && "mx-auto w-full max-w-4xl")}>
         {live ? (
-          <Composer conversation={live} canText={canText} onSent={onChanged} />
+          <Composer conversation={live} canText={canText} onSent={(body) => {
+            onChanged();
+            onTextSent?.(body);
+          }} draft={draft} onDraftChange={onDraftChange} />
         ) : (
           <p className="border-b border-border px-4 py-3 text-xs text-muted-foreground">
             The full number for this item couldn&apos;t be read yet, so texting and calling are off here. It
@@ -211,17 +257,20 @@ function TimelineShell({
             </button>
           </p>
         )}
-        <ResolveBar
-          key={item.key}
-          itemKey={item.key}
-          state={state}
-          seenThrough={seenThrough}
-          sticky={sticky && sticky.key === item.key ? sticky : null}
-          noteTarget={noteTarget}
-          onResolved={onResolved}
-          onUndone={onUndone}
-          onChanged={onChanged}
-        />
+        </div>
+        {!view && (
+          <ResolveBar
+            key={item.key}
+            itemKey={item.key}
+            state={state}
+            seenThrough={seenThrough}
+            sticky={sticky && sticky.key === item.key ? sticky : null}
+            noteTarget={noteTarget}
+            onResolved={onResolved}
+            onUndone={onUndone}
+            onChanged={onChanged}
+          />
+        )}
       </div>
     </section>
   );
@@ -297,6 +346,7 @@ function Entry({ e, entries, numbers }: { e: TimelineEntry; entries: TimelineEnt
   if (e.type === "attempt") {
     const linked = e.linkedCallId ? entries.find((x) => x.type === "call" && x.id === e.linkedCallId) : undefined;
     const uri = linked && linked.type === "call" ? linked.recordingUri : "";
+    const linkedSec = linked && linked.type === "call" ? linked.durationSec : undefined;
     return (
       <EventRow dir="out" icon={<Voicemail className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />}>
         <b className="font-semibold">Left voicemail</b>
@@ -316,6 +366,7 @@ function Entry({ e, entries, numbers }: { e: TimelineEntry; entries: TimelineEnt
                   : null
             }
             unavailable="The recording of that call isn't available yet."
+            durationHint={linkedSec}
           />
         )}
       </EventRow>
@@ -342,6 +393,8 @@ function Entry({ e, entries, numbers }: { e: TimelineEntry; entries: TimelineEnt
                 : null
           }
           unavailable={audioAbsence(e.audioState)}
+          durationHint={e.durationSec}
+          kindLabel="Voicemail"
         />
       </EventRow>
     );
@@ -378,6 +431,8 @@ function Entry({ e, entries, numbers }: { e: TimelineEntry; entries: TimelineEnt
                 : null
           }
           unavailable={audioAbsence(e.audioState)}
+          durationHint={e.durationSec}
+          kindLabel="Call recording"
         />
       )}
       {e.voicemail && (
@@ -399,6 +454,8 @@ function Entry({ e, entries, numbers }: { e: TimelineEntry; entries: TimelineEnt
                   : null
             }
             unavailable={audioAbsence(e.voicemail.audioState)}
+            durationHint={e.voicemail.durationSec}
+            kindLabel="Voicemail"
           />
         </div>
       )}
@@ -418,6 +475,12 @@ function EventRow({ dir, icon, children }: { dir: "in" | "out"; icon: React.Reac
     <div
       className={cn(
         "flex max-w-[78%] items-start gap-2.5 rounded-xl border border-border px-2.5 py-2 text-xs",
+        // ⚠️ A row that is PLAYING takes (nearly) the whole column, so the scrub
+        // bar is as long as the screen allows (Josh, 2026-09-24: "make it large
+        // so i can scrub back and forth"). Keyed on the element itself rather
+        // than lifted state, so a call row carrying two players (its recording
+        // and the voicemail it left) grows for either.
+        "has-[audio]:w-full has-[audio]:max-w-[94%]",
         dir === "out" ? "self-end bg-muted" : "self-start bg-card",
       )}
     >
@@ -440,7 +503,22 @@ type Source =
  * an item is opened far more often than anything on it is played, and the
  * RingCentral half spends the shared account's budget.
  */
-function PlayAudio({ label, source, unavailable }: { label: string; source: Source | null; unavailable: string }) {
+function PlayAudio({
+  label,
+  source,
+  unavailable,
+  durationHint,
+  kindLabel = "Recording",
+}: {
+  label: string;
+  source: Source | null;
+  unavailable: string;
+  /** The length the archive or call log recorded — the bar can be scrubbed
+   *  before the file has told us its own. */
+  durationHint?: number;
+  /** What it is, for the player's accessible name. */
+  kindLabel?: string;
+}) {
   const [src, setSrc] = useState<string | null>(null);
   const [blob, setBlob] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -480,11 +558,11 @@ function PlayAudio({ label, source, unavailable }: { label: string; source: Sour
 
   if (src) {
     return (
-      <audio
-        controls
-        autoPlay
+      <AudioPlayer
         src={src}
-        className="mt-1.5 h-8 w-full min-w-[220px]"
+        durationHint={durationHint}
+        label={kindLabel}
+        className="mt-1.5"
         // ⚠️ An archive link is presigned and dies after five minutes (§5.47),
         // so a recording paused and resumed later can fail mid-play. The Play
         // button comes back and fetches a fresh link rather than leaving a
@@ -502,9 +580,9 @@ function PlayAudio({ label, source, unavailable }: { label: string; source: Sour
       <button
         onClick={() => void load()}
         disabled={busy}
-        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60"
       >
-        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
         {label}
       </button>
       {err && <p className="mt-1 break-words text-[11px] text-destructive">{err}</p>}
