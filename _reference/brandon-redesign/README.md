@@ -12,6 +12,7 @@ somebody made a decision that should be recorded in CLAUDE.md with a reason.
 |---|---|
 | `HANDOFF_Command_Center_Redesign.txt` | the handoff doc, doc rev 34, 2026-09-18, extracted verbatim from the .docx |
 | `command-center-mockup.html` | the **sample-data** build of the mockup — fake patients, safe to open anywhere. ⚠️ It **predates** the "Communications v2 — Unresolved queue" (2026-09-22), which exists only in Brandon's REAL-DATA **rev 2** file (also PHI, also not here). Its spec is quoted in `/COMMS_INBOX_PLAN.md` §1 |
+| `PIXEL_MATCH_INSTRUCTIONS_2026-09-24.txt` | his "match the mockup pixel for pixel" instructions, verbatim except three PHI redactions (a patient's name, item id and phone number). The two screenshots he sent with them show that patient, so they are not kept. Our plan for them: `/PIXEL_MATCH_PLAN.md` |
 
 ## ⚠️ The REAL-DATA mockup is deliberately absent
 

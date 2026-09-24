@@ -1,0 +1,89 @@
+Brandon Ellis — "match the mockup pixel for pixel" instructions, sent to Josh 2026-09-24.
+Saved verbatim from GOAL to the end of SAFETY RULES, with three redactions (a patient's
+name, Monday item id and phone number — PHI, which this repo must never carry; CLAUDE.md §9).
+He sent two screenshots with it (his REAL-DATA mockup beside our live app, on that same
+patient). They are PHI and are deliberately not kept here.
+
+Our plan for it, and where it is wrong about this codebase: /PIXEL_MATCH_PLAN.md
+
+----------------------------------------------------------------------------------------
+
+GOAL
+Make the Command Center match the approved redesign mockup pixel for pixel on every screen. The mockup is the source of truth — not the handoff doc's prose and not your judgment. Do not redesign, regroup, rename, add, drop or "improve" anything. Where the mockup and the handoff doc disagree, the mockup wins; tell me about the conflict.
+
+SOURCE OF TRUTH (copy into the repo under /design; never deploy the REAL-DATA file — it contains PHI)
+- design/command-center-mockup.html (sample data; has the demo states: shipments/swap, doctor's-office match, outbound calls, coordinator view)
+- design/command-center-mockup-REAL-DATA.html (real Monday snapshot 2026-09-18; use it for same-patient side-by-sides)
+- design/Command Center Redesign - Handoff for Josh v2.docx (data sources, column IDs, behavior; read it for WHAT data goes where, never for layout)
+
+HOW THE MOCKUP IS BUILT
+- One HTML file. All CSS is in its <style> blocks. Every screen is a JS function returning its exact markup as a template string. The mockup is hash-routed (#/patient/774?view=subscription&sub=profile).
+- The dark toolbar at the bottom (Sample data / Layout / Viewing as / Old pages / Home / Feature list) is a mockup control only — do NOT build it. Use its "Viewing as" select (#viewAs) to render each person's view when comparing.
+- Not in scope: "Layout: current" and the "Old pages" screens (today's app), #/features (internal feature list), and the stage tool pages (/stage/:id) — those stay exactly as they are in the live app.
+- To open the same patient in the REAL-DATA mockup as in the app, evaluate in the mockup page:
+    PATIENTS.find(p => Object.values(p.boards||{}).some(b => b && String(b.itemId) === '<Monday item id>')).id
+  then go to #/patient/<that id>. Example: [patient name and Monday item id redacted — PHI] → #/patient/[id].
+
+METHOD — for every screen below
+1. Read the mockup function(s) listed for that screen before writing code.
+2. Port markup and CSS 1:1: same DOM structure and nesting, same class names (.card.pad, .eyebrow, .facts/.fact .k/.v, .strip, .grid3, .input.sm, .segc, .spill, .conv, .ibrow, etc.), same CSS values (font family/size/weight, letter-spacing, colors, radii, borders, paddings, gaps, grid template columns, control heights). If the app uses Tailwind, import the mockup's CSS as a scoped stylesheet or translate each rule exactly — no approximations.
+3. Keep existing data hooks and Monday/RingCentral writes; change presentation, plus the behavior the mockup shows. If a value has no data source yet, keep its slot and show "—". Never replace a mockup element with a different one.
+4. Copy all visible text exactly (labels, placeholders, button text, empty states, tooltips).
+
+SCREENS — build and verify each one (mockup route → mockup functions)
+A. App shell / global header, every page: nav tabs (My Dashboard, Communications with the unresolved-count badge, Inventory, Reports & Metrics), global search box + results dropdown (placeholder "Search patient name, DOB, phone, member ID, order #, doctor…"), Users (admins), Settings menu. → shell, searchPatients, the gs-row markup.
+B. My Dashboard, one per home view (switch "Viewing as"):
+   - Stages / bars (Masheke, Samantha, Madeline) → viewDashboard
+   - Patient care coordinator (Masani) → the coordinator view in viewDashboard / part8
+   - Manager oversight (Janelle) → viewOversight
+   - Katie's Stages | Manager oversight toggle, and the "Viewing" dropdown for people with View others' views.
+C. Patient screen #/patient/:id → viewPatient, patientMain, patientHeaderCard, sideColumn
+   - Onboarding view (4 stage cards, info strip, sub-stage snapshot tabs, for each stage) → stageSnapshot
+   - Subscription › Profile → profilePage
+   - Subscription › Orders (upcoming order strip, shipments, Partially shipped/delivered, backordered-set swap, order history) → ordersPage, orderCard, upcomingOrder. Sample mockup patient Marisol Betancourt #/patient/101.
+   - Right column: Texts | Calls, phone line, composer, recent notes, resolve row → sideColumn
+   - Read-only states (switch "Viewing as" to someone without Edit profile / Adjust orders / Patient communication): disabled controls + notes.
+D. Communications #/communications → commsHub, ibList, ibLogList, ibDetail, ibResolveBar, ibFindPane, ibOfficePane, embeddedProfile
+   - Rail: Inbox, Fax, Texts, Calls, VMs.
+   - Inbox: Unresolved / Over 24h / All tabs with counts; search; Sort dropdown; All / Texts / Missed calls / Voicemails filter; rows (name, stage pill, wait time, colored left edge); thread with dates on every event and "Called patient · 4:08" rows; resolve row under the text box (Called requires a note; Texted / No action needed resolve in one click; suggested pill + "Confirm"); the resolved row stays greyed in place until another item is opened.
+   - Texts / Calls / VMs logs with their filters.
+   - Profile pane: embedded patient profile (every tab/toggle inside it stays inside Communications; only Open Profile Page and Open <stage tool> leave); unmatched number → find patient or doctor's office → "Add as alternate phone" / "Add as an office phone"; doctor's-office card with "Their patients with us". Sample demos: (631) 555-0147 (unmatched), Northgate Diabetes Center (office).
+   - Patient screen's Contacts block is editable (Subscription › Profile › Demographics).
+E. Fax Inbox (#/fax-inbox, Masheke's FAX bar): two panes 50/50, page previews, Update Clinicals flow → viewFaxInbox, ucPane
+F. Inventory #/inventory → viewInventoryList
+G. Reports & Metrics #/reports, including the Communications SLA · 24 hours card → viewReports
+H. Users #/users and the Settings menu → viewUsers, the settings menu markup.
+
+KNOWN DIFFERENCES ALREADY FOUND (Subscription › Profile and right column, [patient name redacted — PHI]) — fix all of these
+1. No "← Back" row; the patient card sits directly under the header.
+2. Patient card: phone formatted (xxx) xxx-xxxx; the Subscription toggle chip shows the subscription status ("Active"), not the group name; no edit pencil on Email.
+3. Profile | Orders row has Reset + blue Save on the right. Remove the sticky "Every change on this profile saves here / Send to Monday" bar; use the mockup's dirty bar ("Unsaved changes… Discard / Save to Monday"), shown only after an edit.
+4. Overview strip: Status with green dot + green text; Subscription = "Sensors · First Order · 90-Days"; First order = earliest order date, falling back to the board item's created date.
+5. Delete the Cycle Controls, Next Order Date and full-width Order Details cards. ONE "Order details" card, 2 columns: Next order date | Subscription; Frequency | Reorder form status chip; Sensors type | CGM qty; Supplies type (pump) | Cartridges qty; Infusion set 1 | Inf. qty 1; Infusion set 2 | Inf. qty 2. Order type is not editable.
+6. Page grid: overview → [Demographics | Insurance | Medical Necessity & Auth] → [Order details | Doctor info | Financials] → Subscription notes (full width).
+7. Demographics: Gender | Email; Address; Referral source | Can text; divider; editable Contacts inside the card (Primary contact select, Alternate contact select, Caregiver name, Caregiver authorized select, Alternate phone, Last patient contact read-only) + the matching hint line. Remove the separate Contacts card and the "Can text: not answered…" line.
+8. Insurance lower half: Last eligibility check | Active status; Deductible left | OOP remaining. Remove the Stedi eligibility / Insurance change? / Primary claim paid? block.
+9. Medical Necessity & Auth card: MR status + expiry | Files (View/Download); Diagnosis | Sensors auth + end date; Supplies auth | Infusion set auth ID; Cartridge auth ID; Upload MN Docs drop zone | Visit date with its help text. Remove the "Authorisation & MN" card and its footnote.
+10. Doctor info moves to the bottom row, middle.
+11. Add the Financials card.
+12. Add the Subscription notes card (composer + Add note + newest-first list; writes Subscription Patient Notes).
+13. Remove the "Subscription Board · Subscriptions · …" footnote.
+14. Right column: header is only Texts N | Calls N, then the phone line (+ alt phone with Text alt / Call alt). Remove the name block, bell and dark Call button. Composer = one-line "Write a text…" + blue "Send text". Recent notes are read-only with an "All notes" link (no composer there).
+15. Section labels use .eyebrow (10px, 600, uppercase, letter-spaced, muted); inputs/selects use .input.sm height.
+16. Onboarding: second stage is "Medical Evaluation"; snapshot header, chips and buttons as in stageSnapshot.
+
+VERIFICATION (required before you say anything is done)
+- Write design/compare.spec.ts (Playwright). For every screen and state in A–H: render the mockup and the app with the same person and (for patient screens) the same patient, at 1440×900 and 1568×767. Scroll the scrolling container (.pt-main, lists, threads) in steps. Save side-by-side PNGs to design/compare/<screen>-<state>-<step>.png.
+- Also compare computed styles on key elements (card padding/radius, eyebrow font, input height, grid column widths, row heights) and print mismatches.
+- For each pair, write every visible difference to design/compare/DIFF.md (layout, order, label text, spacing, font, color, control height, missing/extra elements). Fix, re-run, repeat until the only differences left are live data values.
+- Work screen by screen in the order A → H. Commit after each screen passes.
+- Finish with: the final side-by-side images, DIFF.md, and a short list of anything you could not match and why (e.g. no data source yet). Do not mark a screen done while DIFF.md still lists design differences for it.
+
+SAFETY RULES (these override everything above)
+1. Work on a new branch (redesign-pixel-match). Never push to main, never deploy, never run migrations.
+2. Presentation only. You may edit components, pages, layout and CSS. Do NOT modify: server/gateway/API code, Monday or RingCentral client code, data-fetching hooks, the functions that build Monday write payloads, column-ID mappings, auth/access config, environment/config files, or package versions. If matching the mockup seems to require changing any of these, STOP and write it in design/BACKEND_NEEDED.md instead.
+3. Do not add Monday columns, boards, tables, endpoints or storage. Mockup features with no backend yet (inbox resolutions and required call notes, extra office phones, patient coordinator assignment, Financials figures, anything else you find) get built as UI only, wired to nothing or disabled, and listed in BACKEND_NEEDED.md.
+4. Every field that saves today must still save to the same column with the same value after your change. Before editing a screen, list its current reads/writes (component → hook → column ID) in design/DATA_MAP.md; after editing, confirm the list is unchanged.
+5. Verification must never write. In the Playwright script, intercept all network requests and abort every non-GET request, every request to the Monday API that contains a mutation, and every RingCentral send/call endpoint. Log anything that was blocked. Never click Save, Send, Add note, Swap, Replace, Resolve/Called/Texted/No action needed, Call, Upload or Match in the live app; only open, switch tabs and scroll.
+6. After each screen: run the existing tests and type-check, commit that screen alone, and stop so the diff can be reviewed before moving to the next screen.
+7. At the end, open a pull request (do not merge) that includes DATA_MAP.md, BACKEND_NEEDED.md, the side-by-side screenshots and DIFF.md.
