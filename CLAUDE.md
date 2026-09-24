@@ -11556,6 +11556,14 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   `rankLiveResults` orders what Monday returned WITHOUT dropping rows the local ranker can't score
   (`searchPatients` would). Same `searchColumnIds`, same `mapToSystemPatient`, so a row is identical
   whichever path produced it.
+  ⚠️ **`searchedQuery` is the TRIMMED query, and two screens depend on it** (2026-09-24). System
+  Management and the Comms Hub's `DossierSearch` decide "has THIS query been answered?" with
+  `searchedQuery === query.trim()`, but the hook stored the raw text — so a name typed or pasted
+  with a space on either end never counted as answered, and with the open folder empty the page sat
+  on *"Searching all boards for …"* with a spinner for ever although Monday had answered in a
+  second (Janelle: a nickname that matched nobody, whose honest answer was "No patients found").
+  `useLiveSearch` now runs on the trimmed text throughout — request, refresh, `searchedQuery` — and
+  a stray space is not a new query. Pinned by `useLiveSearch.test.tsx` + `pages/systemMgmtSearch.test.tsx`.
   ⚠️ **A NAME QUERY THEN ASKS AGAIN BY THE NUMBER — because a patient is not the same string on
   every board** (Josh, 2026-09-11). Augustina Rodriguez (DTC Intake · Profile Send Off · Medical
   Evaluation) and Agustina Rodriguez Hernandez (Subscription since April · Secondary Claims) are ONE
@@ -12595,6 +12603,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The order list itself is still slow | §5.46h — and largely irreducible: Monday caps `items_page` at 500 and pages by cursor, so three round trips cannot be parallelised, and the slim column set is guarded by `listColumns.test.ts`. ⚠️ **Do not commit pages as they arrive** — `orders` feeds the overview's counts and the SKU tracker's open-order numbers, and a partial list renders those as facts |
 | "Where did Daily Operations go?" | §5.46b — Reports & Metrics is deliberately blank now and Operations has **no door in the chrome**: go to `/system-mgmt?tab=operations`, or `/system-mgmt` and press the Operations tab. The settings-menu entry is COMMENTED OUT in `GlobalHeader` on Josh's word — uncomment it to put the door back, and `lossless.test.ts` fails if it returns quietly |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
+| Search sits on "Searching all boards…" and never answers | §7 — the page renders its answer only once `searchedQuery === query.trim()`, so `useLiveSearch` must keep `searchedQuery` TRIMMED (2026-09-24). If Monday genuinely found nobody, check how the name is filed: `contains_text` is a substring per word, so a nickname never matches the full first name — the §5.44 loose pass recovers it through the surname when both are typed; otherwise try the surname or the phone |
 | A patient's ORDERS aren't in System Search, or an order turns up in another folder | §5.35 — `lib/systemMgmt/ordersSearch.ts`. The board rides `LIVE_SEARCH_BOARDS` (what the search box asks) and is deliberately absent from `BOARDS` (the patient registry — inbound-call lookup, the dossier, the gateway's mirrored directory, the snapshot); `searchBucket` returns `orders` FIRST, or every order files under Active with nothing erroring. An empty Orders folder under a chart pick or a stage filter is correct — those rows come from the snapshot |
 | A CAH / PO / tracking number finds nothing in System Search | §5.35 — `rulesLiteral`'s order branch + `ORDER_IDENTIFIER_COLS`. It is on BOTH paths because CAH (10 digits) and tracking (12) arrive as PHONE queries while a PO (`MM-<itemId>-<date>`) arrives as a one-word NAME query; a multi-word query keeps its AND and deliberately does not match identifiers. The results are in the **Orders** folder, so an empty Active tab with "Found in: Orders" is the expected landing. ⚠️ Never move the rule into `phoneRulesLiteral` — that is the same-number pass, and a 10-digit CAH number would pull a stranger's order onto a patient |
 | A Search row opens the wrong screen, or a different one from Oversight | §7 — `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` is the one rule; it must send the same `?mv=` / `manager` / `escalated` params `OversightTab.handlePatientClick` sends |

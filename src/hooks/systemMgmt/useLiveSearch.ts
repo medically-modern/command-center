@@ -32,7 +32,11 @@ export const LIVE_SEARCH_REFRESH_MS = 45_000;
 export interface LiveSearchState {
   /** Ranked rows for `searchedQuery`. Empty while nothing has been searched. */
   results: SystemPatient[];
-  /** The query the current `results` answer — lags `query` while a search runs. */
+  /**
+   * The query the current `results` answer — lags `query` while a search runs.
+   * ⚠️ Always TRIMMED: callers ask `searchedQuery === query.trim()` to know the
+   * answer on screen is for what was typed (see the hook body).
+   */
   searchedQuery: string;
   /** A request for the CURRENT query is in flight (first fetch, not a refresh). */
   searching: boolean;
@@ -50,13 +54,23 @@ export function useLiveSearch(query: string): LiveSearchState {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /* ⚠️ Everything below runs on the TRIMMED text — the request, the refresh
+     and `searchedQuery`. Both callers that read `searchedQuery` (System
+     Management's Search and the Comms Hub's DossierSearch) decide "has THIS
+     query been answered?" by comparing it with `query.trim()`. This hook used
+     to store the raw text, so a name typed or pasted with a space on either end
+     never compared equal: a search that found nobody sat on "Searching all
+     boards…" with a spinner for ever instead of saying "No patients found",
+     although Monday had answered in a second (reported 2026-09-24). Keying on
+     the trimmed text also means a stray space neither re-asks Monday nor
+     throws away an answer in flight. */
+  const trimmed = query.trim();
   const generation = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
-  const queryRef = useRef(query);
-  queryRef.current = query;
+  const queryRef = useRef(trimmed);
+  queryRef.current = trimmed;
 
-  const trimmed = query.trim();
-  const rules = liveSearchRules(query);
+  const rules = liveSearchRules(trimmed);
   const tooShort = trimmed.length > 0 && rules === null;
 
   const run = useCallback(async (q: string, silent: boolean) => {
@@ -117,12 +131,13 @@ export function useLiveSearch(query: string): LiveSearchState {
     // here is also what keeps `searching` honest for the query on screen.
     generation.current++;
     abortRef.current?.abort();
-    const t = setTimeout(() => void run(query, false), LIVE_SEARCH_DEBOUNCE_MS);
+    const t = setTimeout(() => void run(trimmed, false), LIVE_SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
-    // `rules` is derived from `query`; depending on the string keeps the effect
-    // keyed on what the rep typed rather than on a fresh object each render.
+    // `rules` is derived from `trimmed`; depending on the string keeps the
+    // effect keyed on what the rep typed rather than on a fresh object each
+    // render — and on the TRIMMED string, so a stray space is not a new query.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, run]);
+  }, [trimmed, run]);
 
   // Silent refresh while a query sits on screen — see rule 3 above.
   useEffect(() => {

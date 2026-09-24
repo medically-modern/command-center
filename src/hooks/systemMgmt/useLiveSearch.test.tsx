@@ -112,6 +112,46 @@ describe("useLiveSearch", () => {
     expect(result.current.searching).toBe(false);
   });
 
+  /* ⚠️ Both consumers (System Management's Search and the Comms Hub's
+     DossierSearch) decide "has THIS query been answered?" by comparing
+     `searchedQuery` with `query.trim()`. When the hook stored the raw text, a
+     name typed or pasted with a space on either end never compared equal, so a
+     search that found nobody read "Searching all boards…" with a spinner for
+     ever instead of "No patients found" (reported 2026-09-24). */
+  it("answers a query typed with a surrounding space as its trimmed self", async () => {
+    const p = pending();
+    searchPatientsLive.mockReturnValue(p.promise);
+    const { result } = renderHook(() => useLiveSearch(" jane doe "));
+    await act(async () => { vi.advanceTimersByTime(LIVE_SEARCH_DEBOUNCE_MS); });
+    expect(searchPatientsLive).toHaveBeenCalledTimes(1);
+    expect(searchPatientsLive.mock.calls[0][0]).toBe("jane doe");
+    await act(async () => { p.resolve([]); });
+    expect(result.current.searching).toBe(false);
+    expect(result.current.searchedQuery).toBe("jane doe");
+  });
+
+  it("a trailing space on an answered query neither re-asks Monday nor un-answers it", async () => {
+    searchPatientsLive.mockResolvedValue([row("Jane Doe")]);
+    const { result, rerender } = renderHook(({ q }) => useLiveSearch(q), { initialProps: { q: "jane doe" } });
+    await act(async () => { vi.advanceTimersByTime(LIVE_SEARCH_DEBOUNCE_MS); });
+    expect(result.current.searchedQuery).toBe("jane doe");
+    rerender({ q: "jane doe " });
+    expect(result.current.searching).toBe(false);
+    await act(async () => { vi.advanceTimersByTime(LIVE_SEARCH_DEBOUNCE_MS * 2); });
+    expect(searchPatientsLive).toHaveBeenCalledTimes(1);
+    expect(result.current.searchedQuery).toBe("jane doe");
+    expect(result.current.results.map((r) => r.name)).toEqual(["Jane Doe"]);
+  });
+
+  it("refreshes the trimmed query, too", async () => {
+    searchPatientsLive.mockResolvedValue([]);
+    renderHook(() => useLiveSearch("jane doe  "));
+    await act(async () => { vi.advanceTimersByTime(LIVE_SEARCH_DEBOUNCE_MS); });
+    await act(async () => { vi.advanceTimersByTime(LIVE_SEARCH_REFRESH_MS); });
+    expect(searchPatientsLive).toHaveBeenCalledTimes(2);
+    expect(searchPatientsLive.mock.calls[1][0]).toBe("jane doe");
+  });
+
   it("re-asks Monday on the refresh interval while a query is on screen", async () => {
     searchPatientsLive.mockResolvedValue([row("Jose Delgado")]);
     renderHook(() => useLiveSearch("jose"));
