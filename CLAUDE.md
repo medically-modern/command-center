@@ -4258,19 +4258,16 @@ through `PatientContact`'s opt-in **`commsPresentation`**, and exactly one calle
 **Keep-in-agreement:** `networkPill` ⇄ `intakeUnlock.networkAnswer` ⇄
 `workflow.PILL_STATES_THE_CHECK` ⇄ `reviewCardBlocker` ⇄ `intakeBlockerDetail` (the hover) ·
 `useContactTotals.TOTALS_BATCH` ⇄ `contactTotalsRules.MAX_TOTALS_NUMBERS` · `foldTotals` ⇄
-`commsInboxRules.callConnected` (never restated in SQL) · `useContactTotals` has a SECOND reader,
+`commsInboxRules.callConnected` (never restated in SQL) · `useContactTotals` ⇄ its SECOND reader,
 the patient screen's Calls tab (§5.51b, `lib/patient/callTotals.ts`) — a change to its shape or its
 key reaches both screens · `usState` ⇄ `WC_COL.address` in the read
 set · `cardWritePlan` ⇄ `writeBenefitsInputs`' skip-a-blank contract · `useStediRun`'s
 `runningId`/`forId`/`startedAt` ⇄ the page's `stediHere`/`stediElsewhere`/`stediAbout` ⇄
 `BenefitsCheckProgress`' phases · `commsPresentation="panel"` ⇄ exactly one caller.
-⚠️ **Two screens now count calls out of the same archive, by two routes** — this card through
-`/messaging/contact-totals` (grouped on the gateway, faxes excluded), and the patient screen's
-*"We called · They called"* (§5.51b) through `/calls/archive/query` (rows counted in the browser,
-which cannot exclude faxes — that route returns no call type). Both read "somebody picked up" with
-the same rule (the gateway copy is parity-tested against `callHistory.callConnected`), so the only
-known difference is a fax to or from the patient's own number. Change what counts as a call in one
-and check the other.
+⚠️ **Two screens count calls, through ONE route** — this card, and the patient screen's *"We called ·
+They called"* (§5.51b), both read `/messaging/contact-totals` through `useContactTotals`. (The patient
+screen first shipped counting `/calls/archive/query` rows in the browser, which cannot exclude faxes;
+it was moved onto this route within the hour so one patient can never read two counts.)
 Tests: `components/careCoordinator/masaniNotes0924.test.tsx`, `lib/careCoordinator/networkPill.test.ts`,
 `lib/shared/usState.test.ts`, `hooks/careCoordinator/useContactTotals.test.tsx`,
 `services/monday-gateway/contactTotals.test.mjs`, `components/commsPanelScope.test.ts`,
