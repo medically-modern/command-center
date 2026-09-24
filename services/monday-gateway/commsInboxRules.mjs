@@ -642,6 +642,15 @@ export function stagePill(target) {
   return BOARD_PILL[board] ?? "Unmatched";
 }
 
+/**
+ * Every value `stagePill` can return, in pipeline order — the list's stage
+ * filter offers exactly these (Josh, 2026-09-23). Derived from BOARD_PILL, so a
+ * board added there is offered without a second list to remember.
+ * ⚠️ The SPA's `StagePill` type and its filter menu name the same values;
+ * `stageFilter.test.ts` holds the two together.
+ */
+export const STAGE_PILLS = Object.freeze([...new Set(Object.values(BOARD_PILL)), "Inactive", "Unmatched"]);
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Who dialed · who texted
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -940,9 +949,17 @@ export function publicItem(g, st) {
  * ⚠️ The counts are taken BEFORE the search and the row cap, so the tab
  * numbers and the header badge describe the same set whatever is on screen.
  */
-export function filterInbox(items, { view = "open", type = "", q = "", qHmac = "", sort = "wait", sticky = "", limit = LIST_LIMIT } = {}) {
+export function filterInbox(
+  items,
+  { view = "open", type = "", stage = "", q = "", qHmac = "", sort = "wait", sticky = "", limit = LIST_LIMIT } = {},
+) {
   const kinds = ["text", "missed", "voicemail"];
-  const typed = kinds.includes(type) ? items.filter((i) => i.previewKind === type) : items;
+  const byKind = kinds.includes(type) ? items.filter((i) => i.previewKind === type) : items;
+  // The stage filter narrows like a type chip, so the tab counts describe what
+  // the rep is looking at ("Unresolved 3" = three in Insurance). An unknown
+  // value is ignored rather than matching nothing: a list that goes blank on a
+  // value this build does not know reads as "nobody is waiting".
+  const typed = STAGE_PILLS.includes(stage) ? byKind.filter((i) => i.stage === stage) : byKind;
   const counts = {
     open: typed.filter((i) => i.open).length,
     over: typed.filter((i) => i.open && i.over).length,

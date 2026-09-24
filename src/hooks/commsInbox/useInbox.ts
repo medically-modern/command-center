@@ -281,7 +281,7 @@ const listStore = createStore<ListState>({ sig: "", dataSig: "", data: null, loa
 let listInflight: { sig: string; p: Promise<void> } | null = null;
 let listQuery: InboxQuery | null = null;
 
-const sigOf = (q: InboxQuery) => JSON.stringify([q.view, q.type, q.q.trim(), q.sort, q.sticky]);
+const sigOf = (q: InboxQuery) => JSON.stringify([q.view, q.type, q.stage, q.q.trim(), q.sort, q.sticky]);
 
 function refreshList(force = false): Promise<void> {
   const q = listQuery;

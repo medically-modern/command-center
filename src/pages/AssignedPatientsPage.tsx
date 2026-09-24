@@ -324,6 +324,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   const [inboxQuery, setInboxQuery] = useState<Omit<InboxQuery, "q" | "sticky">>(() => ({
     view: inboxViewParam === "over" || inboxViewParam === "all" ? inboxViewParam : "open",
     type: "",
+    stage: "",
     sort: "wait",
   }));
   useEffect(() => {

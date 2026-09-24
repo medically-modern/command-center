@@ -54,6 +54,23 @@ export type StagePill =
   | "Claims"
   | "Unmatched";
 
+/**
+ * The list's stage filter, in the order the menu offers it: the pipeline, then
+ * the stages a patient is in after or outside it. Every `StagePill` exactly
+ * once — `stageFilter.test.ts` holds this to the gateway's `STAGE_PILLS`, which
+ * is what the filter is checked against there (an unknown value is ignored).
+ */
+export const STAGE_FILTERS: readonly StagePill[] = [
+  "Intake",
+  "Medical Necessity",
+  "Insurance",
+  "Welcome Call",
+  "Subscription",
+  "Inactive",
+  "Claims",
+  "Unmatched",
+];
+
 export interface InboxResolution {
   resolutionId: string;
   how: ResolveHow;

@@ -15,10 +15,35 @@
  * ⚠️ The row just resolved stays, greyed with its ✓, until the rep opens
  * another item ("sticky") — that is where Undo lives, and it is also when the
  * note is copied to Monday (plan §5.4).
+ *
+ * The STAGE filter (Josh, 2026-09-23: "a small filter button to the right of
+ * voicemails hugging that right side of the box") sits at the end of the type
+ * chips and narrows exactly like one: the gateway filters, so the tab counts
+ * say how many are waiting in that stage. It says which stage it is on in the
+ * button itself, and an empty list names it — a filter nobody can see is how a
+ * rep decides the inbox is empty when it isn't.
  */
-import { Check, Loader2, RefreshCw, Search, X } from "lucide-react";
+import { Check, ListFilter, Loader2, RefreshCw, Search, X } from "lucide-react";
 import type { InboxList as InboxListData, InboxRow } from "@/lib/commsInbox/rules";
-import { KIND_LABEL, formatShort, formatWait, formatWhen, HOW_LABEL, rowNameParts, whoShort } from "@/lib/commsInbox/rules";
+import {
+  KIND_LABEL,
+  STAGE_FILTERS,
+  formatShort,
+  formatWait,
+  formatWhen,
+  HOW_LABEL,
+  rowNameParts,
+  whoShort,
+} from "@/lib/commsInbox/rules";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { InboxQuery } from "@/lib/commsInbox/api";
 import { StagePill } from "./pills";
 import { KIND_EDGE } from "./kinds";
@@ -147,27 +172,36 @@ export default function InboxList({
           </select>
         </div>
 
-        <div className="flex flex-wrap gap-1" aria-label="Type">
-          {TYPES.map((t) => {
-            const on = query.type === t.id;
-            return (
-              <button
-                key={t.id || "all"}
-                onClick={() => onQuery({ type: t.id })}
-                className={cn(
-                  "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors",
-                  on
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-                  !on && t.id === "text" && "hover:border-sky-400",
-                  !on && t.id === "missed" && "hover:border-orange-400",
-                  !on && t.id === "voicemail" && "hover:border-violet-400",
-                )}
-              >
-                {t.label}
-              </button>
-            );
-          })}
+        {/* One wrapping row, the stage button pushed to its right-hand end.
+            ⚠️ Not the chips in a shrinking group beside a fixed button: at the
+            320px list (≤1300px screens) the four chips alone nearly fill the
+            row, and that shape broke THEM into three lines. This way the chips
+            never move; when the button has no room it drops to the next line,
+            still hugging the right edge (measured 1024–1440). */}
+        <div className="flex flex-wrap items-center gap-1">
+          <div role="group" aria-label="Type" className="contents">
+            {TYPES.map((t) => {
+              const on = query.type === t.id;
+              return (
+                <button
+                  key={t.id || "all"}
+                  onClick={() => onQuery({ type: t.id })}
+                  className={cn(
+                    "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors",
+                    on
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                    !on && t.id === "text" && "hover:border-sky-400",
+                    !on && t.id === "missed" && "hover:border-orange-400",
+                    !on && t.id === "voicemail" && "hover:border-violet-400",
+                  )}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+          <StageFilter stage={query.stage} onStage={(stage) => onQuery({ stage })} />
         </div>
       </div>
 
@@ -184,12 +218,26 @@ export default function InboxList({
             <p className="text-sm text-muted-foreground">
               {search.trim()
                 ? "Nothing matches that search."
-                : query.view === "all"
-                  ? "Nothing here."
-                  : query.view === "over"
-                    ? "Nothing over 24 hours."
-                    : "Nothing unresolved. Nice."}
+                : query.stage
+                  ? query.view === "all"
+                    ? `Nothing in ${query.stage}.`
+                    : query.view === "over"
+                      ? `Nothing in ${query.stage} over 24 hours.`
+                      : `Nothing unresolved in ${query.stage}.`
+                  : query.view === "all"
+                    ? "Nothing here."
+                    : query.view === "over"
+                      ? "Nothing over 24 hours."
+                      : "Nothing unresolved. Nice."}
             </p>
+            {query.stage && (
+              <button
+                onClick={() => onQuery({ stage: "" })}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                Show every stage
+              </button>
+            )}
           </div>
         )}
         {rows.map((r) => (
@@ -203,6 +251,65 @@ export default function InboxList({
         ))}
       </div>
     </div>
+  );
+}
+
+/** The menu's "every stage" entry. A Radix radio item needs a non-empty value,
+ *  and "" is what the query means by it. */
+const ALL_STAGES = "all";
+
+/**
+ * The stage filter: a chip-sized button at the right end of the type chips.
+ * Idle it reads "Stage"; on, it is filled like an active chip and carries the
+ * stage's name, so the filter is never on without saying so.
+ */
+function StageFilter({
+  stage,
+  onStage,
+}: {
+  stage: InboxQuery["stage"];
+  onStage: (stage: InboxQuery["stage"]) => void;
+}) {
+  const on = !!stage;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={on ? `Stage filter: ${stage}` : "Filter by stage"}
+          title={on ? `Showing ${stage} only — click to change` : "Filter by stage"}
+          className={cn(
+            "ml-auto inline-flex max-w-[9rem] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors",
+            on
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
+        >
+          <ListFilter className="h-3 w-3 shrink-0" />
+          <span className="truncate">{on ? stage : "Stage"}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel className="text-xs">Filter by stage</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={stage || ALL_STAGES}
+          onValueChange={(v) => {
+            const next = STAGE_FILTERS.find((s) => s === v);
+            onStage(next ?? "");
+          }}
+        >
+          <DropdownMenuRadioItem value={ALL_STAGES} className="text-xs">
+            Every stage
+          </DropdownMenuRadioItem>
+          <DropdownMenuSeparator />
+          {STAGE_FILTERS.map((s) => (
+            <DropdownMenuRadioItem key={s} value={s}>
+              <StagePill stage={s} />
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

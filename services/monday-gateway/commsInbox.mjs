@@ -1072,6 +1072,7 @@ export function registerCommsInbox({ app, pool }) {
       const out = filterInbox(s.items, {
         view: String(req.query.view || "open"),
         type: String(req.query.type || ""),
+        stage: String(req.query.stage || ""),
         q,
         qHmac,
         sort: String(req.query.sort || "wait"),

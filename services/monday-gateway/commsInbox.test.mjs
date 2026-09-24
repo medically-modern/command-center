@@ -282,6 +282,12 @@ describe("⚠️ no RingCentral read on the list, the badge or a resolve (INCIDE
     }
   });
 
+  it("the list route hands the stage filter to filterInbox, beside the type", () => {
+    const body = routeBody("get", "/comms/inbox");
+    expect(body).toMatch(/type: String\(req\.query\.type \|\| ""\)/);
+    expect(body).toMatch(/stage: String\(req\.query\.stage \|\| ""\)/);
+  });
+
   it("opening ONE item may resolve its numbers — an interactive read, on open, never on render", () => {
     expect(fnBody("resolveNumbers")).toMatch(/tier: "interactive"/);
     expect(routeBody("get", "/comms/item")).toMatch(/itemPayload/);

@@ -77,6 +77,48 @@ const GATEWAY =
 const RELEASE_AFTER_MS = 30_000;
 
 /**
+ * How long ONE attempt to connect and register may take before it is given up
+ * and retried.
+ *
+ * ⚠️⚠️ THE SDK'S `start()` CAN NEVER SETTLE, AND THIS DEADLINE IS THE ONLY THING
+ * THAT ENDS IT (Josh, 2026-09-23: "it keeps saying connecting to ring central
+ * but never connects"). Read in ringcentral-web-phone 2.5.1's sip-client:
+ * `register()` awaits `request()`, whose promise resolves on a matching reply
+ * and has NO rejection path at all. The SDK's own guard for an unanswered
+ * REGISTER is to CLOSE THE SOCKET after 5s — which stops any reply arriving,
+ * so the promise waits for ever and `start()` with it. `connect()` is the same
+ * shape: it settles only on the socket's `open` or `error`, and the second
+ * (authorised) REGISTER has no guard of any kind.
+ * Before this, an unanswered REGISTER — a laptop waking, a Wi-Fi hand-off, a
+ * slow moment on RingCentral's side — left the phone on "Reconnecting to
+ * RingCentral…" permanently: no failure ever came to schedule a retry, and the
+ * close listener that would have noticed is only attached after `start()`
+ * resolves. It lasted until the leader TAB was reloaded, and reloading any
+ * other tab did nothing, because a follower just mirrors the stuck leader.
+ * Generous on purpose: a normal registration is well under two seconds, and a
+ * slow one abandoned early costs only a retry.
+ */
+export const START_DEADLINE_MS = 20_000;
+/** The same bound for the gateway's sip-provision request, which is a plain
+ *  `fetch` with no timeout of its own. */
+export const PROVISION_DEADLINE_MS = 15_000;
+/** Says "timed out" so `classifyRegistrationError` files it as a network
+ *  failure — the exponential 2s → 60s ladder, and a sentence a rep can read. */
+const START_TIMEOUT_MESSAGE = "RingCentral's phone server timed out before this browser was registered";
+
+/**
+ * Settle `p` or reject after `ms`, whichever comes first. The losing promise is
+ * still observed by the race, so a late rejection is never unhandled.
+ */
+function withDeadline<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  let id: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    id = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([p, deadline]).finally(() => clearTimeout(id));
+}
+
+/**
  * The slice of the SDK's CallSession we touch, typed structurally — the
  * session classes are only reachable through `any`-typed emitter events.
  */
@@ -128,6 +170,43 @@ function socketOf(wp: WebPhone | null): WebSocket | null {
   return c?.wsc ?? null;
 }
 
+/**
+ * Drop a WebPhone that must not stay registered — a registration attempt that
+ * timed out, or one that finished in a tab that has since stopped being the
+ * leader — WITHOUT the SDK's `dispose()`.
+ *
+ * ⚠️ `dispose()` is wrong twice here. It sends an unREGISTER and waits for the
+ * reply before it closes the socket — on the dead connection that got us here
+ * that wait never ends, so the socket is never closed. And every browser
+ * registers under the same `instanceId`, so an unREGISTER from a tab that lost
+ * the lead would remove the binding the NEW leader has just made. It also
+ * declines ringing sessions, which this file never does (see the header) —
+ * no session can exist on a phone that never finished registering, but the
+ * rule is simpler to keep than to argue.
+ *
+ * So: mark it disposed (the close listener ignores a disposed phone), stop its
+ * re-register timer, and close the socket.
+ */
+function abandon(wp: WebPhone | null): void {
+  if (!wp) return;
+  const c = wp.sipClient as unknown as { timeoutHandle?: ReturnType<typeof setTimeout>; wsc?: WebSocket };
+  try {
+    (wp as { disposed: boolean }).disposed = true;
+  } catch {
+    /* read-only in some future SDK — the close listener's other checks still hold */
+  }
+  try {
+    if (c?.timeoutHandle) clearTimeout(c.timeoutHandle);
+  } catch {
+    /* no timer */
+  }
+  try {
+    c?.wsc?.close();
+  } catch {
+    /* never opened */
+  }
+}
+
 function errorText(e: unknown): string {
   if (e instanceof Error) return e.message;
   return String(e ?? "");
@@ -155,6 +234,13 @@ class Softphone {
   private registrationError: string | null = null;
   private lastError: string | null = null;
   private registering: Promise<void> | null = null;
+  /** One reconnect at a time. The `online` event and a socket's `close` land
+   *  together after a network drop, and two `start()`s on one SIP client race
+   *  for its single socket slot — each opens a socket and sends on whichever
+   *  one the other left behind. */
+  private recovering: { wp: WebPhone; p: Promise<void> } | null = null;
+  /** Removes the close listener from the socket we are watching. */
+  private detachSocket: (() => void) | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private releaseTimer: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
@@ -192,7 +278,7 @@ class Softphone {
     window.addEventListener("storage", (e) => {
       if (e.key === MUTE_KEY || e.key === null) this.onRingMuteChanged(readMuted(storage() ?? NO_STORAGE));
     });
-    window.addEventListener("online", () => void this.recover());
+    window.addEventListener("online", () => this.onOnline());
     window.addEventListener("pagehide", () => this.shutdown());
     onAuthChange(() => this.reconcile());
 
@@ -425,20 +511,31 @@ class Softphone {
     if (cached) return cached;
     if (!GATEWAY) throw new Error("Calling needs the Monday gateway (VITE_MONDAY_GATEWAY_URL).");
     const token = getIdToken();
-    const res = await fetch(`${GATEWAY}/messaging/sip-provision`, {
-      headers: token ? { "X-MM-Auth": token } : {},
-    });
-    if (!res.ok) {
-      let msg = `Couldn't set up calling (${res.status})`;
-      try {
-        const j = (await res.json()) as { error?: string; message?: string };
-        msg = j.error || j.message || msg;
-      } catch {
-        /* keep default */
-      }
-      throw new Error(msg);
-    }
-    const provisioned = (await res.json()) as { sipInfo?: SipInfo[] | SipInfo };
+    // A plain fetch waits as long as the connection stays open; a gateway that
+    // accepted the request and never answered would hold "registering" for as
+    // long as that takes. The abort ends the request itself, not just our wait.
+    const ctrl = new AbortController();
+    const provisioned = await withDeadline(
+      (async () => {
+        const res = await fetch(`${GATEWAY}/messaging/sip-provision`, {
+          headers: token ? { "X-MM-Auth": token } : {},
+          signal: ctrl.signal,
+        });
+        if (!res.ok) {
+          let msg = `Couldn't set up calling (${res.status})`;
+          try {
+            const j = (await res.json()) as { error?: string; message?: string };
+            msg = j.error || j.message || msg;
+          } catch {
+            /* keep default */
+          }
+          throw new Error(msg);
+        }
+        return (await res.json()) as { sipInfo?: SipInfo[] | SipInfo };
+      })(),
+      PROVISION_DEADLINE_MS,
+      "Setting up calling timed out — the gateway didn't answer",
+    ).finally(() => ctrl.abort());
     const sipInfo = Array.isArray(provisioned.sipInfo) ? provisioned.sipInfo[0] : provisioned.sipInfo;
     if (!sipInfo) throw new Error("RingCentral returned no SIP credentials for this extension.");
     writeCachedSipInfo(store, email, sipInfo, Date.now());
@@ -456,17 +553,26 @@ class Softphone {
         wp = new WebPhone({ sipInfo, instanceId: this.instanceId, autoAnswer: false });
         wp.on("inboundCall", (s: Session) => this.onInbound(s));
         wp.on("outboundCall", (s: Session) => this.onOutbound(s));
-        await wp.start();
+        await withDeadline(wp.start(), START_DEADLINE_MS, START_TIMEOUT_MESSAGE);
+        // ⚠️ Taken over while this was registering (takeOver): the new leader
+        // is registering the same instanceId, and a second live registration
+        // would re-REGISTER every ~57s alongside it — "most recently
+        // registered" would then rotate between the two tabs and the ring
+        // would land in whichever won last. Drop this one quietly.
+        if (!this.isLeader) {
+          abandon(wp);
+          return;
+        }
         this.wp = wp;
         this.watchSocket(wp);
         this.attempt = 0;
         this.setRegistration("registered", null);
+        // Nothing may want it any more (un-assigned mid-REGISTER): hand it to
+        // the ordinary release timer rather than holding a slot for nobody.
+        if (!this.wanted()) this.reconcile();
       } catch (err) {
-        try {
-          socketOf(wp)?.close();
-        } catch {
-          /* never opened */
-        }
+        abandon(wp);
+        if (!this.isLeader) return;
         this.onRegistrationFailure(err);
       } finally {
         this.registering = null;
@@ -493,42 +599,114 @@ class Softphone {
   }
 
   /**
+   * The network came back. A registered phone reconnects (the SDK README's own
+   * advice for an outage); one sitting out a backoff after failed attempts
+   * tries NOW rather than waiting up to a minute for a timer that was only
+   * ever standing in for this event.
+   */
+  private onOnline(): void {
+    if (!this.isLeader) return;
+    if (this.wp) {
+      void this.recover();
+      return;
+    }
+    if (!this.wanted() || this.registering) return;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    void this.ensureRegistered();
+  }
+
+  /**
    * The SDK does not reconnect on its own (README, "Recover from network
    * outage"): a dropped WebSocket is reported by its `close` event and it is
    * on us to `start()` again. The SDK also closes the socket itself when a
    * REGISTER goes unanswered for 5s, which lands here too.
+   *
+   * ⚠️ Only the socket the SIP client is USING counts. `start()` opens a new
+   * socket and leaves the old one to die, so the old one's close arrives after
+   * the reconnect has already succeeded — and used to start another one, which
+   * opened another socket, whose predecessor then closed… `recover()` detaches
+   * the old listener before it starts, and this check covers the rest.
    */
   private watchSocket(wp: WebPhone): void {
+    this.detachSocket?.();
+    this.detachSocket = null;
     const wsc = socketOf(wp);
     if (!wsc) return;
     const onClose = () => {
-      wsc.removeEventListener("close", onClose);
+      detach();
       if (wp.disposed || this.wp !== wp) return;
+      if (socketOf(wp) !== wsc) return;
       this.setRegistration("registering", "Reconnecting to RingCentral…");
       this.scheduleRetry(retryDelayMs("network", this.attempt++));
     };
+    const detach = () => {
+      wsc.removeEventListener("close", onClose);
+      if (this.detachSocket === detach) this.detachSocket = null;
+    };
     wsc.addEventListener("close", onClose);
+    this.detachSocket = detach;
   }
 
-  private async recover(): Promise<void> {
+  /** Reconnect the existing WebPhone, keeping its call sessions (an answered
+   *  call is re-INVITEd afterwards). Bounded and one-at-a-time — see
+   *  START_DEADLINE_MS and `recovering`. */
+  private recover(): Promise<void> {
     const wp = this.wp;
-    if (!wp || !this.isLeader) return;
-    try {
-      await wp.start();
-      this.watchSocket(wp);
-      this.attempt = 0;
-      this.setRegistration("registered", null);
-      // A network CHANGE (Wi-Fi to hotspot) leaves an answered call silent
-      // until its media is renegotiated.
-      if (this.active?.session?.state === "answered") void this.active.session.reInvite?.().catch(() => {});
-    } catch (err) {
-      this.onRegistrationFailure(err);
-    }
+    if (!wp || !this.isLeader) return Promise.resolve();
+    // Joined only when it is reconnecting THIS phone. One left over from a
+    // phone this tab has since dropped (demoted, then handed the line back)
+    // must not stand in for this one's reconnect: it settles without touching
+    // the new phone, and nothing would ever ask again.
+    if (this.recovering?.wp === wp) return this.recovering.p;
+    const token: { wp: WebPhone; p: Promise<void> } = { wp, p: Promise.resolve() };
+    this.recovering = token;
+    token.p = (async () => {
+      this.detachSocket?.();
+      const before = socketOf(wp);
+      try {
+        await withDeadline(wp.start(), START_DEADLINE_MS, START_TIMEOUT_MESSAGE);
+        // ⚠️ Released (un-assigned, signed out) or demoted while this ran. The
+        // release's `dispose()` could not stop a `start()` already in flight,
+        // so the SIP client has just re-registered and armed its ~57s
+        // re-register timer: a rogue registration nothing would ever end.
+        if (this.wp !== wp || !this.isLeader) {
+          abandon(wp);
+          return;
+        }
+        this.watchSocket(wp);
+        this.attempt = 0;
+        this.setRegistration("registered", null);
+        // A network CHANGE (Wi-Fi to hotspot) leaves an answered call silent
+        // until its media is renegotiated.
+        if (this.active?.session?.state === "answered") void this.active.session.reInvite?.().catch(() => {});
+      } catch (err) {
+        // The socket this attempt opened never registered; close it so a late
+        // open can't leave a half-built connection behind the retry.
+        const opened = socketOf(wp);
+        if (opened && opened !== before) {
+          try {
+            opened.close();
+          } catch {
+            /* never opened */
+          }
+        }
+        if (this.wp !== wp || !this.isLeader) {
+          abandon(wp);
+          return;
+        }
+        this.onRegistrationFailure(err);
+      } finally {
+        if (this.recovering === token) this.recovering = null;
+      }
+    })();
+    return token.p;
   }
 
   private release(): void {
     const wp = this.wp;
     this.wp = null;
+    this.detachSocket?.();
     this.rings.clear();
     this.ignored.clear();
     this.ringtone.stop();
@@ -541,6 +719,7 @@ class Softphone {
     this.post({ type: "bye", from: this.tabId });
     const wp = this.wp;
     this.wp = null;
+    this.detachSocket?.();
     // Best effort: the unREGISTER may not complete during unload, in which case
     // the SIP server frees the slot when the registration expires (~1 min).
     if (wp) void wp.dispose().catch(() => {});
@@ -643,9 +822,17 @@ class Softphone {
     this.publish();
     try {
       await this.ensureRegistered();
+      // A reconnect in flight owns the socket this call would go out on.
+      if (this.recovering && this.recovering.wp === this.wp) await this.recovering.p;
       // Hung up while we were still registering.
       if (this.dialToken !== token || !this.active) return;
-      if (!this.wp) throw new Error(this.registrationError || "Browser calling isn't available right now.");
+      // ⚠️ A phone that is reconnecting — or failed to, and is waiting to try
+      // again — has no socket that will answer an INVITE, and the SDK waits for
+      // that answer with no timeout: the overlay would sit on "Setting up…"
+      // for ever. Say why instead.
+      if (!this.wp || this.registration !== "registered") {
+        throw new Error(this.registrationError || "Browser calling isn't available right now.");
+      }
       // callerId is passed EXPLICITLY: every call must reach the patient as
       // the MM main line, never the extension's own default.
       await this.wp.call(phone, mmPhoneNumber());

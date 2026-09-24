@@ -28,6 +28,16 @@
  * home sidebar off (§5.39c) the header is the only badge a manager has, so
  * dropping the speaker here would take the ringtone mute away from them
  * entirely — it lives nowhere else.
+ *
+ * ⚠️ **A tab watching ANOTHER tab sit on "connecting" can take the phone over**
+ * (2026-09-23). A follower only mirrors its leader, so a leader that is stuck
+ * holds every tab of the browser with it — and reloading the tab you are
+ * looking at does nothing, because the reloaded tab just mirrors the same
+ * leader again. A leader on the current build cannot stay "registering" this
+ * long (every attempt is abandoned after softphone.ts's START_DEADLINE_MS and
+ * shows "error" while it waits to retry), so one that does is a tab still
+ * running a build from before that fix, or one the browser has frozen. Either
+ * way, moving the phone to this tab is the way out.
  */
 import { useEffect, useState } from "react";
 import { Loader2, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
@@ -36,6 +46,11 @@ import { useSoftphone } from "@/hooks/softphone/useSoftphone";
 import { canAnswerCalls } from "@/lib/accessStore";
 import { authRequired } from "@/lib/shared/auth";
 import { cn } from "@/lib/utils";
+
+/** How long this tab watches another tab sit on "registering" before it offers
+ *  to take the phone over. Comfortably past the longest a current leader can
+ *  spend there in one go: the provision deadline plus the start deadline. */
+export const STUCK_ELSEWHERE_MS = 45_000;
 
 export default function CallConnectionBadge({
   className,
@@ -56,6 +71,17 @@ export default function CallConnectionBadge({
     const id = setTimeout(() => setSettled(true), 2_500);
     return () => clearTimeout(id);
   }, [phone.registration, phone.leader]);
+  // Another tab has been "registering" without a break for STUCK_ELSEWHERE_MS.
+  // The timer restarts only when that stops being true, so a leader that is
+  // actually retrying (registering → error → registering) never trips it.
+  const followerWaiting = !phone.leader && phone.registration === "registering";
+  const [stuckElsewhere, setStuckElsewhere] = useState(false);
+  useEffect(() => {
+    setStuckElsewhere(false);
+    if (!followerWaiting) return;
+    const id = setTimeout(() => setStuckElsewhere(true), STUCK_ELSEWHERE_MS);
+    return () => clearTimeout(id);
+  }, [followerWaiting]);
 
   if (!enabled) return null;
 
@@ -63,7 +89,8 @@ export default function CallConnectionBadge({
   const connected = reg === "registered";
   const here = connected && phone.leader;
   const elsewhere = connected && !phone.leader;
-  const pending = reg === "registering" || (reg === "off" && !settled);
+  const stuck = stuckElsewhere && followerWaiting;
+  const pending = !stuck && (reg === "registering" || (reg === "off" && !settled));
 
   let tone: "green" | "amber" | "red" | "grey" = "grey";
   let label = "Not connected for calls";
@@ -76,6 +103,10 @@ export default function CallConnectionBadge({
     tone = "amber";
     label = "Calls ring in another tab";
     detail = phone.call ? "That tab is on a call" : null;
+  } else if (stuck) {
+    tone = "amber";
+    label = "Another tab is stuck connecting";
+    detail = "Use this tab to connect from here instead";
   } else if (pending) {
     tone = "amber";
     label = "Connecting for calls…";
@@ -94,7 +125,7 @@ export default function CallConnectionBadge({
     // ⚠️ The phone IS the takeover button when another tab holds the line —
     // Josh's "a button that moves to this tab". When this tab already has it
     // there is nothing to move, so it is inert and only reports.
-    const canTake = elsewhere && !phone.call;
+    const canTake = (elsewhere || stuck) && !phone.call;
     return (
       <span className={cn("cc-phone", className)} role="status">
         <button
@@ -109,7 +140,9 @@ export default function CallConnectionBadge({
               ? phone.call
                 ? "Calls ring in another tab — wait for that call to finish"
                 : "Calls ring in another tab — click to ring in this one"
-              : detail
+              : stuck
+                ? "Another tab is stuck connecting — click to connect from this tab"
+                : detail
                 ? `${label} — ${detail}`
                 : label
           }
@@ -181,7 +214,7 @@ export default function CallConnectionBadge({
       >
         {phone.ringMuted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
       </button>
-      {elsewhere && (
+      {(elsewhere || stuck) && (
         <button
           onClick={phone.takeOver}
           disabled={!!phone.call}

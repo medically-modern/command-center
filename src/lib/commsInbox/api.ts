@@ -13,7 +13,7 @@
  * is trusted.
  */
 import { getIdToken } from "../shared/auth";
-import type { InboxItem, InboxList, InboxResolution, ItemState, ResolveHow } from "./rules";
+import type { InboxItem, InboxList, InboxResolution, ItemState, ResolveHow, StagePill } from "./rules";
 
 const GATEWAY =
   (import.meta.env.VITE_MONDAY_GATEWAY_URL as string | undefined)?.replace(/\/+$/, "") || "";
@@ -102,6 +102,8 @@ export async function fetchCommsConfig(): Promise<CommsConfig> {
 export interface InboxQuery {
   view: "open" | "over" | "all";
   type: "" | "text" | "missed" | "voicemail";
+  /** "" is every stage. The gateway filters, so the tab counts follow it. */
+  stage: "" | StagePill;
   q: string;
   sort: "wait" | "recent";
   /** The row just resolved keeps its place until the rep opens another. */
@@ -111,6 +113,7 @@ export interface InboxQuery {
 export async function fetchInbox(query: InboxQuery): Promise<InboxList> {
   const p = new URLSearchParams({ view: query.view, sort: query.sort });
   if (query.type) p.set("type", query.type);
+  if (query.stage) p.set("stage", query.stage);
   if (query.q.trim()) p.set("q", query.q.trim());
   if (query.sticky) p.set("sticky", query.sticky);
   const out = await json<InboxList>(await call(`/comms/inbox?${p}`), "Loading the inbox");

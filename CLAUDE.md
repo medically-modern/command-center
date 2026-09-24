@@ -1341,6 +1341,38 @@ toggle there.
   `call.muted`, which is the MICROPHONE on a live call. The SDK does not reconnect on its own:
   `watchSocket` re-`start()`s on the WebSocket's `close` and on `online`, and re-INVITEs an
   answered call after a network change.
+- ⚠️⚠️ **EVERY `wp.start()` IS BOUNDED BY `START_DEADLINE_MS` (20s), AND THE SDK MAKES THAT THE
+  ONLY THING THAT ENDS ONE** (Josh, 2026-09-23: *"it keeps saying connecting to ring central but
+  never connects"*). Read in ringcentral-web-phone 2.5.1's `sip-client`: `register()` awaits
+  `request()`, whose promise has NO rejection path; the SDK's own guard for an unanswered
+  REGISTER is to CLOSE THE SOCKET after 5s, which stops any reply arriving, so `start()` waits for
+  ever. `connect()` settles only on `open`/`error`, and the authorised second REGISTER has no guard
+  at all. Before the deadline, one unanswered REGISTER — a laptop waking, a Wi-Fi hand-off, a slow
+  moment at RingCentral — left the badge on "Reconnecting to RingCentral…" permanently: no failure
+  ever came to schedule a retry, and the close listener is only attached after `start()` resolves.
+  ⚠️ That text is set in ONE place (`watchSocket`'s close) and every other exit replaces it, so a
+  badge that STAYS on it was this hang, by elimination. The deadline files it as `network`
+  ("Can't reach RingCentral's phone server. Retrying…") and the 2s → 60s ladder runs.
+  ⚠️ **It lasted until the LEADER tab was reloaded — reloading any other tab did nothing**, because a
+  follower just mirrors the stuck leader. `CallConnectionBadge` therefore offers the phone to a
+  follower that has watched another tab sit on "registering" without a break for
+  `STUCK_ELSEWHERE_MS` (45s — past the longest a current leader can stay there: the provision
+  deadline plus the start deadline). The header's phone icon becomes the takeover; the home badge
+  shows **Use this tab**. A leader that is really retrying never trips it (each error restarts the
+  wait), and it is never offered mid-call.
+  The same pass fixed three neighbours: `recover()` is ONE-AT-A-TIME per phone (`online` and a
+  socket `close` land together after a drop, and two `start()`s race for one SIP client's socket —
+  ⚠️ keyed on the WebPhone, so a tab handed the line back never joins the dead reconnect of the phone
+  it dropped, which would settle without touching the new one and leave nothing to ask again); a superseded
+  socket's `close` is ignored (`start()` opens a new socket and leaves the old one to die, and its
+  close used to start yet another reconnect); and a registration that finishes after a release or a
+  takeover is `abandon()`ed — socket closed, re-register timer cleared, **never `dispose()`**, whose
+  unREGISTER would hang on a dead socket and, sharing the `instanceId`, remove the new leader's
+  binding. A dial while the line is reconnecting now ends with the reason instead of sending an
+  INVITE nobody will answer (`doDial` requires `registration === "registered"`). The provision
+  `fetch` has its own 15s deadline. `registrationDeadline.test.ts` drives a fake SDK whose `start()`
+  never settles (and fakes Web Locks for the hand-back case); five of its tests fail on the old code,
+  and the per-phone join is pinned too.
 - One `<CallOverlay>` for the whole app, mounted by `IncomingCallHost` (an answered inbound call
   needs it on every page); `useWebPhone` is now a thin view over the same store, so the
   Communications Hub dials through the browser's one registration instead of spending a second slot.
@@ -1350,6 +1382,8 @@ toggle there.
 **Keep-in-agreement:** `MAX_CALL_ANSWERERS` (accessStore) is the cap the admin page renders and the
 same five RingCentral enforces — change neither alone. `PhoneSnapshot.enabled` ⇐ `canAnswerCalls`
 via `IncomingCallHost` → `softphone.setEnabled`; the badge and the dialog read the same snapshot.
+`CallConnectionBadge.STUCK_ELSEWHERE_MS` must stay above `softphone.PROVISION_DEADLINE_MS +
+START_DEADLINE_MS`, or a follower offers to steal a line whose leader is merely slow.
 
 **Known limits, deliberately:** five people, one machine each, and the RingCentral app signed in as
 Katie Tyler counts against the same five while anyone still uses it. Followers hear the audio in the
@@ -10160,6 +10194,24 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
 - **The Inbox** (`components/commsInbox/InboxList.tsx`): Unresolved · Over 24h · All, type chips,
   search, Longest waiting · Newest; each row a stage pill, the counted wait and a kind edge. The row
   just resolved stays in place, dimmed, until the rep opens another item.
+- **The Stage filter** (Josh, 2026-09-23: *"a small filter button to the right of voicemails hugging
+  that right side of the box"*) — a chip-sized button at the right end of the type chips; the menu
+  is Every stage + the eight pills. ⚠️ **The GATEWAY filters** (`filterInbox`'s `stage`, applied with
+  the type chip), so the tab counts say how many are waiting in that stage and the 500-row cap
+  falls on the filtered set; a browser-side filter would do neither. ⚠️ An unknown stage is IGNORED,
+  never "matches nothing" — a list gone blank on a value one build doesn't know reads as "nobody is
+  waiting"; which is also why `stageFilter.test.ts` holds the SPA's `STAGE_FILTERS` to the gateway's
+  `STAGE_PILLS` (derived from `BOARD_PILL`). ⚠️ On, the button carries the stage's NAME and an empty
+  list says "Nothing unresolved in Insurance." with **Show every stage** — a filter a rep cannot
+  see is how they decide the inbox is empty. ⚠️ One wrapping row, button `ml-auto`: at the 320px
+  list (≤1300px screens) the four chips alone nearly fill it, so the button drops to the next line
+  rather than breaking the chips (measured 1024–1440).
+- ⚠️ **A reply to one of OUR automated texts opens an item like any other** — a bare "Yes" to the
+  email service's first-shipment check-in ("…YES works, or tell me what's not perfect") included,
+  and that check-in goes to every first-order patient at once (Josh asked why one such patient was
+  showing, 2026-09-23). A reply sent from the RingCentral app does not close it or suggest
+  *Texted* (no sender). `isReplyToAutomation` exists but feeds only the shadow report; auto-clearing
+  a bare yes would be a new rule, and it is Josh's call, not built.
 - **One timeline per patient** (`ItemTimeline.tsx`): every text, call, voicemail, attempt and
   resolution on the patient's numbers. ⚠️ The live thread is laid over the archived texts and the
   LIVE copy wins a collision — a late `SendingFailed` has to show (§5.5). ⚠️ Playback is archive-first
@@ -11582,6 +11634,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | "A call never reached me" / "taking it gave an error" | §5.13 — `GET /calls/history?hours=…&last4=…` (Postgres `call_events` + `call_claims`), NOT Railway logs: those cap at 500 lines ≈ 13 minutes. A `410` from `/calls/claim` is RingCentral saying the party is already gone — the caller hung up or somebody else picked up — never a throttle, which surfaces as `502` |
 | A call card stays on screen after the call ended, and comes back on reload | §5.13 — the terminal webhook never arrived, so the gateway kept it `ringing` with `endedAt: 0`: never pruned, and re-pushed to every new SSE stream. `callRules.staleRings` sweeps at 2 min (own 30s timer) and the browser backstops at 150s. Look for `swept — no terminal event after` in `/calls/history` — a run of those is a webhook stream dropping its terminals |
 | A rep can't answer a call in the browser / the home badge says "Not connected" | §5.13b — first: are they in `callAnswerers` on `/access` (max 5)? Not assigned ⇒ no cards, no stream, no badge, by design. Assigned but red ⇒ read the badge's reason: "line is full" is RingCentral's five (another browser, or the RingCentral app signed in as Katie Tyler, holds a slot; it retries every minute), anything else is in `registrationError`. Amber "another tab" ⇒ **Use this tab** |
+| The phone says "Connecting…" / "Reconnecting to RingCentral…" and never connects | §5.13b — before 2026-09-23 an unanswered REGISTER hung the SDK's `start()` for ever; every attempt is now abandoned after `START_DEADLINE_MS` and retried, so a CURRENT build shows "Can't reach RingCentral's phone server. Retrying…" instead of sitting there. Still stuck ⇒ another tab, probably one opened before the fix, holds the line: reload or close the other Command Center tabs, or wait 45s and click the header's phone icon (**Use this tab** on the home badge). The SIP socket goes browser → RingCentral directly, so the gateway's logs cannot show this; `/messaging/sip-provision` succeeding there only proves the credentials |
 | The team is past five answerers / "get off the RC app for everyone" | §5.13b **Route A** — a RingCentral user per person, the main number kept on extension 2 and its call handling pointed at a queue, per-user auth-code sign-in on the gateway, `provision()` swapped. Not built |
 | A card shows "Take it" where it used to show — or should show — "Answer" | §5.13b — `ringMerge.ts`: Answer needs the SIP leg in THIS browser's leader tab; no leg means not registered (badge) or the INVITE never arrived. Take it still forwards to the cell either way |
 | A manager sees no contact icons on a sidebar row | §5.28 — the gate is **`?mv=`**, so they must have clicked in from Oversight; then check the patient's phone is in that queue's read set (`listColumns.test.ts` for Patient Intake) |
@@ -11594,6 +11647,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A voicemail won't stay heard / unheard, or a call doesn't open the message it left | §5.28 — read state is RingCentral's `readStatus` (`applyMessageReadOverrides`, the same rule the fax list uses); the panel must render `voicemailList`, not `voicemails.data`. A call opens its message through `lib/commsHub/callVoicemail.ts`, a number-and-time match gated on the call log saying it reached voicemail — it fails closed, so "no voicemail shown" means no match in the window, and that window is **reasoned, not measured** (no token reaches RingCentral from here). `voicemailWiring.test.ts` scans both |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | The Inbox rail is missing / the hub looks exactly as it always did | §5.49 — two gateway switches, both OFF by default and both ON on the live gateway since 2026-09-23. An open tab re-reads them every 3 minutes (hidden tabs wait until they are looked at), so a flip reaches it within ~3–4 minutes with no reload; Cmd+R is the instant route. `GET /comms/config` answers `{enabled, ui}`; the rail needs BOTH true. While the first read is pending, or after it fails, the SPA deliberately draws the OLD screens — never a half-built Inbox; a failed first read is retried each minute. A failed RE-check keeps whatever the tab had |
+| Filter the Inbox by stage / the stage filter shows the wrong rows | §5.49 — the **Stage** button right of the type chips. The GATEWAY filters (`filterInbox`'s `stage`), so the tab counts follow it; an unknown value is ignored rather than matching nothing, and `stageFilter.test.ts` holds the menu to the gateway's `STAGE_PILLS`. A stage reading "Nothing unresolved in X" is a real answer — **Show every stage** clears it |
+| "Why is this patient in the Inbox?" | §5.49 — every inbound text opens an item, a reply to our own automated texts included (the first-shipment check-in asks for YES). Only **Mark resolved** closes it; a reply sent from the RingCentral app neither closes it nor suggests *Texted*, because the inbox cannot tell who sent it. The email service's Railway log (`delivery-checkin`, "Text sent") says whether an outbound text in the thread was automated |
 | A patient texted or called and no Inbox item opened | §5.49 — `GET /comms/inbox-health` (unauthenticated) first: a stale `lastCompleteAt` means the capture tick isn't completing, and `feedsOff` names any archive whose own kill switch (`SMS_/CALL_/VOICEMAIL_ARCHIVE_ENABLED=0`) turned that feed off. By design, nothing opens for: a fax, our own numbers, a call RingCentral marks `Blocked`, a call that connected, or anything before the epoch. A missed call that left a voicemail is ONE item, not two |
 | Mark resolved is refused (409), or Called won't save | §5.49 — resolving is a compare-and-set: the 409 names who resolved it first, or says a newer message arrived after what the rep was shown (`seenThrough`), or that the item `moved` to a patient record. Reopen and look again; never retry blind. *Called* without a note is a 400 by design |
 | A resolve note isn't in the patient's Monday notes | §5.49 — it is copied when the rep MOVES ON (opens another item, leaves the patient, closes the page), by the resolver's browser only; a closed tab is caught up the next time that rep opens Communications. An Undo before then leaves nothing on Monday, by design. *Left voicemail*, a resolution with no note, and a number on no board never copy. After 3 failed tries it shows as `failedMirrors` in `/comms/inbox-health` |

@@ -473,7 +473,7 @@ describe("⚠️ the switch is RE-READ while a tab is open (Josh, 2026-09-23)", 
 });
 
 describe("the list and the badge", () => {
-  const Q: InboxQuery = { view: "open", type: "", q: "", sort: "wait", sticky: "" };
+  const Q: InboxQuery = { view: "open", type: "", stage: "", q: "", sort: "wait", sticky: "" };
   const list = (open: number, over: number) => ({
     rows: [],
     counts: { open, over },
@@ -517,13 +517,24 @@ describe("the list and the badge", () => {
     });
     expect(screen.getByTestId("counts").textContent).toBe("3/0");
   });
+
+  it("a stage pick is a new list — asked of the gateway, with the stage", async () => {
+    api.fetchInbox.mockResolvedValueOnce(list(5, 1));
+    api.fetchInbox.mockResolvedValueOnce(list(1, 0));
+    api.fetchInboxCount.mockReturnValue(new Promise(() => {}));
+    const { rerender } = render(<ListProbe q={Q} />);
+    await waitFor(() => expect(screen.getByTestId("counts").textContent).toBe("5/1"));
+    rerender(<ListProbe q={{ ...Q, stage: "Insurance" }} />);
+    await waitFor(() => expect(screen.getByTestId("counts").textContent).toBe("1/0"));
+    expect(api.fetchInbox).toHaveBeenLastCalledWith(expect.objectContaining({ stage: "Insurance" }));
+  });
 });
 
 describe("⚠️ the list and the badge poll at the rate they state — not twice it", () => {
   // A real read takes a moment, and its "last read" stamp lands just AFTER the
   // tick that asked. Gated on exactly one period, the next tick found it too
   // fresh, so the list ran at ~60s and the badge at ~120s (measured 2026-09-23).
-  const Q: InboxQuery = { view: "open", type: "", q: "", sort: "wait", sticky: "" };
+  const Q: InboxQuery = { view: "open", type: "", stage: "", q: "", sort: "wait", sticky: "" };
   const slow = <T,>(v: T) => () => new Promise<T>((r) => setTimeout(() => r(v), 300));
   beforeEach(() => {
     vi.useFakeTimers();

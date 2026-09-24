@@ -5,6 +5,7 @@ import {
   MAX_MIRROR_ATTEMPTS,
   NOTE_MAX,
   OVER_AFTER_MS,
+  STAGE_PILLS,
   STALE_CLAIM_MS,
   UNDO_WINDOW_MS,
   badgeCounts,
@@ -608,6 +609,45 @@ describe("buildInbox + filterInbox", () => {
     expect(keys).toEqual(["p:18407459988:2001", sticky, `n:${U}`, `n:${"d".repeat(64)}`]);
     // Once the rep opens something else, it goes.
     expect(filterInbox(items, { view: "open" }).rows.map((i) => i.key)).not.toContain(sticky);
+  });
+
+  it("the stage filter narrows the rows AND the tab counts, like a type chip", () => {
+    const I = "d".repeat(64); // an Insurance patient
+    const staged = new Map([...targets, [I, { boardId: 18410601299, itemId: "3001", name: "Sam Roe", groupId: "g" }]]);
+    const events = [
+      text(A, TUE_9AM), // Jane — Subscription, open 30h → over
+      text(I, TUE_9AM + 20 * H), // Sam — Insurance, open 10h
+      call(U, TUE_9AM + 25 * H), // unknown — Unmatched, open 5h
+    ];
+    const items = buildInbox({ events, targets: staged, now });
+
+    const ins = filterInbox(items, { view: "open", stage: "Insurance" });
+    expect(ins.rows.map((i) => i.key)).toEqual(["p:18410601299:3001"]);
+    expect(ins.counts).toEqual({ open: 1, over: 0 });
+
+    const sub = filterInbox(items, { view: "over", stage: "Subscription" });
+    expect(sub.rows.map((i) => i.key)).toEqual(["p:18407459988:2001"]);
+    expect(sub.counts).toEqual({ open: 1, over: 1 });
+
+    expect(filterInbox(items, { view: "open", stage: "Unmatched" }).rows.map((i) => i.key)).toEqual([`n:${U}`]);
+    // It stacks with a type chip.
+    expect(filterInbox(items, { view: "open", stage: "Unmatched", type: "text" }).rows).toHaveLength(0);
+    expect(filterInbox(items, { view: "open", stage: "Welcome Call" }).rows).toHaveLength(0);
+
+    // ⚠️ An unknown value is IGNORED, never "matches nothing": a list gone blank
+    // on a value this build does not know reads as "nobody is waiting".
+    expect(filterInbox(items, { view: "open", stage: "Medical Evaluation" }).rows).toHaveLength(3);
+    expect(filterInbox(items, { view: "open", stage: "" }).counts).toEqual({ open: 3, over: 1 });
+    // The header badge is the whole inbox whatever the list is filtered to.
+    expect(badgeCounts(items)).toEqual({ open: 3, over: 1 });
+  });
+
+  it("STAGE_PILLS is every value stagePill can return", () => {
+    const boards = [18392794310, 18406352652, 18406060017, 18410601299, 18410804557, 18407459988, 18413019028, 99];
+    const seen = new Set([stagePill(null)]);
+    for (const b of boards) seen.add(stagePill({ boardId: b, itemId: "1", groupId: "g" }));
+    seen.add(stagePill({ boardId: 18407459988, itemId: "1", groupId: "group_mkp19fyp" }));
+    expect([...seen].sort()).toEqual([...STAGE_PILLS].sort());
   });
 
   it("search: a name, a last-four hint, or a whole number by its hash only", () => {
