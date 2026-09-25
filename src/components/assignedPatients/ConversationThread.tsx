@@ -17,7 +17,6 @@ import { useEffect, useRef } from "react";
 import { Loader2, Phone } from "lucide-react";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { fmtPhone } from "@/lib/assignedPatients/format";
-import WatchCallbackButton from "@/components/inboundCalls/WatchCallbackButton";
 import { useConversation } from "@/hooks/assignedPatients/useConversation";
 import Composer from "./Composer";
 import MessageBubble from "./MessageBubble";
@@ -88,14 +87,11 @@ export default function ConversationThread({
               {patient?.boardName ? ` · ${patient.boardName}` : ""}
             </p>
           </div>
-          {/* The only way a number joins your ring list — see the component. */}
-          <div className="ml-auto shrink-0">
-            <WatchCallbackButton phone={phone} label={patient?.name || ""} />
-          </div>
+          {/* The watch-callback bell is gone with the ring modes (2026-09-25). */}
           <button
             onClick={onCall}
             disabled={calling}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--mm-teal,theme(colors.teal.600))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--mm-teal,theme(colors.teal.600))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
             {calling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
             Call

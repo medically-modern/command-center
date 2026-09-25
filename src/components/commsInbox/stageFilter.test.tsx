@@ -103,11 +103,15 @@ describe("the stage filter button", () => {
 });
 
 describe("⚠️ the menu offers exactly the stages the gateway filters on", () => {
-  it("STAGE_FILTERS ⇄ commsInboxRules STAGE_PILLS", async () => {
+  it("STAGE_FILTERS ⇄ commsInboxRules STAGE_PILLS, minus Claims (Josh, 2026-09-25)", async () => {
     const gw = (await import(resolve(process.cwd(), "services/monday-gateway/commsInboxRules.mjs"))) as {
       STAGE_PILLS: readonly string[];
     };
-    expect([...STAGE_FILTERS].sort()).toEqual([...gw.STAGE_PILLS].sort());
+    // Claims is deliberately NOT offered: it is only ever a patient's pill when
+    // they have no later record, and the menu entry confused more than it
+    // filtered. The gateway still accepts it and rows still wear it.
+    expect(STAGE_FILTERS).not.toContain("Claims");
+    expect([...STAGE_FILTERS, "Claims"].sort()).toEqual([...gw.STAGE_PILLS].sort());
     expect(new Set(STAGE_FILTERS).size).toBe(STAGE_FILTERS.length);
   });
 });

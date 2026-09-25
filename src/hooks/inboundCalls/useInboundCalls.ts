@@ -136,7 +136,7 @@ export function useInboundCalls(enabled = true) {
       es.addEventListener("ready", (e) => {
         try {
           const d = JSON.parse((e as MessageEvent).data) as { prefs: RingPrefs };
-          setPrefs((p) => ({ ...(p ?? { allow: [] }), ...d.prefs }) as RingPrefs);
+          setPrefs((p) => ({ ...(p ?? { forwardNumber: "" }), ...d.prefs }));
         } catch {
           /* a malformed hello is not worth dropping the stream over */
         }
@@ -145,7 +145,7 @@ export function useInboundCalls(enabled = true) {
       es.addEventListener("prefs", (e) => {
         try {
           const d = JSON.parse((e as MessageEvent).data) as Partial<RingPrefs>;
-          setPrefs((p) => ({ ...(p ?? ({ allow: [] } as unknown as RingPrefs)), ...d }));
+          setPrefs((p) => ({ ...(p ?? { forwardNumber: "" }), ...d }));
         } catch {
           /* ignore */
         }

@@ -16,10 +16,16 @@
  * mockup with hardcoded rows, and all four are how a rep knows whether to
  * trust the numbers.
  *
- * ⚠️ **OOP price is the BOARD's column (`numeric_mm5bs4hd`), never a
- * derivation.** The mockup computes it as `unit cost × 1.25` because its rows
- * have no such field; porting that arithmetic would put an invented price in
- * front of somebody quoting a patient.
+ * ⚠️ **OOP price is DERIVED — unit cost × the cash-pay markup, the mockup's
+ * own rule** (Josh, 2026-09-25: *"how is he calculating oop in the mockup?
+ * add the same logic to our test [site]"* — verified against every value in
+ * his screenshots, rounding quirks included). This REVERSES the 2026-09-19
+ * call to render the board's `numeric_mm5bs4hd` instead: that objection was
+ * "an invented price", and it stopped holding once §5.48 made cost × 1.25 the
+ * price a cash-pay patient really pays. The derivation goes through
+ * `cashPayPricing.unitOopPrice` — never a second `* 1.25` here — so this
+ * column and a cash-pay quote cannot disagree about the markup. The board's
+ * OOP column is no longer read.
  *
  * ⚠️ **Sorting by Status sorts by the VERDICT, not by the raw column.** The
  * chip is what is on screen, and it already folds the status, the quantity and
@@ -45,6 +51,7 @@ import { cn } from "@/lib/utils";
 import { STOCK_STALE_DAYS, stockKey, stockVerdict, type StockTone, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
 import { etToday } from "@/lib/masheke/etDate";
 import { isRunLogRow, type SkuTrackerRow } from "@/lib/orders/skuTrackerApi";
+import { unitOopPrice } from "@/lib/orders/cashPayPricing";
 import { FAMILY_LABEL, FAMILY_ORDER, familyOfRow, openOrdersBySku } from "@/lib/orders/skuJoin";
 import { fmtMoney, isOpenStage, orderStage, type Order } from "@/lib/orders/workflow";
 
@@ -125,12 +132,23 @@ function StatusChip({ verdict }: { verdict: StockVerdict }) {
   );
 }
 
+/**
+ * Open orders is COMMENTED OUT, not deleted (Josh, 2026-09-25: "remove open
+ * orders from the inventory screen (comment it out)") — the `SHOW_CHASE_COLUMN`
+ * convention (§5.30): a flag keeps the column's code typechecked and one flip
+ * from returning. While it is off the table is his five columns exactly, and
+ * `openOrdersBySku` is still computed (the overview's stock alerts read it).
+ */
+const SHOW_OPEN_ORDERS = false;
+
 interface InvRow {
   row: SkuTrackerRow;
   verdict: StockVerdict;
   family: string;
   familyLabel: string;
   openOrders: number;
+  /** Cost × the cash-pay markup (`unitOopPrice`); null when the cost is. */
+  oop: number | null;
 }
 
 export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLoading = false, onRefresh }: Props) {
@@ -162,6 +180,7 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
           family: fam ?? OTHER,
           familyLabel: fam ? FAMILY_LABEL[fam] : "Other",
           openOrders: openBySku.get(r.id) ?? 0,
+          oop: unitOopPrice(r.unitCost),
         };
       });
   }, [rows, open, today]);
@@ -190,7 +209,7 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
       status: (a, b) => TONE_RANK[a.verdict.tone] - TONE_RANK[b.verdict.tone] || byName(a, b),
       qty: (a, b) => num(a.row.qtyAvail) - num(b.row.qtyAvail) || byName(a, b),
       cost: (a, b) => num(a.row.unitCost) - num(b.row.unitCost) || byName(a, b),
-      oop: (a, b) => num(a.row.oopPrice) - num(b.row.oopPrice) || byName(a, b),
+      oop: (a, b) => num(a.oop) - num(b.oop) || byName(a, b),
       open: (a, b) => a.openOrders - b.openOrders || byName(a, b),
     };
     const mul = dir === "desc" ? -1 : 1;
@@ -291,16 +310,16 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
           {/* ⚠️ `table-fixed` + an explicit colgroup, straight from his `.invt`:
               the filters swap ROWS and never move the columns, so a rep
               scanning a number does not have to re-find the column each time
-              they type a letter. His 44 / 20 / 12×3 becomes 40 / 20 / 10×4 to
-              carry the Open orders column. */}
+              they type a letter. His 44 / 20 / 12×3 becomes 40 / 20 / 10×4
+              when the Open orders column is on. */}
           <table className="w-full min-w-[760px] table-fixed text-xs">
             <colgroup>
-              <col className="w-[40%]" />
+              <col className={SHOW_OPEN_ORDERS ? "w-[40%]" : "w-[44%]"} />
               <col className="w-[20%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
+              <col className={SHOW_OPEN_ORDERS ? "w-[10%]" : "w-[12%]"} />
+              <col className={SHOW_OPEN_ORDERS ? "w-[10%]" : "w-[12%]"} />
+              <col className={SHOW_OPEN_ORDERS ? "w-[10%]" : "w-[12%]"} />
+              {SHOW_OPEN_ORDERS && <col className="w-[10%]" />}
             </colgroup>
             <thead>
               <tr className="border-b border-border">
@@ -309,20 +328,20 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
                 {th("qty", "Available", true)}
                 {th("cost", "Unit cost", true)}
                 {th("oop", "OOP price", true)}
-                {th("open", "Open orders", true)}
+                {SHOW_OPEN_ORDERS && th("open", "Open orders", true)}
               </tr>
             </thead>
             <tbody>
               {shown.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-2 text-xs text-muted-foreground">
+                  <td colSpan={SHOW_OPEN_ORDERS ? 6 : 5} className="p-2 text-xs text-muted-foreground">
                     {needle
                       ? `Nothing matches “${q.trim()}”${cat !== "All" ? ` in ${cats.find((c) => c.key === cat)?.label ?? cat}` : ""}.`
                       : "Nothing in this category."}
                   </td>
                 </tr>
               ) : (
-                shown.map(({ row: r, verdict: v, familyLabel, openOrders: n }) => (
+                shown.map(({ row: r, verdict: v, familyLabel, openOrders: n, oop }) => (
                   <tr key={r.id} className="border-t border-border align-top last:[&>td]:border-b-0">
                     <td className="p-2 font-medium [overflow-wrap:anywhere]">
                       {r.name}
@@ -337,11 +356,13 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
                     </td>
                     <td className="p-2 text-right tabular-nums">{r.qtyAvail == null ? "—" : r.qtyAvail.toLocaleString("en-US")}</td>
                     <td className="p-2 text-right tabular-nums">{r.unitCost == null ? "—" : fmtMoney(String(r.unitCost))}</td>
-                    <td className="p-2 text-right tabular-nums">{r.oopPrice == null ? "—" : fmtMoney(String(r.oopPrice))}</td>
-                    <td className={cn("p-2 text-right tabular-nums", !ordersLoading && n > 0 && v.tone === "red" ? "font-bold text-rose-700 dark:text-rose-300" : ordersLoading || n === 0 ? "text-muted-foreground" : "")}>
+                    <td className="p-2 text-right tabular-nums">{oop == null ? "—" : fmtMoney(String(oop))}</td>
+                    {SHOW_OPEN_ORDERS && (
+                      <td className={cn("p-2 text-right tabular-nums", !ordersLoading && n > 0 && v.tone === "red" ? "font-bold text-rose-700 dark:text-rose-300" : ordersLoading || n === 0 ? "text-muted-foreground" : "")}>
                       {/* ⚠️ "—", never 0, until the order board has answered. */}
                       {ordersLoading ? "—" : n}
                     </td>
+                    )}
                   </tr>
                 ))
               )}

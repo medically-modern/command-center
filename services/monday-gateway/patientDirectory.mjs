@@ -266,6 +266,54 @@ export async function lookupNumbersLive(numbers) {
   return { ok: true, rows };
 }
 
+/**
+ * The CURRENT group of specific Monday items, by id — the Communications
+ * inbox's stage-pill refresh (commsInbox.mjs). The pill's group otherwise
+ * comes from the nightly directory copy, so a Subscription patient moved out
+ * of "Not Active Patients" kept reading Inactive for up to a day (Josh,
+ * 2026-09-25: "the pill needs to be up to date").
+ *
+ * ⚠️ `items (ids:)` is BOARD-AGNOSTIC (§5.39f), so each answer is checked
+ * against the board the caller believes the item is on and a mismatch is
+ * dropped — an id reached through a stale row must not put one board's group
+ * on another's item. ⚠️ A missing id (a deleted item) gets NO entry: absence
+ * is not evidence (§5.29), and the caller keeps what it had. ⚠️ Returns
+ * `{ok}` for the same reason `lookupNumbersLive` does — a failed read must
+ * never be told apart from "no group" by the caller guessing.
+ *
+ * @param {{boardId: number|string, itemId: number|string}[]} pairs at most 100
+ *   (Monday's cap on `items (ids:)`).
+ * @returns {Promise<{ok: boolean, rows: Map<string, {groupId: string|null}>}>}
+ *   keyed `"<boardId>:<itemId>"`.
+ */
+export async function lookupItemGroupsLive(pairs) {
+  const rows = new Map();
+  if (!TOKEN) return { ok: false, rows };
+  const wanted = new Map(); // itemId -> boardId
+  for (const p of pairs ?? []) {
+    if (!p?.itemId || !p?.boardId) continue;
+    wanted.set(String(p.itemId), Number(p.boardId));
+    if (wanted.size >= 100) break;
+  }
+  if (!wanted.size) return { ok: true, rows };
+  let data;
+  try {
+    data = await callMonday(`query ($ids: [ID!]) { items (ids: $ids) { id group { id } board { id } } }`, {
+      ids: [...wanted.keys()],
+    });
+  } catch (e) {
+    console.error("item group lookup failed:", (e && e.message) || e);
+    return { ok: false, rows };
+  }
+  for (const it of data?.items ?? []) {
+    const id = String(it?.id ?? "");
+    const board = Number(it?.board?.id);
+    if (!wanted.has(id) || wanted.get(id) !== board) continue;
+    rows.set(`${board}:${id}`, { groupId: it?.group?.id ? String(it.group.id) : null });
+  }
+  return { ok: true, rows };
+}
+
 export function upsertSql(count) {
   const cols = 7;
   const tuples = [];

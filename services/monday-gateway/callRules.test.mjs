@@ -7,7 +7,6 @@ import {
   sessionOutcome,
   staleRings,
   MAX_RING_MS,
-  shouldNotify,
   unwrapEvent,
   claimRefusal,
   CLAIM_GONE_MESSAGE,
@@ -184,44 +183,14 @@ describe("sessionOutcome", () => {
 });
 
 describe("normalizePrefs", () => {
-  // A new hire who has never opened the settings dialog must still see the
-  // shared line ring.
-  it("defaults to all", () => {
-    expect(normalizePrefs(undefined).mode).toBe("all");
-    expect(normalizePrefs({}).mode).toBe("all");
-  });
-
-  it("rejects an unknown mode rather than silencing someone", () => {
-    expect(normalizePrefs({ mode: "nonsense" }).mode).toBe("all");
-  });
-});
-
-describe("shouldNotify", () => {
-  it("all mode rings for anything", () => {
-    expect(shouldNotify({ mode: "all" }, {})).toBe(true);
-  });
-
-  it("off mode rings for nothing, pinned included", () => {
-    expect(shouldNotify({ mode: "off" }, { pinned: true, texted: true })).toBe(false);
-  });
-
-  it("list mode rings for a pinned number", () => {
-    expect(shouldNotify({ mode: "list" }, { pinned: true })).toBe(true);
-  });
-
-  it("list mode stays quiet for a stranger", () => {
-    expect(shouldNotify({ mode: "list" }, {})).toBe(false);
-  });
-
-  // The rule Josh removed: having texted someone must NOT enrol them. A rep who
-  // texts all day would otherwise have rebuilt `all` under a name that promises
-  // the opposite — and they are the likeliest person to pick `list`.
-  it("list mode does NOT ring merely because you have texted them", () => {
-    expect(shouldNotify({ mode: "list" }, { texted: true })).toBe(false);
-  });
-
-  it("texting someone you also pinned still rings — the pin is what counts", () => {
-    expect(shouldNotify({ mode: "list" }, { pinned: true, texted: true })).toBe(true);
+  // The ring modes and the allow list are GONE (Josh, 2026-09-25): the one
+  // per-person call setting left is where "Take it" forwards them. This test
+  // pins the SHAPE, so a mode quietly reintroduced here fails loudly.
+  it("carries the forward number and nothing else", () => {
+    expect(normalizePrefs(undefined)).toEqual({ forwardNumber: "" });
+    expect(normalizePrefs({})).toEqual({ forwardNumber: "" });
+    expect(normalizePrefs({ forwardNumber: "3475550101" })).toEqual({ forwardNumber: "3475550101" });
+    expect(normalizePrefs({ mode: "off", forwardNumber: "x" })).toEqual({ forwardNumber: "x" });
   });
 });
 

@@ -17,6 +17,10 @@
 /** Monday hands back date+time columns as naive Eastern wall-clock. */
 export interface ScheduledCall {
   id: string;
+  /** Which DTC-form group the row sits in — what routes a deep link to the
+   *  right intake page/tab (`profile/intakeLink.ts`). Optional: older
+   *  fixtures and callers without it get the completed default. */
+  groupId?: string;
   name: string;
   phone: string;
   email: string;

@@ -87,10 +87,17 @@ describe("the menu's shape", () => {
     expect(badge.split("canAnswerCalls(").length - 1).toBe(1);
   });
 
-  it("⚠️ maps onto the ring preferences that exist — no new setting, no 'Only my patients'", () => {
-    expect(calls).toContain("fetchRingPrefs");
-    expect(calls).toContain("saveRingPrefs");
+  it("⚠️ the ring-mode controls are GONE and stay gone (Josh, 2026-09-25)", () => {
+    // "Remove the ability to select which call rings them and the pinned
+    // numbers — the ring tone in the browser stays." Everyone connected rings
+    // for every call; the only per-person setting left is the Take-it forward
+    // number, which lives in the dialog this section opens.
+    expect(calls).not.toContain("Which calls ring me");
+    expect(calls).not.toContain("Ring me for incoming patient calls");
     expect(calls).not.toContain("Only my patients");
+    expect(calls).not.toContain("saveRingPrefs");
+    expect(calls).toContain("The number Take it forwards to");
+    expect(calls).toContain("Play a ringtone in this browser");
   });
 });
 
@@ -103,41 +110,26 @@ describe("the status sentence", () => {
 });
 
 describe("the Calls section, rendered", () => {
-  it("an answerer: the line's status, Ring me on, All patient calls, the ringtone on", async () => {
+  it("an answerer: the line's status, the ringtone on, and the dialog opener", async () => {
     render(<CallSettings />);
-    await waitFor(() => expect(fetchRingPrefs).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Connected — calls ring in this tab")).toBeTruthy();
     const rows = screen.getAllByRole("switch");
+    expect(rows).toHaveLength(1); // the ringtone — the mode rows are gone
     expect(rows[0].getAttribute("aria-checked")).toBe("true");
-    expect((screen.getByLabelText("Which calls ring me") as HTMLSelectElement).value).toBe("all");
-    expect(rows[1].getAttribute("aria-checked")).toBe("true");
-  });
-
-  it("Ring me OFF writes mode: off through saveRingPrefs, and the status says paused", async () => {
-    render(<CallSettings />);
-    await screen.findByText("Connected — calls ring in this tab");
-    fireEvent.click(screen.getAllByRole("switch")[0]);
-    expect(saveRingPrefs).toHaveBeenCalledWith({ mode: "off", forwardNumber: "5555550100" });
-    expect(screen.getByText("Ringing is paused for you")).toBeTruthy();
-    expect((screen.getByLabelText("Which calls ring me") as HTMLSelectElement).disabled).toBe(true);
-  });
-
-  it("'Pinned numbers only' is the existing list mode", async () => {
-    render(<CallSettings />);
-    await screen.findByText("Connected — calls ring in this tab");
-    fireEvent.change(screen.getByLabelText("Which calls ring me"), { target: { value: "list" } });
-    expect(saveRingPrefs).toHaveBeenCalledWith({ mode: "list", forwardNumber: "5555550100" });
+    expect(screen.getByText("The number Take it forwards to…")).toBeTruthy();
+    // Nothing to fetch any more: the dialog loads its own forward number.
+    expect(fetchRingPrefs).not.toHaveBeenCalled();
   });
 
   it("the ringtone row is the per-browser mute, not a prefs write", async () => {
     render(<CallSettings />);
     await screen.findByText("Connected — calls ring in this tab");
-    fireEvent.click(screen.getAllByRole("switch")[1]);
+    fireEvent.click(screen.getAllByRole("switch")[0]);
     expect(phone.setRingMuted).toHaveBeenCalledWith(true);
     expect(saveRingPrefs).not.toHaveBeenCalled();
   });
 
-  it("⚠️ a non-answerer sees the rows DISABLED with his sentence — and nothing is fetched", () => {
+  it("⚠️ a non-answerer sees the ringtone DISABLED with his sentence — and no dialog opener", () => {
     access.config.callAnswerers = [];
     render(<CallSettings />);
     expect(screen.getByText("Calls don't ring you — you're not a call answerer")).toBeTruthy();

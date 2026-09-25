@@ -32,6 +32,7 @@
  * this strip and still raises no reminder. The footnote says so rather than
  * promising one (§5.15: "fix the copy, not the gate").
  */
+import { intakeProfileHref } from "@/lib/profile/intakeLink";
 import type { BookedSlot, ScheduledCall } from "@/lib/scheduledCalls/workflow";
 import type { CalendlyBooking } from "./calendlyDay";
 
@@ -101,10 +102,12 @@ export interface ScheduleEntry extends BookedSlot {
 
 const FROM = "from=care-coordinator";
 
-const hrefFor = (kind: ScheduleKind, itemId: string): string =>
+// The intake half routes by GROUP (intakeLink.ts): a Partial Leads booking
+// must open the page saying Partial (Jason Ortiz-Troxell, 2026-09-25).
+const hrefFor = (kind: ScheduleKind, itemId: string, groupId?: string): string =>
   kind === "welcome"
     ? `/welcome-call?patientId=${encodeURIComponent(itemId)}&${FROM}`
-    : `/unverified-referrals?patientId=${encodeURIComponent(itemId)}&${FROM}`;
+    : intakeProfileHref(itemId, groupId, FROM);
 
 /** An intake booking off the monday mirror — the BACKUP source. */
 export function intakeEntry(c: ScheduledCall): ScheduleEntry {
@@ -119,7 +122,7 @@ export function intakeEntry(c: ScheduledCall): ScheduleEntry {
     durationMin: ASSUMED_DURATION_MIN,
     email: c.email,
     phone: c.phone,
-    href: hrefFor("intake", c.id),
+    href: hrefFor("intake", c.id, c.groupId),
   };
 }
 
@@ -173,6 +176,8 @@ export function durationOf(startIso: string, endIso: string): number {
 export interface LinkedPatient {
   id: string;
   phone: string;
+  /** The item's DTC-form group, so a deep link opens the right tab. */
+  groupId?: string;
 }
 
 /**
@@ -202,7 +207,7 @@ export function calendlyEntry(
     durationMin: durationOf(b.startTime, b.endTime),
     email: b.email,
     phone: linked?.phone ?? "",
-    href: linked ? hrefFor(kind, linked.id) : null,
+    href: linked ? hrefFor(kind, linked.id, linked.groupId) : null,
   };
 }
 
@@ -230,8 +235,8 @@ function indexBy<T>(
 }
 
 /** Email → board row. */
-export function emailIndex(items: { id: string; email: string; phone?: string }[]): Map<string, LinkedPatient | null> {
-  return indexBy(items, (i) => i.email, (i) => ({ id: i.id, phone: i.phone ?? "" }));
+export function emailIndex(items: { id: string; email: string; phone?: string; groupId?: string }[]): Map<string, LinkedPatient | null> {
+  return indexBy(items, (i) => i.email, (i) => ({ id: i.id, phone: i.phone ?? "", groupId: i.groupId }));
 }
 
 /**
@@ -243,9 +248,9 @@ export function emailIndex(items: { id: string; email: string; phone?: string }[
  * fallback for a row whose URI never landed.
  */
 export function eventUriIndex(
-  items: { id: string; calendlyEventUri: string; phone?: string }[],
+  items: { id: string; calendlyEventUri: string; phone?: string; groupId?: string }[],
 ): Map<string, LinkedPatient | null> {
-  return indexBy(items, (i) => normalizeEventUri(i.calendlyEventUri), (i) => ({ id: i.id, phone: i.phone ?? "" }));
+  return indexBy(items, (i) => normalizeEventUri(i.calendlyEventUri), (i) => ({ id: i.id, phone: i.phone ?? "", groupId: i.groupId }));
 }
 
 /** Trailing slashes and case are not part of the identity. */

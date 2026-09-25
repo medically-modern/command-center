@@ -57,7 +57,6 @@ import {
   sessionOutcome,
   staleRings,
   claimRefusal,
-  shouldNotify,
   unwrapEvent,
 } from "./callRules.mjs";
 import { buildHistoryQuery } from "./callHistoryQuery.mjs";
@@ -111,30 +110,17 @@ const pool = ASSIGNMENTS_DATABASE_URL
 const configured = () => !!(pool && hashingConfigured());
 
 const SCHEMA = `
--- Per-employee notification preferences. NOT routing: see the header note.
+-- Per-employee call settings. The ring MODES and the per-rep allow list are
+-- GONE (Josh, 2026-09-25: everyone connected rings for every call; the
+-- browser ringtone and its mute stay, §5.13b) — what survives here is the
+-- number "Take it" forwards to. An existing database keeps its old mode
+-- column (defaulted, unread) and its call_ring_allow table (unread, never
+-- dropped — the assignments.json precedent); a fresh one creates neither.
 CREATE TABLE IF NOT EXISTS call_ring_prefs (
   email          TEXT PRIMARY KEY,
-  mode           TEXT NOT NULL DEFAULT 'all',   -- all | list | off
   forward_number TEXT,                          -- where "Take it" rings them
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
--- One employee's explicit allow list. EXPLICIT is the whole point: nothing a
--- rep does in the course of their work — texting, calling, opening a thread —
--- adds a number here. Only putting it here does.
--- ⚠️ Stores the HMAC, never the number. A phone number tied to a patient is
--- PHI (messaging.mjs makes the same call for the same reason); last4 is a
--- display hint so a rep can recognise their own entry, and is useless as an
--- identifier on its own.
-CREATE TABLE IF NOT EXISTS call_ring_allow (
-  email      TEXT NOT NULL,
-  phone_hmac TEXT NOT NULL,
-  last4      TEXT,
-  label      TEXT,
-  added_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (email, phone_hmac)
-);
-CREATE INDEX IF NOT EXISTS call_ring_allow_phone_idx ON call_ring_allow (phone_hmac);
 
 -- Who took which call. The forward hands a patient call to a personal number,
 -- so it gets the same audit treatment as a send.
@@ -160,8 +146,8 @@ CREATE TABLE IF NOT EXISTS call_claims (
 -- only, and counters cannot tell you what happened to ONE call.
 --
 -- Rows are the SHAPE of a call, never its content: no payload, no transcript.
--- ⚠️ phone_hmac, never the number — the same call call_ring_allow and
--- messaging.mjs make, for the same reason (a number tied to a patient is PHI).
+-- ⚠️ phone_hmac, never the number — the same call messaging.mjs makes, for
+-- the same reason (a number tied to a patient is PHI).
 -- last4 rides along as the display hint those tables already established: it is
 -- what lets a human line a row up against a patient without the log itself
 -- holding a dialable number.
@@ -329,33 +315,17 @@ function publicCall(c) {
 /* ── notification fan-out ─────────────────────────────────────────────────── */
 
 /**
- * Which of the currently-connected employees want this call.
+ * Which of the currently-connected employees want this call: ALL of them.
  *
- * Matching is SERVER-side and per-connection. Broadcasting every caller's
- * number to every open tab and filtering in the browser would hand each rep
- * the numbers of patients their own rules excluded — the filter is a privacy
- * boundary, not just a UI convenience.
+ * The ring modes and the per-rep pinned-number list are gone (Josh,
+ * 2026-09-25) — every connected answerer sees every inbound call, which is
+ * §5.13's own model ("it does not matter who picks up") with the filter
+ * removed. Kept async and hmac-shaped so the call sites and `audience`
+ * forensics in call_events read exactly as before; audience === subscribers
+ * now, and 0 still means "nobody had a tab open".
  */
-async function audienceFor(hmac) {
-  const pinnedBy = new Set();
-  if (pool && hmac) {
-    try {
-      // ⚠️ ONLY the explicit allow list. sent_messages is deliberately NOT
-      // consulted: texting a patient must never enrol them in anyone's ring
-      // list (Josh, 2026-08-05 — see shouldNotify in callRules.mjs).
-      const pins = await pool.query(`SELECT email FROM call_ring_allow WHERE phone_hmac = $1`, [hmac]);
-      for (const r of pins.rows) pinnedBy.add(String(r.email || "").toLowerCase());
-    } catch (e) {
-      // Going blind here would silence the whole office. Fall through with an
-      // empty set: `all` subscribers still get the call, `list` ones miss it.
-      console.error("call audience lookup failed:", e.message);
-    }
-  }
-  const out = [];
-  for (const entry of subscribers.values()) {
-    if (shouldNotify(entry.prefs, { pinned: pinnedBy.has(entry.email) })) out.push(entry);
-  }
-  return out;
+async function audienceFor(_hmac) {
+  return [...subscribers.values()];
 }
 
 /** Tell everyone already watching this call that it changed. */
@@ -741,12 +711,11 @@ async function loadPrefs(email) {
   if (!pool) return normalizePrefs(null);
   try {
     const r = await pool.query(
-      `SELECT mode, forward_number FROM call_ring_prefs WHERE email = $1`,
+      `SELECT forward_number FROM call_ring_prefs WHERE email = $1`,
       [email],
     );
     if (!r.rows.length) return normalizePrefs(null);
-    const row = r.rows[0];
-    return normalizePrefs({ mode: row.mode, forwardNumber: row.forward_number || "" });
+    return normalizePrefs({ forwardNumber: r.rows[0].forward_number || "" });
   } catch {
     return normalizePrefs(null);
   }
@@ -953,23 +922,13 @@ export function registerInboundCalls({ app }) {
     }
   }
 
-  /** This employee's own notification rules + allow list. */
+  /** This employee's own call settings — the "Take it" forward number. */
   app.get("/calls/prefs", async (req, res) => {
     if (!configured()) return res.status(503).json({ error: "Inbound calls are not configured." });
     const who = await requireCaller(req, res);
     if (who === null) return;
     try {
-      const [prefs, allow] = await Promise.all([
-        loadPrefs(who),
-        pool.query(
-          `SELECT phone_hmac, last4, label FROM call_ring_allow WHERE email = $1 ORDER BY added_at DESC`,
-          [who],
-        ),
-      ]);
-      res.json({
-        ...prefs,
-        allow: allow.rows.map((r) => ({ id: r.phone_hmac, last4: r.last4 || "", label: r.label || "" })),
-      });
+      res.json(await loadPrefs(who));
     } catch (e) {
       res.status(500).json({ error: String((e && e.message) || e) });
     }
@@ -988,11 +947,11 @@ export function registerInboundCalls({ app }) {
     }
     try {
       await pool.query(
-        `INSERT INTO call_ring_prefs (email, mode, forward_number, updated_at)
-         VALUES ($1,$2,$3, now())
+        `INSERT INTO call_ring_prefs (email, forward_number, updated_at)
+         VALUES ($1,$2, now())
          ON CONFLICT (email) DO UPDATE
-           SET mode = $2, forward_number = $3, updated_at = now()`,
-        [who, next.mode, forward || null],
+           SET forward_number = $2, updated_at = now()`,
+        [who, forward || null],
       );
       const stored = { ...next, forwardNumber: forward };
       // Push the change to this person's open tabs, so a rule edit takes effect
@@ -1009,69 +968,9 @@ export function registerInboundCalls({ app }) {
     }
   });
 
-  /** Add a number to this employee's allow list. Stores the HMAC + last4. */
-  app.post("/calls/allow", async (req, res) => {
-    if (!configured()) return res.status(503).json({ error: "Inbound calls are not configured." });
-    const who = await requireCaller(req, res);
-    if (who === null) return;
-    const e164 = toE164(req.body?.phone);
-    if (!e164) return res.status(400).json({ error: "A valid phone number is required" });
-    const label = String(req.body?.label || "").slice(0, 120) || null;
-    try {
-      await pool.query(
-        `INSERT INTO call_ring_allow (email, phone_hmac, last4, label) VALUES ($1,$2,$3,$4)
-         ON CONFLICT (email, phone_hmac) DO UPDATE SET label = COALESCE($4, call_ring_allow.label)`,
-        [who, phoneHmac(e164), last4(e164), label],
-      );
-      res.json({ ok: true, id: phoneHmac(e164), last4: last4(e164), label: label || "" });
-    } catch (e) {
-      res.status(500).json({ error: String((e && e.message) || e) });
-    }
-  });
-
-  /**
-   * Is this number on the caller's own allow list?
-   *
-   * Needed because the browser cannot compute the HMAC — the pepper is
-   * server-side — so it has no way to match a number it is displaying against
-   * the hashed list it was given. Powers the per-conversation bell toggle.
-   */
-  app.post("/calls/allow/status", async (req, res) => {
-    if (!configured()) return res.status(503).json({ error: "Inbound calls are not configured." });
-    const who = await requireCaller(req, res);
-    if (who === null) return;
-    const e164 = toE164(req.body?.phone);
-    if (!e164) return res.json({ pinned: false, id: "" });
-    const id = phoneHmac(e164);
-    try {
-      const [r, prefs] = await Promise.all([
-        pool.query(`SELECT 1 FROM call_ring_allow WHERE email = $1 AND phone_hmac = $2`, [who, id]),
-        loadPrefs(who),
-      ]);
-      // `mode` rides along so the bell can warn that pinning is a no-op: a rep
-      // on `off` can happily watch a patient and never be rung, which looks
-      // exactly like the feature being broken.
-      res.json({ pinned: r.rowCount > 0, id, mode: prefs.mode });
-    } catch (e) {
-      res.status(500).json({ error: String((e && e.message) || e) });
-    }
-  });
-
-  app.post("/calls/allow/remove", async (req, res) => {
-    if (!configured()) return res.status(503).json({ error: "Inbound calls are not configured." });
-    const who = await requireCaller(req, res);
-    if (who === null) return;
-    // Removal is by HMAC — the id the list was rendered with. The browser never
-    // has to send the number back to delete it.
-    const id = String(req.body?.id || "");
-    if (!id) return res.status(400).json({ error: "id is required" });
-    try {
-      await pool.query(`DELETE FROM call_ring_allow WHERE email = $1 AND phone_hmac = $2`, [who, id]);
-      res.json({ ok: true });
-    } catch (e) {
-      res.status(500).json({ error: String((e && e.message) || e) });
-    }
-  });
+  /* The /calls/allow* routes (the pinned-number list) were REMOVED on
+     2026-09-25 with the ring modes — see callRules.mjs' header. The
+     call_ring_allow table survives in Postgres, unread. */
 
   /**
    * Force a subscription reconcile now.

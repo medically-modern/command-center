@@ -36,9 +36,13 @@ import {
   planResolve,
   resolutionFromRow,
   resolveTarget,
+  STAGE_FRESH_TTL_MS,
+  applyStageFresh,
   shadowReport,
   slaReport,
+  stageFreshGroup,
   stagePill,
+  stageRefreshPlan,
   textEvent,
   voicemailEvent,
 } from "./commsInboxRules.mjs";
@@ -514,6 +518,94 @@ describe("resolveTarget — links, then the directory, then the live lookup", ()
     const link = { anchorHmac: "", boardId: 18410804557, itemId: "777", name: "Sue Doe" };
     const t = resolveTarget(A, { links: new Map([[A, link]]), directory: new Map([[A, dirRow]]), cache: new Map() });
     expect(t.itemId).toBe("777");
+  });
+
+  it("⚠️⚠️ ACTIVE TRUMPS INACTIVE — a live cache answer beats the directory's inactive row (Josh, 2026-09-25)", () => {
+    // Milka's shape: the nightly directory copy points at her inactive
+    // Subscription record; the stage refresh re-resolved her number and the
+    // live answer (the record we serve her under NOW) sits in the cache.
+    const inactive = { boardId: 18407459988, itemId: "90", name: "Milka C", groupId: "group_mkp19fyp" };
+    const active = { boardId: 18407459988, itemId: "10", name: "Milka C", groupId: "topics" };
+    const t = resolveTarget(A, { links: new Map(), directory: new Map([[A, inactive]]), cache: new Map([[A, active]]) });
+    expect(t).toMatchObject({ itemId: "10", via: "live" });
+  });
+  it("…but a cache row that is ALSO inactive changes nothing — the directory still wins", () => {
+    const inactive = { boardId: 18407459988, itemId: "90", name: "Milka C", groupId: "group_mkp19fyp" };
+    const cached = { boardId: 18407459988, itemId: "91", name: "Milka C", groupId: "group_mkp19fyp" };
+    const t = resolveTarget(A, { links: new Map(), directory: new Map([[A, inactive]]), cache: new Map([[A, cached]]) });
+    expect(t).toMatchObject({ itemId: "90", via: "directory" });
+  });
+  it("…and an ACTIVE directory row is never displaced by the cache", () => {
+    const t = resolveTarget(A, {
+      links: new Map(),
+      directory: new Map([[A, dirRow]]),
+      cache: new Map([[A, { boardId: 18410804557, itemId: "55", name: "Jane Doe", groupId: "x" }]]),
+    });
+    expect(t).toMatchObject({ itemId: "2001", via: "directory" });
+  });
+  it("the link's anchor path applies the same preference", () => {
+    const link = { anchorHmac: A, boardId: 18410804557, itemId: "999", name: "Milka C" };
+    const inactive = { boardId: 18407459988, itemId: "90", name: "Milka C", groupId: "group_mkp19fyp" };
+    const active = { boardId: 18407459988, itemId: "10", name: "Milka C", groupId: "topics" };
+    const t = resolveTarget(U, { links: new Map([[U, link]]), directory: new Map([[A, inactive]]), cache: new Map([[A, active]]) });
+    expect(t).toMatchObject({ itemId: "10", via: "link" });
+  });
+});
+
+describe("the stage-pill refresh — stageRefreshPlan / stageFreshGroup / applyStageFresh", () => {
+  const NOW = 1_700_000_000_000;
+  const rowFor = (boardId, itemId, open = true) => ({ boardId, itemId, open, numbers: [] });
+
+  it("plans every matched item once, OPEN rows first, skipping fresh cache entries", () => {
+    const cache = new Map([["18407459988:20", { groupId: "topics", at: NOW - 1000 }]]);
+    const plan = stageRefreshPlan(
+      [
+        rowFor(18407459988, "20", false), // fresh in cache — skipped
+        rowFor(18410804557, "30", false),
+        rowFor(18407459988, "10", true),
+        rowFor(18407459988, "10", true), // duplicate — once
+        { boardId: null, itemId: null, open: true }, // unmatched — never asked
+      ],
+      cache,
+      NOW,
+    );
+    expect(plan).toEqual([
+      { boardId: 18407459988, itemId: "10" },
+      { boardId: 18410804557, itemId: "30" },
+    ]);
+  });
+
+  it("a cache entry past the TTL is re-asked, and the cap holds", () => {
+    const cache = new Map([["18407459988:20", { groupId: "topics", at: NOW - STAGE_FRESH_TTL_MS - 1 }]]);
+    expect(stageRefreshPlan([rowFor(18407459988, "20")], cache, NOW)).toHaveLength(1);
+    const many = Array.from({ length: 150 }, (_, i) => rowFor(18407459988, String(i)));
+    expect(stageRefreshPlan(many, new Map(), NOW)).toHaveLength(100);
+  });
+
+  it("stageFreshGroup answers only for a real answer — 'asked, item missing' applies as nothing", () => {
+    const t = { boardId: 18407459988, itemId: "10", groupId: "old" };
+    expect(stageFreshGroup(t, new Map([["18407459988:10", { groupId: "topics", at: NOW }]]))).toBe("topics");
+    expect(stageFreshGroup(t, new Map([["18407459988:10", { groupId: undefined, at: NOW }]]))).toBeUndefined();
+    expect(stageFreshGroup(t, new Map())).toBeUndefined();
+    expect(stageFreshGroup(null, new Map())).toBeUndefined();
+  });
+
+  it("applyStageFresh overlays a changed group and returns the SAME map when nothing changed", () => {
+    const targets = new Map([
+      ["h1", { boardId: 18407459988, itemId: "10", groupId: "group_mkp19fyp", name: "M" }],
+      ["h2", { boardId: 18410804557, itemId: "30", groupId: "g", name: "N" }],
+      ["h3", null],
+    ]);
+    const cache = new Map([["18407459988:10", { groupId: "topics", at: NOW }]]);
+    const out = applyStageFresh(targets, cache);
+    expect(out).not.toBe(targets);
+    expect(out.get("h1").groupId).toBe("topics");
+    expect(out.get("h2")).toBe(targets.get("h2"));
+    expect(applyStageFresh(targets, new Map())).toBe(targets);
+    // The overlaid group is what the pill reads — Milka stops reading Inactive
+    // the moment her item is seen outside Not Active Patients.
+    expect(stagePill(out.get("h1"))).toBe("Subscription");
+    expect(stagePill(targets.get("h1"))).toBe("Inactive");
   });
 });
 

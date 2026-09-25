@@ -132,14 +132,11 @@ export default function OperationsPage() {
               <ExternalLink style={{ width: 13, height: 13 }} /> Open the tracker
             </a>
           </div>
-          <div className="tracker-frame">
-            <BarChart3 style={{ width: 26, height: 26 }} />
-            <div className="xs muted" style={{ maxWidth: 460, marginTop: 6 }}>
-              Monday does not let its pages be shown inside another site (its frame policy names only monday.com),
-              so the tracker can't be drawn here — the button above opens it. The numbers below come from the
-              Command Center's own data so the two can be compared.
-            </div>
-          </div>
+          {/* The frame-policy explainer that sat here was killed on Josh's
+              instruction (2026-09-25). The FACT stands: Monday's frame policy
+              names only monday.com, so the tracker can never be an iframe —
+              the button above is the door, and reports.test.tsx pins that no
+              iframe comes back. */}
         </section>
 
         <div className="eyebrow">Onboarding pipeline</div>

@@ -29,6 +29,7 @@
  * Claims, Subscription) have no canonical page and stay a note.
  */
 import { MANAGER_ORIGIN_PARAM } from "@/lib/shared/managerOrigin";
+import { GROUPS as PROFILE_GROUPS } from "@/lib/profile/mondayApi";
 import type { SystemPatient } from "./mondayApi";
 import { isOrderRow } from "./ordersSearch";
 import { searchBucket } from "./searchBuckets";
@@ -59,6 +60,13 @@ export function searchOpenUrl(p: OpenableRow): string | null {
   if (completed) return completedStageUrl(completed);
 
   const params = new URLSearchParams({ patientId: p.id, from: "system-mgmt" });
+  // A Partial Leads row must open under the Partial selector — the intake page
+  // defaults `?source=` to COMPLETED, and a deep link is injected whatever
+  // group the item is in, so without this the page called an abandoned form a
+  // successful fill-out (intakeLink.ts; Jason Ortiz-Troxell, 2026-09-25).
+  if (p.roleRoute === "/unverified-referrals" && p.groupId === PROFILE_GROUPS.newFormPartial) {
+    params.set("source", "partial");
+  }
   const bucket = searchBucket(p);
 
   if (bucket === "stuck") {

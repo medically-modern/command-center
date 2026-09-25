@@ -11,6 +11,7 @@
  * not making is noise that teaches people to ignore the toast that matters.
  * Managers get the queue on the page, not the interruption.
  */
+import { intakeProfileHref } from "@/lib/profile/intakeLink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Phone } from "lucide-react";
@@ -92,7 +93,9 @@ export default function ScheduledCallHost() {
   }, [holdsRole]);
 
   const open = useCallback((c: ScheduledCall) => {
-    navigate(`/unverified-referrals?patientId=${encodeURIComponent(c.id)}&from=care-coordinator`);
+    // Routed by the row's group (intakeLink.ts) — a Partial Leads booking
+    // must not open under the Completed selector (2026-09-25).
+    navigate(intakeProfileHref(c.id, c.groupId, "from=care-coordinator"));
   }, [navigate]);
 
   useEffect(() => {

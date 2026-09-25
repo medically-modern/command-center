@@ -56,9 +56,12 @@ export type StagePill =
 
 /**
  * The list's stage filter, in the order the menu offers it: the pipeline, then
- * the stages a patient is in after or outside it. Every `StagePill` exactly
- * once — `stageFilter.test.ts` holds this to the gateway's `STAGE_PILLS`, which
- * is what the filter is checked against there (an unknown value is ignored).
+ * the stages a patient is in after or outside it. `stageFilter.test.ts` holds
+ * this to the gateway's `STAGE_PILLS` — which is what the filter is checked
+ * against there (an unknown value is ignored) — MINUS "Claims" (Josh,
+ * 2026-09-25): Secondary Claims is only ever a patient's pill when they have
+ * no later record, and a menu entry for it confused more than it filtered.
+ * The ROW pill keeps the value, which is why `StagePill` keeps the member.
  */
 export const STAGE_FILTERS: readonly StagePill[] = [
   "Intake",
@@ -67,7 +70,6 @@ export const STAGE_FILTERS: readonly StagePill[] = [
   "Welcome Call",
   "Subscription",
   "Inactive",
-  "Claims",
   "Unmatched",
 ];
 

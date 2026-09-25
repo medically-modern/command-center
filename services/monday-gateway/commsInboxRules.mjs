@@ -580,8 +580,8 @@ export function resolveTarget(hmac, { links, directory, cache } = {}) {
   const link = links?.get(hmac);
   if (link) {
     if (link.anchorHmac && link.anchorHmac !== hmac) {
-      const via = directory?.get(link.anchorHmac) ?? cache?.get(link.anchorHmac);
-      if (via && via.itemId && sameName(via.name, link.name)) return { ...via, via: "link" };
+      const via = bestRow(directory?.get(link.anchorHmac), cache?.get(link.anchorHmac));
+      if (via && sameName(via.row.name, link.name)) return { ...via.row, via: "link" };
     }
     if (link.boardId && link.itemId) {
       return {
@@ -594,10 +594,24 @@ export function resolveTarget(hmac, { links, directory, cache } = {}) {
       };
     }
   }
-  const d = directory?.get(hmac);
-  if (d && d.itemId) return { ...d, via: "directory" };
-  const c = cache?.get(hmac);
-  if (c && c.itemId) return { ...c, via: "live" };
+  const best = bestRow(directory?.get(hmac), cache?.get(hmac));
+  return best ? { ...best.row, via: best.via } : null;
+}
+
+/**
+ * Directory answer vs live-lookup cache answer for one number: the directory
+ * wins — EXCEPT when its row is an inactive Subscription record and the cache
+ * holds an active one. Active always trumps inactive (Josh, 2026-09-25):
+ * the directory's copy is nightly, so between reconciles the stage refresh
+ * re-resolves a number whose record went inactive and parks the live answer in
+ * the cache — this is what lets that answer be seen.
+ */
+function bestRow(d, c) {
+  const dv = d && d.itemId ? d : null;
+  const cv = c && c.itemId ? c : null;
+  if (dv && cv && isInactiveRow(dv) && !isInactiveRow(cv)) return { row: cv, via: "live" };
+  if (dv) return { row: dv, via: "directory" };
+  if (cv) return { row: cv, via: "live" };
   return null;
 }
 
@@ -617,8 +631,11 @@ export function parseKey(key) {
   return null;
 }
 
-/** Subscription's "Not Active Patients" group (§5.18 lists it by id). */
-export const SUBSCRIPTION_INACTIVE_GROUP = "group_mkp19fyp";
+/** Subscription's "Not Active Patients" group — declared beside the directory
+ *  collapse that also reads it, so the pill and the resolution agree about
+ *  what "inactive" means. Re-exported for this module's existing readers. */
+export { SUBSCRIPTION_INACTIVE_GROUP, isInactiveRow } from "./patientDirectoryRules.mjs";
+import { SUBSCRIPTION_INACTIVE_GROUP, isInactiveRow } from "./patientDirectoryRules.mjs";
 
 const BOARD_PILL = {
   18392794310: "Intake", // DTC Intake
@@ -632,8 +649,11 @@ const BOARD_PILL = {
 
 /**
  * The stage pill: the four onboarding stages, Subscription, Inactive, or
- * Unmatched. It comes from the directory's board, so it can be up to a day
- * stale; the profile pane always shows the truth.
+ * Unmatched. The BOARD comes from the directory's copy (up to a day stale —
+ * the profile pane always shows the truth); the GROUP behind Inactive is kept
+ * live by the stage refresh (`stageRefreshPlan`/`applyStageFresh` below +
+ * `lookupItemGroupsLive`), because a patient moved out of "Not Active
+ * Patients" reading Inactive for a day confused people (Josh, 2026-09-25).
  */
 export function stagePill(target) {
   if (!target || !target.itemId) return "Unmatched";
@@ -643,13 +663,87 @@ export function stagePill(target) {
 }
 
 /**
- * Every value `stagePill` can return, in pipeline order — the list's stage
- * filter offers exactly these (Josh, 2026-09-23). Derived from BOARD_PILL, so a
- * board added there is offered without a second list to remember.
- * ⚠️ The SPA's `StagePill` type and its filter menu name the same values;
- * `stageFilter.test.ts` holds the two together.
+ * Every value `stagePill` can return, in pipeline order. Derived from
+ * BOARD_PILL, so a board added there is offered without a second list to
+ * remember. `filterInbox` accepts exactly these.
+ * ⚠️ The SPA's filter MENU offers these MINUS "Claims" (Josh, 2026-09-25 —
+ * Secondary Claims is only ever the pick when a patient has no later record,
+ * and a menu entry for it confused more than it filtered). The row pill keeps
+ * the value; `stageFilter.test.ts` holds the menu to this list minus Claims.
  */
 export const STAGE_PILLS = Object.freeze([...new Set(Object.values(BOARD_PILL)), "Inactive", "Unmatched"]);
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * The stage-pill refresh — the pill must be up to date (Josh, 2026-09-25)
+ *
+ * The pill's group comes from `patient_directory`, refreshed nightly, so a
+ * group change (Active ↔ Not Active) read wrong for up to a day. These plan a
+ * bounded live re-read of the GROUP of the items behind inbox rows — one
+ * `items (ids:)` query, open items first — and overlay the answer on the
+ * resolved targets before the pill is computed. The cache is in-memory in
+ * commsInbox.mjs (like `snap`): a redeploy re-asks once, and nothing here
+ * writes `patient_directory` (one writer per table, this file's own rule).
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** How long a freshly-read group is trusted — the pill's staleness bound. */
+export const STAGE_FRESH_TTL_MS = 2 * 60_000;
+/** Monday's cap on `items (ids:)`, and plenty: open items are typically dozens. */
+export const STAGE_REFRESH_CAP = 100;
+
+const stageKeyOf = (boardId, itemId) => `${Number(boardId)}:${String(itemId)}`;
+
+/**
+ * Which (board, item) pairs the refresh should ask Monday about: every matched
+ * row's item, deduplicated, OPEN rows first (they are what the list shows and
+ * what a stale pill confuses on), skipping pairs the cache answered inside the
+ * TTL, capped. Takes anything shaped like a row (`boardId`/`itemId`/`open`).
+ */
+export function stageRefreshPlan(rows, cache, now = Date.now(), { ttl = STAGE_FRESH_TTL_MS, cap = STAGE_REFRESH_CAP } = {}) {
+  const seen = new Set();
+  const out = [];
+  const ordered = [...(rows ?? [])].sort((a, b) => Number(!!b?.open) - Number(!!a?.open));
+  for (const r of ordered) {
+    if (!r?.itemId || !r?.boardId) continue;
+    const key = stageKeyOf(r.boardId, r.itemId);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const c = cache?.get(key);
+    if (c && now - c.at < ttl) continue;
+    out.push({ boardId: Number(r.boardId), itemId: String(r.itemId) });
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+/**
+ * The freshly-read group for one resolved target, or undefined when the cache
+ * has no answer for it — including the "asked, item missing" entry (groupId
+ * undefined), which keeps the target's own group: absence is not evidence.
+ */
+export function stageFreshGroup(target, cache) {
+  if (!target?.itemId || !cache) return undefined;
+  const c = cache.get(stageKeyOf(target.boardId, target.itemId));
+  return c && c.groupId !== undefined ? c.groupId : undefined;
+}
+
+/**
+ * Overlay the refresh's groups onto the resolved targets. Returns the SAME map
+ * when nothing changes, so a caller can skip a rebuild it doesn't need.
+ */
+export function applyStageFresh(targets, cache) {
+  let changed = false;
+  const out = new Map();
+  for (const [hmac, t] of targets ?? new Map()) {
+    const g = stageFreshGroup(t, cache);
+    if (g !== undefined && g !== (t?.groupId ?? null)) {
+      out.set(hmac, { ...t, groupId: g });
+      changed = true;
+    } else {
+      out.set(hmac, t);
+    }
+  }
+  return changed ? out : targets;
+}
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Who dialed · who texted

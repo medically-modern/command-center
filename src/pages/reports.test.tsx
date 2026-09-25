@@ -153,7 +153,9 @@ describe("Reports & Metrics", () => {
     expect(a.getAttribute("target")).toBe("_blank");
     expect(a.getAttribute("rel")).toContain("noopener");
     expect(document.querySelector("iframe")).toBeNull();
-    expect(screen.getByText(/frame policy names only monday\.com/)).toBeTruthy();
+    // The on-screen explainer was killed (Josh, 2026-09-25) — the constraint
+    // lives in this test and the code comment, not in the rep's face.
+    expect(screen.queryByText(/frame policy/)).toBeNull();
   });
 
   it("the pipeline tiles count active rows per stage, leave the lead out of Intake, and name the import", () => {

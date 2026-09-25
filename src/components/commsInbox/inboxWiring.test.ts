@@ -252,9 +252,9 @@ describe("phase 3 — the logs open the item (plan §1.2, Josh's D4)", () => {
     expect(PAGE).toContain("<ConversationThread\n          key={logPhone}");
   });
 
-  it("⚠️ nothing the old thread header had is lost — the watch-callback bell comes along", () => {
+  it("⚠️ the watch-callback bell is GONE and stays gone (Josh, 2026-09-25 — no pinned numbers)", () => {
     const tl = code("src/components/commsInbox/ItemTimeline.tsx");
-    expect(tl).toContain("<WatchCallbackButton phone={active.e164} label={item.name} />");
+    expect(tl).not.toContain("WatchCallbackButton");
   });
 
   it("the switched-off hub is untouched: Text and Phone keep their own details", () => {

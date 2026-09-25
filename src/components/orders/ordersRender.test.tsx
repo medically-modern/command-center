@@ -59,10 +59,10 @@ vi.mock("@/hooks/useStatusOptions", () => ({
 }));
 
 const rows: SkuTrackerRow[] = [
-  { id: "r1", name: 'TruSteel 6 mm 23"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002833I", description: "TruSteel", uom: "BX", unitCost: 63.77, qtyAvail: 426, status: "Available", lastChanged: "2026-09-15 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
-  { id: "r2", name: 'AutoSoft 90 6 mm 23"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002817I", description: "", uom: "BX", unitCost: 71.94, qtyAvail: 220, status: "Backordered", lastChanged: "2026-09-15 09:05 ET", oopPrice: 12, notes: "", runHistory: "" },
-  { id: "r3", name: "Dexcom G7 / G7 15-Day → G7 Receiver", groupId: SKU_GROUPS.cgmReceivers, sku: "EDSTKAT013MEDIM", description: "", uom: "EA", unitCost: 234.28, qtyAvail: 1156, status: "Available", lastChanged: "2026-09-15 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
-  { id: "log", name: "Last run: 2026-09-15 09:05 ET (cron) — 31 changed", groupId: SKU_GROUPS.runLog, sku: "", description: "", uom: "", unitCost: null, qtyAvail: null, status: "", lastChanged: "", oopPrice: null, notes: "", runHistory: "[2026-09-15 09:05 ET] cron — 45 SKUs" },
+  { id: "r1", name: 'TruSteel 6 mm 23"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002833I", description: "TruSteel", uom: "BX", unitCost: 63.77, qtyAvail: 426, status: "Available", lastChanged: "2026-09-15 09:05 ET", notes: "", runHistory: "" },
+  { id: "r2", name: 'AutoSoft 90 6 mm 23"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002817I", description: "", uom: "BX", unitCost: 71.94, qtyAvail: 220, status: "Backordered", lastChanged: "2026-09-15 09:05 ET", notes: "", runHistory: "" },
+  { id: "r3", name: "Dexcom G7 / G7 15-Day → G7 Receiver", groupId: SKU_GROUPS.cgmReceivers, sku: "EDSTKAT013MEDIM", description: "", uom: "EA", unitCost: 234.28, qtyAvail: 1156, status: "Available", lastChanged: "2026-09-15 09:05 ET", notes: "", runHistory: "" },
+  { id: "log", name: "Last run: 2026-09-15 09:05 ET (cron) — 31 changed", groupId: SKU_GROUPS.runLog, sku: "", description: "", uom: "", unitCost: null, qtyAvail: null, status: "", lastChanged: "", notes: "", runHistory: "[2026-09-15 09:05 ET] cron — 45 SKUs" },
 ];
 
 const held = placed({
@@ -225,11 +225,19 @@ describe("the Orders page renders every card", () => {
     expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Infusion sets" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CGM receiver" })).toBeInTheDocument();
-    // One table, with his five columns plus our Open orders.
+    // One table, his five columns exactly — Open orders is commented out
+    // behind SHOW_OPEN_ORDERS (Josh, 2026-09-25).
     expect(screen.getAllByRole("table")).toHaveLength(1);
-    for (const col of ["Product", "Status", "Available", "Unit cost", "OOP price", "Open orders"]) {
+    for (const col of ["Product", "Status", "Available", "Unit cost", "OOP price"]) {
       expect(screen.getByRole("button", { name: new RegExp(`^${col}`) })).toBeInTheDocument();
     }
+    expect(screen.queryByRole("button", { name: /^Open orders/ })).toBeNull();
+    // OOP is DERIVED — cost × the cash-pay markup, the mockup's own rule
+    // (Josh, 2026-09-25) — never the board's column. 71.94 × 1.25 is the
+    // 89.925 float tie a naive round loses.
+    expect(screen.getByText("$79.71")).toBeInTheDocument(); // TruSteel, 63.77
+    expect(screen.getByText("$89.93")).toBeInTheDocument(); // AutoSoft 90, 71.94
+    expect(screen.getByText("$292.85")).toBeInTheDocument(); // G7 receiver, 234.28
     expect(screen.getByText("Poll history")).toBeInTheDocument();
   });
 
@@ -264,9 +272,9 @@ describe("the cash pay card", () => {
      is the figure Janelle quoted her (§5.48 / cashPayPricing). */
   const cashRows: SkuTrackerRow[] = [
     ...rows,
-    { id: "c1", name: "t:slim", groupId: SKU_GROUPS.cartridges, sku: "TN1004017", description: "", uom: "BX", unitCost: 30.95, qtyAvail: 900, status: "Available", lastChanged: "2026-09-21 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
-    { id: "c2", name: 'AutoSoft XC 9 mm 43"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002823I", description: "", uom: "BX", unitCost: 71.94, qtyAvail: 400, status: "Available", lastChanged: "2026-09-21 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
-    { id: "c3", name: "Dexcom G7", groupId: SKU_GROUPS.cgmSensors, sku: "EDSTKAT013", description: "", uom: "EA", unitCost: 57.32, qtyAvail: 1200, status: "Available", lastChanged: "2026-09-21 09:05 ET", oopPrice: null, notes: "", runHistory: "" },
+    { id: "c1", name: "t:slim", groupId: SKU_GROUPS.cartridges, sku: "TN1004017", description: "", uom: "BX", unitCost: 30.95, qtyAvail: 900, status: "Available", lastChanged: "2026-09-21 09:05 ET", notes: "", runHistory: "" },
+    { id: "c2", name: 'AutoSoft XC 9 mm 43"', groupId: SKU_GROUPS.infusionSets, sku: "TN1002823I", description: "", uom: "BX", unitCost: 71.94, qtyAvail: 400, status: "Available", lastChanged: "2026-09-21 09:05 ET", notes: "", runHistory: "" },
+    { id: "c3", name: "Dexcom G7", groupId: SKU_GROUPS.cgmSensors, sku: "EDSTKAT013", description: "", uom: "EA", unitCost: 57.32, qtyAvail: 1200, status: "Available", lastChanged: "2026-09-21 09:05 ET", notes: "", runHistory: "" },
   ];
   const debbie = mkOrder({
     id: "cp", name: "Debbie Hinze", phone: "5555550109", primaryInsurance: "Cash Pay",

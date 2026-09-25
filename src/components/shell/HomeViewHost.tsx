@@ -213,7 +213,7 @@ export function HomeViewHost() {
     <div className="cc-home">
       {switcher}
       <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
-        {active === "coordinator" ? <CareCoordinatorPage /> : <OversightTab />}
+        {active === "coordinator" ? <CareCoordinatorPage homeView /> : <OversightTab />}
       </Suspense>
     </div>
   );

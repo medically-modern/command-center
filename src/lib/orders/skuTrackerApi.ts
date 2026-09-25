@@ -34,7 +34,10 @@ export const SKU_COL = {
   qtyAvail: "numeric_mm4w1yk8",
   status: "color_mm4wr14r",
   lastChanged: "text_mm4wkpy5",
-  oopPrice: "numeric_mm5bs4hd",
+  // ⚠️ The board's OOP column `numeric_mm5bs4hd` is deliberately NOT read
+  // since 2026-09-25: the Inventory table derives OOP as cost × the cash-pay
+  // markup (`cashPayPricing.unitOopPrice`, the mockup's own rule — Josh), so
+  // the column and a cash-pay quote cannot disagree.
   notes: "text_mm4w76xk",
   runHistory: "long_text_mm4wcfmh",
 } as const;
@@ -48,7 +51,6 @@ export interface SkuTrackerRow extends StockRow {
   description: string;
   uom: string;
   unitCost: number | null;
-  oopPrice: number | null;
   notes: string;
   /** Run Log rows only. */
   runHistory: string;
@@ -124,7 +126,6 @@ export async function fetchSkuTracker(signal?: AbortSignal): Promise<SkuTrackerR
       qtyAvail: num(txt(SKU_COL.qtyAvail)),
       status: txt(SKU_COL.status),
       lastChanged: txt(SKU_COL.lastChanged),
-      oopPrice: num(txt(SKU_COL.oopPrice)),
       notes: txt(SKU_COL.notes).trim(),
       runHistory: txt(SKU_COL.runHistory),
     };

@@ -57,7 +57,7 @@ import { hashingConfigured, phoneHmac, toE164 } from "./phoneHash.mjs";
 import { archiveTextRecords, ourNumbers } from "./smsArchive.mjs";
 import { archiveCallRecords } from "./callArchive.mjs";
 import { archiveVoicemailRecords } from "./voicemailArchive.mjs";
-import { lookupNumbersLive } from "./patientDirectory.mjs";
+import { lookupNumbersLive, lookupItemGroupsLive } from "./patientDirectory.mjs";
 import { counterparty as textCounterparty } from "./smsArchiveRules.mjs";
 import { counterpartyNumber as callCounterparty } from "./callArchiveRules.mjs";
 import { counterpartyNumber as vmCounterparty } from "./voicemailArchiveRules.mjs";
@@ -82,6 +82,8 @@ import {
   inboxHealth,
   itemState,
   mirrorPending,
+  SUBSCRIPTION_INACTIVE_GROUP,
+  applyStageFresh,
   normalizeNote,
   noteTargetFor,
   opensItem,
@@ -91,7 +93,9 @@ import {
   resolveTarget,
   shadowReport,
   slaReport,
+  stageFreshGroup,
   stagePill,
+  stageRefreshPlan,
   textEvent,
   toMs,
   voicemailEvent,
@@ -464,28 +468,33 @@ async function lookupUnknown(pool, e164s, stats) {
   // blip would pin those callers as Unknown for hours.
   if (!answer.ok) return;
   for (const h of unknown) {
-    const row = answer.rows.get(h);
-    const e164 = byHmac.get(h);
-    await pool.query(
-      `INSERT INTO comms_number_cache (phone_hmac, last4, found, name, board_id, item_id, board_name, group_id, checked_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
-       ON CONFLICT (phone_hmac) DO UPDATE SET
-         last4 = EXCLUDED.last4, found = EXCLUDED.found, name = EXCLUDED.name, board_id = EXCLUDED.board_id,
-         item_id = EXCLUDED.item_id, board_name = EXCLUDED.board_name, group_id = EXCLUDED.group_id,
-         checked_at = now()`,
-      [
-        h,
-        e164.slice(-4),
-        !!row,
-        row?.name ?? null,
-        row?.boardId ?? null,
-        row?.mondayItemId ?? null,
-        row?.boardName ?? null,
-        row?.groupId ?? null,
-      ],
-    );
+    await upsertNumberCache(pool, h, byHmac.get(h), answer.rows.get(h));
     stats.lookedUp += 1;
   }
+}
+
+/** One writer for `comms_number_cache` — the tick's unknown-number lookup and
+ *  the stage refresh's inactive re-resolution both land here. Stores the last
+ *  four, never the number it asked about. */
+async function upsertNumberCache(pool, h, e164, row) {
+  await pool.query(
+    `INSERT INTO comms_number_cache (phone_hmac, last4, found, name, board_id, item_id, board_name, group_id, checked_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+     ON CONFLICT (phone_hmac) DO UPDATE SET
+       last4 = EXCLUDED.last4, found = EXCLUDED.found, name = EXCLUDED.name, board_id = EXCLUDED.board_id,
+       item_id = EXCLUDED.item_id, board_name = EXCLUDED.board_name, group_id = EXCLUDED.group_id,
+       checked_at = now()`,
+    [
+      h,
+      e164.slice(-4),
+      !!row,
+      row?.name ?? null,
+      row?.boardId ?? null,
+      row?.mondayItemId ?? null,
+      row?.boardName ?? null,
+      row?.groupId ?? null,
+    ],
+  );
 }
 
 let tickRunning = false;
@@ -839,6 +848,88 @@ async function loadOpening(client, hmacs, epoch, has) {
  * The snapshot — one computation behind the list AND the badge
  * ──────────────────────────────────────────────────────────────────────────── */
 
+/* ── the stage-pill refresh (Josh, 2026-09-25: "the pill needs to be up to
+ *    date") — the items' CURRENT Monday group, in memory like `snap`. A
+ *    redeploy re-asks once; nothing here writes `patient_directory`. ────── */
+
+const STAGE_FRESH_MAX = 500;
+/** Floor between LIST-driven refreshes: the snapshot recomputes every 10s and
+ *  the list polls ~30s, so without this a busy inbox would ask Monday on
+ *  every recompute even with every pair inside its TTL window untouched. */
+const STAGE_REFRESH_GAP_MS = 30_000;
+const stageFresh = new Map(); // "board:item" -> { groupId?: string|null, at }
+let lastStageRefreshAt = 0;
+
+/** Ask Monday for the current group of whatever `stageRefreshPlan` picks.
+ *  ⚠️ A failed read stores nothing — the stale pill stands rather than a
+ *  guessed one (§5.28's rule). A MISSING id (a deleted item) is remembered as
+ *  "asked, no answer" so it is not re-asked every pass, and `stageFreshGroup`
+ *  applies it as nothing. */
+async function refreshStages(pool, rows, now = Date.now()) {
+  const plan = stageRefreshPlan(rows, stageFresh, now);
+  if (!plan.length) return;
+  const answer = await lookupItemGroupsLive(plan);
+  if (!answer.ok) return;
+  const inactiveHmacs = new Set();
+  for (const p of plan) {
+    const key = `${p.boardId}:${p.itemId}`;
+    const hit = answer.rows.get(key);
+    stageFresh.set(key, hit ? { groupId: hit.groupId, at: now } : { groupId: undefined, at: now });
+    // A record that reads inactive may not be the record we serve the patient
+    // under — active always trumps inactive (Josh, 2026-09-25), so their
+    // numbers are re-resolved below and the live answer parked in the cache,
+    // where `resolveTarget`'s bestRow prefers it over the inactive row.
+    if (hit && hit.groupId === SUBSCRIPTION_INACTIVE_GROUP && p.boardId === 18407459988) {
+      for (const r of rows) {
+        if (String(r?.itemId ?? "") !== p.itemId || Number(r?.boardId) !== p.boardId) continue;
+        for (const n of r.numbers ?? []) if (n?.hmac) inactiveHmacs.add(n.hmac);
+      }
+    }
+  }
+  while (stageFresh.size > STAGE_FRESH_MAX) stageFresh.delete(stageFresh.keys().next().value);
+  await reResolveInactive(pool, [...inactiveHmacs], now);
+}
+
+/** The list's entry point, floored by the global gap. The clock is set before
+ *  the await so overlapping snapshot computations cannot double-fire. */
+async function refreshStaleStages(pool, rows, now = Date.now()) {
+  if (now - lastStageRefreshAt < STAGE_REFRESH_GAP_MS) return;
+  lastStageRefreshAt = now;
+  await refreshStages(pool, rows, now);
+}
+
+/** Per-number floor on the inactive re-resolution — a patient whose ONLY
+ *  record is inactive would otherwise re-run a live lookup on every refresh. */
+const RERESOLVE_GAP_MS = 10 * 60_000;
+const reResolvedAt = new Map(); // hmac -> ms
+
+/**
+ * A number resolved to an INACTIVE record is asked of Monday again, live —
+ * `lookupNumbersLive`'s collapse now prefers the patient's active record, so
+ * this is what moves an item like Milka's onto the record we actually serve
+ * her under without waiting for the nightly directory reconcile.
+ * ⚠️ Needs the number in the clear, which only `numberMemory` holds (nothing
+ * durable stores one, §5.49) — a number the tick has not seen since the last
+ * redeploy simply waits for the reconcile. ⚠️ Only FOUND answers are cached:
+ * a miss for a number the directory knows is a blip, not evidence.
+ */
+async function reResolveInactive(pool, hmacs, now = Date.now()) {
+  if (!pool || !hmacs.length) return;
+  const due = hmacs.filter((h) => now - (reResolvedAt.get(h) ?? 0) >= RERESOLVE_GAP_MS);
+  const e164s = due.map((h) => numberMemory.get(h)).filter(Boolean).slice(0, LOOKUP_BATCH);
+  if (!e164s.length) return;
+  const answer = await lookupNumbersLive(e164s);
+  if (!answer.ok) return;
+  for (const e164 of e164s) {
+    const h = phoneHmac(e164);
+    if (!h) continue;
+    reResolvedAt.set(h, now);
+    const row = answer.rows.get(h);
+    if (row) await upsertNumberCache(pool, h, e164, row);
+  }
+  while (reResolvedAt.size > STAGE_FRESH_MAX) reResolvedAt.delete(reResolvedAt.keys().next().value);
+}
+
 let snap = null; // { at, items, epoch }
 let snapInflight = null; // { gen, promise }
 /**
@@ -866,12 +957,23 @@ async function computeSnapshot(pool) {
   // Pass one finds the open items; pass two adds what we sent them since, for
   // the suggestion. Outbound traffic for closed items is never read.
   let items = buildInbox({ events: inbound, resolutions, targets, now, epoch });
+  // The stage pill must be up to date (Josh, 2026-09-25): re-read the items'
+  // current Monday group — bounded, open rows first, and never a failure the
+  // list inherits (Monday down costs the freshness, not the inbox).
+  try {
+    await refreshStaleStages(pool, items, now);
+  } catch (e) {
+    console.error("stage refresh failed:", (e && e.message) || e);
+  }
+  const freshTargets = applyStageFresh(targets, stageFresh);
   const open = items.filter((i) => i.open && i.openedBy);
   if (open.length) {
     const openHmacs = [...new Set(open.flatMap((i) => i.numbers.map((n) => n.hmac)))];
     const since = Math.min(...open.map((i) => i.openedBy.at));
     const outbound = await loadOutbound(pool, openHmacs, since);
-    items = buildInbox({ events: [...inbound, ...outbound], resolutions, targets, now, epoch });
+    items = buildInbox({ events: [...inbound, ...outbound], resolutions, targets: freshTargets, now, epoch });
+  } else if (freshTargets !== targets) {
+    items = buildInbox({ events: inbound, resolutions, targets: freshTargets, now, epoch });
   }
   return { at: now, items, epoch };
 }
@@ -1101,6 +1203,19 @@ export function registerCommsInbox({ app, pool }) {
     const { numbers, target, moved } = await numbersForKey(pool, key);
     if (moved) return { status: 409, body: { error: "This number now belongs to a patient", moved } };
     if (!numbers.length) return { status: 404, body: { error: "This item has moved — open it again from the list" } };
+    // Opening ONE item refreshes its own pill — on open, never on render, so it
+    // skips the list's global gap; the per-pair TTL still bounds it.
+    if (target?.itemId) {
+      try {
+        await refreshStages(pool, [
+          { boardId: target.boardId, itemId: target.itemId, open: true, numbers },
+        ]);
+      } catch (e) {
+        console.error("stage refresh failed:", (e && e.message) || e);
+      }
+    }
+    const freshGroup = stageFreshGroup(target, stageFresh);
+    const shownTarget = target && freshGroup !== undefined ? { ...target, groupId: freshGroup } : target;
     const hmacs = numbers.map((n) => n.hmac);
     const now = Date.now();
     const epoch = await loadEpoch(pool);
@@ -1125,7 +1240,7 @@ export function registerCommsInbox({ app, pool }) {
       body: {
         key,
         name: target?.name || "",
-        stage: stagePill(target),
+        stage: stagePill(shownTarget),
         boardId: target?.itemId ? Number(target.boardId) : null,
         itemId: target?.itemId ? String(target.itemId) : null,
         numbers: await resolveNumbers(pool, numbers),

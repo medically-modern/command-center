@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { SKU_GROUPS, type SkuTrackerRow } from "./skuTrackerApi";
 import { mkOrder } from "./fixtures";
 import {
-  cashPayQuote, canQuoteCashPay, cashPayLineItems, cashPayTotalCents, round2,
+  cashPayQuote, canQuoteCashPay, cashPayLineItems, cashPayTotalCents, round2, unitOopPrice,
   CASH_PAY_MARKUP, MIN_ORDER_MARKUP, SHIPPING_HANDLING, SHIPPING_HANDLING_LABEL,
 } from "./cashPayPricing";
 
@@ -16,7 +16,7 @@ const row = (
 ): SkuTrackerRow => ({
   id: name + groupId, name, groupId, sku, description: "", uom: "BX",
   unitCost, qtyAvail: 100, status: "Available",
-  lastChanged: "2026-09-21 09:05 ET", oopPrice: null, notes: "", runHistory: "",
+  lastChanged: "2026-09-21 09:05 ET", notes: "", runHistory: "",
 });
 
 const TRACKER: SkuTrackerRow[] = [
@@ -217,6 +217,36 @@ describe("round2 — the half-up cases float gets wrong", () => {
     expect(round2(50)).toBe(50);
     expect(round2(0)).toBe(0);
     expect(round2(1030.69)).toBe(1030.69);
+  });
+});
+
+describe("unitOopPrice — the Inventory column computes exactly what the mockup shows", () => {
+  /* Josh, 2026-09-25: "how is he calculating oop in the mockup? add the same
+     logic to our test". Every (cost → OOP) pair below is read off his mockup
+     screenshots of the tracker — cost × 1.25 through JS rounding — so a drift
+     in either the markup or the rounding fails against numbers a human saw. */
+  it("matches every value in the screenshots, the float ties included", () => {
+    const seen: Array<[number, number]> = [
+      [37.65, 47.06], // Minimed 780G cartridges
+      [143.85, 179.81], // Mio Advance 9mm 23" — 179.8125, the tie float breaks DOWN
+      [30.95, 38.69], // Mobi cartridges
+      [129.3, 161.63], // QuickSet 18"
+      [3992.58, 4990.73], // t:slim pump
+      [63.77, 79.71], // TruSteel
+      [71.94, 89.93], // VariSoft / AutoSoft — 89.925, the tie a naive round loses
+      [70.2, 87.75], // Contact 6 mm 23"
+      [269.8, 337.25], // Dexcom G6 → G6 Receiver
+      [57.32, 71.65], // Dexcom G7 sensors
+      [234.28, 292.85], // G7 receiver
+      [85.98, 107.48], // Dexcom G7 15-Day — 107.475 rounds UP
+    ];
+    for (const [cost, oop] of seen) expect(unitOopPrice(cost), `cost ${cost}`).toBe(oop);
+  });
+
+  it("a real 0 prices to 0 (the Inactive rows) and a missing cost to null, never $0", () => {
+    expect(unitOopPrice(0)).toBe(0);
+    expect(unitOopPrice(null)).toBeNull();
+    expect(unitOopPrice(undefined)).toBeNull();
   });
 });
 

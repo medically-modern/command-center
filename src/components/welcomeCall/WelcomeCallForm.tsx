@@ -1629,19 +1629,23 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
             leave the other short. Stacked one-up below `sm`, where two
             half-width buttons would be too narrow for their subtitles.
             ⚠️ **NORMAL SIZE from 2026-09-17** (Brandon: *"make advance /
-            propose stuck normal size in welcome call UI"*), capped and centred
-            rather than edge-to-edge. This REVERSES Josh, 2026-09-14: *"make the
-            advance and propose stuck equal sizes that extend from side of
-            screen to side of screen — big buttons"*, which is why the
-            measurements are spelled out rather than trimmed quietly: `py-7`
-            → `py-3.5`, the label `text-2xl` → `text-base`, the subtitle
-            `text-base` → `text-xs`, and a `max-w-2xl` so they stop growing
-            with the screen. Everything that made them WORK is untouched — the
-            equal grid, the toggle on Advance, the resting-vs-pressed green, the
-            resting-vs-hover rose, and the fact that Propose Stuck opens the
-            page's dialog rather than toggling. Restore the big version by
-            reverting these four numbers; do not rebuild the layout. */}
-        <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+            propose stuck normal size in welcome call UI"*): `py-7` → `py-3.5`,
+            the label `text-2xl` → `text-base`, the subtitle `text-base` →
+            `text-xs`. The TYPE sizes are his and stay.
+            ⚠️ **THE SECTION FILLS ITS WIDTH from 2026-09-25** (Josh: *"can we
+            organize this so it fills the space and doesnt look so wonky"* —
+            the pair and the attempts card sat in a centred `max-w-2xl` island
+            inside a full-width section, a 672px block floating in ~1600px of
+            card). The three outcomes of a call — Advance, Propose Stuck, and
+            "I couldn't reach them" (the attempts card) — are ONE grid now:
+            three equal columns from `lg`, the card full-width under the pair
+            between `sm` and `lg`, everything stacked below `sm`. Grid stretch
+            is what keeps the two buttons the card's height, so nothing
+            re-measures when the card's copy wraps. Everything that made the
+            buttons WORK is untouched — the toggle on Advance, the
+            resting-vs-pressed green, the resting-vs-hover rose, and the fact
+            that Propose Stuck opens the page's dialog rather than toggling. */}
+        <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Button
             type="button"
             variant="outline"
@@ -1702,30 +1706,31 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
               </div>
             </Button>
           )}
-        </div>
 
-        {/* ⚠️ THE ATTEMPT LOGGER LIVES HERE, not in the navy header (Josh,
-            2026-09-22: *"log attempts should be at bottom - press when
-            attempted, and then move next action date"*). The header is where a
-            rep lands; the foot of End of Call is where they ARE when a call
-            ends, and the two outcomes a call has — it happened (Advance /
-            Propose Stuck above) or it did not (this) — now sit together.
-            ⚠️ Keyed on the patient, like every other stateful control on this
-            page: the form stays mounted across a sidebar click, and a saving
-            spinner that outlived the patient would report the PREVIOUS one's
-            write against the open one (§9's notes-box rule).
-            ⚠️ Rendered whatever `onLoggedAttempt` is — the counter writes to
-            Monday itself, so a preview environment that cannot refetch still
-            gets a working button, and the optimistic patch is what shows the
-            new count. */}
-        <div className="mx-auto w-full max-w-2xl">
-          <CallAttemptsCounter
-            key={patient.id}
-            itemId={patient.id}
-            callAttempts={patient.callAttempts}
-            onUpdate={onCallAttemptsChange}
-            onFollowUp={onLoggedAttempt}
-          />
+          {/* ⚠️ THE ATTEMPT LOGGER LIVES HERE, not in the navy header (Josh,
+              2026-09-22: *"log attempts should be at bottom - press when
+              attempted, and then move next action date"*). The header is where
+              a rep lands; the foot of End of Call is where they ARE when a
+              call ends, and the two outcomes a call has — it happened
+              (Advance / Propose Stuck beside it) or it did not (this) — sit
+              in one row.
+              ⚠️ Keyed on the patient, like every other stateful control on
+              this page: the form stays mounted across a sidebar click, and a
+              saving spinner that outlived the patient would report the
+              PREVIOUS one's write against the open one (§9's notes-box rule).
+              ⚠️ Rendered whatever `onLoggedAttempt` is — the counter writes to
+              Monday itself, so a preview environment that cannot refetch still
+              gets a working button, and the optimistic patch is what shows the
+              new count. */}
+          <div className="sm:col-span-2 lg:col-span-1 h-full">
+            <CallAttemptsCounter
+              key={patient.id}
+              itemId={patient.id}
+              callAttempts={patient.callAttempts}
+              onUpdate={onCallAttemptsChange}
+              onFollowUp={onLoggedAttempt}
+            />
+          </div>
         </div>
       </FormSection>
     </div>

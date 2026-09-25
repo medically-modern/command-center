@@ -53,6 +53,18 @@ export function boardRank(boardId) {
   return r === undefined ? -1 : r;
 }
 
+/** Subscription's "Not Active Patients" group (§5.18 lists the id — Monday
+ *  reuses it as "Bad Debt" on Secondary Claims, so the BOARD is always checked
+ *  with it). The Communications inbox renders it as the Inactive pill. */
+export const SUBSCRIPTION_INACTIVE_GROUP = "group_mkp19fyp";
+
+/** An item in Subscription's Not Active Patients group — a record of something
+ *  we STOPPED serving. A row whose read did not carry a group reads active,
+ *  which keeps every pre-2026-09-23 directory row behaving as it always did. */
+export function isInactiveRow(row) {
+  return Number(row?.boardId) === 18407459988 && row?.groupId === SUBSCRIPTION_INACTIVE_GROUP;
+}
+
 /** Rows per page of the board scan. Monday's `items_page` ceiling is 500. */
 export const PAGE_SIZE = 500;
 
@@ -152,17 +164,38 @@ export function toDirectoryRow(item, board, hash) {
  * 3046977788 on the live board), and scan order is Monday's, which is not
  * stable across runs — without a deterministic tie-break the displayed name
  * would flip between two real people from one day to the next.
+ *
+ * ⚠️⚠️ ACTIVE ALWAYS TRUMPS INACTIVE, before rank and the tie-break (Josh,
+ * 2026-09-25, on Milka Costanzo): a patient with an INACTIVE Subscription
+ * record (Not Active Patients — something we stopped serving her) AND a record
+ * we serve her under NOW resolved to the inactive one, because Subscription is
+ * the highest-ranked board — so the Communications inbox wore an Inactive pill
+ * over a profile pane correctly showing the active record. An inactive row
+ * wins only when it is the ONLY record the number has.
  */
 export function collapseRows(rows) {
   const best = new Map();
   for (const r of rows) {
     if (!r) continue;
     const prev = best.get(r.phoneHmac);
-    if (!prev || r.rank > prev.rank || (r.rank === prev.rank && r.mondayItemId > prev.mondayItemId)) {
-      best.set(r.phoneHmac, r);
-    }
+    if (!prev || rowBeats(r, prev)) best.set(r.phoneHmac, r);
   }
   return [...best.values()];
+}
+
+function rowBeats(r, prev) {
+  const ri = isInactiveRow(r);
+  const pi = isInactiveRow(prev);
+  if (ri !== pi) {
+    // The ACTIVE row wins whatever the boards — unless it is a BELOW-pipeline
+    // board (Secondary Claims, rank -1): a claims row is a billing artifact,
+    // not evidence we serve the patient, so it must not hide that their
+    // Subscription record is inactive. There the ordinary ranks decide.
+    const active = ri ? prev : r;
+    if (active.rank >= 0) return !ri;
+  }
+  if (r.rank !== prev.rank) return r.rank > prev.rank;
+  return r.mondayItemId > prev.mondayItemId;
 }
 
 /**

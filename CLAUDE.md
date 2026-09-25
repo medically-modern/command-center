@@ -746,6 +746,16 @@ The three are **mutually exclusive and exhaustive** — every active intake pati
 one queue, so role counts still sum to the group total (§5.8) and no patient is worked twice.
 A blank Already In System counts as NOT in system (the column isn't always set).
 
+> ⚠️ **A deep link into the intake pages is routed by the item's GROUP — `lib/profile/intakeLink.ts`
+> (Jason Ortiz-Troxell, 2026-09-25).** `UnverifiedReferralsPage` defaults `?source=` to COMPLETED and
+> injects a deep-linked `?patientId=` whatever group it sits in, so a Partial Leads patient linked
+> without the param opened under the Completed selector — the card said Partial, the page said a
+> successful full form fill-out. Every builder that knows the group goes through the helper (the
+> Care Coordinator cards, the day strip's `hrefFor`/`LinkedPatient.groupId`, `ScheduledCallHost`,
+> Search's `searchOpenUrl`), and `ScheduledCall` carries `groupId` for it; `dtcFormFlag.dtcLeadRoute`
+> already did its own group routing and is unchanged. A caller that genuinely does not know the
+> group passes nothing and gets the completed default — never a guess.
+
 > **The DTC form queue is itself split in two from 2026-08-19 — see §5.20.** The two form groups
 > are *Info Collection* (`unverifiedReferrals`, left pane only) and the Profile Clean-Up group is
 > *`intakeCleanup`*. Everything in this sub-section applies to BOTH: same board, same columns, same
@@ -1055,11 +1065,21 @@ find the RingCentral app and race the shared line: the forward **is** the routin
 created and `/calls/claim` 502s. **`GET /calls/health` reports which half is missing.**
 
 **The model (Josh, 2026-08-05): the Command Center is ONE instance and IT DOES NOT MATTER WHO PICKS
-UP.** There is deliberately **no routing, no ownership, no per-patient assignment**. Each employee
-only chooses what reaches *their* screen — `all` (the default) / `list` / `off`. **Narrowing your
-list quiets your screen; it can never make a call unanswerable by someone else.** Don't rebuild this
-as an assignment model — the previous "assigned patients" model was removed in Aug 2026 for the same
-reason.
+UP.** There is deliberately **no routing, no ownership, no per-patient assignment**. Don't rebuild
+this as an assignment model — the previous "assigned patients" model was removed in Aug 2026 for
+the same reason.
+> ✅ **THE RING MODES AND THE PINNED NUMBERS ARE GONE (Josh, 2026-09-25:** *"remove the ability to
+> select which call rings them and the pinned numbers, play a ring tone in browser stays"*). Each
+> employee used to choose what reached their screen — `all` / `list` / `off`, with
+> `WatchCallbackButton` (the bell) and `call_ring_allow` behind `list`. Every connected answerer
+> now sees every inbound call: `shouldNotify` and `RING_MODES` are deleted from `callRules.mjs`,
+> `audienceFor` returns every subscriber, the `/calls/allow*` routes are gone, and the bell left
+> every thread header. What survives: the **"Take it" forward number** (the slimmed
+> `RingPreferencesDialog`, still `normalizePrefs`' one field), the **per-browser ringtone mute**
+> (§5.13b), and the desktop-alert opt-in. `call_ring_allow` and the old `mode` column stay in
+> Postgres unread — never dropped, the assignments.json precedent. The paragraphs below about
+> `list` membership and the privacy boundary are HISTORY explaining why no inference-based filter
+> may come back; the marker in `callRules.test.mjs` pins the prefs shape.
 
 **Matching is SERVER-side, per SSE connection.** Broadcasting every caller's number to every open tab
 and filtering in the browser would hand each rep the numbers of patients their own rules excluded —
@@ -1389,8 +1409,8 @@ START_DEADLINE_MS`, or a follower offers to steal a line whose leader is merely 
 
 **Known limits, deliberately:** five people, one machine each, and the RingCentral app signed in as
 Katie Tyler counts against the same five while anyone still uses it. Followers hear the audio in the
-leader tab. A takeover mid-registration is a few seconds of "connecting". `?manager=1` and the
-ring-mode prefs (`all` / `list` / `off`) still apply on top, for the assigned five only.
+leader tab. A takeover mid-registration is a few seconds of "connecting". `?manager=1` still applies on top, for the assigned five only — the ring-mode prefs went on
+2026-09-25 (§5.13: every connected answerer rings for every call).
 
 #### Route A — everyone, the growing team (NOT built; the recommended path)
 Route B cannot pass five, and a team past five answerers needs what the RingCentral app has
@@ -3275,7 +3295,11 @@ reassigns that number, a stranger's call gets a patient's name). `prunePlan`/`is
 only against **positive evidence**: we saw that exact item and it now holds a different number.
 Absence still deletes nothing, and the prune is **skipped entirely on a truncated run**, since
 "we saw this item and it moved" is exactly the claim a partial scan cannot make. ⚠️ `collapseRows` keeps **one row per number**, won by the furthest-along board (a later stage
-holds the name a rep corrected), with a **deterministic** id tie-break: two live items for one
+holds the name a rep corrected) — and, from 2026-09-25, **an ACTIVE record beats an
+inactive-group Subscription row whatever the ranks** (Josh, on Milka Costanzo: a patient with an
+inactive Subscription record AND a record we serve her under resolved to the inactive one, so the
+Communications inbox wore an Inactive pill over a correct profile pane; a Secondary Claims row is
+deliberately not "active" for this rule) — with a **deterministic** id tie-break: two live items for one
 number is a household (two patients share `5555550104` live), and Monday's scan order is not
 stable, so without it the displayed name would flip between two real people day to day.
 
@@ -3687,7 +3711,10 @@ queue there is 4–8 MB against a ~5 MB quota and fails silently. ⚠️ Cached 
 that COMPLETED, and a seeded mount draws no load bar.
 
 **Welcome Call** — Advance / Propose Stuck are normal-sized (`py-3.5`, `text-base` label,
-`text-xs` subtitle, `max-w-2xl` centred). ⚠️ **This reverses Josh, 2026-09-14** (*"equal
+`text-xs` subtitle; the `max-w-2xl` centring went 2026-09-25 — Josh: *"organize this so it fills
+the space"* — End of Call is one full-width grid now, three columns from `lg` with the attempt
+logger as the third: the three outcomes of a call, filling the section instead of floating as a
+672px island). ⚠️ **This reverses Josh, 2026-09-14** (*"equal
 sizes that extend from side of screen to side of screen — big buttons"*), confirmed by him
 on 2026-09-17. The layout is untouched — the equal grid, the toggle on Advance, the
 resting-vs-pressed green and the resting-vs-hover rose all stay; restore the big version by
@@ -6705,9 +6732,11 @@ fixed-width sortable table — where this was five family cards each with their 
 Same board read, same joins, same verdicts; the family became a chip and a sub-line.
 **No board change; app only.** File: `components/orders/SkuTrackerView.tsx`.
 
-⚠️ **Everything the old view could tell a rep, it still tells them.** His table has five columns and
-ours keeps a sixth, **Open orders**, because that is real function this build has and his sample
-data could not carry (his rows do have an `open` field — he just never renders it). The last-run
+⚠️ **Everything the old view could tell a rep, it still tells them.** His table has five columns;
+ours kept a sixth, **Open orders**, until 2026-09-25 (Josh: *"remove open orders from the inventory
+screen (comment it out)"*) — it is behind `SHOW_OPEN_ORDERS = false` in `SkuTrackerView.tsx`, the
+`SHOW_CHASE_COLUMN` convention, one flip from returning; the overview's stock alerts still count
+open orders. The last-run
 line, the staleness warning, the read error and the poll history stay for the same reason: a mockup
 with hardcoded rows needs none of them, and all four are how a rep knows whether to trust a number.
 
@@ -7999,7 +8028,9 @@ change to the screen that asked for it, or say out loud that it is going to both
 > date), not pills; escalations left it with the sections.
 The `scheduledCalls` role **became the Care Coordinator dashboard** (Josh, 2026-09-08, from Corey's
 Phase 3 mockup): label "Care Coordinator", route **`/care-coordinator`** (the old `/scheduled-calls`
-redirects, query preserved), page `pages/CareCoordinatorPage.tsx`. ⚠️ **The id stays `scheduledCalls`**
+redirects, query preserved), page `pages/CareCoordinatorPage.tsx`. ⚠️ Rendered as somebody's HOME
+VIEW (`HomeViewHost`, §5.39c) it takes `homeView` and drops the header's back arrow — a home screen
+has nowhere to go back to, and Stages/Oversight draw none (Josh, 2026-09-25); the role page keeps it. ⚠️ **The id stays `scheduledCalls`**
 — access.json assignments, `ScheduledCallHost`'s role gate, `useRoleCounts` and both baseline
 generators key off it (the `profile` / `assignedPatients` precedent, §5.10). The old day grid is the
 bottom half of the page, moved whole into `components/careCoordinator/ScheduleGrid.tsx`.
@@ -10556,6 +10587,21 @@ registered from `messaging.mjs`.
   filters `call_type IS DISTINCT FROM 'Fax'` (a row stored before the column existed is still a
   call), and `isFaxCall` refuses one in `opensItem` as well. ⚠️ Our own lines are dropped from every
   event list by `dropOwn` — calls as well as texts (2026-09-23 review).
+- ⚠️⚠️ **THE STAGE PILL IS KEPT LIVE, AND ACTIVE ALWAYS TRUMPS INACTIVE** (Josh, 2026-09-25, on
+  Milka Costanzo — an Inactive pill over a profile pane correctly showing her active record).
+  Three rules, built together: (1) `patientDirectoryRules.collapseRows` prefers a patient's ACTIVE
+  record over an inactive-group Subscription row whatever the board ranks — an inactive row wins
+  only when it is the patient's ONLY record (a Secondary Claims row is a billing artifact and
+  never counts as active service); (2) the snapshot's **stage refresh** re-reads the Monday GROUP
+  of the items behind inbox rows (`stageRefreshPlan`/`applyStageFresh` + the directory's
+  `lookupItemGroupsLive` — one `items(ids:)` query, ≤100 ids, open rows first, ~2-min per-item TTL,
+  30s global floor, failure keeps the stale pill), so Inactive corrects in minutes instead of on
+  the nightly directory reconcile; (3) when a refreshed item reads inactive, its numbers are
+  re-resolved live (`reResolveInactive`, via `numberMemory` — silent after a redeploy until the
+  number is seen again) and `resolveTarget`'s `bestRow` lets that cache answer beat the
+  directory's inactive row. ⚠️ `SUBSCRIPTION_INACTIVE_GROUP` moved to `patientDirectoryRules.mjs`
+  (re-exported by `commsInboxRules`), so the pill and the collapse cannot disagree about what
+  inactive means.
 - ⚠️ **The wait clock has ONE copy, `countedWaitMs`, on the gateway.** Saturday and Sunday in Eastern
   (via `Intl`, so both daylight-saving weekends are right) don't count; holidays do (Josh's D7). The
   wait on screen, the red flag, *Over 24h* and every SLA number come from it — the browser only shows
@@ -10631,7 +10677,10 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
   just resolved stays in place, dimmed, until the rep opens another item.
 - **The Stage filter** (Josh, 2026-09-23: *"a small filter button to the right of voicemails hugging
   that right side of the box"*) — a chip-sized button at the right end of the type chips; the menu
-  is Every stage + the eight pills. ⚠️ **The GATEWAY filters** (`filterInbox`'s `stage`, applied with
+  is Every stage + the pills **minus Claims** (Josh, 2026-09-25: *"remove claims from that menu"* —
+  Secondary Claims is only ever a patient's pill when they have no later record, and the entry
+  confused more than it filtered; the ROW pill keeps the value and `filterInbox` still accepts it,
+  so `stageFilter.test.ts` now holds the menu to STAGE_PILLS minus Claims). ⚠️ **The GATEWAY filters** (`filterInbox`'s `stage`, applied with
   the type chip), so the tab counts say how many are waiting in that stage and the 500-row cap
   falls on the filtered set; a browser-side filter would do neither. ⚠️ An unknown stage is IGNORED,
   never "matches nothing" — a list gone blank on a value one build doesn't know reads as "nobody is

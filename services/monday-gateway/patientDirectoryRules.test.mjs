@@ -131,6 +131,47 @@ describe("collapseRows", () => {
     expect(collapseRows([null, row(), undefined])).toHaveLength(1);
   });
 
+  it("⚠️⚠️ ACTIVE ALWAYS TRUMPS INACTIVE, whatever the boards (Josh, 2026-09-25 — Milka)", () => {
+    // An inactive Subscription record (Not Active Patients) beat the record we
+    // actually serve the patient under, because Subscription outranks every
+    // board — the inbox wore an Inactive pill over a correct profile pane.
+    const inactive = row({ name: "Milka C (old)", boardId: 18407459988, rank: 5, groupId: "group_mkp19fyp", mondayItemId: "90" });
+    // …an ACTIVE Subscription record wins:
+    const activeSub = row({ name: "Milka C", boardId: 18407459988, rank: 5, groupId: "topics", mondayItemId: "10" });
+    expect(collapseRows([inactive, activeSub])[0].mondayItemId).toBe("10");
+    expect(collapseRows([activeSub, inactive])[0].mondayItemId).toBe("10");
+    // …and so does a LOWER-ranked live pipeline record (back in onboarding for
+    // the thing she wants NOW):
+    const welcome = row({ name: "Milka C", boardId: 18410804557, rank: 4, groupId: "topics", mondayItemId: "5" });
+    expect(collapseRows([inactive, welcome])[0].mondayItemId).toBe("5");
+    expect(collapseRows([welcome, inactive])[0].mondayItemId).toBe("5");
+  });
+
+  it("an inactive row still wins when it is the ONLY record", () => {
+    const inactive = row({ boardId: 18407459988, rank: 5, groupId: "group_mkp19fyp" });
+    expect(collapseRows([inactive])).toHaveLength(1);
+  });
+
+  it("two inactive rows keep the ordinary rank + id tie-break", () => {
+    const a = row({ boardId: 18407459988, rank: 5, groupId: "group_mkp19fyp", mondayItemId: "10", name: "old" });
+    const b = row({ boardId: 18407459988, rank: 5, groupId: "group_mkp19fyp", mondayItemId: "20", name: "newer" });
+    expect(collapseRows([a, b])[0].name).toBe("newer");
+  });
+
+  it("the inactive GROUP id on another board is not inactive — Monday reuses group ids (§5.18)", () => {
+    // group_mkp19fyp is "Bad Debt" on Secondary Claims; only the Subscription
+    // board's copy means Not Active Patients.
+    const claims = row({ boardId: 18413019028, rank: -1, groupId: "group_mkp19fyp", mondayItemId: "7" });
+    expect(collapseRows([claims])[0].mondayItemId).toBe("7");
+  });
+
+  it("⚠️ a Secondary Claims row is a billing artifact, not active service — it never hides Inactive", () => {
+    const claims = row({ boardId: 18413019028, rank: -1, groupId: "topics", mondayItemId: "7" });
+    const sub = row({ boardId: 18407459988, rank: 5, groupId: "group_mkp19fyp", mondayItemId: "9" });
+    expect(collapseRows([claims, sub])[0].mondayItemId).toBe("9");
+    expect(collapseRows([sub, claims])[0].mondayItemId).toBe("9");
+  });
+
   it("ranks a non-pipeline board below every stage", () => {
     // Secondary Claims is a parallel reconciliation board, not a stage.
     expect(boardRank(18413019028)).toBeLessThan(boardRank(18392794310));

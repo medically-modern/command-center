@@ -385,11 +385,17 @@ export function DailyBurndown({
         {/* ⚠️ His redesign draws NO ad-hoc tiles on the Stages view; ours keeps
             them because Subscription, Update Clinicals and Orders have no other
             door from the home screen (§5.39f's lossless rule — the tiles are
-            built from the role registry, and `lossless.test.ts` says so). */}
-        {taskRoles.length > 0 && (
+            built from the role registry, and `lossless.test.ts` says so).
+            ⚠️ COMMUNICATIONS is the one tile dropped HERE (Josh, 2026-09-25:
+            "remove communications from here but obviously leave it in top
+            bar, that's where it lands when we assign it") — in this layout
+            the header's Communications tab is its door, so the tile was the
+            same destination twice on one screen. The "as today" look keeps
+            its tile: no top bar there. */}
+        {taskRoles.some((r) => r.id !== "assignedPatients") && (
           <div className="adhoc">
             <div className="eyebrow">Ad-hoc tasks</div>
-            {taskRoles.map((role) => {
+            {taskRoles.filter((r) => r.id !== "assignedPatients").map((role) => {
               const count = roleCounts[role.id] ?? 0;
               return (
                 <button

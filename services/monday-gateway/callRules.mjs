@@ -6,18 +6,23 @@
  *
  *   1. pickInboundParty() — read RingCentral's telephony-session payload and
  *      return the one party that represents "somebody is calling us, right now".
- *   2. shouldNotify()     — decide whether a given employee wants to see it.
+ *   2. the small pure helpers around claiming, sweeping and the audit rows.
  *
- * ── The model (Josh, 2026-08-05) ────────────────────────────────────────────
+ * ── The model (Josh, 2026-08-05; simplified 2026-09-25) ─────────────────────
  * The Command Center is ONE instance. Every inbound call routes through the
  * shared line, every eligible employee can see it, and IT DOES NOT MATTER WHO
  * PICKS UP. So there is deliberately no routing, no ownership, and no
- * per-patient assignment here: a rule decides who gets *notified*, never who
- * the call belongs to. Anyone who sees a ringing call may take it.
+ * per-patient assignment here. Anyone who sees a ringing call may take it.
  *
- * That is why the rules below are a display filter and nothing more. Narrowing
- * your own list can never make a call unanswerable by someone else — it only
- * quiets YOUR screen.
+ * ⚠️ The ring MODES (`all`/`list`/`off`) and the per-rep pinned-number list
+ * are GONE (Josh, 2026-09-25: "remove the ability to select which call rings
+ * them and the pinned numbers — the ring tone in the browser stays"). Every
+ * connected answerer now sees every inbound call; the only per-person facts
+ * left are the number "Take it" forwards to, and the per-BROWSER ringtone
+ * mute (§5.13b), which never left. `shouldNotify` and `RING_MODES` were
+ * deleted with the rules; do not rebuild a notification filter here without
+ * re-reading §5.13's history — the earlier "anyone I've texted" inference was
+ * removed for cause.
  */
 
 /** Party statuses that mean "still ringing, not yet answered".
@@ -174,40 +179,13 @@ export function staleRings(calls, now, maxRingMs = MAX_RING_MS) {
   return out;
 }
 
-/** Ring modes. `list` is "only what I chose"; `off` silences everything. */
-export const RING_MODES = ["all", "list", "off"];
-
 /**
- * Normalised preferences, with the defaults a brand-new employee gets.
- *
- * Defaults to `all` ON PURPOSE. The shared line is everyone's line, and a
- * default of `list` would mean a new hire's screen stays silent until they
- * discover a settings dialog they have no reason to look for.
+ * Normalised preferences. The one per-person call setting left (2026-09-25)
+ * is where "Take it" forwards them — the ring modes and the allow list are
+ * gone (see the header note).
  */
 export function normalizePrefs(raw) {
-  const mode = RING_MODES.includes(raw?.mode) ? raw.mode : "all";
-  return { mode, forwardNumber: String(raw?.forwardNumber || "") };
-}
-
-/**
- * Does this employee want to be notified about this call?
- *
- * `facts.pinned` — the number is on this person's explicit allow list.
- *
- * ⚠️ Membership in `list` mode is EXPLICIT ONLY (Josh, 2026-08-05). An earlier
- * cut also rang for "anyone I've texted", inferred from sent_messages. It is
- * tempting because the data is already there and it costs no configuration —
- * and it is wrong: a rep who texts fifty patients a week would have quietly
- * rebuilt `all` under a name that promises the opposite, and the one person
- * most likely to choose `list` is exactly the person who texts the most.
- * Texting a patient must never enrol them in your ring list. The only way onto
- * the list is to put a number on it.
- */
-export function shouldNotify(prefs, facts = {}) {
-  const p = normalizePrefs(prefs);
-  if (p.mode === "off") return false;
-  if (p.mode === "all") return true;
-  return !!facts.pinned;
+  return { forwardNumber: String(raw?.forwardNumber || "") };
 }
 
 /** Digits only, so a comparison survives the shape a number arrives in —

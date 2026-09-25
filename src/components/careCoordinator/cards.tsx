@@ -31,6 +31,7 @@ import { carrierFromPhoto } from "@/lib/careCoordinator/carrierAssign";
 import type { InsuranceCardTarget } from "./InsuranceCardDialog";
 import type { PillActions } from "./PatientCard";
 import { INTAKE_FORM_GROUPS } from "@/lib/careCoordinator/mondayApi";
+import { intakeProfileHref } from "@/lib/profile/intakeLink";
 import {
   formCompletion, formatDaysSince, shortMonthDay,
   type IntakeLead, type ReviewEntry, type ScheduledEntry, type UnscheduledEntry,
@@ -198,7 +199,10 @@ function intakePills(lead: IntakeLead, withCompletion: boolean): PillSlots {
   };
 }
 
-const intakeHref = (lead: IntakeLead) => `/unverified-referrals?patientId=${encodeURIComponent(lead.id)}&${FROM}`;
+// Routed by the lead's GROUP (intakeLink.ts — Jason Ortiz-Troxell, 2026-09-25):
+// a Partial Leads card must open the page saying Partial, and a Clean-Up card
+// its own page, or the card and the profile disagree about the same patient.
+const intakeHref = (lead: IntakeLead) => intakeProfileHref(lead.id, lead.groupId, FROM);
 
 export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
   entry: ScheduledEntry<IntakeLead>; nextUp: boolean; onBookingLink: (lead: IntakeLead) => void; extras: CardExtras;

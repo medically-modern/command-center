@@ -94,6 +94,20 @@ export function round2(n: number): number {
   return Math.round(Number((n * 100).toPrecision(12))) / 100;
 }
 
+/**
+ * One UNIT's cash-pay price — the tracker cost with the 25% markup, per item.
+ * The Inventory table's OOP column (Josh, 2026-09-25: the mockup derives it
+ * as `unit cost × 1.25`, and ours now does the same — through THIS module, so
+ * the column and a cash-pay quote can never disagree about the markup). The
+ * order-level rules stay `quoteCashPay`'s: the per-line rounding and the $10
+ * profit floor apply to an ORDER, not to a unit on a stock table.
+ * ⚠️ null in, null out — a missing cost is "not priced", never $0 (§5.48's
+ * refusal direction: an Inactive row's real 0 still prices to $0.00).
+ */
+export function unitOopPrice(cost: number | null | undefined): number | null {
+  return cost == null ? null : round2(cost * CASH_PAY_MARKUP);
+}
+
 /** What `orderLines` needs — re-exported so callers need only this module. */
 type QuoteInput = Parameters<typeof orderLines>[0];
 

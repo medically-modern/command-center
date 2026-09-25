@@ -7,9 +7,9 @@
  * subscription and streams matching calls here — see
  * services/monday-gateway/inboundCalls.mjs.
  *
- * ⚠️ Every call that arrives here has already passed THIS user's rules,
- * server-side. There is deliberately no client-side filtering to add: a browser
- * filter would mean the gateway had already sent numbers the rules excluded.
+ * ⚠️ Every connected answerer gets every inbound call (Josh, 2026-09-25 —
+ * the ring modes and the pinned-number list are gone; the browser ringtone
+ * and its mute stay). There is deliberately no client-side filtering to add.
  */
 import { getIdToken } from "../shared/auth";
 
@@ -35,22 +35,10 @@ export interface InboundCall {
   claimedBy: string | null;
 }
 
-export type RingMode = "all" | "list" | "off";
-
-export interface AllowEntry {
-  /** The HMAC. Removal keys on this, so the number never travels back. */
-  id: string;
-  last4: string;
-  label: string;
-}
-
 export interface RingPrefs {
-  mode: RingMode;
-  /** Where RingCentral rings this person when they take a call. */
+  /** Where RingCentral rings this person when they take a call — the one
+   *  per-person call setting left (2026-09-25). */
   forwardNumber: string;
-  /** In `list` mode, the ONLY thing that rings you. Membership is explicit —
-   *  texting a patient never adds them (see callRules.mjs `shouldNotify`). */
-  allow: AllowEntry[];
 }
 
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
@@ -108,27 +96,6 @@ export async function fetchRingPrefs(): Promise<RingPrefs> {
   return json<RingPrefs>(await call("/calls/prefs"), "Loading call settings");
 }
 
-export async function saveRingPrefs(
-  prefs: Pick<RingPrefs, "mode" | "forwardNumber">,
-): Promise<void> {
+export async function saveRingPrefs(prefs: RingPrefs): Promise<void> {
   await json(await call("/calls/prefs", { method: "PUT", body: JSON.stringify(prefs) }), "Saving call settings");
-}
-
-export async function addAllowedNumber(phone: string, label: string): Promise<AllowEntry> {
-  const res = await call("/calls/allow", { method: "POST", body: JSON.stringify({ phone, label }) });
-  return json<AllowEntry>(res, "Adding the number");
-}
-
-/** Is this number on my ring list? The browser can't hash it itself — the
- *  pepper is server-side — so membership has to be asked for.
- *  Returns the caller's `mode` too, so the UI can say when pinning won't ring. */
-export async function checkAllowedNumber(
-  phone: string,
-): Promise<{ pinned: boolean; id: string; mode: RingMode }> {
-  const res = await call("/calls/allow/status", { method: "POST", body: JSON.stringify({ phone }) });
-  return json<{ pinned: boolean; id: string; mode: RingMode }>(res, "Checking your ring list");
-}
-
-export async function removeAllowedNumber(id: string): Promise<void> {
-  await json(await call("/calls/allow/remove", { method: "POST", body: JSON.stringify({ id }) }), "Removing the number");
 }

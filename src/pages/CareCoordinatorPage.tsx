@@ -108,7 +108,15 @@ type LinkTarget =
   | { kind: BookingKind; locked: boolean; name?: string; phone?: string; email?: string }
   | null;
 
-export default function CareCoordinatorPage() {
+/**
+ * `homeView` — rendered as somebody's HOME SCREEN by `HomeViewHost` (§5.39c).
+ * A home screen has nowhere to go "back" to, so the header's back arrow is
+ * dropped there (Josh, 2026-09-25: *"care coordinator has a back button even
+ * when it's placed as a main screen — stages and oversight don't have this,
+ * neither should it; only if it's been assigned as a role should it"*). The
+ * ROLE page at /care-coordinator keeps it.
+ */
+export default function CareCoordinatorPage({ homeView = false }: { homeView?: boolean } = {}) {
   const navigate = useNavigate();
   const { goBack } = useBackNavigation();
   const { access } = useAccessContext();
@@ -387,9 +395,11 @@ export default function CareCoordinatorPage() {
 
       <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
         <div className="px-3 sm:px-6 py-4 flex flex-wrap items-center gap-3">
-          <button onClick={() => goBack()} aria-label="Back" className="p-1.5 rounded-md hover:bg-white/10 transition-colors">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
+          {!homeView && (
+            <button onClick={() => goBack()} aria-label="Back" className="p-1.5 rounded-md hover:bg-white/10 transition-colors">
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+          )}
           <div className="h-10 w-10 rounded-lg bg-gradient-primary flex items-center justify-center shadow-elevate">
             <HeartHandshake className="h-5 w-5 text-primary-foreground" />
           </div>

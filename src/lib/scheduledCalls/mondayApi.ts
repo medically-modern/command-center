@@ -83,10 +83,11 @@ function splitDateTime(text: string): { date: string; time: string } {
   return { date, time: time ? (time.length === 5 ? `${time}:00` : time) : "" };
 }
 
-function toScheduledCall(item: MondayItem): ScheduledCall {
+function toScheduledCall(item: MondayItem, groupId?: string): ScheduledCall {
   const { date, time } = splitDateTime(col(item, COL.scheduledCallTime));
   return {
     id: item.id,
+    groupId,
     name: item.name,
     phone: col(item, COL.phone),
     email: col(item, COL.email),
@@ -114,7 +115,10 @@ const PAGE = 200;
  */
 export async function fetchScheduledCalls(): Promise<ScheduledCall[]> {
   const groups = [GROUPS.completed, GROUPS.partial, GROUPS.profileCleanUp];
-  const all: MondayItem[] = [];
+  // The group rides each item: the fetch is per group anyway, and a deep link
+  // built off a row has to say which tab the patient is really under
+  // (intakeLink.ts — Jason Ortiz-Troxell, 2026-09-25).
+  const all: { item: MondayItem; groupId: string }[] = [];
 
   for (const groupId of groups) {
     // ⚠️ `compare_value` is a CompareValue!, not a list — passing a `[String!]`
@@ -137,7 +141,7 @@ export async function fetchScheduledCalls(): Promise<ScheduledCall[]> {
     );
 
     const page = data.boards?.[0]?.items_page;
-    all.push(...(page?.items ?? []));
+    all.push(...(page?.items ?? []).map((item) => ({ item, groupId })));
     let cursor = page?.cursor ?? null;
 
     while (cursor) {
@@ -150,10 +154,10 @@ export async function fetchScheduledCalls(): Promise<ScheduledCall[]> {
          }`,
         { cursor, cols: READ_COLUMN_IDS },
       );
-      all.push(...(next.next_items_page?.items ?? []));
+      all.push(...(next.next_items_page?.items ?? []).map((item) => ({ item, groupId })));
       cursor = next.next_items_page?.cursor ?? null;
     }
   }
 
-  return all.map(toScheduledCall);
+  return all.map(({ item, groupId }) => toScheduledCall(item, groupId));
 }

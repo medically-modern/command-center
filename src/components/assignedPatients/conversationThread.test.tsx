@@ -14,7 +14,6 @@ const { api } = vi.hoisted(() => ({
   },
 }));
 vi.mock("@/lib/assignedPatients/messagingApi", () => api);
-vi.mock("@/components/inboundCalls/WatchCallbackButton", () => ({ default: () => null }));
 vi.mock("@/lib/fax/ringcentralApi", () => ({ mmPhoneNumber: () => "+13475037148", fetchRcContentBlobUrl: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 

@@ -258,9 +258,14 @@ describe("⚠️ PHI: no table here can hold a phone number", () => {
     expect(rest).not.toMatch(/req\.body\??\.(number|anchorNumber|phone)\b/);
   });
   it("the live lookup's cache stores the last four, never the number it asked about", () => {
-    const body = fnBody("lookupUnknown");
+    const body = fnBody("upsertNumberCache");
     expect(body).toMatch(/e164\.slice\(-4\)/);
     expect(body).not.toMatch(/\[\s*h,\s*e164,/);
+    // …and it is the ONE writer: the unknown-number lookup and the inactive
+    // re-resolution both go through it rather than a second INSERT.
+    expect(fnBody("lookupUnknown")).toMatch(/upsertNumberCache\(/);
+    expect(fnBody("reResolveInactive")).toMatch(/upsertNumberCache\(/);
+    expect(code(SRC).match(/INSERT INTO comms_number_cache/g) ?? []).toHaveLength(1);
   });
 });
 

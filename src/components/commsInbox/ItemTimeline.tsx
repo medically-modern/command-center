@@ -24,7 +24,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { AlertTriangle, ArrowRight, Loader2, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Play, Voicemail } from "lucide-react";
 import MessageBubble from "@/components/assignedPatients/MessageBubble";
-import WatchCallbackButton from "@/components/inboundCalls/WatchCallbackButton";
 import Composer from "@/components/assignedPatients/Composer";
 import { MessageAttachments } from "@/components/shared/MessageAttachments";
 import { AudioPlayer } from "@/components/shared/AudioPlayer";
@@ -197,19 +196,14 @@ function TimelineShell({
             </span>
           )}
         </div>
-        {/* The watch-callback bell the thread header has always carried
-            (§5.13) — a log row opens this view now, so it must come along
-            (§5.39f's lossless rule). */}
-        {active?.e164 && (
-          <div className="ml-auto shrink-0">
-            <WatchCallbackButton phone={active.e164} label={item.name} />
-          </div>
-        )}
+        {/* The watch-callback bell is GONE (Josh, 2026-09-25 — the pinned
+            numbers went with the ring modes; every connected answerer rings
+            for every call, so there is nothing left for a pin to change). */}
         <button
           onClick={() => active?.e164 && onCall(active.e164)}
           disabled={!active?.e164 || calling}
           className={cn(
-            "inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[color:var(--mm-teal,theme(colors.teal.600))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50",
+            "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[color:var(--mm-teal,theme(colors.teal.600))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50",
             !active?.e164 && "ml-auto",
           )}
         >

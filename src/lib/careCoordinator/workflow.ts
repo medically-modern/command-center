@@ -1187,6 +1187,7 @@ export function toScheduledCall(lead: IntakeLead): ScheduledCall {
   const [date = "", time = ""] = raw ? raw.split(/\s+/) : ["", ""];
   return {
     id: lead.id,
+    groupId: lead.groupId,
     name: lead.name,
     phone: lead.phone,
     email: lead.email,

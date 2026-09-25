@@ -1,23 +1,21 @@
 /**
- * "Which calls ring me" — each employee's own settings.
+ * Call settings — each employee's own, and there is exactly ONE left.
  *
- * ⚠️ This is a NOTIFICATION filter, never routing (Josh, 2026-08-05). The
- * Command Center is one instance; every call lands on the shared line and it
- * does not matter who picks up. Narrowing your list quiets YOUR screen — it
- * cannot make a call unanswerable by anyone else, and the copy below says so
- * because the opposite assumption would make people afraid to use it.
- *
- * The allow list stores HMACs, not numbers (services/monday-gateway/
- * inboundCalls.mjs) — which is why an entry reads "•••‑0101" and why removal
- * keys on the id the row was rendered with rather than sending the number back.
+ * ⚠️ The ring MODES (`all`/`list`/`off`) and the pinned-number allow list are
+ * GONE (Josh, 2026-09-25: *"remove the ability to select which call rings
+ * them and the pinned numbers, play a ring tone in browser stays"*). Every
+ * connected answerer sees every inbound call — §5.13's own model ("it does
+ * not matter who picks up") with the notification filter removed. What this
+ * dialog still holds is the number **"Take it" forwards to**, which claiming
+ * a call cannot work without, plus a read-only line on where this browser
+ * stands with the line. The ringtone and its per-browser mute live on the
+ * home badge and the settings menu (§5.13b), untouched.
  *
  * Who answers calls in the BROWSER (§5.13b) is not a setting here at all: a
- * manager assigns it on the Access page, capped at RingCentral's five devices,
- * and only those people are shown an incoming call. This dialog reports where
- * this browser stands and leaves the assignment where it belongs.
+ * manager assigns it on the Access page, capped at RingCentral's five devices.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, Headphones, Loader2, Plus, Trash2 } from "lucide-react";
+import { Bell, Headphones, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -26,14 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  addAllowedNumber,
-  fetchRingPrefs,
-  removeAllowedNumber,
-  saveRingPrefs,
-  type RingMode,
-  type RingPrefs,
-} from "@/lib/inboundCalls/callsApi";
+import { fetchRingPrefs, saveRingPrefs, type RingPrefs } from "@/lib/inboundCalls/callsApi";
 import { useSoftphone } from "@/hooks/softphone/useSoftphone";
 import type { RegistrationStatus } from "@/lib/softphone/types";
 import { cn } from "@/lib/utils";
@@ -53,12 +44,6 @@ function browserRingStatus(enabled: boolean, registration: RegistrationStatus, e
   }
 }
 
-const MODES: Array<{ id: RingMode; label: string; hint: string }> = [
-  { id: "all", label: "Every call", hint: "Anything that comes in on the main line." },
-  { id: "list", label: "Only my list", hint: "Just the numbers you've put on it, below." },
-  { id: "off", label: "Nothing", hint: "Stay quiet. You can still call out." },
-];
-
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -69,8 +54,6 @@ export default function RingPreferencesDialog({ open, onOpenChange }: Props) {
   const [prefs, setPrefs] = useState<RingPrefs | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [newNumber, setNewNumber] = useState("");
-  const [newLabel, setNewLabel] = useState("");
   /** Latest-wins bookkeeping for persist(); see the note there. */
   const saveSeq = useRef(0);
   const inFlight = useRef<Promise<void>>(Promise.resolve());
@@ -86,15 +69,9 @@ export default function RingPreferencesDialog({ open, onOpenChange }: Props) {
 
   /**
    * Persist immediately — a settings panel with a Save button people forget to
-   * press is a settings panel that silently doesn't work.
-   *
-   * ⚠️ Writes are SERIALISED and superseded ones are dropped. Each call sends a
-   * full snapshot, and the ordinary interaction fires two in a few
-   * milliseconds: typing a number and then clicking a mode blurs the input
-   * (save A) and clicks (save B). Left concurrent, A can land last and revert
-   * the server — and the SSE prefs push with it — to a state the user has
-   * already moved on from, while the dialog still shows their newer choice and
-   * says "Saved". Only the newest intent is worth writing.
+   * press is a settings panel that silently doesn't work. Writes are
+   * SERIALISED and superseded ones are dropped, so only the newest intent is
+   * written (the rule this dialog has always had).
    */
   const persist = useCallback((next: RingPrefs) => {
     setPrefs(next);
@@ -103,12 +80,9 @@ export default function RingPreferencesDialog({ open, onOpenChange }: Props) {
     inFlight.current = inFlight.current
       .catch(() => {})
       .then(async () => {
-        // A newer persist is already queued behind this one and carries the
-        // state this write would have clobbered. The last link in the chain
-        // always matches, so something always gets written.
         if (seq !== saveSeq.current) return;
         try {
-          await saveRingPrefs({ mode: next.mode, forwardNumber: next.forwardNumber });
+          await saveRingPrefs({ forwardNumber: next.forwardNumber });
         } catch (e) {
           toast.error((e as Error).message);
         }
@@ -117,30 +91,6 @@ export default function RingPreferencesDialog({ open, onOpenChange }: Props) {
         if (seq === saveSeq.current) setSaving(false);
       });
   }, []);
-
-  const addNumber = async () => {
-    if (!prefs || !newNumber.trim()) return;
-    try {
-      const entry = await addAllowedNumber(newNumber, newLabel);
-      setPrefs({ ...prefs, allow: [entry, ...prefs.allow.filter((a) => a.id !== entry.id)] });
-      setNewNumber("");
-      setNewLabel("");
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  };
-
-  const removeNumber = async (id: string) => {
-    if (!prefs) return;
-    const before = prefs.allow;
-    setPrefs({ ...prefs, allow: before.filter((a) => a.id !== id) });
-    try {
-      await removeAllowedNumber(id);
-    } catch (e) {
-      setPrefs({ ...prefs, allow: before });
-      toast.error((e as Error).message);
-    }
-  };
 
   const askNotifications = async () => {
     if (typeof Notification === "undefined") return;
@@ -153,10 +103,10 @@ export default function RingPreferencesDialog({ open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Which calls ring me</DialogTitle>
+          <DialogTitle>Call settings</DialogTitle>
           <DialogDescription>
-            Everyone shares the main line and anyone can pick up. This only changes what reaches
-            your screen — it never stops a colleague from taking a call.
+            Everyone shares the main line, every call reaches everyone connected, and anyone can
+            pick up.
           </DialogDescription>
         </DialogHeader>
 
@@ -193,8 +143,7 @@ export default function RingPreferencesDialog({ open, onOpenChange }: Props) {
               )}
             </div>
 
-            {/* Without this the Take-it button has nowhere to send the call, so
-                it leads rather than hiding at the bottom. */}
+            {/* Without this the Take-it button has nowhere to send the call. */}
             <div className="space-y-1.5">
               <label htmlFor="ring-at" className="text-sm font-medium">
                 Ring me at
@@ -212,85 +161,6 @@ export default function RingPreferencesDialog({ open, onOpenChange }: Props) {
                 up from a browser that isn't answering calls itself.
               </p>
             </div>
-
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Notify me about</p>
-              {MODES.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => void persist({ ...prefs, mode: m.id })}
-                  className={cn(
-                    "w-full text-left rounded-lg border px-3 py-2.5 transition-colors",
-                    prefs.mode === m.id
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-border hover:bg-muted/50",
-                  )}
-                >
-                  <p className="text-sm font-medium">{m.label}</p>
-                  <p className="text-[11px] text-muted-foreground">{m.hint}</p>
-                </button>
-              ))}
-            </div>
-
-            {prefs.mode === "list" && (
-              <div className="space-y-3 rounded-lg border border-border p-3">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Numbers that ring me</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Only these. Texting or calling a patient never adds them here — use the bell on
-                    a conversation when you're expecting a call back.
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      value={newNumber}
-                      onChange={(e) => setNewNumber(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && void addNumber()}
-                      placeholder="Phone number"
-                      className="flex-1 min-w-0 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
-                    />
-                    <input
-                      value={newLabel}
-                      onChange={(e) => setNewLabel(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && void addNumber()}
-                      placeholder="Note (optional)"
-                      className="w-32 shrink-0 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
-                    />
-                    <button
-                      onClick={() => void addNumber()}
-                      disabled={!newNumber.trim()}
-                      title="Add"
-                      className="h-8 w-8 shrink-0 rounded-md bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  {prefs.allow.map((a) => (
-                    <div
-                      key={a.id}
-                      className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-1.5"
-                    >
-                      <span className="text-sm tabular-nums">•••&nbsp;{a.last4 || "????"}</span>
-                      {a.label && (
-                        <span className="text-[11px] text-muted-foreground truncate">{a.label}</span>
-                      )}
-                      <button
-                        onClick={() => void removeNumber(a.id)}
-                        title="Remove"
-                        className="ml-auto p-1 rounded hover:bg-muted text-muted-foreground shrink-0"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                  {!prefs.allow.length && (
-                    <p className="text-[11px] text-muted-foreground">
-                      No pinned numbers yet. Add one when you're waiting on a callback.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
 
             <button
               onClick={() => void askNotifications()}
