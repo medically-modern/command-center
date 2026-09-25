@@ -214,18 +214,23 @@ beforeEach(() => {
   readFresh.mockClear();
 });
 
-describe("⚠️⚠️ ONE Send, and it is at the BOTTOM", () => {
-  it("there is exactly one, and it is the last thing on the tab — after every card and the notes", () => {
+describe("⚠️⚠️ ONE Send, and it is at the TOP (Josh, 2026-09-25)", () => {
+  it("there is exactly one, and it sits ABOVE every card — sticky, so it stays on screen", () => {
     renderProfile();
     expect(sendButtons()).toHaveLength(1);
     const main = screen.getByTestId("main");
     const bar = main.querySelector(".sub-send");
     expect(bar, "no Send bar").not.toBeNull();
-    // ⚠️ A DIRECT child of the column, and its last: that is what lets it pin to
-    // the bottom of the scroll area from the first frame (a box of its own
-    // could not rise above that box's top edge).
+    // ⚠️ A DIRECT child of the column: that is what lets sticky ride the whole
+    // scroll area (a box of its own could not pass that box's edge). It
+    // PRECEDES the cards — Brandon's top Save, blue button.
     expect(bar?.parentElement).toBe(main);
-    expect(main.lastElementChild).toBe(bar);
+    const fields = main.querySelector(".sub-fields");
+    expect(fields, "no cards to be above").not.toBeNull();
+    expect(
+      bar!.compareDocumentPosition(fields!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      "the Send bar must come before the cards",
+    ).toBeTruthy();
     expect(bar?.contains(sendButtons()[0])).toBe(true);
   });
 
@@ -382,9 +387,13 @@ describe("in the Communications hub's pane", () => {
   it("⚠️ draws no second notes card — the pane already carries the live record's notes", () => {
     renderProfile({ embedded: true });
     expect(screen.queryByText("Subscription notes")).toBeNull();
-    // The Send is still the last thing on the tab.
+    // The Send still tops the tab here too.
     const main = screen.getByTestId("main");
-    expect(main.lastElementChild).toBe(main.querySelector(".sub-send"));
+    const bar = main.querySelector(".sub-send");
+    const fields = main.querySelector(".sub-fields");
+    expect(bar).not.toBeNull();
+    expect(fields).not.toBeNull();
+    expect(bar!.compareDocumentPosition(fields!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

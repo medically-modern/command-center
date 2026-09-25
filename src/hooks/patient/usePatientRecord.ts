@@ -80,7 +80,19 @@ export function usePatientRecord(pick: DossierPick | null): PatientRecordState {
     setLoading(true);
 
     let cancelled = false;
-    fetchDossierItemsForPick(pick)
+    fetchDossierItemsForPick(pick, {
+      /* ⚠️ The picked record paints the moment its by-id read lands — the
+         phone and name passes that chase the REST of the trail are two more
+         sequential round trips, and the rep clicked a specific record they
+         can be reading meanwhile (2026-09-25). Same data, same final answer:
+         the full trail replaces this a moment later, `loading` stays true
+         until it does, and the same `want`/`cancelled` guards keep a slow
+         partial off the next patient's screen. */
+      onPartial: (items) => {
+        if (cancelled || want.current !== key) return;
+        setDossier((cur) => cur ?? (items.length ? buildDossier(items) : null));
+      },
+    })
       .then((items) => {
         if (cancelled || want.current !== key) return;
         setDossier(items.length ? buildDossier(items) : null);

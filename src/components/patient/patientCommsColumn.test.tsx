@@ -27,7 +27,6 @@ vi.mock("@/components/assignedPatients/ConversationThread", () => ({
 vi.mock("@/components/comms/CommunicationsButton", () => ({
   CommunicationsButton: () => <button type="button">Communications</button>,
 }));
-vi.mock("@/components/patient/RecentNotes", () => ({ RecentNotes: () => <div>Recent notes</div> }));
 /* The Postgres call counts (Josh, 2026-09-24) — the SAME hook the Care
    Coordinator cards read (§5.30i); here it is the answer it hands the column. */
 const totalsView = vi.hoisted(() => ({
@@ -69,9 +68,7 @@ function renderColumn(side: "texts" | "calls" = "texts", contacts: Contacts | nu
         patient={null}
         side={side}
         onSide={onSide}
-        active={null}
         contacts={contacts}
-        onNoteAppended={() => {}}
       />
     </div>,
   );
@@ -105,11 +102,12 @@ function bothAnswered() {
 }
 
 describe("Brandon's right column (item 14) — the look", () => {
-  it("the header is the two tabs and nothing else", () => {
+  it("the header is the two tabs plus the top-right Call (Josh, 2026-09-25)", () => {
     const { container } = renderColumn();
     const hd = container.querySelector(".pt-side .hd") as HTMLElement;
     const buttons = Array.from(hd.querySelectorAll("button")).map((b) => b.textContent?.trim());
-    expect(buttons).toEqual(["Texts", "Calls"]);
+    expect(buttons).toEqual(["Texts", "Calls", "Call"]);
+    expect(hd.querySelector(".call-top")).not.toBeNull();
   });
 
   it("the thread is drawn BARE — its own header off, his one-line composer on", () => {
@@ -184,7 +182,7 @@ describe("⚠️ Calls N — from OUR call archive in Postgres (Josh, 2026-09-24
 });
 
 describe("⚠️ nothing a rep could do before is gone", () => {
-  it("Call — a chip beside the primary number — dials it, and says who dialed first (§5.49)", () => {
+  it("Call — the header's top-right button — dials the column's number, and says who dialed first (§5.49)", () => {
     renderColumn();
     fireEvent.click(screen.getByRole("button", { name: /^Call$/ }));
     expect(reported).toEqual(["15555550100"]);
@@ -208,12 +206,19 @@ describe("⚠️ nothing a rep could do before is gone", () => {
     expect(threadProps.last?.composerPlaceholder).toBe("Write a text to (555) 555-0199…");
   });
 
-  it("the Calls tab keeps the Communications button (§5.50)", () => {
+  it("⚠️ the Calls tab has NO Communications button (Josh, 2026-09-25) — the counts stay", () => {
+    bothAnswered();
     renderColumn("calls");
-    expect(screen.getByRole("button", { name: "Communications" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Communications" })).toBeNull();
+    expect(screen.getByTestId("call-counts")).toBeTruthy();
   });
 
-  it("no alternate number: no alt chips, and the primary still has its Call", () => {
+  it("⚠️ no Recent notes strip in this column (Josh, 2026-09-25) — the notes live on the main page", () => {
+    renderColumn();
+    expect(screen.queryByText("Recent notes")).toBeNull();
+  });
+
+  it("no alternate number: no alt chips, and the header still has its Call", () => {
     renderColumn("texts", { ...CONTACTS, alternatePhone: "", alternatePhoneRaw: "" });
     expect(screen.queryByRole("button", { name: /Call alt|Text alt/ })).toBeNull();
     expect(screen.getByRole("button", { name: /^Call$/ })).toBeTruthy();

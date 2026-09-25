@@ -541,6 +541,18 @@ function ProfileTab({
         </div>
       )}
 
+      {/* ⚠️⚠️ The ONE Send, at the TOP since 2026-09-25 (Josh: *"I like the
+          save to monday UI in the redesign a bit better … should be on top
+          with blue button. The bar is still stuck to the bottom"* — this
+          reverses 2026-09-24's "leave these"). It is STICKY TOP, which keeps
+          §5.45b's real requirement — the Save on screen from the first frame
+          to the last — while sitting where Brandon drew it. Still a direct
+          child of `.pt-main` (this fragment), still only for somebody who can
+          edit, and only once there is a record to send. */}
+      {canEdit && merged && (
+        <SendBar dirty={dirty} onDiscard={discard} onSend={handleSend} validation={validation} />
+      )}
+
       <OverviewStrip facts={overview} />
 
       {error ? (
@@ -610,19 +622,14 @@ function ProfileTab({
         />
       )}
 
-      {/* ⚠️⚠️ The ONE Send, at the bottom and pinned there (Josh, 2026-09-23;
-          kept 2026-09-24 — *"leave these"*). Only for somebody who can edit,
-          and only once there is a record to send. */}
-      {canEdit && merged && (
-        <SendBar dirty={dirty} onDiscard={discard} onSend={handleSend} validation={validation} />
-      )}
     </>
   );
 }
 
 /**
- * The Send, pinned to the bottom of the Profile tab (Josh, 2026-09-23). Quiet
- * while clean; amber with Discard once there is something unsaved.
+ * The Send, at the TOP of the Profile tab and sticky there (Josh, 2026-09-25 —
+ * Brandon's blue Save; it sat pinned at the bottom 2026-09-23/24). Quiet while
+ * clean; amber with Discard once there is something unsaved.
  *
  * ⚠️ It renders in BOTH states rather than appearing only when dirty — a form
  * with no Save on it reads as read-only, and a record can be unsendable while
@@ -657,6 +664,7 @@ function SendBar({
         </button>
       )}
       <SendToMondayButton
+        blue
         onSend={onSend}
         disabled={!validation.valid}
         validationErrors={validation.errors}

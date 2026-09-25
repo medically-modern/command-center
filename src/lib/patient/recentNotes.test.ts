@@ -117,31 +117,13 @@ describe("what a new note is stamped with", () => {
 });
 
 describe("⚠️ the composer stays in view", () => {
-  it("only the LIST scrolls — the header and the add box are pinned", () => {
-    // The first cut scrolled the whole strip, which put the add-a-note box
-    // below the fold on any patient with three notes: an input a rep has to
-    // scroll a 190px panel to find is one most of them never find. Found by
-    // rendering it (§5.30d), and silent if it regresses.
-    const css = src("src/pages/patient/redesign.css");
-    expect(css).toMatch(/\.cc-pt \.nm-list \{[^}]*overflow-y: auto/);
-    expect(css).toMatch(/\.cc-pt \.nm-h \{ flex: none;/);
-    expect(css).toMatch(/\.cc-pt \.nm-add \{ flex: none;/);
-    // ⚠️ …and the strip itself must NOT scroll, or the pin means nothing.
-    const strip = /\.cc-pt \.notes-mini \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(strip).not.toMatch(/overflow-y: auto/);
-    // ⚠️ `flex: none` on the strip: `.pt-side` is a column whose tab body takes
-    // `flex: 1`, so without it a long log steals the thread's height.
-    expect(strip).toMatch(/flex: none/);
-
-    const tsx = src("src/components/patient/RecentNotes.tsx");
-    expect(tsx).toMatch(/className="nm-list"/);
-  });
-
-  it("renders under BOTH tabs, outside the tab body", () => {
-    // A fact about the patient, not about texts or calls — so a rep switching
-    // tabs does not lose a half-typed note, and the two copies cannot drift.
+  it("⚠️ the strip is GONE from the comms column (Josh, 2026-09-25) — the notes live on the main column", () => {
+    // "Get rid of recent notes on bottom of comms panel on profile page, we
+    // have it at bottom of main page." The rules in this file survive: the
+    // Subscription notes card and the Onboarding view's stage-notes card both
+    // render through `noteEntries`.
     const col = src("src/components/patient/PatientCommsColumn.tsx");
-    expect(col).toMatch(/<RecentNotes[\s\S]{0,200}\/>\s*<\/aside>/);
-    expect(col.match(/<RecentNotes/g) ?? []).toHaveLength(1);
+    expect(col).not.toMatch(/<RecentNotes/);
+    expect(src("src/components/patient/SubscriptionCards.tsx")).toMatch(/noteEntries\(/);
   });
 });

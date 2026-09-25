@@ -174,8 +174,16 @@ export interface PatientIdentity {
  *
  * So a name match always needs a second signal, and there are exactly two:
  *   - the record's **phone** agrees → accept;
- *   - the phone is **blank** (the ordinary shape of the completed record this
- *     pass exists to find) → accept only if the **date of birth** agrees.
+ *   - the **date of birth** agrees (non-blank on both sides) → accept, since
+ *     2026-09-25 even when the phones DIFFER.
+ *
+ * ⚠️ **An agreeing DOB outranks a differing phone** (Josh, 2026-09-25). The
+ * measured case: a subscribed patient whose number was CORRECTED at Welcome
+ * Call, so the onboarding records carry the old number — same name, same DOB
+ * — and rejecting them left the patient screen opened from his Subscription
+ * record with no onboarding trail at all, while the search showed him twice
+ * (`searchPeople.sameHuman`, the same rule — keep the two in agreement). A
+ * number is the field reps correct mid-pipeline; a date of birth is not.
  *
  * Everything else is rejected, INCLUDING a blank-phone record with no DOB on
  * either side. That is deliberate and it is the safe direction: the cost of a
@@ -188,7 +196,7 @@ export function nameMatchAccepted(
   item: Pick<DossierItem, "phone" | "dob">,
   anchor: PatientIdentity,
 ): boolean {
-  if (item.phone) return item.phone === anchor.phone;
+  if (item.phone && item.phone === anchor.phone) return true;
   const a = dobKey(anchor.dob);
   const b = dobKey(item.dob);
   return a.length > 0 && a === b;

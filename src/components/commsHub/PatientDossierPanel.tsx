@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import type { DossierItem, PathStep, PatientDossier, StageNotes, StepState } from "@/lib/commsHub/dossier";
 import { stageNoteTrail, stagesCompleted, stepOpenHref } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail, type RenderedField } from "@/lib/commsHub/stageDetail";
+import { SUBSCRIPTION_BOARD } from "@/lib/patient/patientScreen";
 import { appendNoteToRecord, type DossierPick } from "@/lib/commsHub/dossierApi";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 import { dossierPaneFallback } from "./dossierPaneFallback";
@@ -351,13 +352,38 @@ export function LiveNotes({
   dossier,
   phone,
   className = "flex flex-col border-b border-border",
+  view,
 }: {
   dossier: PatientDossier;
   phone: string;
   className?: string;
+  /**
+   * Which patient-screen tab these notes sit under. The hub's pane passes it
+   * (Josh, 2026-09-25); the Inbox-off dossier pane has no tabs and leaves it
+   * unset, which is the original behaviour.
+   *
+   * ⚠️ **"subscription"** shows the SUBSCRIPTION record's notes alone — no
+   * "Notes from other stages" — and keeps the composer (a note may be added
+   * to the Subscription board from here).
+   * ⚠️ **"onboarding"** shows the onboarding trail alone — the Subscription
+   * record's notes are removed — and takes NO new notes: a rep must not
+   * append to an onboarding stage from the hub. The stage pages keep their
+   * own composers.
+   */
+  view?: "onboarding" | "subscription";
 }) {
   const notesRef = useRef<HTMLPreElement>(null);
-  const active = dossier.active;
+  const subItem = dossier.items.find((i) => i.boardId === SUBSCRIPTION_BOARD) ?? null;
+  const active =
+    view === "subscription"
+      ? subItem
+      : view === "onboarding"
+        ? dossier.active && dossier.active.boardId !== SUBSCRIPTION_BOARD
+          ? dossier.active
+          : null
+        : dossier.active;
+  /** No composer on the onboarding tab — read-only there by design. */
+  const composes = view !== "onboarding";
   /** The record a note here is filed against. */
   const target = active ? `${active.boardId}:${active.itemId}` : "";
   /**
@@ -377,28 +403,48 @@ export function LiveNotes({
   }, [target, notes]);
 
   // Already in hand — every board's notes column rides along with its record.
-  const otherNotes = stageNoteTrail(dossier);
+  // ⚠️ Filtered by the tab (Josh, 2026-09-25): the subscription tab shows no
+  // other-stage notes at all, and the onboarding tab never shows the
+  // Subscription record's. Unset view (the Inbox-off pane) keeps everything.
+  const trail = stageNoteTrail(dossier);
+  const otherNotes =
+    view === "subscription"
+      ? []
+      : view === "onboarding"
+        ? trail.filter((s) => s.boardId !== SUBSCRIPTION_BOARD && (!active || s.itemId !== active.itemId))
+        : trail;
 
   return (
     <div className={className} data-live-notes>
       <div className="flex shrink-0 items-center gap-1.5 px-4 pb-1.5 pt-3">
         <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          {active ? `${active.stageAdvancerText || active.boardName} notes` : "Notes"}
+          {view === "subscription"
+            ? "Subscription notes"
+            : active
+              ? `${active.stageAdvancerText || active.boardName} notes`
+              : "Notes"}
         </span>
       </div>
       <pre
         ref={notesRef}
         className="mx-4 mb-2 max-h-80 min-h-[6rem] overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 p-2.5 font-sans text-[11px] leading-relaxed"
       >
-        {notes.trim() || (active ? "No notes on this stage yet." : "No live stage, so no working notes.")}
+        {notes.trim() ||
+          (active
+            ? "No notes on this stage yet."
+            : view === "subscription"
+              ? "No Subscription record yet."
+              : view === "onboarding"
+                ? "No live onboarding record — the stage notes are below."
+                : "No live stage, so no working notes.")}
       </pre>
       {/* ⚠️⚠️ KEYED ON THE RECORD — §9's notes-box rule. A patient already in
           this session's cache swaps in without a spinner (§5.28), and a shared
           line's switcher swaps people in place, so an unkeyed box kept its
           half-typed text and filed it against whoever was on screen when Add
           was pressed (2026-09-23 review). */}
-      {active && (
+      {composes && active && (
         <NoteComposer
           key={target}
           active={active}

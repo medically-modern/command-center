@@ -236,12 +236,6 @@ function money(raw: string | number | null | undefined): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** The status classes his markup names — good / warn / bad. */
-function authCls(status: string): string {
-  if (/valid|no auth/i.test(status)) return "good";
-  if (/expir|denied|required/i.test(status)) return "warn";
-  return "";
-}
 
 /* ── Demographics (+ Contacts) ──────────────────────────────────────────── */
 
@@ -384,11 +378,14 @@ export function DemographicsCard({
           <F k="Last patient contact" v={formatLastContact(x?.lastPatientContact ?? "")} />
         </div>
       )}
-      <div className="xs muted" style={{ marginTop: 8 }}>
-        {canEdit
-          ? "Who we reach, and on which number · saves with Send to Monday · Can text is answered on the Welcome Call page"
-          : `Read-only — editing the profile isn't enabled for ${readOnlyName}`}
-      </div>
+      {/* The editable caption is gone (Josh, 2026-09-25: "Delete 'Who we
+          reach, and on which number …'"); a reader still needs to know WHY the
+          controls are grey. */}
+      {!canEdit && (
+        <div className="xs muted" style={{ marginTop: 8 }}>
+          {`Read-only — editing the profile isn't enabled for ${readOnlyName}`}
+        </div>
+      )}
     </section>
   );
 }
@@ -471,15 +468,52 @@ export function InsuranceCard({
   );
 }
 
-/* ── Medical necessity & auth ───────────────────────────────────────────── */
+/* ── Medical necessity & auth — Brandon's v3 layout (2026-09-25) ────────────
+   Josh: *"I changed the medical necessity & auth box a little bit in a new
+   redesign mockup - let's use that updated one."* His v3: Diagnosis |
+   Medical records on top, then Sensors auth | Supplies auth — the STATUS,
+   then a line per HCPCS code (`code: auth id` + `units (start – end)`) —
+   then the MN documents block, whose right column carries the FILES above
+   the visit date. Every value is a field this slice already reads
+   (`READ_COLUMN_IDS` — sensors/supplies auth ids, units and date ranges);
+   nothing was widened for it. */
 
-function authLine(status: string, end: string): ReactNode {
-  if (!status) return "";
+/** His `authStatus`: the status with its "Auth. " prefix said once by the
+ *  column, not repeated per row. Tone: valid/no-auth green · expiring,
+ *  denied, required, pending amber · Not Serving muted. An unrecognised
+ *  label renders verbatim, untinted (§5.20). */
+function authStatusNode(status: string): ReactNode {
+  const t = (status ?? "").trim();
+  if (!t) return "";
+  const label = t.replace(/^auth\.?\s+/i, "");
+  const cls = /valid|no auth/i.test(t)
+    ? "good"
+    : /expir|denied|required|pending|outstanding/i.test(t)
+      ? "warn"
+      : /not serving/i.test(t)
+        ? "muted"
+        : "";
+  return cls ? <span className={cls}>{label}</span> : label;
+}
+
+/** One HCPCS line: `A4239: <id>` and `N units (start – end)`. Renders only
+ *  when there is an id or a date — his own conditional, which is what keeps
+ *  a Not Serving column from growing three em-dash rows. */
+function AuthLine({ code, id, units, start, end }: { code: string; id: string; units: string; start: string; end: string }) {
+  if (!id && !start && !end) return null;
+  const range = start || end ? `(${start ? usDate(start) : "?"} – ${end ? usDate(end) : "?"})` : "";
   return (
-    <>
-      {status}
-      {end && <div className="xs muted">to {usDate(end)}</div>}
-    </>
+    <div className="auth-line">
+      <div>
+        <span className="code">{code}</span>: <span className="mono">{id || "—"}</span>
+      </div>
+      {(units || range) && (
+        <div className="xs muted">
+          {units ? `${units} units ` : ""}
+          {range}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -534,6 +568,12 @@ export function MnAuthCard({
 }) {
   const input = useRef<HTMLInputElement | null>(null);
   const [over, setOver] = useState(false);
+  /* ⚠️ ONE row of files at first (Josh, 2026-09-25: *"if there's a bunch of
+     files, it needs to not show all of them immediately … should only be one
+     row of files, with ability to click in to view all"* — a long list was
+     stretching the whole page). Nothing is hidden for good: the toggle names
+     the count, and View/Download work the same either way. */
+  const [showAllFiles, setShowAllFiles] = useState(false);
   const mr = patient.mr ?? "";
   const mrCls = /expired|invalid/i.test(mr) ? "bad" : /<\d+/.test(mr) ? "warn" : mr ? "good" : "";
   const dte = patient.mnExpiry ? daysUntil(patient.mnExpiry.slice(0, 10)) : null;
@@ -555,35 +595,51 @@ export function MnAuthCard({
           No files yet.
         </div>
       ) : (
-        files.map((f) => (
-          <div className="f" key={f.assetId}>
-            <span className="ico">
-              <FileIcon style={{ width: 13, height: 13 }} />
-            </span>
-            <span className="grow truncate">
-              <b title={f.name}>{f.name}</b>
-              <div className="xs muted">{extOf(f.name)}</div>
-            </span>
+        <>
+          {(showAllFiles ? files : files.slice(0, 1)).map((f) => (
+            <div className="f" key={f.assetId}>
+              <span className="ico">
+                <FileIcon style={{ width: 13, height: 13 }} />
+              </span>
+              <span className="grow truncate">
+                <b title={f.name}>{f.name}</b>
+                <div className="xs muted">{extOf(f.name)}</div>
+              </span>
+              <button
+                type="button"
+                className="btn ghost xs"
+                title="View"
+                onClick={() => {
+                  const url = f.public_url || f.url;
+                  if (url) openFileViewer({ url, name: f.name });
+                  else toast.error(`No link for "${f.name}"`);
+                }}
+              >
+                <Eye style={{ width: 12, height: 12 }} /> View
+              </button>
+              <button type="button" className="btn ghost xs" title="Download" onClick={() => void downloadFile(f)}>
+                <Download style={{ width: 12, height: 12 }} />
+              </button>
+            </div>
+          ))}
+          {files.length > 1 && (
             <button
               type="button"
-              className="btn ghost xs"
-              title="View"
-              onClick={() => {
-                const url = f.public_url || f.url;
-                if (url) openFileViewer({ url, name: f.name });
-                else toast.error(`No link for "${f.name}"`);
-              }}
+              className="btn ghost xs files-toggle"
+              onClick={() => setShowAllFiles((v) => !v)}
             >
-              <Eye style={{ width: 12, height: 12 }} /> View
+              {showAllFiles ? "Show fewer" : `View all ${files.length} files`}
             </button>
-            <button type="button" className="btn ghost xs" title="Download" onClick={() => void downloadFile(f)}>
-              <Download style={{ width: 12, height: 12 }} />
-            </button>
-          </div>
-        ))
+          )}
+        </>
       )}
     </div>
   );
+
+  /* His v3 Supplies column: the infusion set's HCPCS code follows the set —
+     steel cannulas are A4231, soft are A4230 — and the cartridge line is
+     A4232. Sensors are A4239. */
+  const infCode = /trusteel|steel/i.test(patient.infusionSet1 || "") ? "A4231" : "A4230";
 
   return (
     <section className="card pad">
@@ -591,6 +647,7 @@ export function MnAuthCard({
         Medical necessity &amp; auth
       </div>
       <div className="facts" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <F k="Diagnosis" v={patient.diagnosis} />
         <F
           k="Medical records"
           v={
@@ -609,29 +666,41 @@ export function MnAuthCard({
             )
           }
         />
+      </div>
+      <div className="facts split" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div className="fact">
-          <div className="k">Files</div>
-          {filesNode}
+          <div className="k">Sensors auth</div>
+          <div className="v">{authStatusNode(patient.sensorsAuthStatus) || "—"}</div>
+          <div className="auth-lines">
+            <AuthLine
+              code="A4239"
+              id={patient.sensorsAuthId}
+              units={patient.sensorsUnits}
+              start={patient.sensorsStartAuth}
+              end={patient.sensorsEndAuth}
+            />
+          </div>
         </div>
-        <F k="Diagnosis" v={patient.diagnosis} />
-        <F
-          k="Sensors auth"
-          v={authLine(patient.sensorsAuthStatus, patient.sensorsEndAuth)}
-          cls={authCls(patient.sensorsAuthStatus)}
-        />
-        <F
-          k="Supplies auth"
-          v={authLine(patient.suppliesAuthStatus, patient.suppliesEndAuth)}
-          cls={authCls(patient.suppliesAuthStatus)}
-        />
-        <F
-          k="Infusion set auth ID"
-          v={patient.infusionSetAuthId ? <span className="mono">{patient.infusionSetAuthId}</span> : ""}
-        />
-        <F
-          k="Cartridge auth ID"
-          v={patient.cartridgeAuthId ? <span className="mono">{patient.cartridgeAuthId}</span> : ""}
-        />
+        <div className="fact">
+          <div className="k">Supplies auth</div>
+          <div className="v">{authStatusNode(patient.suppliesAuthStatus) || "—"}</div>
+          <div className="auth-lines">
+            <AuthLine
+              code={infCode}
+              id={patient.infusionSetAuthId}
+              units={patient.suppliesUnits}
+              start={patient.suppliesStartAuth}
+              end={patient.suppliesEndAuth}
+            />
+            <AuthLine
+              code="A4232"
+              id={patient.cartridgeAuthId}
+              units=""
+              start={patient.suppliesStartAuth}
+              end={patient.suppliesEndAuth}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="fact" style={{ marginTop: 14 }}>
@@ -710,7 +779,12 @@ export function MnAuthCard({
             )}
           </div>
           <div className="visit">
-            <div className="k">Visit date</div>
+            {/* His v3 right column: the files ABOVE the visit date. */}
+            <div className="k">MN file</div>
+            {filesNode}
+            <div className="k" style={{ marginTop: 10 }}>
+              Visit date
+            </div>
             <input
               className="input sm"
               type="date"
@@ -739,7 +813,30 @@ export function MnAuthCard({
 
 /* ── Order details ──────────────────────────────────────────────────────── */
 
-/** His `reorderLine` — the chip, not the whole card (§5.46c keeps the rest on the Orders tab). */
+/**
+ * `Sep 18, 2026, 2:00 PM ET` → `9/18/26` — the short date the one-line chip
+ * wears. ⚠️ Anything that does not match comes back VERBATIM (§5.20's rule):
+ * the column is written by the reorder service, not by us.
+ */
+export function shortSentDate(raw: string): string {
+  const s = (raw ?? "").trim();
+  const m = /^([A-Z][a-z]{2})\w* (\d{1,2}), (\d{4})/.exec(s);
+  if (!m) return s;
+  const months: Record<string, number> = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+  const mo = months[m[1]];
+  if (!mo) return s;
+  return `${mo}/${Number(m[2])}/${m[3].slice(2)}`;
+}
+
+/**
+ * His `reorderLine` — the chip, not the whole card (§5.46c keeps the rest on
+ * the Orders tab). ⚠️ ONE LINE since 2026-09-25 (Josh: *"just shows the pill
+ * of 'Confirmed', 'No Response', 'Delay' with a ' - sent 9/16/26', so it all
+ * fits on one line, and frequency drop-down now aligns with it"*): the Open
+ * form link is gone — the Orders tab's reorder card still carries Copy link —
+ * and the date is compressed. "No Response" is the board's own label for the
+ * awaiting state (§5.46c: `No Response` and a blank are the same fact).
+ */
 function ReorderChip({ form }: { form: ReorderForm | null }) {
   if (!form || form.state === "not-sent") {
     return (
@@ -751,16 +848,11 @@ function ReorderChip({ form }: { form: ReorderForm | null }) {
   const answered = form.state === "responded";
   const tone = responseTone(form.orderResponse);
   return (
-    <div className="rf">
-      {form.link && (
-        <a className="plink" href={form.link} target="_blank" rel="noreferrer" style={{ whiteSpace: "nowrap" }}>
-          Open form
-        </a>
-      )}
-      {form.textSent && <span className="xs muted">texted {form.textSent}</span>}
+    <div className="rf oneline">
       <span className={`chip${answered && tone ? ` ${tone}` : answered ? "" : " amber"}`}>
-        {answered ? form.orderResponse : "No response yet"}
+        {answered ? form.orderResponse : "No Response"}
       </span>
+      {form.textSent && <span className="xs muted">· sent {shortSentDate(form.textSent)}</span>}
     </div>
   );
 }

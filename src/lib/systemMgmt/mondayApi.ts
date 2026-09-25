@@ -1076,19 +1076,44 @@ export function phoneNeedlesFor(digits: string): string[] {
  *
  * ⚠️ Four-digit years only. A two-digit year is ambiguous (`12/5/60` is 1960 or
  * 2060) and would also match far more than it should as a substring.
+ *
+ * ⚠️ **A PARTIAL date searches too** (Josh, 2026-09-25: *"If i only type in
+ * partial dob in search bar it doesn't work — like if i just do 04/28 … it
+ * says no matches"*). `04/28`, `4/28`, and a date mid-typing (`04/28/19`) are
+ * all recognised: month/day with a separator is already unmistakably a date,
+ * not a phone (the separators-required rule keeps bare digits out). The
+ * needles keep a TRAILING SLASH (`4/28/`), which anchors the day — without it
+ * a typed `4/2` would also match every `4/2x` day. Known and accepted:
+ * `contains_text` cannot anchor the FRONT, so `2/28` also returns `12/28`
+ * patients — an extra candidate row a rep can tell apart by the DOB on it,
+ * where returning "no matches" for a real patient was the failure. Costs the
+ * same one request as a full date.
  */
 export function dobNeedles(raw: string): string[] | null {
   const t = (raw ?? "").trim();
   const us = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
   const iso = /^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})$/.exec(t);
-  if (!us && !iso) return null;
+  // Month/day only, or a four-digit year still being typed (0–3 digits).
+  const part = !us && !iso ? /^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{0,3}))?$/.exec(t) : null;
+  if (!us && !iso && !part) return null;
   const [mm, dd, yyyy] = us
     ? [Number(us[1]), Number(us[2]), Number(us[3])]
-    : [Number(iso![2]), Number(iso![3]), Number(iso![1])];
+    : iso
+      ? [Number(iso[2]), Number(iso[3]), Number(iso[1])]
+      : [Number(part![1]), Number(part![2]), null];
   // A real date, loosely — the point is to rule OUT a mistyped phone number,
   // not to reject 31 February, which simply matches nothing.
-  if (mm < 1 || mm > 12 || dd < 1 || dd > 31 || yyyy < 1900 || yyyy > 2100) return null;
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  if (yyyy !== null && (yyyy < 1900 || yyyy > 2100)) return null;
   const pad = (n: number) => String(n).padStart(2, "0");
+  if (yyyy === null) {
+    // ⚠️ A year FRAGMENT must be the start of a plausible year (1900–2100), or
+    // `02/24/81` — a two-digit year, deliberately rejected above — would slip
+    // back in as "a year beginning 81" and silently match nothing.
+    const tail = part?.[3] ?? "";
+    if (tail && !/^(1|19|19\d|2|20|20\d|210)$/.test(tail)) return null;
+    return [...new Set([`${pad(mm)}/${pad(dd)}/${tail}`, `${mm}/${dd}/${tail}`])];
+  }
   return [...new Set([`${pad(mm)}/${pad(dd)}/${yyyy}`, `${mm}/${dd}/${yyyy}`])];
 }
 

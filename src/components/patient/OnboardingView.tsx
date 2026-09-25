@@ -249,8 +249,11 @@ export function OnboardingView({
                 steps rather than disappearing (§5.42). */}
             {step.items.length > 1 && (
               <div className="snap-recs">
+                {/* Josh, 2026-09-25: say it in the rep's words — two profiles
+                    on one stage should never happen, and when it has, the row
+                    must read as a flag, not as furniture. */}
                 <span className="xs muted">
-                  {step.items.length} records on this stage
+                  This patient has {step.items.length} profiles in this stage
                 </span>
                 <div className="segc snap-tabs" aria-label="Records on this stage">
                   {step.items.map((it) => (

@@ -82,6 +82,19 @@ const done = it_({
   notes: "[8/1/26, 9:00 AM] Evaluate: MN established —JH",
 });
 const ada = buildDossier([live, done]);
+/* A SUBSCRIBED Ada — the pane opens her on the subscription tab, where the
+   notes box is writable (Josh, 2026-09-25: notes are added on the
+   subscription tab only; the onboarding tab is read-only). */
+const sub = it_({
+  itemId: "401",
+  boardId: 18407459988,
+  name: "Ada Sample",
+  boardName: "Subscription Board - Updated",
+  groupTitle: "Subscriptions",
+  route: "/subscription",
+  notes: "[9/2/26, 1:00 PM] Subscription: reorder confirmed —KT",
+});
+const adaSub = buildDossier([live, done, sub]);
 const ben = buildDossier([it_({ itemId: "301", boardId: 18410804557, name: "Ben Sample" })]);
 
 const show = (props: Partial<Parameters<typeof HubPatientPane>[0]> = {}) =>
@@ -97,30 +110,41 @@ beforeEach(() => {
 });
 
 describe("HubPatientPane", () => {
-  it("draws the patient screen's body, embedded, with the writable notes above the view", () => {
+  it("an ONBOARDING patient: the stage notes read-only, other stages collapsed, no composer (Josh, 2026-09-25)", () => {
     show();
     const body = screen.getByTestId("body");
     expect(body.getAttribute("data-embedded")).toBe("true");
-    // Job 2: the live stage's notes, writable.
     const notes = body.querySelector("[data-live-notes]") as HTMLElement;
     expect(notes).toBeTruthy();
     expect(notes.textContent).toContain("spoke to her");
-    expect(screen.getByRole("button", { name: /Add a note/ })).toBeTruthy();
-    // Job 3: every OTHER stage's notes, collapsed.
+    // ⚠️ NO composer on the onboarding tab — a note must not be appended to
+    // an onboarding stage from the hub; the stage pages keep their own.
+    expect(screen.queryByRole("button", { name: /Add a note/ })).toBeNull();
+    // Job 3: every OTHER onboarding stage's notes, collapsed.
     expect(notes.textContent).toContain("Notes from other stages (1)");
     expect(notes.textContent).toContain("Medical Evaluation");
   });
 
-  it("⚠️ the note composer writes through appendNoteToRecord, against the LIVE record", async () => {
-    show();
+  it("a SUBSCRIBED patient: the Subscription notes alone, writable — no other-stage notes", () => {
+    show({ dossier: adaSub });
+    const notes = screen.getByTestId("body").querySelector("[data-live-notes]") as HTMLElement;
+    expect(notes.textContent).toContain("Subscription notes");
+    expect(notes.textContent).toContain("reorder confirmed");
+    expect(screen.getByRole("button", { name: /Add a note/ })).toBeTruthy();
+    expect(notes.textContent).not.toContain("Notes from other stages");
+    expect(notes.textContent).not.toContain("spoke to her");
+  });
+
+  it("⚠️ the note composer writes through appendNoteToRecord, against the SUBSCRIPTION record", async () => {
+    show({ dossier: adaSub });
     fireEvent.click(screen.getByRole("button", { name: /Add a note/ }));
     fireEvent.change(screen.getByPlaceholderText(/Add to .* notes/), { target: { value: "called back" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add note" })));
-    expect(m.append).toHaveBeenCalledWith(expect.objectContaining({ itemId: "101", boardId: 18410804557, text: "called back" }));
+    expect(m.append).toHaveBeenCalledWith(expect.objectContaining({ itemId: "401", boardId: 18407459988, text: "called back" }));
   });
 
   it("⚠️⚠️ a half-typed note never follows the pane onto another patient (§9)", () => {
-    const { rerender } = show();
+    const { rerender } = show({ dossier: adaSub });
     fireEvent.click(screen.getByRole("button", { name: /Add a note/ }));
     fireEvent.change(screen.getByPlaceholderText(/Add to .* notes/), { target: { value: "about Ada" } });
     // A cached patient swaps in with no spinner — the case that used to keep the box.
@@ -136,7 +160,7 @@ describe("HubPatientPane", () => {
   });
 
   it("⚠️ a note just added shows for ITS patient and never under the next one's name", async () => {
-    const { rerender } = show();
+    const { rerender } = show({ dossier: adaSub });
     fireEvent.click(screen.getByRole("button", { name: /Add a note/ }));
     fireEvent.change(screen.getByPlaceholderText(/Add to .* notes/), { target: { value: "called back" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add note" })));
@@ -259,7 +283,9 @@ describe("wiring — the five jobs come WITH the embedded screen (plan §7, Josh
 
   it("each job is the old pane's OWN component, never a copy", () => {
     expect(PANE).toContain("<HouseholdSwitcher people={people} selected={selected} onSelectPerson={onSelectPerson} />"); // 1
-    expect(PANE).toContain("<LiveNotes dossier={dossier} phone={phone}"); // 2 + 3
+    // 2 + 3 — since 2026-09-25 it also carries the open tab, so the notes
+    // follow it (subscription: writable, alone; onboarding: read-only trail).
+    expect(PANE).toMatch(/<LiveNotes[\s\S]{0,200}dossier=\{dossier\}[\s\S]{0,200}phone=\{phone\}[\s\S]{0,200}view=\{viewFor\(/); // 2 + 3
     expect(PANE).toContain("dossierPaneFallback({ phone, loading, error, dossier, idleHint, onPick })"); // 4
     expect(PANE).toContain("<FoundBySearchBanner"); // 4, after a pick
     expect(PANE).toMatch(/<PatientBody[\s\S]*?\bembedded\b/); // 5 rides the body's embedded mode

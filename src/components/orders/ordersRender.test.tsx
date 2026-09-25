@@ -10,7 +10,9 @@ import { CashPayCard } from "./CashPayCard";
 import { NotesCard } from "./PatientCoverageCard";
 import { OrderDetails } from "./OrderDetails";
 import { OrdersOverview } from "./OrdersOverview";
-import { SkuTrackerView } from "./SkuTrackerView";
+import { SkuTrackerView, lastRunLine } from "./SkuTrackerView";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { OrdersSidebar } from "./OrdersSidebar";
 import { mkOrder, placed, delivered, HOLD_SENTENCE } from "@/lib/orders/fixtures";
 import { SKU_GROUPS, type SkuTrackerRow } from "@/lib/orders/skuTrackerApi";
@@ -247,6 +249,52 @@ describe("the Orders page renders every card", () => {
     fireEvent.change(box, { target: { value: "no-such-sku" } });
     // An empty list says which query and which category, never a blank table.
     expect(screen.getByText(/Nothing matches/)).toBeInTheDocument();
+  });
+
+  /* Josh, 2026-09-25: *"remove the reload(s) on inventory page, just show more
+     plainly when the last check went out and what changed (no need for
+     (cron))"* — the page force-reads the board every time it opens instead. */
+  describe("⚠️ the Inventory reloads are gone; the last check reads plainly (2026-09-25)", () => {
+    it("no Refresh button — but a FAILED read still offers Try again", () => {
+      const { rerender } = wrap(
+        <SkuTrackerView rows={rows} loading={false} error={null} lastRun="Last run: 2026-09-15 09:05 ET (cron) — 31 changed" orders={all} onRefresh={() => {}} />,
+      );
+      expect(screen.queryByRole("button", { name: /Refresh/ })).toBeNull();
+      rerender(
+        <MemoryRouter><SidebarProvider>
+          <SkuTrackerView rows={rows} loading={false} error="Monday 503" lastRun="" orders={all} onRefresh={() => {}} />
+        </SidebarProvider></MemoryRouter>,
+      );
+      expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    });
+
+    it("the last-run line drops '(cron)' and says what changed", () => {
+      wrap(<SkuTrackerView rows={rows} loading={false} error={null} lastRun="Last run: 2026-09-15 09:05 ET (cron) — 31 changed" orders={all} onRefresh={() => {}} />);
+      expect(screen.getByText("Last checked 9/15 9:05 AM ET · 31 items changed")).toBeInTheDocument();
+      expect(screen.queryByText(/\(cron\)/)).toBeNull();
+    });
+
+    it("`lastRunLine` parses the scraper's shape and returns anything else VERBATIM", () => {
+      expect(lastRunLine("Last run: 2026-09-15 09:05 ET (cron) — 31 changed")).toBe(
+        "Last checked 9/15 9:05 AM ET · 31 items changed",
+      );
+      expect(lastRunLine("Last run: 2026-09-15 13:07 ET — 1 changed")).toBe(
+        "Last checked 9/15 1:07 PM ET · 1 item changed",
+      );
+      expect(lastRunLine("Last run: 2026-09-15 09:05 ET (cron)")).toBe("Last checked 9/15 9:05 AM ET");
+      // Scraped text it does not recognise must never be guessed at (§5.39i).
+      expect(lastRunLine("Run log rebuilt by hand 9/15")).toBe("Run log rebuilt by hand 9/15");
+    });
+
+    it("⚠️ the page force-reads the board on every Inventory open, and hides the one-tab switcher", () => {
+      const page = readFileSync(resolve(process.cwd(), "src/pages/OrdersPage.tsx"), "utf8");
+      expect(page).toMatch(/if \(view === "stock"\) void refreshSkuTracker\(true\);/);
+      // The lone Inventory tab on the Inventory page was redundant (Josh);
+      // the orders view keeps the switcher — there it is a real door.
+      expect(page).toMatch(/\{\(SHOW_ORDERS_TAB \|\| view === "orders"\) && \(/);
+      // The header Refresh is the ORDER BOARD's and stays on the orders view.
+      expect(page).toMatch(/\{view === "orders" && \(\s*<Button onClick=\{\(\) => void refetch\(false\)\}/);
+    });
   });
 
   it("sidebar sections and search", () => {

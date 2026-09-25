@@ -75,6 +75,16 @@ const OrdersPage = () => {
   const sku = useSkuTracker();
   const skuLastRun = useMemo(() => skuTrackerLastRun(sku.rows), [sku.rows]);
 
+  // ⚠️ Inventory always OPENS on a fresh board read (Josh, 2026-09-25: the
+  // page must show "the most recent monday columns data" without a Refresh
+  // button). Cached rows paint first and the re-read replaces them — the
+  // §5.45b paint-then-re-read rule. Fetch on OPEN, never on a timer
+  // (INCIDENT_2026-08-20); a failure keeps the last good read and the view
+  // says so.
+  useEffect(() => {
+    if (view === "stock") void refreshSkuTracker(true);
+  }, [view]);
+
   const [selectedId, setSelectedId] = useState<string | null>(deepLinkId);
   const [query, setQuery] = useState("");
   const [showAllDelivered, setShowAllDelivered] = useState(false);
@@ -194,15 +204,26 @@ const OrdersPage = () => {
                     {loadedRows ? `Loading orders… ${loadedRows.toLocaleString()}` : "Loading orders…"}
                   </span>
                 )}
-                <div className="inline-flex rounded-lg bg-white/10 p-0.5" role="tablist" aria-label="View">
-                  {SHOW_ORDERS_TAB && (
-                    <ViewTab active={view === "orders"} onClick={() => setView("orders")} icon={<PackageSearch className="h-3.5 w-3.5" />} label="Orders" />
-                  )}
-                  <ViewTab active={view === "stock"} onClick={() => setView("stock")} icon={<Boxes className="h-3.5 w-3.5" />} label="Inventory" />
-                </div>
-                <Button onClick={() => void refetch(false)} disabled={loading} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
-                  <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
-                </Button>
+                {/* ⚠️ With the Orders tab off, the switcher on the STOCK view
+                    would be one tab naming the page you are on (Josh,
+                    2026-09-25: *"remove the inventory button on the inventory
+                    page"*). On the orders view it stays: there the Inventory
+                    tab is a real door. */}
+                {(SHOW_ORDERS_TAB || view === "orders") && (
+                  <div className="inline-flex rounded-lg bg-white/10 p-0.5" role="tablist" aria-label="View">
+                    {SHOW_ORDERS_TAB && (
+                      <ViewTab active={view === "orders"} onClick={() => setView("orders")} icon={<PackageSearch className="h-3.5 w-3.5" />} label="Orders" />
+                    )}
+                    <ViewTab active={view === "stock"} onClick={() => setView("stock")} icon={<Boxes className="h-3.5 w-3.5" />} label="Inventory" />
+                  </div>
+                )}
+                {/* ⚠️ The Refresh is the ORDER BOARD's and belongs to the
+                    orders view; Inventory re-reads its own board on open. */}
+                {view === "orders" && (
+                  <Button onClick={() => void refetch(false)} disabled={loading} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
+                    <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
+                  </Button>
+                )}
                 <ReportIssueButton />
               </div>
             </div>

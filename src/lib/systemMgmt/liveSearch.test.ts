@@ -181,6 +181,29 @@ describe("⚠️ a date of birth is a DOB query, not a phone query", () => {
     expect(dobNeedles("02/24/1800")).toBeNull();
   });
 
+  it("⚠️ a PARTIAL date searches — month/day is already unmistakably a date (2026-09-25)", () => {
+    // Josh: "If i only type in partial dob in search bar it doesn't work -
+    // like if i just do 04/28 … it says no matches". The trailing slash
+    // anchors the day, so 4/2 does not also return every 4/2x.
+    expect(dobNeedles("04/28")).toEqual(["04/28/", "4/28/"]);
+    expect(dobNeedles("4/28")).toEqual(["04/28/", "4/28/"]);
+    expect(dobNeedles("4-28")).toEqual(["04/28/", "4/28/"]);
+    expect(liveSearchRules("04/28")).toEqual({ kind: "dob", needles: ["04/28/", "4/28/"] });
+  });
+
+  it("a year mid-typing keeps searching, but only a plausible one", () => {
+    expect(dobNeedles("04/28/19")).toEqual(["04/28/19", "4/28/19"]);
+    expect(dobNeedles("04/28/195")).toEqual(["04/28/195", "4/28/195"]);
+    // "81" cannot start a 1900–2100 year — this is the two-digit-year case
+    // again, and it must stay rejected rather than silently matching nothing.
+    expect(dobNeedles("04/28/81")).toBeNull();
+  });
+
+  it("a partial with an impossible month or day is not a date", () => {
+    expect(dobNeedles("13/24")).toBeNull();
+    expect(dobNeedles("02/32")).toBeNull();
+  });
+
   it("a name is still a name", () => {
     expect(liveSearchRules("jose delgado")).toEqual({ kind: "name", terms: ["jose", "delgado"] });
   });

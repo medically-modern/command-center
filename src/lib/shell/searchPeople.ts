@@ -77,16 +77,25 @@ export function groupKeyFor(row: SystemPatient): string {
  * did not came back as one row per record, exactly as before the folding was
  * written. `SystemPatient` carries no DOB then; it does now (§5.46b).
  *
- * ⚠️ **Two NON-BLANK phones that differ stay apart.** They are the same person
- * with an old number far more often than they are two people — but this cannot
- * tell which, and over-splitting costs a duplicate-looking row a rep can read,
- * where over-merging puts one patient's history under another's name. Fail
- * closed, the direction every identity rule in this codebase takes.
+ * ⚠️⚠️ **AN AGREEING DOB FOLDS ACROSS A CHANGED NUMBER** (Josh, 2026-09-25).
+ * The measured case: a subscribed patient whose phone was CORRECTED at Welcome
+ * Call, so his three onboarding records carry the old number and his Welcome
+ * Call + Subscription records the new one — same name, same DOB on all five —
+ * and the old rule ("two non-blank phones that differ stay apart") rendered
+ * him twice, a Completed row beside his Subscriptions row. Josh: *"make sure
+ * that subscription profiles always end up showing one profile … any missing
+ * holes in our intake process shouldnt mean two profiles show in search"*.
+ * Name + DOB is still TWO signals, never a name alone; what changed is that a
+ * differing phone no longer VETOES them — a number is the field reps correct
+ * mid-pipeline, where a date of birth is not. Two same-named records whose
+ * phones differ and whose DOBs are blank or differ still stand apart.
+ * `nameMatchAccepted` (§5.28) follows the same rule, so the row this folds
+ * into opens a patient screen that carries the whole trail.
  */
 export function sameHuman(a: SystemPatient, b: SystemPatient): boolean {
   const pa = last10(a.phone);
   const pb = last10(b.phone);
-  if (pa && pb) return pa === pb;
+  if (pa && pb && pa === pb) return true;
   const da = dobKey(a.dob);
   const db = dobKey(b.dob);
   return da.length > 0 && da === db;

@@ -363,6 +363,20 @@ export interface DossierFetchOptions {
    * patient has no live record" and the note is recorded as done.
    */
   strict?: boolean;
+  /**
+   * Called with the PICKED record the moment its by-id read lands, before the
+   * phone and name passes have chased the rest of the trail (2026-09-25 —
+   * Josh: *"once you select a profile, it takes a few seconds to load"*).
+   *
+   * ⚠️ It is the `searchPatientsLive.onPartial` pattern applied here: nothing
+   * reads differently and the final answer is byte-identical — the caller just
+   * paints the record the rep already picked while the two fan-out passes run.
+   * ⚠️ Optional, and painting it is the CALLER's business: only the caller
+   * holds the guards that tell a partial answer to the current patient from a
+   * partial answer to one the rep has clicked past. Never fires on a cache
+   * hit — the full answer is already there.
+   */
+  onPartial?: (items: DossierItem[]) => void;
 }
 
 /** Session cache. The trail behind a number does not change while a rep reads
@@ -555,6 +569,8 @@ export async function fetchDossierItemsForPick(pick: DossierPick, opts: DossierF
    * still chases the trail through the number the rep was actually on.
    */
   const anchorItem = await fetchDossierItemById(pick.boardId, pick.itemId);
+  // The picked record IS an answer — paint it while the trail is chased.
+  if (anchorItem) opts.onPartial?.([anchorItem]);
   const name = pick.name || anchorItem?.name || "";
   const phone = pick.phone || anchorItem?.phone || "";
 

@@ -37,10 +37,16 @@
  * **Pixel pass 2026-09-24 (PIXEL_MATCH_PLAN.md Phase 6a):** his `.fchip` (a card
  * pill that fills NAVY when on), his `.table` metrics (12px text, 8px cells,
  * 10px uppercase headers, the table flush inside the card), his `.chip` for
- * the status column (6px radius, 11px) and his search / Refresh sizes. What
- * stays ours is function: the Open orders column, the last-run line, the
- * staleness warning, the read error and the poll history — and the Orders |
- * Inventory switch in the page header above, which is the way back to Orders.
+ * the status column (6px radius, 11px) and his search sizes. What stays ours
+ * is function: the Open orders column (off, `SHOW_OPEN_ORDERS`), the last-run
+ * line, the staleness warning, the read error and the poll history.
+ *
+ * **2026-09-25 (Josh):** the Refresh buttons are gone — the page force-reads
+ * the board every time Inventory opens (`OrdersPage`'s effect), so what a rep
+ * sees is always the freshest Monday columns; a FAILED read keeps a Try again
+ * link. The last-run line reads plainly through `lastRunLine` (no "(cron)").
+ * The one-tab view switcher is hidden on this view while the Orders tab is
+ * off.
  *
  * This view edits nothing.
  */
@@ -79,6 +85,26 @@ type SortKey = "product" | "status" | "qty" | "cost" | "oop" | "open";
 /** Rows whose group is none of the five families — the board has none today,
  *  but a new group would otherwise vanish from every chip AND from "All". */
 const OTHER = "__other__";
+
+/**
+ * The Run Log row's name, said plainly (Josh, 2026-09-25: *"just show more
+ * plainly when the last check went out and what changed (no need for
+ * (cron))"*): `Last run: 2026-09-15 09:05 ET (cron) — 31 changed` →
+ * `Last checked 9/15 9:05 AM ET · 31 items changed`.
+ * ⚠️ A name that does not match comes back VERBATIM — the row is written by
+ * the scraper, and a formatter that guesses at an unfamiliar shape prints a
+ * wrong fact rather than an ugly one (`shortStamp`'s own rule).
+ */
+export function lastRunLine(raw: string): string {
+  const s = (raw ?? "").trim();
+  const m = /^Last run:\s*(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})\s*ET(?:\s*\([^)]*\))?(?:\s*[—–-]+\s*(\d+)\s*changed)?\s*$/.exec(s);
+  if (!m) return s;
+  const hh = Number(m[4]);
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  const when = `${Number(m[2])}/${Number(m[3])} ${h12}:${m[5]} ${hh >= 12 ? "PM" : "AM"} ET`;
+  const changed = m[6] == null ? "" : ` · ${m[6]} item${m[6] === "1" ? "" : "s"} changed`;
+  return `Last checked ${when}${changed}`;
+}
 
 /** "Last run: 2026-09-15 09:05 ET (cron) — 31 changed" → days since, or null. */
 function runAgeDays(lastRun: string, today: string): number | null {
@@ -253,30 +279,33 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
               className="h-[30px] w-full rounded-lg border border-border bg-card pl-7 pr-2 text-xs outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={loading}
-            className="inline-flex h-[30px] items-center gap-2 rounded-[7px] border border-border bg-card px-2.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
-          </button>
+          {/* ⚠️ The Refresh button is GONE (Josh, 2026-09-25: *"remove the
+              reload(s) on inventory page"*) — the page re-reads the board
+              every time it opens (`OrdersPage`'s effect), so a button here
+              only re-asked the same question. A FAILED read still offers Try
+              again below: a rep must never be stuck on a bad read (§9's
+              failed-read rule). */}
+          {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Checking Monday…" />}
         </div>
       </div>
 
       {/* ⚠️ Kept from the old view: a rep reading a number has to be able to
           tell a fresh scrape from a three-day-old one, and a failed refresh
-          from an empty board. A mockup with hardcoded rows needs none of it. */}
-      <div className="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        {lastRun && <span>{lastRun}</span>}
+          from an empty board. A mockup with hardcoded rows needs none of it.
+          The line is the Run Log row's name said plainly (`lastRunLine`). */}
+      <div className="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+        {lastRun && <span className="font-medium text-foreground/80">{lastRunLine(lastRun)}</span>}
         {stale && (
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
             <AlertTriangle className="h-3.5 w-3.5" /> Last checked {age} days ago — may be out of date.
           </span>
         )}
         {error && (
-          <span className="text-rose-700 dark:text-rose-300">
-            Couldn't refresh: {error}{rows ? " — showing the last good read." : ""}
+          <span className="text-xs text-rose-700 dark:text-rose-300">
+            Couldn't refresh: {error}{rows ? " — showing the last good read." : ""}{" "}
+            <button type="button" onClick={onRefresh} disabled={loading} className="font-semibold underline underline-offset-2 disabled:opacity-50">
+              Try again
+            </button>
           </span>
         )}
       </div>

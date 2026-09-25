@@ -159,6 +159,6 @@ describe("the snapshot header", () => {
     const old = item({ itemId: "1", isCompleted: true, groupTitle: "Completed" });
     const live = item({ itemId: "2" });
     renderView([old, live], live);
-    expect(screen.getByText("2 records on this stage")).toBeInTheDocument();
+    expect(screen.getByText("This patient has 2 profiles in this stage")).toBeInTheDocument();
   });
 });

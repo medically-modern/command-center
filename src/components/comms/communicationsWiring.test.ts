@@ -56,10 +56,11 @@ describe("every phone number dials in the Command Center", () => {
     const col = code(read("src/components/patient/PatientCommsColumn.tsx"));
     expect(col).not.toMatch(/onCall=\{\(\) => \{\}\}/);
     expect(col).toMatch(/onCall=\{\(\) => dialNumber\(activePhone\)\}/);
-    // From 2026-09-24 the thread's header is off on this screen (Brandon's
-    // pixel-match, `bare`), so the Call a rep SEES is the number line's chip —
-    // beside the number it dials — and "Call alt" beside the alternate.
-    expect(col).toMatch(/onClick=\{\(\) => dialNumber\(phone\)\}/);
+    // From 2026-09-25 the Call a rep SEES is the header's top-right button
+    // (`call-top`), dialling whichever number the column is on — and "Call
+    // alt" beside the alternate.
+    expect(col).toMatch(/className="call-top"/);
+    expect(col).toMatch(/onClick=\{\(\) => dialNumber\(activePhone\)\}/);
     expect(col).toMatch(/dialNumber\(alt\);/);
   });
 

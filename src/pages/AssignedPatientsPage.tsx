@@ -1113,7 +1113,12 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
             <h1 className="truncate text-xl font-bold">Communications</h1>
           </div>
 
-          <div className="mx-auto flex items-center gap-2 rounded-xl bg-white/10 p-1.5 ring-1 ring-white/20">
+          {/* ⚠️ LEFT, not centred (Josh, 2026-09-25: *"bring the call any
+              number search bar to the left — it's confusing having that be
+              right under the command center general search bar"*). The
+              shell's global search sits centred directly above this header,
+              and two centred search-shaped boxes stacked read as one. */}
+          <div className="ml-2 flex items-center gap-2 rounded-xl bg-white/10 p-1.5 ring-1 ring-white/20">
             <div className="relative">
               <Phone className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-400" />
               <input
@@ -1140,7 +1145,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
           <button
             onClick={() => setRingSettings(true)}
             title="Which calls ring me"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-white/10"
+            className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-white/10"
           >
             <BellRing className="h-4 w-4" />
           </button>

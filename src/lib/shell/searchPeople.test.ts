@@ -147,10 +147,13 @@ describe("⚠️⚠️ the row opens the SUBSCRIPTION record when there is one",
 });
 
 describe("⚠️⚠️ a name is not an identity — the folding fails closed", () => {
-  it("two patients on DIFFERENT numbers stay two rows", () => {
+  it("two patients on DIFFERENT numbers with different DOBs stay two rows", () => {
+    // Two real Maria Garcias: nothing but the name agrees, so they must not
+    // fold. (Same name + same DOB DOES fold since 2026-09-25 — the
+    // changed-number test below.)
     const hits = groupSearchHits([
-      row({ id: "a", boardId: BOARD.wc.id, name: "MARIA GARCIA", phone: "5555550101" }),
-      row({ id: "b", boardId: BOARD.ins.id, name: "MARIA GARCIA", phone: "5555550102" }),
+      row({ id: "a", boardId: BOARD.wc.id, name: "MARIA GARCIA", phone: "5555550101", dob: "03/14/1958" }),
+      row({ id: "b", boardId: BOARD.ins.id, name: "MARIA GARCIA", phone: "5555550102", dob: "07/22/1961" }),
     ]);
     expect(hits).toHaveLength(2);
   });
@@ -184,12 +187,23 @@ describe("⚠️⚠️ a name is not an identity — the folding fails closed", 
     expect(hits).toHaveLength(2);
   });
 
-  it("⚠️ two non-blank phones that differ stay apart even when the DOB agrees", () => {
-    // Almost always one patient with an old number — but this cannot tell, and
-    // over-merging is the direction that puts one history under another name.
+  it("⚠️⚠️ an agreeing DOB folds ACROSS a changed number (Josh, 2026-09-25)", () => {
+    // The measured case: the phone corrected at Welcome Call left the
+    // onboarding records on the old number and the Subscription record on the
+    // new one — one human, two rows. Name + DOB is still two signals; a
+    // differing phone no longer vetoes them.
     const hits = groupSearchHits([
       row({ id: "a", boardId: BOARD.wc.id, phone: "5555550142", dob: "03/14/1958" }),
       row({ id: "b", boardId: BOARD.ins.id, phone: "5555550199", dob: "03/14/1958" }),
+    ]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].rows).toHaveLength(2);
+  });
+
+  it("⚠️ two non-blank phones that differ WITHOUT an agreeing DOB stay apart", () => {
+    const hits = groupSearchHits([
+      row({ id: "a", boardId: BOARD.wc.id, phone: "5555550142", dob: "03/14/1958" }),
+      row({ id: "b", boardId: BOARD.ins.id, phone: "5555550199", dob: "" }),
     ]);
     expect(hits).toHaveLength(2);
   });

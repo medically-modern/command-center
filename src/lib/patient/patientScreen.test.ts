@@ -259,7 +259,8 @@ describe("the patient screen is READ-ONLY", () => {
    *    PRESENTATIONAL and stay in the blanket scan below: they hand every edit
    *    up to the tab, and their one write — the notes box — is the Comms Hub's
    *    own `appendNoteToRecord`, pinned in its own test.
-   * 2. **Recent notes** (§5.39c3) — calls the Comms Hub's OWN
+   * 2. **The Subscription notes card** (SubscriptionCards; the Recent notes
+   *    strip it replaced was deleted 2026-09-25) — calls the Comms Hub's OWN
    *    `appendNoteToRecord`. ⚠️ Deliberately NOT gated on `editProfile`, per
    *    §5.39h: a running case history is not the profile, and it is how a rep
    *    records what they just learned on the call they are on.
@@ -271,7 +272,10 @@ describe("the patient screen is READ-ONLY", () => {
   const EDIT_PATH = [
     "src/components/patient/SubscriptionView.tsx",
     "src/hooks/patient/useSubscriptionRecord.ts",
-    "src/components/patient/RecentNotes.tsx",
+    // 2. **Recent notes** was DELETED 2026-09-25 (Josh — the notes live on the
+    //    main column now); the Subscription notes card in SubscriptionCards
+    //    carries its composer, through the same `appendNoteToRecord`.
+    "src/components/patient/SubscriptionCards.tsx",
     // 3. **The top bar's two pencils** (§5.46g; Josh, 2026-09-22: *"add email
     //    and the edit pencils to the top bar"*) — Brandon's own card. They call
     //    the Comms Hub's OWN `updatePatientContact`, behind `editProfile`.
@@ -301,7 +305,7 @@ describe("the patient screen is READ-ONLY", () => {
     expect(src("src/components/patient/SubscriptionView.tsx")).toMatch(/useAbility\("adjustOrders"\)/);
   });
 
-  it("⚠️ Recent notes calls the EXISTING writer — never a second implementation", () => {
+  it("⚠️ the notes composer calls the EXISTING writer — never a second implementation", () => {
     // ⚠️ `appendNoteToRecord` carries three rules a local copy would lose: it
     // RE-READS the column immediately before appending (Monday has no
     // compare-and-set, so appending onto a cached body silently deletes what
@@ -309,7 +313,9 @@ describe("the patient screen is READ-ONLY", () => {
     // cap rather than trusting a declared type (§10), and it writes a bare
     // string through change_multiple_column_values, which both column types
     // accept. Re-implementing any of it here is the §5.31c/§5.31d failure.
-    const notes = src("src/components/patient/RecentNotes.tsx");
+    // (The Recent notes strip was deleted 2026-09-25; the Subscription notes
+    // card is the composer on this screen now.)
+    const notes = src("src/components/patient/SubscriptionCards.tsx");
     expect(notes).toMatch(/from "@\/lib\/commsHub\/dossierApi"/);
     expect(notes).toMatch(/appendNoteToRecord\(/);
     // No hand-rolled mutation, and no second stamping rule.
@@ -320,13 +326,14 @@ describe("the patient screen is READ-ONLY", () => {
     expect(code).toMatch(/noteStageLabel\(/);
   });
 
-  it("⚠️ Recent notes is NOT gated on editProfile — a note is not the profile", () => {
+  it("⚠️ the notes composer is NOT gated on editProfile — a note is not the profile", () => {
     // §5.39h: notes stay writable with the ability off on `/subscription` and
     // `/update-clinicals` too. Gating them here would make this screen stricter
     // than the pages it mirrors, and would take away the one thing a rep needs
     // while they are on the call.
-    const notes = src("src/components/patient/RecentNotes.tsx");
-    expect(notes).not.toMatch(/editProfile|useAbility/);
+    const notes = src("src/components/patient/SubscriptionCards.tsx");
+    const card = notes.slice(notes.indexOf("export function SubscriptionNotesCard"));
+    expect(card).not.toMatch(/editProfile|useAbility/);
   });
 
   it("⚠️ the scan really found the screen's files", () => {
@@ -397,8 +404,8 @@ describe("the patient screen is READ-ONLY", () => {
       expect(handler.indexOf(call), `${call} is gone from handleSend`).toBeGreaterThan(-1);
       expect(refuse, `${call} runs before the ability check`).toBeLessThan(handler.indexOf(call));
     }
-    // The Send lives in the bar pinned to the BOTTOM of the tab (Josh,
-    // 2026-09-23; kept 2026-09-24) and renders only for somebody who can edit.
+    // The Send lives in the sticky bar at the TOP of the tab (Josh,
+    // 2026-09-25) and renders only for somebody who can edit.
     expect(view, "the Send bar renders without the ability").toMatch(
       /\{canEdit && merged && \(\s*<SendBar/,
     );
@@ -476,11 +483,12 @@ describe("the patient screen is READ-ONLY", () => {
 
   it("⚠️ reuses the EXISTING comms components rather than copying their rules", () => {
     // ConversationThread is the only surface RingCentral's late SendingFailed
-    // verdict reaches (§5.5); the Communications button is the one that reads
-    // the history on open (§5.16, §5.50). A local copy of either drifts silently.
+    // verdict reaches (§5.5). A local copy drifts silently. (The
+    // Communications button left this column on 2026-09-25 — Josh; the Calls
+    // tab shows the archive counts only, and nothing here reads RingCentral.)
     const col = src("src/components/patient/PatientCommsColumn.tsx");
     expect(col).toMatch(/assignedPatients\/ConversationThread/);
-    expect(col).toMatch(/comms\/CommunicationsButton/);
+    expect(col).not.toMatch(/comms\/CommunicationsButton/);
   });
 });
 

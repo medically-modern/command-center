@@ -257,7 +257,12 @@ export default function ResolveBar({
           {state.attempts.length > 1 ? ` (${state.attempts.length} tries)` : ""}
         </span>
       )}
-      <span className="ml-auto flex flex-wrap items-center gap-1.5">
+      {/* ⚠️ Compact (the patient screen's 380px column) keeps the four
+          buttons on ONE line (Josh, 2026-09-25: *"can we have left voicemail
+          on same line, instead of next row"*): the group never wraps
+          internally — when the row is tight, the whole group drops below
+          "Waiting" as one line instead of orphaning Left voicemail. */}
+      <span className={cn("ml-auto flex items-center", compact ? "flex-nowrap gap-1" : "flex-wrap gap-1.5")}>
         {!compact && <span className="mr-0.5 whitespace-nowrap text-[11px] text-muted-foreground">{sug ? "Confirm" : "Mark resolved"}</span>}
         {RESOLVING.map((how) => {
           const suggested = sug?.how === how;
@@ -269,7 +274,7 @@ export default function ResolveBar({
               title={suggested ? `${HOW_LABEL[how]} ${formatWhen(sug.at)}${sug.by ? ` · ${whoShort(sug.by)}` : ""} — confirm to resolve` : undefined}
               className={cn(
                 "inline-flex items-center gap-1 whitespace-nowrap rounded-full border font-semibold transition-colors disabled:opacity-50",
-                compact ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
+                compact ? "px-2 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
                 suggested
                   ? "border-[color:var(--mm-green)] bg-[color:var(--mm-green-12)] text-foreground ring-2 ring-[color:var(--mm-green-12)]"
                   : "border-border bg-card text-foreground hover:border-[color:var(--mm-green)]",
@@ -287,8 +292,8 @@ export default function ResolveBar({
           disabled={!!busy}
           title="Logs the attempt. The item stays open and the 24-hour clock keeps running."
           className={cn(
-            "ml-1 inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-border font-medium text-muted-foreground hover:text-foreground disabled:opacity-50",
-            compact ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
+            "inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-border font-medium text-muted-foreground hover:text-foreground disabled:opacity-50",
+            compact ? "ml-0.5 px-2 py-1 text-[11px]" : "ml-1 px-3 py-1.5 text-xs",
           )}
         >
           {busy === "left_vm" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Voicemail className="h-3 w-3" />}

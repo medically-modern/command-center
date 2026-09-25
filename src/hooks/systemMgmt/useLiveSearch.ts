@@ -26,7 +26,11 @@ import {
 } from "@/lib/systemMgmt/mondayApi";
 import { rankLiveResults } from "./useSystemPatients";
 
-export const LIVE_SEARCH_DEBOUNCE_MS = 300;
+/** 300 → 200ms on 2026-09-25 (Josh: *"anything we can do to speed it up"*) —
+ *  the name pass already paints before the loose and same-number passes, so
+ *  the debounce is most of what is left between the last keystroke and rows.
+ *  Latest-wins aborts make extra in-flight requests harmless. */
+export const LIVE_SEARCH_DEBOUNCE_MS = 200;
 export const LIVE_SEARCH_REFRESH_MS = 45_000;
 
 export interface LiveSearchState {

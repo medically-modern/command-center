@@ -56,11 +56,15 @@ const VIEWS: { id: InboxQuery["view"]; label: string }[] = [
   { id: "all", label: "All" },
 ];
 
-const TYPES: { id: InboxQuery["type"]; label: string }[] = [
+/** Each type's colour mark (Josh, 2026-09-25: *"filter pills are missing
+ *  their colored marks"*) — the same hues the rows' icons and the hover
+ *  borders already speak: sky = text, orange = missed call, violet =
+ *  voicemail. "All" carries none; it is every colour at once. */
+const TYPES: { id: InboxQuery["type"]; label: string; dot?: string }[] = [
   { id: "", label: "All" },
-  { id: "text", label: "Texts" },
-  { id: "missed", label: "Missed calls" },
-  { id: "voicemail", label: "Voicemails" },
+  { id: "text", label: "Texts", dot: "bg-sky-500" },
+  { id: "missed", label: "Missed calls", dot: "bg-orange-500" },
+  { id: "voicemail", label: "Voicemails", dot: "bg-violet-500" },
 ];
 
 export default function InboxList({
@@ -187,7 +191,7 @@ export default function InboxList({
                   key={t.id || "all"}
                   onClick={() => onQuery({ type: t.id })}
                   className={cn(
-                    "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors",
+                    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors",
                     on
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -196,6 +200,7 @@ export default function InboxList({
                     !on && t.id === "voicemail" && "hover:border-violet-400",
                   )}
                 >
+                  {t.dot && <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", t.dot)} />}
                   {t.label}
                 </button>
               );

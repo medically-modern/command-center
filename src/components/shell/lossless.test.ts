@@ -78,23 +78,23 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     expect(app).toMatch(/ability="stageManager"[\s\S]{0,120}StageManagerPage/);
   });
 
-  it("⚠️ the MANAGE ▾ menu is gone, and the orphan that needed a home got one", () => {
-    // Josh, 2026-09-21: "also remove the manage tab". Two of its three entries
-    // did not exist elsewhere at the time; Access & permissions still needs
-    // this menu (the Users button beside it is ADMIN-only), so it moved here.
+  it("⚠️ the MANAGE ▾ menu is gone", () => {
+    // Josh, 2026-09-21: "also remove the manage tab".
     const h = header();
     expect(h, "the Manage button is still here").not.toContain('title="Manager tools"');
-    expect(h).toContain('navigate("/access")');
   });
 
-  it("⚠️⚠️ the settings menu is down to ONE manager entry, and it is still gated", () => {
-    // Everything else moved to the top bar or was trimmed. Access & permissions
-    // stays because the Users button beside it is ADMIN-only and only reads as
-    // manager-wide while `admins` is empty (§5.39c).
+  it("⚠️⚠️ Access & permissions left the settings menu too — the Users button is the ONE door, and it is ADMIN-gated", () => {
+    // Josh, 2026-09-25: "Get rid of access and permissions in the settings
+    // tab, that's the same thing as users tab". It is the same ROUTE — but the
+    // Users button is ADMIN-only, and `isAdmin` reads as manager-wide only
+    // while `admins` is empty (§5.39c). So this is a NARROWING recorded the
+    // way Oversight's is: the day somebody names the first admin, a non-admin
+    // manager has no route to /access from the chrome. If that bites, the fix
+    // is re-adding a gated entry to the settings menu.
     const h = header();
-    const section = h.slice(h.indexOf("{managerish && ("), h.indexOf("</>\n              )}"));
-    expect(section, "/access escaped the manager gate").toContain('navigate("/access")');
-    expect(h, "the Manage button is back").not.toContain('title="Manager tools"');
+    expect(h, "the settings-menu entry is back").not.toContain('navigate("/access")');
+    expect(h, "the Users button lost its route").toContain('to="/access"');
   });
 
   it("⚠️⚠️ System Management and Stage Manager left the menu — the top bar has them", () => {
@@ -193,13 +193,15 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     expect(live(read("App.tsx"))).toContain('path="/system-mgmt"');
   });
 
-  it("⚠️ Access is on the settings menu AND the Users button, which is admin-only", () => {
-    // `isAdmin` is true for every manager only while `admins` is empty
-    // (§5.39c). The day somebody names the first admin, the settings menu is
-    // the one route a non-admin manager has to /access.
+  it("⚠️ Access is the Users button alone since 2026-09-25, and it is admin-only", () => {
+    // Josh: "Get rid of access and permissions in the settings tab, that's
+    // the same thing as users tab". `isAdmin` is true for every manager only
+    // while `admins` is empty (§5.39c) — the day somebody names the first
+    // admin, a non-admin manager has NO route to /access from the chrome.
+    // The narrowing is recorded in its own test above.
     const h = header();
-    expect(h).toContain('"/access"');
-    expect(h).toMatch(/managerish && \(/);
+    expect(h).toContain('to="/access"');
+    expect(h).not.toContain('navigate("/access")');
   });
 
   it("⚠️⚠️ the roster's own job survived its rail — the Viewing dropdown", () => {

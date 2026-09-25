@@ -64,10 +64,10 @@ describe("the right column", () => {
     expect(COMMS_COLUMN).toContain("const activePhone = onAlt ? alt : phone;");
   });
 
-  it("⚠️ Recent notes keeps the PRIMARY number", () => {
-    // A note is about the patient; the audit line must not name a caregiver's
-    // number because the thread happened to be switched.
-    expect(COMMS_COLUMN).toContain("<RecentNotes active={active} phone={phone}");
+  it("⚠️ the Recent notes strip stays gone from this column (Josh, 2026-09-25)", () => {
+    // The notes live at the foot of the main column now; a strip returning
+    // here would be the drift §5.39c3 warned about, in reverse.
+    expect(COMMS_COLUMN).not.toContain("<RecentNotes");
   });
 
   it("passes Can Text through to the thread", () => {

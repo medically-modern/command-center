@@ -51,6 +51,7 @@ import { FoundBySearchBanner, HouseholdSwitcher, LiveNotes } from "@/components/
 import { dossierPaneFallback } from "@/components/commsHub/dossierPaneFallback";
 import type { PatientDossier } from "@/lib/commsHub/dossier";
 import type { DossierPick } from "@/lib/commsHub/dossierApi";
+import { VIEW_PARAM, viewFor } from "@/lib/patient/patientScreen";
 import { profilePageHref } from "@/lib/patient/profileHref";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 import "@/pages/patient/redesign.css";
@@ -151,7 +152,19 @@ export function HubPatientPane({
             setParam={setParam}
             onSaved={onReload ?? (() => {})}
             embedded
-            afterTop={<LiveNotes dossier={dossier} phone={phone} className="card flex flex-col" />}
+            /* ⚠️ The notes follow the TAB (Josh, 2026-09-25): the subscription
+               tab shows the Subscription notes alone (composer kept), the
+               onboarding tab the onboarding trail alone (no composer) —
+               `LiveNotes`' own `view` rules. `viewFor` is the same default
+               the body itself renders with, so the two cannot disagree. */
+            afterTop={
+              <LiveNotes
+                dossier={dossier}
+                phone={phone}
+                view={viewFor(params.get(VIEW_PARAM), dossier)}
+                className="card flex flex-col"
+              />
+            }
           />
         </div>
       </div>

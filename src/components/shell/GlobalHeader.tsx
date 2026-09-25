@@ -35,8 +35,8 @@
  * somebody else, or stop MY phone ringing while I look at their screen.
  */
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowRightLeft, BarChart3, Grid3x3, KeyRound, LogOut, MessageSquare, Package, Settings, Stethoscope, Users } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { ArrowRightLeft, BarChart3, Grid3x3, LogOut, MessageSquare, Package, Settings, Stethoscope, Users } from "lucide-react";
 import { getUser, signOut } from "@/lib/shared/auth";
 import { GlobalSearch } from "./GlobalSearch";
 import { CallSettings } from "./CallSettings";
@@ -114,7 +114,6 @@ const TABS: Tab[] = [
 
 export function GlobalHeader() {
   const { pathname, search } = useLocation();
-  const navigate = useNavigate();
   const { appearance, setAppearance } = useAppearance();
   const { theme, setTheme } = useTheme();
   const { email, config } = useAccessContext();
@@ -135,10 +134,6 @@ export function GlobalHeader() {
     who !== email ? (config.processors?.[who]?.name || who.split("@")[0]) : "";
 
   const admin = isAdmin(who, config);
-  /** Manager tools are for managers. `isAdmin` is true for every manager while
-   *  `admins` is empty (§5.39c), so today this is the same set — but the two
-   *  answer different questions and must not be conflated. */
-  const managerish = isManagerOf(who, config);
   /**
    * The Communications tab's red badge: the UNRESOLVED count, never an unread
    * one (COMMS_INBOX_PLAN.md §1.2, §9.1 D4). ⚠️ A Postgres count on the
@@ -294,37 +289,28 @@ export function GlobalHeader() {
                   new texts from my patients"; Josh, 2026-09-24: "dont build
                   that yet". */}
 
-              {/* ⚠️ The ONE manager entry, still gated (§5.44). Access &
-                  permissions stays here because the Users button beside this
-                  menu is ADMIN-only, and `isAdmin` reads as manager-wide only
-                  while `admins` is empty (§5.39c). Oversight, System Management,
-                  Stage Manager, Daily operations and the Faxes section all left
-                  this menu on Josh's word (2026-09-21/22) — the top bar has
-                  them, or their door is recorded elsewhere (`lossless.test.ts`). */}
-              {managerish && (
-                <>
-                  <div className="sec">
-                    <div className="eyebrow">Manager</div>
-                    <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/access"); }}>
-                      <KeyRound style={{ width: 13, height: 13 }} />
-                      Access &amp; permissions
-                    </button>
-                  </div>
-                </>
-              )}
+              {/* ⚠️ Access & permissions LEFT this menu on 2026-09-25 (Josh:
+                  *"Get rid of access and permissions in the settings tab,
+                  that's the same thing as users tab"*). The Users button
+                  beside this menu is now the ONE door to `/access` — and it
+                  is ADMIN-gated, so the §5.44 narrowing is real the day
+                  somebody names the first admin: a non-admin manager then has
+                  no route to `/access` from the chrome. Recorded in
+                  `lossless.test.ts`; the fix, if it bites, is re-adding a
+                  gated entry here. */}
 
               {/* ⚠️ Appearance is a SEPARATE axis from the colour theme, not a
-                  seventh theme (§5.40) — his `segc` for Light · Dark · System,
-                  and the six swatches under it, which the mockup lists too
-                  (handoff line 166). `?appearance=light` is the route from a
-                  page with no menu. */}
+                  seventh theme (§5.40) — his `segc`, Light · Dark only since
+                  2026-09-25 (Josh: *"remove system setting and just have
+                  light or dark"*; a stored System migrates in
+                  `readAppearance`), and the six swatches under it.
+                  `?appearance=light` is the route from a page with no menu. */}
               <div className="sec">
                 <div className="eyebrow">Appearance</div>
                 <div className="segc sm" role="group" aria-label="Appearance">
                   {([
                     ["light", "Light"],
                     ["dark", "Dark"],
-                    ["system", "System"],
                   ] as const).map(([id, label]) => (
                     <button
                       key={id}

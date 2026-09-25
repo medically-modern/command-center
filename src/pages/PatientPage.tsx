@@ -218,9 +218,7 @@ export default function PatientPage() {
             patient={threadPatient}
             side={side}
             onSide={(s: PatientSide) => setParam({ [SIDE_PARAM]: s })}
-            active={active}
             contacts={contacts}
-            onNoteAppended={(notes) => active && setNoteEdit({ itemId: active.itemId, notes })}
             noteTarget={noteTarget}
           />
         </div>

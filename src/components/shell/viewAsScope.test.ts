@@ -48,9 +48,11 @@ describe("⚠️ the borrow reaches the header", () => {
     expect(header).toContain('hasAbility(email, config, "viewOthers")');
   });
 
-  it("tabs, the Manage menu and Users all answer for `who`", () => {
+  it("tabs and Users answer for `who`", () => {
+    // (The settings menu's manager entry left on 2026-09-25, so `isManagerOf`
+    // is no longer read here at all — only the tab gates and the admin-only
+    // Users button remain, and both must answer for the borrowed `who`.)
     expect(header).toContain("TABS.filter((t) => !t.ability || hasAbility(who, config, t.ability))");
-    expect(header).toContain("isManagerOf(who, config)");
     expect(header).toContain("isAdmin(who, config)");
   });
 

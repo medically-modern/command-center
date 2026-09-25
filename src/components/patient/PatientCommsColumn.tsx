@@ -1,32 +1,27 @@
 /**
- * The patient screen's right-hand column (§5.39) — Texts | Calls, the patient's
- * numbers, and Recent notes, in Brandon's `.pt-side` layout.
+ * The patient screen's right-hand column (§5.39) — Texts | Calls and the
+ * patient's numbers, in Brandon's `.pt-side` layout.
  *
- * ⚠️ **Both halves are the EXISTING components, not new ones.** The thread is
+ * ⚠️ **The thread is the EXISTING component, not a new one** —
  * `assignedPatients/ConversationThread`, which is the only surface RingCentral's
  * late `SendingFailed` verdict ever reaches (§5.5) and which already carries the
- * opt-out guard; the Calls tab is `comms/CommunicationsButton` (§5.50), whose
- * popup reads the patient's whole history from the archives and falls back to
- * the call log ON OPEN (§5.16). Rebuilding either here would be a second copy
- * of a rule whose drift is silent.
+ * opt-out guard. Rebuilding it here would be a second copy of a rule whose
+ * drift is silent.
  *
- * ⚠️ **Only the OPEN tab reads RingCentral** — the §5.28 rule, and the reason
- * the Calls tab renders a button rather than an inline list: a list would have
- * to fetch on mount, which is a per-patient RingCentral read on a screen a rep
- * clicks through. INCIDENT_2026-08-20 is that shape.
+ * ⚠️ **Nothing on the Calls tab reads RingCentral** — the counts come from OUR
+ * call archive in Postgres. The Communications button that used to sit here
+ * was deleted on 2026-09-25 (Josh: *"delete the communications button on the
+ * side panel … under the calls tab"*); the full history is the Communications
+ * header tab.
  *
- * ⚠️ **Call dials in the page** (Josh, 2026-09-24, §5.50). This column's Call
- * button was a deliberate no-op on the belief that a dialer here would spend a
- * second softphone slot. It would not: `useWebPhone` is a view over the ONE
- * registration every tab shares (§5.13b), so a rep pressed Call and nothing
- * happened for no benefit at all.
+ * ⚠️ **Call dials in the page** (Josh, 2026-09-24, §5.50), from the header's
+ * top-right Call button (moved and restyled 2026-09-25). `useWebPhone` is a
+ * view over the ONE registration every tab shares (§5.13b), so it costs no
+ * second softphone slot.
  *
- * ⚠️ **Recent notes sits UNDER both tabs, outside the tab body** (§5.39c3) —
- * Brandon's spec, and it falls out of what the block is: a fact about the
- * patient, not about texts or calls. Mounted once here rather than inside each
- * pane, so a rep switching tabs does not lose a half-typed note and the two
- * copies cannot drift. It costs no read: the notes come with the dossier the
- * screen already holds.
+ * ⚠️ **Recent notes is GONE from this column** (Josh, 2026-09-25) — the notes
+ * live on the main column: the Subscription view's notes card (with the
+ * composer) and the Onboarding view's read-only "Notes from this stage" card.
  *
  * ⚠️ **The alternate number is a SWITCH, not a second pane** (§5.46e). Brandon's
  * numline carries the caregiver and two actions; here both of them point the
@@ -56,14 +51,11 @@
 import { useCallback, useMemo, useState } from "react";
 import { Loader2, MessageSquare, Phone } from "lucide-react";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
-import { CommunicationsButton } from "@/components/comms/CommunicationsButton";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
 import { reportDial } from "@/hooks/commsInbox/useInbox";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
 import type { PatientSide } from "@/lib/patient/patientScreen";
-import type { DossierItem } from "@/lib/commsHub/dossier";
 import type { Contacts } from "@/lib/patient/contacts";
-import { RecentNotes } from "@/components/patient/RecentNotes";
 import { PatientResolveBar } from "@/components/commsInbox/PatientResolveBar";
 import type { NoteTarget } from "@/lib/commsInbox/api";
 import { formatPhoneParen } from "@/lib/shared/phoneDisplay";
@@ -77,20 +69,15 @@ export function PatientCommsColumn({
   patient,
   side,
   onSide,
-  active,
   contacts,
-  onNoteAppended,
   noteTarget = null,
 }: {
   phone: string;
   patient: PatientRef | null;
   side: PatientSide;
   onSide: (s: PatientSide) => void;
-  /** The board the patient is on NOW, for Recent notes. */
-  active: DossierItem | null;
   /** Who we reach and on which number — null when no record carries them. */
   contacts: Contacts | null;
-  onNoteAppended: (next: string) => void;
   /** The patient on this screen — where a resolve note made here is copied,
    *  even when the number files the item under another patient. */
   noteTarget?: NoteTarget | null;
@@ -157,6 +144,27 @@ export function PatientCommsColumn({
             {callTotals.kind === "ready" && <span className="n">{callTotals.totals.total}</span>}
           </button>
         </div>
+        {/* ⚠️ THE Call button, top right (Josh, 2026-09-25: *"make the call
+            button like a bit prettier and on the top right area"*) — it moved
+            up from the number-line chip and dials whichever number the column
+            is on, through the same one shared registration (§5.13b · §5.50).
+            "Call alt" below still dials the alternate directly. */}
+        {activePhone && (
+          <button
+            type="button"
+            className="call-top"
+            onClick={() => dialNumber(activePhone)}
+            disabled={callingActive}
+            title={`Call ${formatPhoneParen(activePhone)} from the Command Center`}
+          >
+            {callingActive ? (
+              <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} />
+            ) : (
+              <Phone style={{ width: 13, height: 13 }} />
+            )}{" "}
+            Call
+          </button>
+        )}
       </div>
 
       {/* Brandon's numline: the primary number and who answers it, then the
@@ -167,25 +175,6 @@ export function PatientCommsColumn({
         <span className="muted">
           primary{contacts?.primaryContact ? ` · ${contacts.primaryContact}` : ""}
         </span>
-        {/* The primary number's Call, beside the number it dials (§5.50) — the
-            dark Call button that used to do this is gone with the thread's
-            header on this screen. */}
-        {phone && (
-          <button
-            type="button"
-            className="numbtn"
-            onClick={() => dialNumber(phone)}
-            disabled={callingNumber(phone)}
-            title="Call this number from the Command Center"
-          >
-            {callingNumber(phone) ? (
-              <Loader2 className="animate-spin" style={{ width: 10, height: 10 }} />
-            ) : (
-              <Phone style={{ width: 10, height: 10 }} />
-            )}{" "}
-            Call
-          </button>
-        )}
 
         {alt ? (
           <>
@@ -281,33 +270,19 @@ export function PatientCommsColumn({
             since={totals.coverage?.callsSince ?? null}
             caregiverName={contacts?.caregiverName}
           />
-          <p className="xs muted" style={{ margin: 0 }}>
-            Every text, call, recording and voicemail with{" "}
-            {onAlt ? "the alternate number" : "this patient"}, full screen — and a composer to text them.
-          </p>
-          <div>
-            <CommunicationsButton
-              phone={activePhone}
-              altPhone={onAlt ? phone : alt}
-              patientName={patient?.name}
-              mondayItemId={patient?.itemId}
-              canText={onAlt ? undefined : contacts?.canText}
-            />
-          </div>
-          {/* ⚠️ Says WHY the history is behind a press rather than just shown —
-              the call log is one of RingCentral's more rate-limited endpoints
-              (§5.16) and this screen renders for every patient a rep clicks
-              through. */}
-          <p className="xs muted" style={{ margin: 0 }}>
-            Loaded when you open it, so a patient you only glance at costs nothing.
-          </p>
+          {/* ⚠️ The Communications button is GONE from this tab (Josh,
+              2026-09-25: *"delete the communications button on the side panel
+              … under the calls tab"* — it reversed §5.51's "keeps it"). The
+              full history is still one click away on the Communications header
+              tab; nothing here reads RingCentral (§5.16). */}
         </div>
       )}
 
-      {/* ⚠️ The PRIMARY number, always: a note is about the patient, and the
-          audit line the writer stamps must not name a caregiver's number
-          because the thread happened to be switched. */}
-      <RecentNotes active={active} phone={phone} onAppended={onNoteAppended} />
+      {/* ⚠️ Recent notes is GONE from this column (Josh, 2026-09-25: *"we
+          have it at bottom of main page of profile page"*) — the Subscription
+          view's notes card carries the composer, and the Onboarding view's
+          "Notes from this stage" card carries the read-only log (§5.39c3's
+          two-components rule survives it). */}
     </aside>
   );
 }

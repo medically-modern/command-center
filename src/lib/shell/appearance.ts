@@ -22,6 +22,12 @@
  * honouring the OS by default would flip the whole company to a mode nobody
  * asked for on one deploy — the same reasoning that makes an ability default ON
  * (§5.39c): absence is not a decision.
+ *
+ * ⚠️ **"System" left the MENU on 2026-09-25** (Josh: *"remove system setting
+ * and just have light or dark"*). The type keeps the value so a browser that
+ * stored it keeps working: `readAppearance` migrates it ONCE to whatever it
+ * currently resolves to, so nobody's screen changes on the deploy — their
+ * current look simply becomes their pinned choice.
  */
 
 export type Appearance = "light" | "dark" | "system";
@@ -39,9 +45,17 @@ const DARK_QUERY = "(prefers-color-scheme: dark)";
 export function readAppearance(): Appearance {
   try {
     const raw = localStorage.getItem(KEY);
+    if (raw === "system") {
+      // The menu no longer offers System (2026-09-25): pin what it shows
+      // TODAY, so the deploy changes nobody's screen. Best-effort persisted —
+      // a browser that refuses the write just migrates again next read.
+      const pinned = systemPrefersDark() ? "dark" : "light";
+      writeAppearance(pinned);
+      return pinned;
+    }
     // An unrecognised value is a missing answer, never a third state — the same
     // rule every stored choice in this app follows (§5.20 `networkAnswer`).
-    return raw === "dark" || raw === "light" || raw === "system" ? raw : DEFAULT_APPEARANCE;
+    return raw === "dark" || raw === "light" ? raw : DEFAULT_APPEARANCE;
   } catch {
     return DEFAULT_APPEARANCE;
   }

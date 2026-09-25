@@ -221,11 +221,21 @@ describe("nameMatchAccepted — a name is not an identity", () => {
     expect(nameMatchAccepted({ phone: WANT, dob: "" }, ANCHOR)).toBe(true);
   });
 
-  it("REJECTS a namesake carrying a different number", () => {
+  it("⚠️⚠️ accepts a different number when the DOB AGREES — the changed-phone case (Josh, 2026-09-25)", () => {
+    // A number corrected at Welcome Call leaves the onboarding records on the
+    // old one. Same name + same DOB is still two signals; the differing phone
+    // no longer vetoes them, or the patient screen opened from Subscription
+    // shows no onboarding trail at all. `searchPeople.sameHuman` is the same
+    // rule — keep them in agreement.
+    expect(nameMatchAccepted({ phone: "+16095550199", dob: "01/15/1957" }, ANCHOR)).toBe(true);
+  });
+
+  it("REJECTS a namesake carrying a different number and no agreeing DOB", () => {
     // Two patients called Maria Garcia. Admitting this would render one
     // person's notes and stage on the other's conversation, and hand
     // sendMessage the wrong Monday item to attribute an outbound text to.
-    expect(nameMatchAccepted({ phone: "+16095550199", dob: "01/15/1957" }, ANCHOR)).toBe(false);
+    expect(nameMatchAccepted({ phone: "+16095550199", dob: "03/02/1961" }, ANCHOR)).toBe(false);
+    expect(nameMatchAccepted({ phone: "+16095550199", dob: "" }, ANCHOR)).toBe(false);
   });
 
   it("accepts a blank-phone record when the DOB agrees — the completed record this pass exists to find", () => {

@@ -130,9 +130,10 @@ describe("⚠️⚠️ Brandon's grid replaces the snapshot cards — nothing is
     expect(tab()).not.toMatch(/buildStageDetail|snapcard|rogrid/);
   });
 
-  it("his grid, in his order: overview → [Demographics | Insurance | MN & Auth] → [Order details | Doctor | Financials] → notes", () => {
+  it("his grid, in his order: Send bar on top → overview → [Demographics | Insurance | MN & Auth] → [Order details | Doctor | Financials] → notes", () => {
     const t = tab();
     const order = [
+      "<SendBar",
       "<OverviewStrip",
       '<div className="grid3 mnrow">',
       "<DemographicsCard",
@@ -143,7 +144,6 @@ describe("⚠️⚠️ Brandon's grid replaces the snapshot cards — nothing is
       "<DoctorCard",
       "<FinancialsCard",
       "<SubscriptionNotesCard",
-      "<SendBar",
     ];
     let at = -1;
     for (const piece of order) {
@@ -250,17 +250,19 @@ describe("⚠️ the patient screen's Send is the /subscription page's SAME butt
     expect(text, "a hand-rolled Save appeared").not.toMatch(/btn primary[^"]*"[^>]*onClick=\{(handleSend|onSend)/);
   });
 
-  it("⚠️⚠️ and it sits in the bar at the BOTTOM of the tab, after the notes (Josh, 2026-09-23; kept 2026-09-24)", () => {
+  it("⚠️⚠️ and it sits in the bar at the TOP of the tab, before the cards (Josh, 2026-09-25 — blue Save)", () => {
     const text = view();
     const start = text.indexOf("function ProfileTab(");
     const tab = text.slice(start, text.indexOf("\nfunction ", start + 1));
-    const notes = tab.indexOf("<SubscriptionNotesCard");
+    const overview = tab.indexOf("<OverviewStrip");
     const bar = tab.indexOf("<SendBar");
-    expect(notes, "the notes card moved").toBeGreaterThan(-1);
-    expect(bar, "the Send bar is not in the Profile tab").toBeGreaterThan(notes);
-    // The bar is pinned: sticky, at the bottom.
+    expect(overview, "the overview strip moved").toBeGreaterThan(-1);
+    expect(bar, "the Send bar is not in the Profile tab").toBeGreaterThan(-1);
+    expect(bar, "the Send bar must precede the cards").toBeLessThan(overview);
+    // The bar stays on screen: sticky, at the top; and it is the blue Save.
     const css = src("src/pages/patient/redesign.css");
-    expect(css).toMatch(/\.cc-pt \.sub-send \{[^}]*position: sticky;[^}]*bottom:/);
+    expect(css).toMatch(/\.cc-pt \.sub-send \{[^}]*position: sticky;[^}]*top:/);
+    expect(text).toMatch(/<SendToMondayButton\s+blue/);
   });
 });
 

@@ -73,14 +73,17 @@
   flex: 1; min-height: 0;
 }
 .cc-pt .pt-main {
-  /* Its bottom padding, named because the Subscription tab's pinned Send reads
-     it: a sticky box stops at the scroll container's PADDING edge, so without
-     this the bar floats 48px up with the fields showing underneath it. */
+  /* Its paddings, named because the Subscription tab's sticky Send reads
+     them: a sticky box stops at the scroll container's PADDING edge, so
+     without the offset the bar floats away from the edge with the fields
+     showing past it. */
   --pt-main-pb: 48px;
-  min-width: 0; overflow-y: auto; padding: 18px 24px var(--pt-main-pb);
+  --pt-main-pt: 18px;
+  min-width: 0; overflow-y: auto; padding: var(--pt-main-pt) 24px var(--pt-main-pb);
   display: flex; flex-direction: column; gap: 14px;
-  /* A field scrolled into view (a Tab keypress, a focus) stops above the
-     Subscription tab's pinned Send rather than behind it. */
+  /* A field scrolled into view (a Tab keypress, a focus) stops clear of the
+     Subscription tab's sticky Send rather than behind it. */
+  scroll-padding-top: 84px;
   scroll-padding-bottom: 96px;
 }
 .cc-pt .pt-side {
@@ -537,11 +540,15 @@
 .cc-pt .facts.split { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--bd); }
 .cc-pt .facts.split.wide { margin-top: 14px; }
 .cc-pt .contacts-h { margin: 14px 0 8px; padding-top: 12px; border-top: 1px solid var(--bd); }
-/* The editable Contacts (pixel-match item 7): Brandon's three columns when
-   the card is wide enough, two when it is not — measured, a 1440 window gives
-   the Demographics card 254px inside, and three selects there cut their own
-   labels. A fact wraps; a select cannot. */
-.cc-pt .facts.contacts.ctl { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 12px 14px; }
+/* The editable Contacts: ALWAYS two rows of three (Josh, 2026-09-25: *"let's
+   make it so it's always 2 rows of 3 — when you stretch the window wide, it
+   puts them all on one row"*). Auto-fit was flowing all six onto one row on a
+   wide window; a fixed three keeps the block's shape and lets the columns
+   widen instead. ⚠️ This supersedes the 2026-09-24 auto-fit (narrow cards cut
+   "Patient" to "Patien" in a select) — the labels may truncate again in a
+   narrow card, and Josh chose the fixed structure; the hub's 480px pane keeps
+   its own two-column override below. */
+.cc-pt .facts.contacts.ctl { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; }
 /* A section title never breaks across two lines beside its note, and a count
    chip never splits its number from its word. */
 .cc-pt .section-h > .eyebrow { white-space: nowrap; flex: none; }
@@ -604,6 +611,16 @@
 .cc-pt .notice.ro-note { background: var(--mut); font-size: 11px; }
 /* The reorder-form chip in the Order details card (his `.rf`). */
 .cc-pt .rf { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px; font-size: 12px; }
+/* One line since 2026-09-25 — the pill plus "· sent 9/16/26" must never wrap,
+   so the Frequency select beside it stays on the same row. */
+.cc-pt .rf.oneline { flex-wrap: nowrap; white-space: nowrap; gap: 6px; overflow: hidden; }
+.cc-pt .rf.oneline .chip { flex: none; }
+/* The MN files list's collapse toggle — "View all N files" (2026-09-25). */
+.cc-pt .files .files-toggle { margin-top: 4px; }
+/* His v3 MN & auth card: one line per HCPCS code under each auth status. */
+.cc-pt .auth-lines { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.cc-pt .auth-line { font-size: 12px; line-height: 1.35; }
+.cc-pt .auth-line .code { font-weight: 600; }
 /* Files — his `.files .f`. */
 .cc-pt .files .f {
   display: flex; align-items: center; gap: 8px; padding: 6px 0;
@@ -631,24 +648,25 @@
 }
 @media (max-width: 760px) { .cc-pt .mndocs { grid-template-columns: 1fr; } }
 
-/* ⚠️⚠️ The Send is at the BOTTOM of the tab and PINNED there while the tab is
-   on screen (Josh, 2026-09-23: *"with a send to monday button at the bottom"*).
-   It used to sit above the form because the form is taller than the viewport,
-   so a Save at its foot was below the fold on every patient; sticky answers
-   both. It is a direct child of `.pt-main` (the Profile tab renders a
-   fragment), so it is pinned from the first frame — inside a box of its own it
-   could not rise above that box's top edge.
+/* ⚠️⚠️ The Send is at the TOP of the tab since 2026-09-25 (Josh: *"should be
+   on top with blue button"* — Brandon's Save; it was pinned at the bottom
+   2026-09-23/24) and STICKY, which is what keeps §5.45b's real requirement:
+   the form is taller than the viewport, and sticky keeps the one Save on
+   screen from the first frame to the last wherever the rep has scrolled. It
+   is a direct child of `.pt-main` (the Profile tab renders a fragment), so it
+   can ride the whole scroll — inside a box of its own it could not pass that
+   box's edge.
    ⚠️ The background is OPAQUE — the bar floats over the fields as they scroll
    under it, and the warning tint alone is 10% alpha, so it is laid over the
    card colour rather than standing alone. */
 .cc-pt .sub-send {
-  /* Flush with the bottom edge: `.pt-main` is the scroller here, and sticky
-     measures from inside its padding (see `--pt-main-pb`). */
-  position: sticky; bottom: calc(-1 * var(--pt-main-pb, 0px)); z-index: 4;
+  /* Flush with the top edge: `.pt-main` is the scroller here, and sticky
+     measures from inside its padding (see `--pt-main-pt`). */
+  position: sticky; top: calc(-1 * var(--pt-main-pt, 0px)); z-index: 4;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 10px 14px; border-radius: 12px; font-size: 12px;
   background: var(--cd); border: 1px solid var(--bd);
-  box-shadow: 0 -10px 24px -14px hsl(215 40% 12% / 0.4);
+  box-shadow: 0 10px 24px -14px hsl(215 40% 12% / 0.4);
 }
 .cc-pt .sub-send.dirty {
   background: linear-gradient(var(--warn-bg), var(--warn-bg)), var(--cd);
@@ -674,7 +692,23 @@
 .cc-pt .pt-resolve { flex: none; border-bottom: 1px solid var(--bd); background: var(--mut); }
 .cc-pt .pt-resolve[data-state="over"] { box-shadow: inset 3px 0 0 hsl(var(--destructive)); }
 .cc-pt .pt-resolve[data-state="resolved"] { background: var(--cd); }
-.cc-pt .pt-side .hd { padding: 10px 12px; border-bottom: 1px solid var(--bd); }
+.cc-pt .pt-side .hd {
+  padding: 10px 12px; border-bottom: 1px solid var(--bd);
+  display: flex; align-items: center; gap: 8px;
+}
+/* THE Call button — top right of the column (Josh, 2026-09-25: "make the call
+   button like a bit prettier and on the top right area"). Green, because it
+   dials; tokens, so dark mode follows (§5.40). */
+.cc-pt .call-top {
+  margin-left: auto; flex: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer;
+  background: var(--mm-green); color: #fff; border: 1px solid transparent;
+  box-shadow: var(--sh-sm); transition: filter 120ms ease;
+}
+.cc-pt .call-top:hover:not(:disabled) { filter: brightness(1.08); }
+.cc-pt .call-top:disabled { opacity: 0.6; cursor: default; }
 .cc-pt .side-tabs { display: inline-flex; background: var(--mut); padding: 2px; border-radius: 8px; border: 1px solid var(--bd); }
 .cc-pt .side-tabs button {
   padding: 5px 11px; border-radius: 6px; font-size: 12px; font-weight: 600;
@@ -735,47 +769,12 @@
 .cc-pt .empty-pane {
   flex: 1; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--mfg);
 }
-/* ── Recent notes (§5.39c3) — Brandon's `notes-mini`, under BOTH tabs ────── */
-/* ⚠️ `flex: none` is load-bearing: `.pt-side` is a column and the tab body
-   above takes `flex: 1`, so without it a long note log steals the thread's
-   height instead of scrolling inside its own 190px. */
-/* ⚠️⚠️ **ONLY THE LIST SCROLLS — the header and the composer are pinned.** The
-   first cut scrolled the whole strip, which put the add-a-note box below the
-   fold on any patient with three notes: an input a rep has to scroll a 190px
-   panel to find is one most of them never find (§5.28's own lesson about the
-   "New text" pane). Found by rendering it, not by reading it. */
-.cc-pt .notes-mini {
-  flex: none; border-top: 1px solid var(--bd); padding: 10px 14px;
-  max-height: 230px; background: var(--cd);
-  display: flex; flex-direction: column; min-height: 0;
-}
-.cc-pt .nm-list { flex: 1; min-height: 0; overflow-y: auto; }
-.cc-pt .notes-mini .note { margin-bottom: 6px; }
-.cc-pt .nm-h { flex: none; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-/* The stage the composer will stamp with — said before a rep types, not after. */
-.cc-pt .nm-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cc-pt .nm-all {
-  font-size: 11px; font-weight: 600; color: var(--p); background: none;
-  border: none; padding: 0; cursor: pointer; flex: none;
-}
-.cc-pt .nm-all:hover { text-decoration: underline; }
+/* The Recent notes strip (§5.39c3) was DELETED from this column on 2026-09-25
+   (Josh: the notes live at the foot of the main column now). `.nm-body` alone
+   survives — the Subscription notes card renders note bodies with it. */
 /* ⚠️ `pre-wrap`: a multi-line note is ONE note and its line breaks are the
    rep's — collapsing them runs a call script into a paragraph. */
 .cc-pt .nm-body { white-space: pre-wrap; overflow-wrap: anywhere; }
-.cc-pt .nm-more { margin: 2px 0 6px; }
-.cc-pt .nm-add { flex: none; display: flex; gap: 6px; margin-top: 8px; }
-.cc-pt .nm-in {
-  flex: 1; min-width: 0; font-size: 12px; padding: 5px 8px; border-radius: 7px;
-  border: 1px solid var(--bd); background: hsl(var(--background)); color: var(--tfg);
-}
-.cc-pt .nm-in:focus { outline: none; border-color: var(--p); }
-.cc-pt .nm-in:disabled { opacity: 0.6; }
-.cc-pt .nm-btn {
-  display: inline-flex; align-items: center; gap: 4px; flex: none;
-  font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 7px;
-  border: 1px solid transparent; background: var(--p); color: hsl(var(--primary-foreground)); cursor: pointer;
-}
-.cc-pt .nm-btn:disabled { opacity: 0.45; cursor: default; }
 
 @media (max-width: 1000px) {
   .cc-pt .pt-screen { grid-template-columns: minmax(0, 1fr); }
@@ -806,7 +805,7 @@
 .cc-pt.embedded .pt-main { overflow: visible; padding: 12px 12px 40px; gap: 12px; }
 /* In the pane the scroller is the pane itself, which has no padding, so the
    Send needs no allowance for `.pt-main`'s. */
-.cc-pt.embedded .sub-send { bottom: 0; }
+.cc-pt.embedded .sub-send { top: 0; }
 .cc-pt.embedded .tb-card { padding: 12px 14px; }
 .cc-pt.embedded .tb { gap: 10px 18px; }
 .cc-pt.embedded .tb .vtoggle { width: 100%; margin-left: 0; }
