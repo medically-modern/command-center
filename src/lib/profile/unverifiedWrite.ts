@@ -31,11 +31,12 @@ import { userInitials } from "../shared/auth";
 import { fetchInsuranceLabelIndex } from "./boardLabels";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
-  SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
+  SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
   REQUEST_TYPE_INDEX, CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX, GENDER_INDEX,
   CGM_TYPE_INDEX, PUMP_TYPE_INDEX, INTAKE_SUB_STAGE_INDEX,
 } from "./mondayMapping";
+import { advanceWriteForLive } from "./cashPayIntake";
 
 /** label → index for every status column this stage writes.
  *  Indices are the ones the columns were created with; they are stable across
@@ -783,6 +784,27 @@ export async function advanceToMedicalNecessity(
   const blocker = verifiedInsuranceBlocker(opts.verified);
   if (blocker) return { ok: false, errors: [blocker] };
 
+  // Which label the advancer writes — "Advance to Welcome Call" (id 6,
+  // automation 7923595946 → Welcome Call) for a cash pay patient,
+  // "Advance to MN" (id 1, automation 7917676280 → Medical Evaluation) for
+  // everyone else. One module decides label, id and the §9 `expectedText`
+  // together (`cashPayIntake.advanceWriteForLive`, §5.48) — a hardcoded label
+  // here is how cash pay patients landed on Medical Evaluation for three days
+  // with a green toast. Derived BEFORE any write, so a broken index map
+  // refuses with the board untouched.
+  const advance = advanceWriteForLive(p);
+  if (advance.index === undefined) {
+    return {
+      ok: false,
+      errors: [{
+        label: advance.label,
+        columnId: COL.moveToOnboarding,
+        error: `Move to Onboarding has no "${advance.label}" label id in the index map — nothing was written.`,
+      }],
+    };
+  }
+  const advanceIdx = advance.index;
+
   const tasks: WriteTask[] = buildAdvanceTasks(p, opts);
 
   // With no data columns, verifiedWrite skips its snapshot and read-back phases
@@ -794,7 +816,7 @@ export async function advanceToMedicalNecessity(
     return {
       ok: false,
       errors: [{
-        label: "Advance to MN",
+        label: advance.label,
         columnId: COL.moveToOnboarding,
         error: "Nothing to write — refusing to advance without verifying any data first.",
       }],
@@ -807,12 +829,13 @@ export async function advanceToMedicalNecessity(
     label: "Move to Onboarding",
     columnId: COL.moveToOnboarding,
     // `expectedText` is what makes the no-op check possible: it tells
-    // verifiedWrite the TARGET label, so a column already reading
-    // "Advance to MN" is caught BEFORE the write instead of firing a mutation
-    // that triggers no automation. Automation 7917676280 is "when status
-    // CHANGES to" — a same-value write moves nothing (§ advancerNoop).
-    expectedText: "Advance to MN",
-    fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, MOVE_TO_ONBOARDING_INDEX["Advance to MN"]),
+    // verifiedWrite the TARGET label, so a column already reading it is
+    // caught BEFORE the write instead of firing a mutation that triggers no
+    // automation. Both 7917676280 and 7923595946 are "when status CHANGES
+    // to" — a same-value write moves nothing (§ advancerNoop). It MUST be the
+    // label this task actually writes, which is why both come from `advance`.
+    expectedText: advance.label,
+    fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, advanceIdx),
   });
 
   try {
@@ -834,7 +857,7 @@ export async function advanceToMedicalNecessity(
     return {
       ok: false,
       errors: [{
-        label: "Advance to MN", columnId: COL.moveToOnboarding,
+        label: advance.label, columnId: COL.moveToOnboarding,
         error: e instanceof Error ? e.message : String(e),
       }],
     };

@@ -10261,6 +10261,25 @@ the intake case history the Welcome Call rep reads.
 MN"), so an insured patient's route is byte-identical to what it has always been. Setting the flag
 back to `false` sends cash pay patients down that same route to Medical Evaluation — nobody is
 stranded either way, it only changes WHICH board they land on.
+⚠️⚠️ **AND IT WAS LIVE-BUT-UNWIRED FROM 2026-09-22 TO 2026-09-25** (a pre-production flight check,
+confirmed by Josh: *"it should say advance to welcome call ONLY if its a cash pay … and should
+write such"*). The flag was true and the board test above passed because the label was flipped BY
+HAND — in the app, `advanceLabelForLive` had **zero live callers**: both Advance writers
+(`profile/mondayWrite.sendPatientToMonday` and `profile/unverifiedWrite.advanceToMedicalNecessity`)
+still hardcoded "Advance to MN" for the index lookup AND the §9 no-op guard's `expectedText`, and
+`MOVE_TO_ONBOARDING_INDEX` had no "Advance to Welcome Call" entry at all — so every cash pay
+Advance fired 7917676280 and landed on Medical Evaluation, green toast and all. §5.31b's class
+exactly (*"a module nobody calls does not fail; it is absent, and its green tests say otherwise"*):
+the wiring test of the day only grepped the PAGES for a literal, which passes with the feature
+missing entirely. Since 2026-09-25 both writers derive the advancer from
+**`cashPayIntake.advanceWriteForLive(p)`** — ONE function returning the label and the board's own
+label id (the map now carries `"Advance to Welcome Call": 6`, read back from the live
+`settings_str` and from 7923595946's own trigger variable), used for the write and the
+`expectedText` together, because a no-op guard naming a label the write does not carry either
+refuses a real advance or waves a real no-op through. Both pages render the Advance button's copy
+from the same module (Josh: the button says it AND writes it), and `cashPayIntakeWiring.test.ts`
+pins the task both writers build — cash pay ⇒ id 6, insured or blank ⇒ id 1 — plus source-scans
+both writers for the call, each pin verified to fail when reverted.
 
 **Pricing — `lib/orders/cashPayPricing.ts`.** Each line is the Cardinal SKU Tracker **Cost**
 (`numeric_mm4wd6b`, scraped daily at 9:05 ET) × the order's quantity, ×**1.25**, **rounded per
@@ -10507,6 +10526,13 @@ free (handoff item 5).
    still flips Order Status → "Ordered" on the board and nothing physically stops an unpaid cash pay
    order going out. The manager **release** button is live regardless, because it only writes a
    stamped note.
+6. **The advancer** — `cashPayIntake.advanceWriteForLive` ⇄ BOTH writers
+   (`mondayWrite.sendPatientToMonday`, `unverifiedWrite.advanceToMedicalNecessity`) ⇄
+   `MOVE_TO_ONBOARDING_INDEX`'s two ids (`Advance to MN` 1 · `Advance to Welcome Call` 6) ⇄ the
+   triggers of automations 7917676280 / 7923595946. The label, the id and the `expectedText` are
+   ONE function's answer; a writer that re-derives any of them is how a cash pay patient lands on
+   Medical Evaluation under a green toast (2026-09-22 → 09-25, recorded above).
+   `cashPayIntakeWiring.test.ts` scans both writers and pins the ids.
 
 ### 5.49 The Communications Inbox — the Unresolved queue (Sep 2026)
 Brandon + Katie's v2 (2026-09-22), every question answered by Josh on 2026-09-23, then *"this all
@@ -12751,6 +12777,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A duplicate patient was filed as new / "Already In System" says No for somebody we serve | §5.21 — `duplicate-patient-check.js` `samePatient`. DOB must match exactly; then the name rule, the phone, or a shared surname (the last two also need `firstNamesClose`). A blank result column means the check never RAN; "No" means it ran and found nothing |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | A cash pay patient can't be advanced from Intake / is asked for insurance they don't have | §5.48 — `lib/profile/cashPayIntake.ts`. Picking **General Insurance = Cash Pay** hides section 1 and drops the insurance readiness rows; **section 3 (the doctor) is still required** on Josh's call, because Cardinal's payload needs it. Still blocked ⇒ check the mirror actually ran: Primary Insurance is what travels, and on the intake page it also has to reach the `verified` state, which is what Advance writes |
+| A cash pay patient advanced and landed on Medical Evaluation | §5.48 — from 2026-09-22 to 2026-09-25 the flag was on while both Advance writers still hardcoded "Advance to MN"; since then `cashPayIntake.advanceWriteForLive` decides label + id + `expectedText` for both, and the button copy follows it. If it recurs: check the writers still call it (`cashPayIntakeWiring.test.ts`), that Move to Onboarding still carries label id 6, and that the patient really read as cash pay (either payer column) at press time |
 | A cash pay patient reads as insured on Welcome Call or the Order board | §5.48 — those boards have **no General Insurance column**, so Primary Insurance is the only marker there and the intake mirror (`cashPayMirrorEdit`) is what puts it on the row. A patient whose Primary was never mirrored is indistinguishable from an insured one, with nothing erroring |
 | "What does this cash pay patient owe?" / the total looks wrong by a cent | §5.48 — `lib/orders/cashPayPricing.ts`: tracker cost x qty, x1.25 **rounded per line**, plus a $10 shipping line under $10 of markup. The Debbie Hinze test ($1,030.69) is the anchor — if it stops matching, the rule has drifted from a price a patient agreed to. ⚠️ `round2` goes through `toPrecision(12)`; a naive `Math.round(n*100)` loses a cent on her infusion-set line. A REFUSAL rather than a total means a line has no tracker cost, and quoting short is the one thing it must not do |
 | The cash pay Generate / Send buttons do nothing | §5.48 — both are LIVE since 2026-09-22, so an inert button means `CASH_PAY_LINK_FROM_COMMAND_CENTER` went back to `false`; the reason is on screen. Pressed and nothing happened ⇒ read **Cash Pay Action** on the row (*Link failed* / *Text failed* name the service's refusal, in coins-form-payment's Railway log), then check webhooks **641121194** (Generate) and **641125712** (Send) with `get_automation_runs`, never with `webhooks(board_id:)`, which lists a suspended webhook exactly like a live one. ⚠️ A disabled *"send a webhook"* entry in monday's automation centre is the **corpse of a deleted webhook** — delete it, never re-enable it (it points at the old URL and would double-mint) |

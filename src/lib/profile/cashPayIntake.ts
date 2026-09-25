@@ -26,6 +26,7 @@
  */
 
 import { CASH_PAY_LABEL, isCashPay, isCashPayPatient } from "../shared/cashPay";
+import { MOVE_TO_ONBOARDING_INDEX } from "./mondayMapping";
 import type { Patient } from "./workflow";
 
 export { CASH_PAY_LABEL, isCashPayPatient };
@@ -223,6 +224,18 @@ export function advanceLabelFor(p: Patient | null | undefined): string {
  * ("Advance to MN"), so an insured patient's route is byte-identical to what it
  * has always been.
  *
+ * ⚠️⚠️ **AND IT WAS LIVE-BUT-UNWIRED FROM 2026-09-22 TO 2026-09-25.** The flag
+ * was true and the board test above passed because the label was flipped BY
+ * HAND — in the app, `advanceLabelForLive` had ZERO live callers: both Advance
+ * writers (`mondayWrite.sendPatientToMonday`,
+ * `unverifiedWrite.advanceToMedicalNecessity`) still hardcoded "Advance to MN"
+ * for the index lookup AND the §9 no-op guard's `expectedText`, so a cash pay
+ * patient's Advance fired 7917676280 and landed on Medical Evaluation anyway.
+ * §5.31b's class exactly: a module nobody calls does not fail; it is absent,
+ * and its green tests say otherwise. Both writers now derive the advancer from
+ * `advanceWriteForLive` below, and `cashPayIntakeWiring.test.ts` pins the task
+ * they build rather than grepping the pages for a literal.
+ *
  * To turn this back off, set the flag to false: cash pay patients then advance
  * on "Advance to MN" like everyone else and land on Medical Evaluation. Nobody
  * is stranded either way — it only changes WHICH board they land on.
@@ -231,4 +244,28 @@ export const CASH_PAY_SKIPS_TO_WELCOME_CALL = true;
 
 export function advanceLabelForLive(p: Patient | null | undefined): string {
   return CASH_PAY_SKIPS_TO_WELCOME_CALL ? advanceLabelFor(p) : ADVANCE_TO_MN;
+}
+
+/**
+ * The advance WRITE — the label AND the board's own label id — for both
+ * writers (`mondayWrite.sendPatientToMonday` and
+ * `unverifiedWrite.advanceToMedicalNecessity`).
+ *
+ * ⚠️⚠️ ONE function decides the label, the index and (via the label) the
+ * `expectedText`, because the three must name the same thing: the §9 advancer
+ * no-op guard compares the pre-write snapshot against `expectedText`, so a
+ * guard naming a label the write does not carry either refuses a real advance
+ * or waves a real no-op through. Splitting the decision across files is how
+ * the 2026-09-22 → 09-25 gap recorded above shipped.
+ *
+ * An `index` of `undefined` means `MOVE_TO_ONBOARDING_INDEX` has no entry for
+ * the label — a broken map, never a patient state. Callers refuse LOUDLY
+ * rather than skipping the advancer: a send that writes every data column and
+ * never advances is the §9 silent class ("green toast, nobody moved").
+ */
+export function advanceWriteForLive(
+  p: Patient | null | undefined,
+): { label: string; index: number | undefined } {
+  const label = advanceLabelForLive(p);
+  return { label, index: MOVE_TO_ONBOARDING_INDEX[label] };
 }

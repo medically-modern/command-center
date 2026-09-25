@@ -22,9 +22,10 @@ import {
   DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX, REFERRAL_TYPE_INDEX,
   REFERRAL_SOURCE_INDEX, PUMP_TYPE_INDEX, CGM_TYPE_INDEX, REQUEST_TYPE_INDEX,
   CGM_CROSS_SELL_INDEX, SERVING_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
-  CGM_COVERAGE_PATH_INDEX, GENDER_INDEX, MOVE_TO_ONBOARDING_INDEX,
+  CGM_COVERAGE_PATH_INDEX, GENDER_INDEX,
   ALREADY_IN_SYSTEM_INDEX,
 } from "./mondayMapping";
+import { advanceWriteForLive } from "./cashPayIntake";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -262,11 +263,16 @@ function buildDataTasks(
 }
 
 /**
- * Send all patient data to Monday and ADVANCE to Medical Necessity.
+ * Send all patient data to Monday and ADVANCE the patient out of send-off.
  *
  * Uses verified writes: all data columns are written and polled for
- * indexing BEFORE the "Move to Onboarding" column fires "Advance to MN", so the
- * Monday automation triggered by that status change reads up-to-date values.
+ * indexing BEFORE the "Move to Onboarding" column fires its advance label, so
+ * the Monday automation triggered by that status change reads up-to-date
+ * values. WHICH label depends on the patient (§5.48): "Advance to MN" (id 1,
+ * automation 7917676280 → Medical Evaluation) for everyone, EXCEPT a cash pay
+ * patient, whose advance writes "Advance to Welcome Call" (id 6, automation
+ * 7923595946 → Welcome Call) — `cashPayIntake.advanceWriteForLive` is the one
+ * decider for the label, the id and the §9 `expectedText` together.
  *
  * @param p The local patient state to write
  * @param clinicLabelId If a clinic was selected from dropdown, pass its numeric id
@@ -285,6 +291,22 @@ export async function sendPatientToMonday(
     waitForDoneMs?: number;
   },
 ): Promise<void> {
+  // ── Which advance label this patient gets — derived FIRST, before anything
+  // is written (the "refuse before writing anything" rule), so a broken index
+  // map aborts with the board untouched rather than after the hoist below has
+  // already minted a plan label. "Advance to Welcome Call" (id 6) for cash
+  // pay, "Advance to MN" (id 1) for everyone else; one module decides label,
+  // id and `expectedText` together (§5.48).
+  const advance = advanceWriteForLive(p);
+  if (advance.index === undefined) {
+    // A silent skip here would write every data column and never advance —
+    // the §9 class (green toast, nobody moved). Refuse loudly instead.
+    throw new Error(
+      `Move to Onboarding has no "${advance.label}" label id in the index map — nothing was written, stage NOT advanced.`,
+    );
+  }
+  const advanceIdx = advance.index;
+
   // ── Insurance Plan (copied from the Stedi plan name) ─────────────────────
   // HOISTED out of the verified batch on purpose: profile's writeDropdownLabels
   // hardcodes `create_labels_if_missing: true`, and
@@ -352,14 +374,13 @@ export async function sendPatientToMonday(
   }
 
   // ── Move to Onboarding (stage advancer — written LAST after verification) ──
-  const onboardingIdx = MOVE_TO_ONBOARDING_INDEX["Advance to MN"];
-  if (onboardingIdx !== undefined) {
-    // `expectedText` lets verifiedWrite catch a column already sitting at
-    // "Advance to MN" before writing it — a same-value write fires no
-    // automation, so the send would otherwise report success having moved
-    // nothing (§ advancerNoop).
-    tasks.push({ label: "Move to Onboarding", columnId: COL.moveToOnboarding, value: { index: onboardingIdx }, expectedText: "Advance to MN", fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, onboardingIdx) });
-  }
+  // `expectedText` lets verifiedWrite catch a column already sitting at the
+  // target label before writing it — a same-value write fires no automation,
+  // so the send would otherwise report success having moved nothing
+  // (§ advancerNoop). It MUST be the label this task actually writes: a guard
+  // naming the other label either refuses a real advance or waves a real
+  // no-op through, which is why both come from the one `advance` above.
+  tasks.push({ label: "Move to Onboarding", columnId: COL.moveToOnboarding, value: { index: advanceIdx }, expectedText: advance.label, fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, advanceIdx) });
 
   // ---- Execute with read-back verification before advancing stage ----
   const failures = await executeWritesWithVerification({

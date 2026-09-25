@@ -69,6 +69,7 @@ import { useIntakeWarnings } from "@/hooks/profile/useIntakeWarnings";
 import { IntakeWarningsDialog, IntakeWarningsPanel } from "@/components/profile/IntakeWarnings";
 import {
   applyCashPayReadiness, benefitCheckApplies, cashPayMirrorEdit, verifiedInsuranceStepApplies,
+  advanceLabelForLive, ADVANCE_TO_MN,
 } from "@/lib/profile/cashPayIntake";
 import { formatBenefitsFailure } from "@/lib/profile/benefitsFailure";
 // The serving suggestion engine — the same derivation the pre-rewrite panel
@@ -1489,6 +1490,13 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
    */
   const canAdvance = unlock.unlocked && readyMissing === 0;
 
+  /** Which label the Advance button WRITES — and therefore what it says: the
+   *  Welcome Call label for a cash pay patient (they skip Medical Necessity
+   *  and Insurance, §5.48), "Advance to MN" for everyone else. From the
+   *  module, never a literal, so the copy and the write cannot disagree
+   *  (cashPayIntakeWiring.test.ts scans this file for a hardcoded label). */
+  const advanceLabel = advanceLabelForLive(selected);
+
   /**
    * Advance to Profile Clean-Up — Info Collection's exit. Gated on the unlock
    * conditions ALONE, deliberately: `readyMissing` counts the right pane's
@@ -1617,7 +1625,13 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
           // from this queue, and the rep's next question is always which
           // column they'll find them in.
           toast.success(
-            kind === "advance" ? "Advanced to Medical Necessity"
+            kind === "advance"
+              ? (advanceLabelForLive(selected) === ADVANCE_TO_MN
+                  ? "Advanced to Medical Necessity"
+                  // Cash pay skips MN and Insurance entirely (§5.48) — naming
+                  // the wrong column here sends the rep hunting for the
+                  // patient on a board they never reached.
+                  : "Advanced to Welcome Call")
               : kind === "advanceCleanUp" ? "Advanced to Profile Clean-Up"
               : kind === "escalate" ? "Escalated to Manager Intervention"
               : kind === "proposeStuck"
@@ -4213,14 +4227,18 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                         to enforce. */}
                     <div className="route-grid" style={{ gridTemplateColumns: "1fr" }}>
                       <div className={canAdvance ? "route adv on" : "route adv"}>
-                        <h4>Advance to MN</h4>
-                        <p>Profile is complete — hand the patient to Medical Necessity.</p>
+                        <h4>{advanceLabel}</h4>
+                        <p>
+                          {advanceLabel === ADVANCE_TO_MN
+                            ? "Profile is complete — hand the patient to Medical Necessity."
+                            : "Cash pay — profile is complete; hand the patient straight to Welcome Call (no Medical Necessity, no Insurance)."}
+                        </p>
                         <button
                           onClick={() => { void runStageAction("advance"); }}
                           disabled={!canAdvance || saving}
                           className="btn primary justify-center"
                         >
-                          Advance to MN →
+                          {advanceLabel} →
                         </button>
                       </div>
                     </div>

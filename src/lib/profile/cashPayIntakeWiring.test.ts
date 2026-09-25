@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  advanceWriteForLive, ADVANCE_TO_MN, ADVANCE_TO_WELCOME_CALL,
+} from "./cashPayIntake";
+import { MOVE_TO_ONBOARDING_INDEX } from "./mondayMapping";
+import type { Patient } from "./workflow";
 
 /**
  * Source scan — the `listColumns.test.ts` convention.
@@ -177,6 +182,67 @@ describe("the Welcome Call route is live, and only one module decides it", () =>
        land nowhere, silently. */
     for (const page of PAGES) {
       expect(read(page), page).not.toContain("Advance to Welcome Call");
+      /* And the button copy really is the module's answer — the copy and the
+         write must be one fact (Josh, 2026-09-25: "it should say advance to
+         welcome call ONLY if its a cash pay"). */
+      expect(read(page), page).toContain("advanceLabelForLive(");
+    }
+  });
+
+  /* ⚠️⚠️ THE REGRESSION THIS BLOCK EXISTS FOR (pre-production flight check,
+     2026-09-25): from 2026-09-22 the flag was true, `advanceLabelForLive`
+     computed the right label, and NOTHING CALLED IT — both writers hardcoded
+     "Advance to MN" for the index lookup AND the §9 `expectedText`, so every
+     cash pay advance fired 7917676280 and landed on Medical Evaluation. The
+     old version of this block only grepped the PAGES for a literal, which
+     passes with the feature absent entirely (§5.31b: a module nobody calls
+     does not fail; it is absent, and its green tests say otherwise). These
+     pin the task the writers actually build, and the call sites. */
+  const cashPay = { generalInsurance: "Cash Pay" } as Patient;
+  const mirroredOnly = { primaryInsurance: "Cash Pay" } as Patient;
+  const insured = { generalInsurance: "Aetna", primaryInsurance: "Aetna Commercial" } as Patient;
+
+  it("⚠️ a cash pay patient's advance carries id 6 / Advance to Welcome Call", () => {
+    expect(advanceWriteForLive(cashPay)).toEqual({ label: ADVANCE_TO_WELCOME_CALL, index: 6 });
+    // Either payer column alone is enough — a board row that arrived by
+    // another route may carry only the mirrored Primary (§5.48's marker rule).
+    expect(advanceWriteForLive(mirroredOnly)).toEqual({ label: ADVANCE_TO_WELCOME_CALL, index: 6 });
+  });
+
+  it("⚠️ an insured patient's advance carries id 1 / Advance to MN — and so does a blank one", () => {
+    expect(advanceWriteForLive(insured)).toEqual({ label: ADVANCE_TO_MN, index: 1 });
+    // No insurance ON FILE is not cash pay — cash pay is a rep's explicit pick.
+    expect(advanceWriteForLive({} as Patient)).toEqual({ label: ADVANCE_TO_MN, index: 1 });
+    expect(advanceWriteForLive(null)).toEqual({ label: ADVANCE_TO_MN, index: 1 });
+  });
+
+  it("the index map carries both ids the board really assigned", () => {
+    /* Read back from the live `settings_str` (2026-09-25) and from automation
+       7923595946's own trigger variable (desired value: the raw 6). Monday
+       drops a status write to a label id the column does not have at HTTP 200
+       with nothing in the logs, so a wrong id here is a patient who advances
+       nowhere, silently. */
+    expect(MOVE_TO_ONBOARDING_INDEX["Advance to MN"]).toBe(1);
+    expect(MOVE_TO_ONBOARDING_INDEX["Advance to Welcome Call"]).toBe(6);
+  });
+
+  const WRITERS = [
+    "src/lib/profile/mondayWrite.ts",
+    "src/lib/profile/unverifiedWrite.ts",
+  ];
+
+  it("⚠️⚠️ BOTH writers derive the advancer from advanceWriteForLive — index and expectedText together", () => {
+    for (const w of WRITERS) {
+      const src = read(w);
+      expect(src, w).toContain("advanceWriteForLive(p)");
+      /* The §9 no-op guard must name the label the write actually carries: a
+         guard reading "Advance to MN" on a cash pay advance either refuses a
+         real advance (the column never reads MN) or waves a real no-op
+         through. So the expectedText comes from the SAME derived value as the
+         index — never a literal. */
+      expect(src, w).toContain("expectedText: advance.label");
+      expect(src, w).not.toContain('MOVE_TO_ONBOARDING_INDEX["Advance to MN"]');
+      expect(src, w).not.toContain('expectedText: "Advance to MN"');
     }
   });
 });

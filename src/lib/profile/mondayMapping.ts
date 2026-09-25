@@ -366,8 +366,23 @@ export const INTAKE_SUB_STAGE_INDEX: Record<string, number> = {
   "Info Collection": 7, "Profile Clean-Up": 1,
 };
 
+/**
+ * Move to Onboarding (`color_mm1zmeb3`) — the send-off advancer.
+ *
+ * ⚠️ "Advance to Welcome Call" is label id **6**, read back from the live
+ * `settings_str` (2026-09-25) and confirmed against automation 7923595946's own
+ * trigger variable, whose desired value is the raw 6 — never inferred (§5.12's
+ * trap: Monday assigns a new label's id itself, and a status write to an id the
+ * column does not have is dropped at HTTP 200 with nothing in the logs).
+ *
+ * Which label a patient's advance writes is `cashPayIntake.advanceWriteForLive`'s
+ * call — "Advance to Welcome Call" fires automation 7923595946 (→ Welcome Call,
+ * cash pay only), "Advance to MN" fires 7917676280 (→ Medical Evaluation).
+ * Neither writer may hardcode a label here (`cashPayIntakeWiring.test.ts`).
+ */
 export const MOVE_TO_ONBOARDING_INDEX: Record<string, number> = {
   "Already Serving": 0, "Advance to MN": 1, "Send Back To Referral": 2, "Need More Info.": 3,
+  "Advance to Welcome Call": 6,
 };
 
 /**

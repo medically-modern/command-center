@@ -18,6 +18,7 @@ import { useDtcFormLeads } from "@/hooks/profile/useDtcFormLeads";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import {
   applyCashPayReadiness, benefitCheckApplies, cashPayMirrorEdit,
+  advanceLabelForLive, ADVANCE_TO_MN,
 } from "@/lib/profile/cashPayIntake";
 import { profileReferralRole, type ProfileReferralRole } from "@/lib/profile/referralSplit";
 import {
@@ -625,7 +626,8 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
         waitForDoneMs: SAVE_CONFIRM_MS,
       });
       clearOverlay(selected.id);
-      toast.success(`${selected.name} advanced to MN`);
+      // Where the patient WENT — "MN", or "Welcome Call" for cash pay (§5.48).
+      toast.success(`${selected.name} advanced to ${advanceLabelForLive(selected).replace("Advance to ", "")}`);
       clearDeepLink();
       // Off the queue now: the item is moving to another group, and the
       // refetch below still sees it here until that move lands.
@@ -1208,6 +1210,12 @@ function RailReferral({ patient }: { patient: Patient }) {
 
 function ProfileBody(p: BodyProps) {
   const pt = p.patient;
+  // Which label the Advance button WRITES — and therefore what it says: the
+  // Welcome Call label for a cash pay patient (they skip Medical Necessity
+  // and Insurance, §5.48), "Advance to MN" for everyone else. From the
+  // module, never a literal, so the copy and the write cannot disagree
+  // (cashPayIntakeWiring.test.ts scans this file for a hardcoded label).
+  const advanceLabel = advanceLabelForLive(pt);
   const rcv = p.received; // frozen "as received" values for the left cards
   const serv = pt.serving || "";
   const cgm = servingIncludes(serv, "cgm");
@@ -1960,10 +1968,14 @@ function ProfileBody(p: BodyProps) {
                     </div>
                   ) : (
                     <div className={`route adv ${p.canSubmit ? "on" : ""}`}>
-                      <h4>Advance to MN</h4>
-                      <p>Everything checks out → save to Monday and move to Medical Necessity.</p>
+                      <h4>{advanceLabel}</h4>
+                      <p>
+                        {advanceLabel === ADVANCE_TO_MN
+                          ? "Everything checks out → save to Monday and move to Medical Necessity."
+                          : "Cash pay — everything checks out → save to Monday and move straight to Welcome Call (no Medical Necessity, no Insurance)."}
+                      </p>
                       <button className="btn primary" onClick={p.onAdvance} disabled={!p.canSubmit || p.submitting || p.reviewMode}>
-                        {p.submitting ? "Advancing…" : "Advance to MN →"}
+                        {p.submitting ? "Advancing…" : `${advanceLabel} →`}
                       </button>
                     </div>
                   )}
