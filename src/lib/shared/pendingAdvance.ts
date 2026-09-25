@@ -44,11 +44,49 @@
  * existed and put the patient — Send button and all — straight back on screen.
  */
 
-/** How long a patient stays hidden before the claim lapses. Four polls' worth:
- *  long enough that no reasonable indexing or automation lag brings a real
- *  advance back, short enough that a failed one returns while the rep is still
- *  working the queue. */
-export const PENDING_ADVANCE_TTL_MS = 120_000;
+/**
+ * How long a patient stays hidden before the claim lapses.
+ *
+ * ⚠️ **Fifteen minutes since 2026-09-25, measured, not chosen** (Keith Dye,
+ * item 13133155597): the intake advance's Monday automation moved him to
+ * Profile Clean-Up **1.7 seconds** after the advancer flipped — the activity
+ * log shows it — yet the group-filtered `items_page` reads this app polls
+ * with kept RETURNING him for close to ten minutes. Monday's query index
+ * lags its own activity log (§5.2's indexing gap, on the read side). The old
+ * two-minute TTL ("four polls' worth") assumed the poll was the only lag, so
+ * a really-advanced patient reappeared with a live Send button for the
+ * several minutes between the lapse and the index catching up — and Masani
+ * re-pressed Advance, exactly the 2026-09-03 shape this module exists to
+ * close (the noop guard refused it; nothing was lost).
+ *
+ * The cost of the longer window is unchanged in kind, just longer: a send
+ * that RESOLVED (which, through `executeWritesWithVerification`, means the
+ * data verified and Monday accepted the advancer) but somehow did not land
+ * stays hidden this long, and a patient a manager returns to the queue
+ * inside the window stays hidden until it lapses.
+ */
+export const PENDING_ADVANCE_TTL_MS = 900_000;
+
+/**
+ * ⚠️⚠️ **THE CLAIMS ARE MODULE STATE, SHARED BY EVERY QUEUE AND SCREEN** —
+ * since 2026-09-25. They were a `useRef(new Map())` inside each queue hook,
+ * which had two silent holes, both found in Keith Dye's ten minutes:
+ *   1. leaving the page THREW THE CLAIM AWAY — the ref died with the hook, so
+ *      going back to the Care Coordinator dashboard forgot the advance ever
+ *      happened;
+ *   2. no other screen could consult it — the dashboard's columns went on
+ *      showing the advanced patient however fresh its poll was.
+ * A Monday item id is globally unique, so one map serves every board. The
+ * hooks keep their `pendingAdvanceRef` name (the coverage scan pins it); the
+ * ref simply points HERE now. Expiry still prunes lazily in
+ * `applyPendingAdvances`.
+ */
+export const sharedPendingAdvances = new Map<string, number>();
+
+/** Test seam — module state must not leak between tests. */
+export function resetPendingAdvances(): void {
+  sharedPendingAdvances.clear();
+}
 
 export type PendingAdvanceVerdict =
   /** Inside the window — keep hiding them. */

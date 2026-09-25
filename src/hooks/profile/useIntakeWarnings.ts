@@ -17,14 +17,13 @@
  * agrees, and lapses after `OVERRIDE_TTL_MS` whatever happens (§5.28's
  * read-override rule, §9's pending-advance rule).
  *
- * ⚠️ THE POP-UP OPENS EVERY TIME THE PATIENT IS OPENED, and again when a check
- * finishes, until a new check makes it unnecessary (Josh, 2026-09-24: "it
- * should pop up every time and stay until a new stedi check is made"). Closing
- * it only closes it for this visit. Never while a check is streaming in — half
- * a result is not something to announce.
+ * ⚠️ **The pop-up is GONE since 2026-09-25** (Brandon: *"get rid of that big
+ * pop-up that comes up when you click into their profile"*, reversing Josh's
+ * 2026-09-24 open-on-every-open). The panel under the results carries
+ * everything it said, with the in-network states named in its heading.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { Patient } from "@/lib/profile/workflow";
 import { parseAcks, parseIntakeWarnings, type IntakeWarning } from "@/lib/profile/intakeWarnings";
@@ -46,10 +45,6 @@ export interface IntakeWarningsState {
   /** The patient with `intakeWarningAcks` as the screen shows it — hand THIS
    *  to the advance gate, or a fresh tick leaves Advance grey until the poll. */
   gatePatient: Patient | null;
-  /** Is there anything for the pop-up to say? */
-  hasNotices: boolean;
-  dialogOpen: boolean;
-  setDialogOpen: (open: boolean) => void;
   /** KEY of the tick being written, if any. */
   busyKey: string | null;
   toggle: (w: IntakeWarning, on: boolean, reason?: string) => Promise<boolean>;
@@ -109,32 +104,6 @@ export function useIntakeWarnings(
     [p, acksRaw],
   );
 
-  const hasNotices = verdict === "checkWithPatient" || warnings.length > 0;
-
-  /* ── The pop-up ── */
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const shownRef = useRef<{ id: string | null; sig: string }>({ id: null, sig: "" });
-  const wasRunningRef = useRef(false);
-  const sig = `${verdict}|${p?.intakeWarnings ?? ""}`;
-  useEffect(() => {
-    if (!id) {
-      shownRef.current = { id: null, sig: "" };
-      setDialogOpen(false);
-      return;
-    }
-    if (opts.running) {
-      wasRunningRef.current = true;
-      return;
-    }
-    const justFinished = wasRunningRef.current;
-    wasRunningRef.current = false;
-    const prev = shownRef.current;
-    // Nothing new: same patient, same answer, no check just finished.
-    if (!justFinished && prev.id === id && prev.sig === sig) return;
-    shownRef.current = { id, sig };
-    setDialogOpen(enabled && hasNotices);
-  }, [id, sig, enabled, hasNotices, opts.running]);
-
   /* ── Ticking ── */
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const { stage, onWritten } = opts;
@@ -166,10 +135,10 @@ export function useIntakeWarnings(
   }, [id]);
 
   return useMemo(() => ({
-    warnings, acks, verdict, anthem, gatePatient, hasNotices,
-    dialogOpen, setDialogOpen, busyKey, toggle, markCheckStarted,
+    warnings, acks, verdict, anthem, gatePatient,
+    busyKey, toggle, markCheckStarted,
   }), [
-    warnings, acks, verdict, anthem, gatePatient, hasNotices,
-    dialogOpen, busyKey, toggle, markCheckStarted,
+    warnings, acks, verdict, anthem, gatePatient,
+    busyKey, toggle, markCheckStarted,
   ]);
 }

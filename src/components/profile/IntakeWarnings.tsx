@@ -1,27 +1,26 @@
 /**
  * The benefits check's warnings, on the two intake pages (§5.20b).
  *
- *  - `IntakeWarningsPanel` sits under the benefits results and stays: the
- *    "Check with patient" note, every BLOCK in red, every CONFIRM in amber with
- *    its checkbox. The checkboxes live HERE and only here — one place to tick,
- *    so the pop-up and the panel can never disagree about what is ticked.
- *  - `IntakeWarningsDialog` is the pop-up: what the check said, said once, on
- *    every open (see `useIntakeWarnings` for when).
+ * `IntakeWarningsPanel` sits under the benefits results: the "Check with
+ * patient" note — its heading NAMES the in-network states (Brandon,
+ * 2026-09-25) — every BLOCK in red, every CONFIRM in amber with its checkbox.
+ * The checkboxes live HERE and only here.
+ *
+ * ⚠️ **The "Before you move forward" POP-UP was deleted on 2026-09-25**
+ * (Brandon: *"get rid of that big pop-up that comes up when you click into
+ * their profile"* — it reversed Josh's 2026-09-24 "it should pop up every
+ * time"). Everything it said is on this panel, which is where the ticks
+ * always lived, and the Advance gate is unchanged.
  *
  * ⚠️ The panel renders INSIDE `.pf-root`, whose reset (`.pf-root button {
  * background:none … }`) out-specifies single-class Tailwind utilities (§9) —
- * so it uses the page's own classes (`.btn`, and `.iw*` in redesign.css). The
- * dialog portals to <body>, outside that reset, so it is ordinary Tailwind.
+ * so it uses the page's own classes (`.btn`, and `.iw*` in redesign.css).
  */
 
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, X } from "lucide-react";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { AlertTriangle, X } from "lucide-react";
 import { BLOCK_HINT, requiresReason, type IntakeWarning } from "@/lib/profile/intakeWarnings";
-import { ANTHEM_NETWORK_HEADLINE } from "@/lib/profile/networkVerdict";
+import { ANTHEM_PANEL_HEADLINE } from "@/lib/profile/networkVerdict";
 import type { IntakeWarningsState } from "@/hooks/profile/useIntakeWarnings";
 
 export function IntakeWarningsPanel({ state, disabled, disabledReason }: {
@@ -68,7 +67,7 @@ export function IntakeWarningsPanel({ state, disabled, disabledReason }: {
         <div className="iw-note" role="note">
           <AlertTriangle className="h-4 w-4" />
           <div>
-            <div className="iw-note-head">In network only if they live in the right state</div>
+            <div className="iw-note-head">{ANTHEM_PANEL_HEADLINE}</div>
             <div>{anthem.summary}</div>
           </div>
         </div>
@@ -148,79 +147,3 @@ export function IntakeWarningsPanel({ state, disabled, disabledReason }: {
   );
 }
 
-export function IntakeWarningsDialog({ state, patientName }: {
-  state: IntakeWarningsState;
-  patientName?: string;
-}) {
-  const { anthem, warnings, acks, dialogOpen, setDialogOpen } = state;
-  const blocks = warnings.filter((w) => w.type === "block");
-  const confirms = warnings.filter((w) => w.type === "confirm");
-  return (
-    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Before you move forward{patientName ? ` — ${patientName}` : ""}</DialogTitle>
-          <DialogDescription>From the latest benefits check.</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3 text-sm">
-          {anthem && (
-            <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
-              <div className="flex items-start gap-2 font-semibold">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                <span>{ANTHEM_NETWORK_HEADLINE}</span>
-              </div>
-              <ol className="mt-2 list-decimal space-y-1 pl-9">
-                {anthem.steps.map((s) => <li key={s}>{s}</li>)}
-              </ol>
-            </section>
-          )}
-
-          {blocks.length > 0 && (
-            <section className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-rose-950 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100">
-              <div className="font-semibold">Can't be advanced</div>
-              <ul className="mt-1 space-y-1">
-                {blocks.map((w) => (
-                  <li key={w.key} className="flex items-start gap-2">
-                    <X className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                    <span>{w.message}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-2 text-xs opacity-80">{BLOCK_HINT}</div>
-            </section>
-          )}
-
-          {confirms.length > 0 && (
-            <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
-              <div className="font-semibold">Needs confirming</div>
-              <ul className="mt-1 space-y-2">
-                {confirms.map((w) => {
-                  const acked = acks.includes(w.key);
-                  return (
-                    <li key={w.key} className="flex items-start gap-2">
-                      {acked
-                        ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
-                        : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />}
-                      <span>
-                        <b>{w.label}</b>{acked ? " — confirmed" : ""}
-                        <span className="block text-xs opacity-80">{w.message}</span>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div className="mt-2 text-xs opacity-80">
-                Tick each one under the benefits check results once you've confirmed it.
-              </div>
-            </section>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button onClick={() => setDialogOpen(false)}>Got it</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}

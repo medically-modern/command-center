@@ -5,7 +5,7 @@ import { fetchGroupItems, fetchItemById, writeDate, writeStatusIndex, COL, GROUP
 import { mondayItemToPatient, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { hasStaleEvaluateEscalation } from "@/lib/masheke/evaluateReentry";
 import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
-import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
+import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 30_000;
 const LS_KEY = "mash-overlays";
@@ -120,7 +120,11 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   // Reconciled against the board on every poll — see lib/masheke/pendingAdvance.
   // In-memory on purpose: a reload is a fresh read of the board, and a marker
   // that outlived the tab would hide a patient nobody could bring back.
-  const pendingAdvanceRef = useRef<Map<string, number>>(new Map());
+  // ⚠️ The SHARED claim map (2026-09-25) — module state, so an advance made
+  // here still hides the patient on the Care Coordinator dashboard and after
+  // this page unmounts. See `sharedPendingAdvances`' comment for the Keith
+  // Dye measurement that forced it.
+  const pendingAdvanceRef = useRef(sharedPendingAdvances);
 
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;

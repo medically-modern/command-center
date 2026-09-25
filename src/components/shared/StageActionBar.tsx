@@ -336,7 +336,7 @@ export function StageActionBar({
                         : "processor",
                       );
                       if (!res.ok) {
-                        throw new Error(res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "));
+                        throw new Error(res.errors.map((e) => (e.label ? `${e.label}: ${e.error}` : e.error)).join(" · "));
                       }
                     }
                   : undefined

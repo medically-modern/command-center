@@ -150,6 +150,11 @@ describe("stage advancer no-op detection", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toContain("already");
     expect(result[0]).toContain("Advance to MN");
+    // The BARE advancerNoopMessage, which already leads with the label. A
+    // `label: ` prefix here stacked with the callers' own prefixes into
+    // "Intake Sub-Stage: Intake Sub-Stage: Intake Sub-Stage is already…"
+    // (Masani, 2026-09-25).
+    expect(result[0].startsWith("Move to Onboarding is already")).toBe(true);
     // The whole point: the pointless mutation is never sent.
     expect(advanced(executeWithRetry)).toBe(false);
   });

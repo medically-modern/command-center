@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   INTAKE_STATUS_INDEX, statusIndexFor,
   verifiedInsuranceBlocker, buildAdvanceTasks, buildIntakeTasks,
-  buildVerifiedInsuranceTasks, advanceToMedicalNecessity, proposeStuckNoteLine,
+  buildVerifiedInsuranceTasks, advanceToMedicalNecessity, proposeStuckNoteLine, asWriteError,
   type AdvanceInput,
 } from "./unverifiedWrite";
 import { COL } from "./mondayApi";
@@ -195,6 +195,30 @@ describe("advanceToMedicalNecessity refusals", () => {
     expect(res.ok).toBe(false);
     expect(res.errors[0].columnId).toBe(COL.moveToOnboarding);
     expect(res.errors[0].error).toMatch(/refusing to advance/i);
+  });
+});
+
+describe("asWriteError — verifiedWrite failures split back into {label, error}", () => {
+  // The toasts render `label: error`, so `error` must NOT still contain the
+  // label. Passing the whole string through with a split-off label beside it
+  // is how Masani came to read "Intake Sub-Stage: Intake Sub-Stage: Intake
+  // Sub-Stage is already 'Profile Clean-Up'…" (2026-09-25).
+  it("splits a retry failure at its first colon, once", () => {
+    expect(asWriteError("Intake Sub-Stage: HTTP 500: upstream")).toEqual({
+      label: "Intake Sub-Stage",
+      columnId: "",
+      error: "HTTP 500: upstream",
+    });
+  });
+
+  it("an advancer no-op sentence has no colon — no label, the sentence stands alone", () => {
+    const msg =
+      'Intake Sub-Stage is already "Profile Clean-Up" — Monday only runs the stage automation when the value CHANGES, so nothing moved.';
+    const e = asWriteError(msg);
+    expect(e).toEqual({ label: "", columnId: "", error: msg });
+    // …and the toast template renders exactly one copy of the label.
+    const rendered = e.label ? `${e.label}: ${e.error}` : e.error;
+    expect(rendered.match(/Intake Sub-Stage/g)).toHaveLength(1);
   });
 });
 

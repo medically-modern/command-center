@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Care Coordinator SOP</title>
+
+<style>
+  /* ══ Tokens — same family as the Field Guide / Role Handoff ══ */
+  :root {
+    --ground:    #FFFFFF;
+    --sunk:      #F2F5F9;
+    --card:      #FFFFFF;
+    --ink:       #0B0E13;
+    --ink-2:     #4A5563;
+    --ink-3:     #7C8797;
+    --rule:      #DDE3EB;
+    --accent:    #1B4FD8;
+    --accent-bg: #E8EEFF;
+
+    --ok:    #0F7D3B;  --ok-bg:    #E2F4E5;
+    --data:  #1359AC;  --data-bg:  #E1EDFB;
+    --setup: #6B37B8;  --setup-bg: #EDE4FC;
+    --bot:   #94590A;  --bot-bg:   #FBEFD6;
+    --save:  #0B6982;  --save-bg:  #DBEFF6;
+    --app:   #B3204C;  --app-bg:   #FCE3EA;
+
+    --intake: #0E7490; --intake-bg: #E0F4F9;   /* sky — Patient Intake */
+    --welcome:#0F766E; --welcome-bg:#DDF3F0;   /* teal — Welcome Call  */
+
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0D1117;  --sunk: #161C25;  --card: #161C25;
+      --ink: #F0F4F9;     --ink-2: #A8B4C4;  --ink-3: #78849A;
+      --rule: #2A3340;
+      --accent: #7FA6FF;  --accent-bg: #17233D;
+      --ok:    #58D47B;  --ok-bg:    #102C18;
+      --data:  #6FB0F5;  --data-bg:  #10263D;
+      --setup: #BE9BF0;  --setup-bg: #241A38;
+      --bot:   #E0AC42;  --bot-bg:   #302512;
+      --save:  #4CBEDC;  --save-bg:  #0C2A33;
+      --app:   #F589A8;  --app-bg:   #34141F;
+      --intake: #67C8DE;  --intake-bg: #0C2830;
+      --welcome:#5FD3C6;  --welcome-bg:#0C2B28;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0D1117;  --sunk: #161C25;  --card: #161C25;
+    --ink: #F0F4F9;     --ink-2: #A8B4C4;  --ink-3: #78849A;
+    --rule: #2A3340;
+    --accent: #7FA6FF;  --accent-bg: #17233D;
+    --ok:    #58D47B;  --ok-bg:    #102C18;
+    --data:  #6FB0F5;  --data-bg:  #10263D;
+    --setup: #BE9BF0;  --setup-bg: #241A38;
+    --bot:   #E0AC42;  --bot-bg:   #302512;
+    --save:  #4CBEDC;  --save-bg:  #0C2A33;
+    --app:   #F589A8;  --app-bg:   #34141F;
+    --intake: #67C8DE;  --intake-bg: #0C2830;
+    --welcome:#5FD3C6;  --welcome-bg:#0C2B28;
+  }
+
+  /* ══ Base ══ */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 16px 100px; }
+  p { margin: 0 0 12px; }
+  b, strong { font-weight: 700; }
+
+  /* ══ Masthead ══ */
+  .mast { padding: 46px 0 10px; }
+  .kicker {
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--accent);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(2.3rem, 7vw, 3.4rem); line-height: .98;
+    font-weight: 800; letter-spacing: -.033em; margin: 0 0 16px;
+  }
+  .mast p { font-size: 1.12rem; color: var(--ink-2); margin: 0; max-width: 30em; }
+
+  /* ══ Section headers ══ */
+  section { margin: 0 0 20px; }
+  .shead {
+    display: flex; align-items: center; gap: 14px;
+    margin: 56px 0 22px; padding-bottom: 12px;
+    border-bottom: 3px solid var(--ink);
+  }
+  .snum {
+    font-family: var(--mono); font-size: .82rem; font-weight: 700;
+    background: var(--ink); color: var(--ground);
+    padding: .28em .55em; border-radius: 5px; flex: none;
+  }
+  h2 {
+    font-size: clamp(1.4rem, 4vw, 1.9rem); line-height: 1.06;
+    font-weight: 800; letter-spacing: -.02em; margin: 0;
+  }
+  .lede { color: var(--ink-2); max-width: 34em; }
+
+  /* ══ The screen map ══ */
+  .screen {
+    border: 2px solid var(--ink); border-radius: 14px; overflow: hidden;
+    background: var(--sunk); margin: 18px 0 8px;
+  }
+  .screen .bar {
+    background: var(--card); border-bottom: 1px solid var(--rule);
+    padding: 10px 14px; display: flex; align-items: center; gap: 10px;
+    font-size: .85rem; font-weight: 700;
+  }
+  .screen .bar .dot-row { margin-left: auto; display: flex; gap: 10px; font-weight: 600; color: var(--ink-3); font-size: .78rem; }
+  .legend-dot { display: inline-block; width: .7em; height: .7em; border-radius: 50%; margin-right: .35em; vertical-align: baseline; }
+  .ld-i { background: var(--intake); } .ld-w { background: var(--welcome); }
+
+  .strip {
+    margin: 12px; padding: 10px 12px 12px; border-radius: 10px;
+    background: var(--card); border: 1px dashed var(--rule); position: relative;
+  }
+  .strip .lab { font-family: var(--mono); font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+  .lane { display: flex; gap: 6px; margin-top: 5px; }
+  .blk { height: 16px; border-radius: 4px; }
+  .blk.i { background: var(--intake); } .blk.w { background: var(--welcome); }
+  .ticks { display: flex; justify-content: space-between; font-family: var(--mono); font-size: .62rem; color: var(--ink-3); margin-top: 7px; }
+
+  .cols { display: flex; gap: 12px; margin: 0 12px 12px; }
+  .col {
+    flex: 1; background: var(--card); border: 1px dashed var(--rule);
+    border-radius: 10px; padding: 10px 12px 12px; min-width: 0;
+  }
+  .col .ctitle { font-size: .84rem; font-weight: 800; margin-bottom: 8px; }
+  .mini {
+    border: 1px solid var(--rule); border-left: 4px solid var(--rule);
+    background: var(--sunk); border-radius: 6px; height: 26px; margin: 6px 0;
+  }
+  .mini.hit { border-left-color: var(--ok); }
+  .sec-lab { font-family: var(--mono); font-size: .62rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-top: 10px; }
+  .cap { font-size: .85rem; color: var(--ink-3); margin: 8px 2px 0; }
+  .callout-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.45em; height: 1.45em; border-radius: 50%;
+    background: var(--accent); color: #fff; font-family: var(--mono);
+    font-size: .78rem; font-weight: 700; flex: none;
+  }
+  .map-notes { list-style: none; padding: 0; margin: 14px 0 0; }
+  .map-notes li { display: flex; gap: 12px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--rule); }
+  .map-notes li:last-child { border-bottom: 0; }
+
+  /* ══ Day flow ══ */
+  .flow { list-style: none; margin: 18px 0 0; padding: 0; counter-reset: step; }
+  .flow li {
+    counter-increment: step; position: relative;
+    padding: 0 0 26px 64px;
+  }
+  .flow li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: -2px;
+    width: 44px; height: 44px; border-radius: 12px;
+    background: var(--accent-bg); color: var(--accent);
+    font-family: var(--mono); font-size: 1.15rem; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .flow li:not(:last-child)::after {
+    content: ""; position: absolute; left: 21px; top: 46px; bottom: 4px;
+    width: 2px; background: var(--rule);
+  }
+  .flow .ft { font-weight: 800; font-size: 1.05rem; margin-bottom: 2px; }
+  .flow p { color: var(--ink-2); margin: 0; max-width: 32em; }
+
+  /* ══ Card anatomy ══ */
+  .anat { margin: 18px 0 6px; }
+  .pcard {
+    border: 1px solid var(--rule); border-left: 5px solid var(--ok);
+    border-radius: 12px; background: var(--card); padding: 13px 15px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.05); max-width: 480px;
+  }
+  .pcard .nm { font-weight: 800; font-size: 1.02rem; }
+  .pcard .sub { font-size: .82rem; color: var(--ink-2); margin-top: 2px; }
+  .pillrow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .pill {
+    font-size: .7rem; font-weight: 700; padding: .22em .6em; border-radius: 99px;
+    background: var(--sunk); color: var(--ink-2); border: 1px solid var(--rule);
+  }
+  .pill.net { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+  .fbtn {
+    font-size: .74rem; font-weight: 700; padding: .38em .8em; border-radius: 8px;
+    border: 1px solid var(--rule); background: var(--card); color: var(--ink-2);
+  }
+  .fbtn.call  { background: var(--ok-bg);   color: var(--ok);   border-color: transparent; }
+  .fbtn.comms { background: var(--ok-bg);   color: var(--ok);   border-color: transparent; }
+  .fbtn.book  { background: var(--save-bg); color: var(--save); border-color: transparent; }
+  .fbtn.open  { background: var(--accent);  color: #fff;        border-color: transparent; }
+
+  .keys { list-style: none; padding: 0; margin: 16px 0 0; }
+  .keys li { display: flex; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+  .keys li:last-child { border-bottom: 0; }
+  .key {
+    font-family: var(--mono); font-size: .72rem; font-weight: 700; flex: none;
+    padding: .2em .5em; border-radius: 5px; background: var(--sunk); color: var(--ink-2);
+  }
+  .key.g { background: var(--ok-bg); color: var(--ok); }
+  .key.b { background: var(--save-bg); color: var(--save); }
+  .key.a { background: var(--accent-bg); color: var(--accent); }
+  .keys p { margin: 0; color: var(--ink-2); }
+
+  /* ══ 2×2 buckets ══ */
+  .grid22 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0 6px;
+  }
+  .bkt { border: 1px solid var(--rule); border-radius: 12px; padding: 13px 15px; background: var(--card); }
+  .bkt .bt { font-weight: 800; font-size: .95rem; }
+  .bkt .bt small { font-family: var(--mono); font-size: .66rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); display: block; margin-bottom: 3px; }
+  .bkt p { font-size: .88rem; color: var(--ink-2); margin: 6px 0 0; }
+  .bkt.first { outline: 3px solid var(--accent); outline-offset: -1px; }
+  .bkt .badge { display: inline-block; font-size: .66rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: #fff; border-radius: 5px; padding: .2em .5em; margin-left: 6px; vertical-align: middle; }
+
+  /* ══ Do / don't tiles ══ */
+  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0 0; }
+  .rule-t { border-radius: 12px; padding: 14px 16px; }
+  .rule-t.do   { background: var(--ok-bg); }
+  .rule-t.dont { background: var(--app-bg); }
+  .rule-t .tag { font-family: var(--mono); font-size: .68rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+  .rule-t.do .tag   { color: var(--ok); }
+  .rule-t.dont .tag { color: var(--app); }
+  .rule-t p { margin: 6px 0 0; font-size: .95rem; font-weight: 600; line-height: 1.4; }
+  .rule-t small { display: block; margin-top: 6px; font-size: .8rem; font-weight: 500; color: var(--ink-2); }
+
+  .foot { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: .82rem; }
+
+  @media (max-width: 560px) {
+    .grid22, .rules { grid-template-columns: 1fr; }
+    .cols { flex-direction: column; }
+    .flow li { padding-left: 56px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <p class="kicker">Medically Modern · Command Center</p>
+    <h1>Care Coordinator SOP</h1>
+    <p>Your whole day lives on one screen: <b>Care Coordinator</b>. It shows who to call and when — the calls themselves happen from each patient's profile.</p>
+  </header>
+
+  <!-- ═══ 1 · The screen ═══ -->
+  <section>
+    <div class="shead"><span class="snum">1</span><h2>The screen, at a glance</h2></div>
+
+    <div class="screen" role="img" aria-label="Sketch of the Care Coordinator dashboard: a day strip of booked calls on top, two patient columns below.">
+      <div class="bar">Care Coordinator
+        <span class="dot-row"><span><span class="legend-dot ld-i"></span>Intake</span><span><span class="legend-dot ld-w"></span>Welcome</span></span>
+      </div>
+      <div class="strip">
+        <div class="lab">Today's booked calls · 7 AM – 8 PM</div>
+        <div class="lane"><span class="blk i" style="width:14%; margin-left:8%"></span><span class="blk w" style="width:11%; margin-left:16%"></span><span class="blk i" style="width:12%; margin-left:9%"></span></div>
+        <div class="lane"><span class="blk w" style="width:12%; margin-left:30%"></span><span class="blk i" style="width:14%; margin-left:22%"></span></div>
+        <div class="ticks"><span>7a</span><span>10a</span><span>1p</span><span>4p</span><span>8p</span></div>
+      </div>
+      <div class="cols">
+        <div class="col">
+          <div class="ctitle"><span class="legend-dot ld-i"></span>Patient Intake</div>
+          <div class="sec-lab">Scheduled · today</div>
+          <div class="mini hit"></div><div class="mini"></div>
+          <div class="sec-lab">Unscheduled · today</div>
+          <div class="mini"></div><div class="mini hit"></div><div class="mini"></div>
+        </div>
+        <div class="col">
+          <div class="ctitle"><span class="legend-dot ld-w"></span>Welcome Call</div>
+          <div class="sec-lab">Scheduled · today</div>
+          <div class="mini hit"></div>
+          <div class="sec-lab">Unscheduled · today</div>
+          <div class="mini"></div><div class="mini"></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">Same colors everywhere: <b>sky = Patient Intake</b>, <b>teal = Welcome Call</b> — on the day strip and on each column's title dot.</p>
+
+    <ul class="map-notes">
+      <li><span class="callout-num">1</span><p><b>Day strip</b> — every call booked on the calendar, laid out across the day. Flip between yesterday / today / tomorrow with the arrows.</p></li>
+      <li><span class="callout-num">2</span><p><b>Patient Intake column</b> — new leads who started the web form and want a call.</p></li>
+      <li><span class="callout-num">3</span><p><b>Welcome Call column</b> — approved patients waiting on their welcome call.</p></li>
+    </ul>
+  </section>
+
+  <!-- ═══ 2 · The day ═══ -->
+  <section>
+    <div class="shead"><span class="snum">2</span><h2>Your day, in order</h2></div>
+    <ol class="flow">
+      <li>
+        <div class="ft">Check the day strip</div>
+        <p>Those are appointments patients picked. They come first — a booked time is a promise.</p>
+      </li>
+      <li>
+        <div class="ft">Work "Scheduled · Today", top to bottom</div>
+        <p>The next call up is shaded darker. Be ready a few minutes before each block.</p>
+      </li>
+      <li>
+        <div class="ft">Fill the gaps from "Unscheduled · Today"</div>
+        <p>Longest-waiting first — the list is already in that order. These patients asked for a call but never picked a time.</p>
+      </li>
+      <li>
+        <div class="ft">Open the patient to work them</div>
+        <p>The blue <b>Open</b> button takes you to their profile. Calls, notes, logging the attempt, advancing — all of it happens there.</p>
+      </li>
+      <li>
+        <div class="ft">Log every attempt</div>
+        <p>No answer still counts — log it on the profile. The card's left edge turns <b>green</b> and the patient comes back on tomorrow's list automatically.</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ═══ 3 · One card ═══ -->
+  <section>
+    <div class="shead"><span class="snum">3</span><h2>One card, explained</h2></div>
+
+    <div class="anat">
+      <div class="pcard">
+        <div class="nm">Jane Sample</div>
+        <div class="sub">State: NY · Dr. Rivera — Lakeside Endocrine</div>
+        <div class="pillrow">
+          <span class="pill net">In network</span>
+          <span class="pill">Partial</span>
+          <span class="pill">UnitedHealthcare</span>
+          <span class="pill">CGM: Pharmacy</span>
+        </div>
+        <div class="btnrow">
+          <span class="fbtn call">📞 Call</span>
+          <span class="fbtn comms">💬 Communications</span>
+          <span class="fbtn book">🔗 Booking link</span>
+          <span class="fbtn open">Open →</span>
+        </div>
+      </div>
+    </div>
+
+    <ul class="keys">
+      <li><span class="key g">GREEN EDGE</span><p>You've already tried this patient. Gray edge = not yet touched.</p></li>
+      <li><span class="key">PILLS</span><p>The facts at a glance: network verdict, form Partial/Completed, insurance, coverage paths. A missing pill means the answer is <b>unknown</b> — not "no".</p></li>
+      <li><span class="key g">CALL / COMMS</span><p>Ring them, or open texts and call history in the side panel.</p></li>
+      <li><span class="key b">BOOKING LINK</span><p>Send the calendar link so the patient picks a time — pick <b>Intake call</b> or <b>Welcome call</b> in the dropdown. The booking is what brings them back; never promise a callback without one.</p></li>
+      <li><span class="key a">OPEN</span><p><b>The work button.</b> It opens the patient's own page, where attempts get logged and stages advance. The dashboard itself never changes a patient.</p></li>
+    </ul>
+  </section>
+
+  <!-- ═══ 4 · Buckets ═══ -->
+  <section>
+    <div class="shead"><span class="snum">4</span><h2>How patients sort themselves</h2></div>
+    <p class="lede">Each column is the same 2×2. Nothing to file — every patient lands in exactly one box on their own.</p>
+
+    <div class="grid22">
+      <div class="bkt first">
+        <div class="bt"><small>Scheduled</small>Today <span class="badge">Start here</span></div>
+        <p>A booked call on today's calendar. A booking always wins — it shows here no matter what else is going on.</p>
+      </div>
+      <div class="bkt">
+        <div class="bt"><small>Scheduled</small>Future</div>
+        <p>Booked for another day. Leave them be — they appear under Today on the right morning.</p>
+      </div>
+      <div class="bkt">
+        <div class="bt"><small>Unscheduled</small>Today</div>
+        <p>No booking, and due: their follow-up date is today, past, or blank. Blank means <b>call them</b> — nothing else brings a dateless patient back.</p>
+      </div>
+      <div class="bkt">
+        <div class="bt"><small>Unscheduled</small>Future</div>
+        <p>You logged an attempt, so their follow-up date moved to the next day. They return to Today on their own.</p>
+      </div>
+    </div>
+    <p class="cap">Patients with a manager (escalated) leave the lists but stay in the column's count — managers work those from Oversight.</p>
+  </section>
+
+  <!-- ═══ 5 · Rules ═══ -->
+  <section>
+    <div class="shead"><span class="snum">5</span><h2>Five rules</h2></div>
+    <div class="rules">
+      <div class="rule-t do"><span class="tag">Do</span>
+        <p>Work booked calls first, then longest-waiting.</p>
+      </div>
+      <div class="rule-t do"><span class="tag">Do</span>
+        <p>Log every attempt — answered or not.</p>
+        <small>The log is what schedules the next try.</small>
+      </div>
+      <div class="rule-t dont"><span class="tag">Don't</span>
+        <p>Press Advance twice.</p>
+        <small>One press is enough. The patient disappears from your list the moment it goes through — if you ever see an "is already…" message, they had advanced; move on.</small>
+      </div>
+      <div class="rule-t dont"><span class="tag">Don't</span>
+        <p>Treat a blank as a "no".</p>
+        <small>A missing pill or empty field means nobody has asked yet. Ask.</small>
+      </div>
+      <div class="rule-t do" style="grid-column: 1 / -1;">
+        <span class="tag">Do</span>
+        <p>Send the booking link instead of promising to call back.</p>
+        <small>A Calendly booking puts them on the day strip and holds the time. A verbal promise is invisible to every list.</small>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Care Coordinator SOP · Medically Modern Command Center · The dashboard reads live from the boards and refreshes itself — a patient who vanishes from your list has moved forward, which is the goal.
+  </footer>
+
+</div>
+</body>
+</html>

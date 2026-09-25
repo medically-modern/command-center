@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/profile/workflow";
 import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/profile/mondayApi";
 import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
-import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
+import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 15_000;
 const LS_CACHE_KEY_BASE = "prof-patients-cache";
@@ -99,7 +99,11 @@ export function useMondayPatients(
   // Patients hidden optimistically because an exit advanced them out of this
   // queue (id → when). Reconciled against the board on every poll — see
   // lib/shared/pendingAdvance. In memory on purpose: a reload is a fresh read.
-  const pendingAdvanceRef = useRef<Map<string, number>>(new Map());
+  // ⚠️ The SHARED claim map (2026-09-25) — module state, so an advance made
+  // here still hides the patient on the Care Coordinator dashboard and after
+  // this page unmounts. See `sharedPendingAdvances`' comment for the Keith
+  // Dye measurement that forced it.
+  const pendingAdvanceRef = useRef(sharedPendingAdvances);
   const injectedIdRef = useRef(injectedPatientId);
   useEffect(() => { injectedIdRef.current = injectedPatientId; }, [injectedPatientId]);
 

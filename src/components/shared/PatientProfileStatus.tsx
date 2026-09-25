@@ -86,17 +86,28 @@ export function InsuranceProfileStatus({
  * there — that queue's Follow Up pair is a one-way door nothing reads (§5.10),
  * so honouring it would report Paused for a patient sitting in everyone's
  * sidebar. It mirrors the flag the page already passes to `sidebarSections`.
+ *
+ * ⚠️ `hideActive` (Brandon, 2026-09-25: *"What is the 'active' pill on the top
+ * of the profile page pulling from? … we should get rid of it, because it
+ * doesn't mean insurance is active"*): the badge's default state is the §5.18
+ * "everything else" — being WORKED, not insurance — and beside an eligibility
+ * readout it reads as an insurance claim. With the flag, an `active` status
+ * renders NOTHING; the states that carry information (Stuck · Proposed Stuck ·
+ * Escalated · Paused · Waiting) still show. Opt-in, passed by the two intake
+ * profile pages; every other caller is byte-identical.
  */
 export function IntakeProfileStatus({
   patient,
   ignoreFollowUp = false,
+  hideActive = false,
   size = "md",
   className,
-}: { patient: IntakePatient; ignoreFollowUp?: boolean; size?: Size; className?: string }) {
+}: { patient: IntakePatient; ignoreFollowUp?: boolean; hideActive?: boolean; size?: Size; className?: string }) {
   const completed = useReviewing(patient.id);
+  const status = intakeProfileStatus(patient, { completed, ignoreFollowUp });
   return (
     <ProfileStatusBadge
-      status={intakeProfileStatus(patient, { completed, ignoreFollowUp })}
+      status={hideActive && status === "active" ? null : status}
       size={size}
       className={className}
     />

@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { pendingAdvanceVerdict, applyPendingAdvances, PENDING_ADVANCE_TTL_MS } from "./pendingAdvance";
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  pendingAdvanceVerdict,
+  applyPendingAdvances,
+  PENDING_ADVANCE_TTL_MS,
+  sharedPendingAdvances,
+  resetPendingAdvances,
+} from "./pendingAdvance";
 
 const T = 1_700_000_000_000;
 
@@ -79,5 +85,34 @@ describe("applyPendingAdvances", () => {
     // Lapsing only un-hides; it can't add somebody the filter excluded.
     const pending = new Map([["ghost", T - PENDING_ADVANCE_TTL_MS - 1]]);
     expect(applyPendingAdvances(q("1"), pending, T)).toEqual([{ id: "1" }]);
+  });
+});
+
+describe("the shared claim store (Keith Dye, 2026-09-25)", () => {
+  const q = (...ids: string[]) => ids.map((id) => ({ id }));
+
+  beforeEach(() => resetPendingAdvances());
+
+  it("one map serves every queue and screen — a claim written anywhere hides everywhere", () => {
+    // The two holes the per-hook `useRef(new Map())` had: leaving the page
+    // threw the claim away, and no other screen (the Care Coordinator
+    // dashboard) could consult it. A Monday item id is globally unique, so
+    // module state is safe; this pins that the module EXPORTS the one map.
+    sharedPendingAdvances.set("13133155597", T);
+    expect(applyPendingAdvances(q("13133155597", "2"), sharedPendingAdvances, T + 1)).toEqual([{ id: "2" }]);
+  });
+
+  it("the TTL outlasts Monday's read-index lag", () => {
+    // Keith Dye: the automation moved him 1.7s after the advancer flipped, yet
+    // the group-filtered items_page kept returning him for ~10 minutes. Two
+    // minutes of hiding put him back — with a live Advance button — for the
+    // rest of that lag.
+    expect(PENDING_ADVANCE_TTL_MS).toBeGreaterThanOrEqual(15 * 60_000);
+  });
+
+  it("resetPendingAdvances empties it — the test seam", () => {
+    sharedPendingAdvances.set("1", T);
+    resetPendingAdvances();
+    expect(sharedPendingAdvances.size).toBe(0);
   });
 });

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { COL, fetchGroupItems, fetchItemById, hasToken, writeDate } from "@/lib/welcomeCall/mondayApi";
 import { mondayItemToPatient } from "@/lib/welcomeCall/mondayMapping";
-import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
+import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
 import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
 
 const POLL_MS = 30_000;
@@ -85,7 +85,11 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   // Patients hidden optimistically because a send advanced them out of this
   // group (id → when). Reconciled against the board on every poll — see
   // lib/shared/pendingAdvance. In memory on purpose: a reload is a fresh read.
-  const pendingAdvanceRef = useRef<Map<string, number>>(new Map());
+  // ⚠️ The SHARED claim map (2026-09-25) — module state, so an advance made
+  // here still hides the patient on the Care Coordinator dashboard and after
+  // this page unmounts. See `sharedPendingAdvances`' comment for the Keith
+  // Dye measurement that forced it.
+  const pendingAdvanceRef = useRef(sharedPendingAdvances);
 
   // Patients we've already stamped with an arrival Follow Up Date this session
   // (see the backfill in refetch) — stops us re-writing the same one each poll.

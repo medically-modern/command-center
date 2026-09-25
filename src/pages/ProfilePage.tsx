@@ -36,7 +36,7 @@ import { networkLabel, networkTone } from "@/lib/profile/intakeUnlock";
 import { warningConditions } from "@/lib/profile/intakeWarnings";
 import { CHECK_MANUALLY_HINT } from "@/lib/profile/networkVerdict";
 import { useIntakeWarnings, type IntakeWarningsState } from "@/hooks/profile/useIntakeWarnings";
-import { IntakeWarningsDialog, IntakeWarningsPanel } from "@/components/profile/IntakeWarnings";
+import { IntakeWarningsPanel } from "@/components/profile/IntakeWarnings";
 import type { Patient } from "@/lib/profile/workflow";
 import {
   hasValidZip, formatPhone, crossSellReason, canCrossSellCgm, deriveServing, addressWarning,
@@ -785,7 +785,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                   {selected && (
                     <p className="text-sm opacity-80 mt-0.5 flex items-center gap-2 flex-wrap">
                       {selected.name}
-                      <IntakeProfileStatus patient={selected} size="sm" />
+                      <IntakeProfileStatus patient={selected} size="sm" hideActive />
                       {selected.alreadyInSystem?.toLowerCase() === "yes" && (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-white text-red-700 text-sm font-extrabold uppercase tracking-wide px-3 py-1 shadow">
                           <AlertTriangle className="h-4 w-4" /> Already In System
@@ -870,8 +870,6 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
           </main>
         </div>
       </div>
-
-      {selected && <IntakeWarningsDialog state={intakeWarnings} patientName={selected.name} />}
 
       {/* Mark as Stuck — the reason is REQUIRED because the Stuck group is the
           only marker this board has (no Stuck status label), so without it a

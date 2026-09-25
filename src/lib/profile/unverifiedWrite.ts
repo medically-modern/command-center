@@ -599,6 +599,25 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
 }
 
 /**
+ * A failure string from `executeWritesWithVerification`, split back into the
+ * `{label, error}` the toasts join with `label: error`.
+ *
+ * Two shapes come back: `executeWithRetry` above returns `"<label>: <detail>"`,
+ * and an advancer no-op returns `advancerNoopMessage` bare — a full sentence
+ * that already leads with the label and has no colon. Passing the WHOLE string
+ * as `error` (with a split-off `label` beside it) is how the rep came to read
+ * "Intake Sub-Stage: Intake Sub-Stage: Intake Sub-Stage is already 'Profile
+ * Clean-Up'…" (Masani, 2026-09-25): every layer prefixed a label the text
+ * already carried.
+ */
+export function asWriteError(f: string): IntakeWriteResult["errors"][number] {
+  const i = f.indexOf(": ");
+  return i === -1
+    ? { label: "", columnId: "", error: f }
+    : { label: f.slice(0, i), columnId: "", error: f.slice(i + 2) };
+}
+
+/**
  * The VERIFIED doctor columns — what Select Correct Provider (step 3) chose.
  *
  * These are the eight the Advance-to-MN automation copies to Medical
@@ -849,7 +868,7 @@ export async function advanceToMedicalNecessity(
     if (failures.length > 0) {
       return {
         ok: false,
-        errors: failures.map((f) => ({ label: f.split(":")[0], columnId: "", error: f })),
+        errors: failures.map(asWriteError),
       };
     }
     return { ok: true, errors: [] };
@@ -933,7 +952,7 @@ export async function advanceToProfileCleanUp(
     if (failures.length > 0) {
       return {
         ok: false,
-        errors: failures.map((f) => ({ label: f.split(":")[0], columnId: "", error: f })),
+        errors: failures.map(asWriteError),
       };
     }
   } catch (e) {

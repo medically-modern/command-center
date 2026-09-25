@@ -53,6 +53,7 @@ import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
 import type { BookingKind } from "@/lib/scheduledCalls/bookingLink";
 import { etToday } from "@/lib/masheke/etDate";
+import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
 import { nowMinutesEt, type ScheduledCall } from "@/lib/scheduledCalls/workflow";
 import { cn } from "@/lib/utils";
 
@@ -138,7 +139,16 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
    * mirror alone, which is how the strip and the column below it came to
    * disagree about who was booked.
    */
-  const welcomeEmails = useMemo(() => (welcome.data ?? []).map((w) => w.email), [welcome.data]);
+  /* ⚠️ The Welcome Call column hides advanced patients the same way the
+     Patient Intake one does below (2026-09-25 — Keith Dye): the claims in
+     `sharedPendingAdvances` are written by the role pages' sends, and every
+     list this column derives (emails for Calendly, the buckets, the ids the
+     grid gets) starts from this filtered read. */
+  const welcomeRows = useMemo(
+    () => applyPendingAdvances(welcome.data ?? [], sharedPendingAdvances),
+    [welcome.data],
+  );
+  const welcomeEmails = useMemo(() => welcomeRows.map((w) => w.email), [welcomeRows]);
   const bookings = useCalendlyBookings(welcomeEmails, "welcome");
   const intakeEmails = useMemo(() => (intake.data ?? []).map((l) => l.email), [intake.data]);
   const intakeBookings = useCalendlyBookings(intakeEmails, "intake");
@@ -174,7 +184,14 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
    */
   const [carrierEdits, setCarrierEdits] = useState<Record<string, string>>({});
   const allIntakeLeads = useMemo(() => {
-    const rows = intake.data ?? [];
+    /* ⚠️ Advanced patients are HIDDEN here too (2026-09-25 — Keith Dye sat in
+       Masani's Patient Intake column for ~10 minutes after a successful
+       advance). The claims are `sharedPendingAdvances`, written by the intake
+       page's own send, so the card leaves this board the moment the rep is
+       back on it — Monday's group-filtered reads can keep returning the row
+       long after the automation moved it (see the TTL's comment). Re-applied
+       on every poll commit; a lapsed claim simply stops filtering. */
+    const rows = applyPendingAdvances(intake.data ?? [], sharedPendingAdvances);
     if (!Object.keys(carrierEdits).length) return rows;
     return rows.map((l) => (carrierEdits[l.id] ? { ...l, generalInsurance: carrierEdits[l.id] } : l));
   }, [intake.data, carrierEdits]);
@@ -243,8 +260,8 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
     [allIntakeLeads, ctx, intakeCalendly],
   );
   const welcomeB = useMemo(
-    () => welcomeCallBuckets(welcome.data ?? [], ctx, bookings.byEmail),
-    [welcome.data, ctx, bookings.byEmail],
+    () => welcomeCallBuckets(welcomeRows, ctx, bookings.byEmail),
+    [welcomeRows, ctx, bookings.byEmail],
   );
   const summary = useMemo(() => summarize(intakeB, welcomeB), [intakeB, welcomeB]);
 
@@ -353,8 +370,8 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
   /** Email → Welcome Call item, so a Calendly welcome-call booking can link to
    *  the patient's chart on the strip. Read from the column's own fetch. */
   const welcomeItems = useMemo(
-    () => (welcome.data ?? []).map((w) => ({ id: w.id, email: w.email })),
-    [welcome.data],
+    () => welcomeRows.map((w) => ({ id: w.id, email: w.email })),
+    [welcomeRows],
   );
 
   /**
@@ -393,7 +410,13 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
         email={link?.email}
       />
 
-      <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
+      {/* ⚠️ STICKY (Brandon, 2026-09-25: *"the top banner with the back button
+          disappears sometimes when you scroll down - can we keep it frozen
+          there"*). The page scrolls on the body, so without the pin the whole
+          banner — Back, the summary, Booking link — left the screen on any
+          column taller than the viewport. z-30 matches the intake page's own
+          sticky header; the dialogs portal to <body> and sit above it. */}
+      <header className="sticky top-0 z-30 bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
         <div className="px-3 sm:px-6 py-4 flex flex-wrap items-center gap-3">
           {!homeView && (
             <button onClick={() => goBack()} aria-label="Back" className="p-1.5 rounded-md hover:bg-white/10 transition-colors">

@@ -423,7 +423,11 @@ export async function executeWritesWithVerification(
     if (writeDebug) {
       try { await writeDebug(itemId, `[${new Date().toISOString().slice(0, 19)}] ${msg}`); } catch { /* best-effort */ }
     }
-    noopFailures.push(`${st.label}: ${msg}`);
+    // Bare, NOT `${st.label}: ${msg}` — advancerNoopMessage already leads
+    // with the label, and callers prefix these strings again for their
+    // toasts. The prefix here is how Masani came to read "Intake Sub-Stage:
+    // Intake Sub-Stage: Intake Sub-Stage is already…" (2026-09-25).
+    noopFailures.push(msg);
   }
   if (noopFailures.length > 0) return noopFailures;
 

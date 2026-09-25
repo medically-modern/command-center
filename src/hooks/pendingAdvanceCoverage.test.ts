@@ -32,6 +32,15 @@ describe.each(HOOKS)("%s", (path) => {
     expect(src).toContain("applyPendingAdvances(");
   });
 
+  it("its claims live in the SHARED module map, not a per-hook one", () => {
+    // Keith Dye, 2026-09-25: a `useRef(new Map())` died with the hook, so
+    // leaving the page forgot the advance and the Care Coordinator dashboard
+    // could never consult it. The ref keeps its name; it must point at the
+    // one exported map.
+    expect(src).toContain("useRef(sharedPendingAdvances)");
+    expect(src).not.toMatch(/useRef\(\s*new Map/);
+  });
+
   it("does not re-inject a deep-linked patient it just hid", () => {
     expect(src).toMatch(/!pendingAdvanceRef\.current\.has\(/);
   });
@@ -68,6 +77,26 @@ describe.each(CALLERS)("%s", (path) => {
   it("takes markAdvanced from the hook and calls it", () => {
     expect(src).toContain("markAdvanced");
     expect(src).toMatch(/markAdvanced\(/);
+  });
+});
+
+describe("the Care Coordinator dashboard consults the same claims", () => {
+  // Keith Dye sat in Masani's Patient Intake column for ~10 minutes after a
+  // successful advance: the dashboard polls the same boards through its own
+  // hook, so without this filter the shared map fixes the role queues and
+  // changes nothing on the screen the coordinator actually works from.
+  const src = readFileSync("src/pages/CareCoordinatorPage.tsx", "utf8");
+
+  it("filters the Patient Intake column through the shared map", () => {
+    expect(src).toMatch(/applyPendingAdvances\(intake\.data \?\? \[\], sharedPendingAdvances\)/);
+  });
+
+  it("filters the Welcome Call column through the shared map", () => {
+    expect(src).toMatch(/applyPendingAdvances\(welcome\.data \?\? \[\], sharedPendingAdvances\)/);
+    // …and every welcome-side list derives from the filtered rows, not the
+    // raw poll — the buckets, the Calendly emails, the ids the grid gets.
+    expect(src).toMatch(/welcomeCallBuckets\(welcomeRows,/);
+    expect(src).not.toMatch(/welcomeCallBuckets\(welcome\.data/);
   });
 });
 

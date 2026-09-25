@@ -102,9 +102,12 @@ describe("the gate reads the ticks the SCREEN shows", () => {
 });
 
 describe("both intake pages show them", () => {
-  it.each([["/profile", PROFILE], ["the intake page", INTAKE]])("%s mounts the panel and the pop-up", (_name, src) => {
+  it.each([["/profile", PROFILE], ["the intake page", INTAKE]])("%s mounts the panel — and NO pop-up (Brandon, 2026-09-25)", (_name, src) => {
     expect(src).toMatch(/<IntakeWarningsPanel\b/);
-    expect(src).toMatch(/<IntakeWarningsDialog\b/);
+    // "get rid of that big pop-up that comes up when you click into their
+    // profile" — the panel under the results is the one place the check
+    // speaks, and it now names the in-network states in its heading.
+    expect(src).not.toMatch(/<IntakeWarningsDialog\b/);
     // Keyed by patient, so an override reason cannot follow a sidebar click.
     const panel = src.slice(src.indexOf("<IntakeWarningsPanel"), src.indexOf("<IntakeWarningsPanel") + 200);
     expect(panel).toMatch(/key=\{(selected|pt)\.id\}/);

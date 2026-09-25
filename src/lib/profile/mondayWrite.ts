@@ -398,7 +398,9 @@ export async function sendPatientToMonday(
 
   if (failures.length > 0) {
     throw new Error(
-      `${failures.length} column(s) failed after retries. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
+      // An advancer no-op comes back as the bare sentence (no colon), so the
+      // second split trims it to its `<label> is already "<value>"` clause.
+      `${failures.length} column(s) failed after retries. Failed: ${failures.map((f) => f.split(":")[0].split(" — ")[0]).join(", ")}`,
     );
   }
 }

@@ -108,10 +108,17 @@ export const ANTHEM_STATES_TEXT = "NY, NJ, FL, TN or WY";
 const HOST_PLANS_TEXT = ["NJ", "FL", "TN", "WY"].map((s) => ANTHEM_HOST_PLAN[s]).join(", ")
   .replace(/, ([^,]*)$/, " or $1");
 
-/** Brandon's pop-up text, with Wyoming (Josh, 2026-09-24). */
-export const ANTHEM_NETWORK_HEADLINE =
-  `Anthem BCBS Commercial: we're only in network if the patient lives in ${ANTHEM_STATES_TEXT}. `
-  + "Confirm where they live before moving forward.";
+/**
+ * The amber panel's heading under the benefits check (Brandon, 2026-09-25:
+ * *"Let's just add the 4 states to this warning at bottom of benefit check"*
+ * — the canonical list is five since Josh added Wyoming, and this reads it
+ * from the one constant so the heading can never drift from the backend's
+ * verdict). The guidance summary below it carries the other half of his
+ * wording — "Insurance has them in <state> — confirm where they live before
+ * moving forward."
+ */
+export const ANTHEM_PANEL_HEADLINE =
+  `In network only if they live in ${ANTHEM_STATES_TEXT}`;
 
 export interface AnthemGuidance {
   /** Where the INSURANCE's address puts them ("" when no state can be read). */

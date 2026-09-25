@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/finalConfirm/workflow";
 import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/finalConfirm/mondayApi";
 import { mondayItemToPatient } from "@/lib/finalConfirm/mondayMapping";
-import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
+import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 30_000;
 const LS_KEY = "fc-overlays";
@@ -75,7 +75,11 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   // Patients hidden optimistically because a send advanced them out of this
   // group (id → when). Reconciled against the board on every poll — see
   // lib/shared/pendingAdvance. In memory on purpose: a reload is a fresh read.
-  const pendingAdvanceRef = useRef<Map<string, number>>(new Map());
+  // ⚠️ The SHARED claim map (2026-09-25) — module state, so an advance made
+  // here still hides the patient on the Care Coordinator dashboard and after
+  // this page unmounts. See `sharedPendingAdvances`' comment for the Keith
+  // Dye measurement that forced it.
+  const pendingAdvanceRef = useRef(sharedPendingAdvances);
 
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;

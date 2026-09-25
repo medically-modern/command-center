@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ANTHEM_NETWORK_HEADLINE, ANTHEM_NETWORK_STATES, ANTHEM_STATES_TEXT, NETWORK_CARD_CHECK_TEXT,
+  ANTHEM_NETWORK_STATES, ANTHEM_PANEL_HEADLINE, ANTHEM_STATES_TEXT, NETWORK_CARD_CHECK_TEXT,
   anthemNetworkGuidance, networkShortLabel, networkToneOf, networkVerdictOf,
 } from "./networkVerdict";
 import { ANTHEM_HOST_PLAN } from "./primaryInsurance";
@@ -60,8 +60,14 @@ describe("the Anthem states", () => {
   });
 
   it("Wyoming is in every sentence (Josh, 2026-09-24)", () => {
-    expect(ANTHEM_NETWORK_HEADLINE).toContain("WY");
+    expect(ANTHEM_PANEL_HEADLINE).toContain("WY");
     expect(NETWORK_CARD_CHECK_TEXT).toBe("Only in-network if patient lives in NY, NJ, FL, TN or WY?");
+  });
+
+  it("⚠️ the panel heading NAMES the states (Brandon, 2026-09-25)", () => {
+    // "Let's just add the 4 states to this warning at bottom of benefit
+    // check" — five with Josh's Wyoming, from the one shared constant.
+    expect(ANTHEM_PANEL_HEADLINE).toBe(`In network only if they live in ${ANTHEM_STATES_TEXT}`);
   });
 });
 

@@ -1,6 +1,8 @@
 /**
- * The intake pages' warnings hook (§5.20b): when the pop-up opens, and what
- * the screen shows for a tick before the board has caught up.
+ * The intake pages' warnings hook (§5.20b): the parsed warnings and guidance,
+ * and what the screen shows for a tick before the board has caught up. (The
+ * pop-up was deleted on 2026-09-25 — Brandon — and its removal is pinned
+ * below.)
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,61 +34,20 @@ const setup = (initial: Props) =>
     initialProps: initial,
   });
 
-describe("useIntakeWarnings — the pop-up", () => {
+describe("useIntakeWarnings — the pop-up is GONE (Brandon, 2026-09-25)", () => {
   beforeEach(() => { writes.next = ""; writes.fail = false; writes.calls = 0; });
 
-  it("opens when a patient with warnings is opened, and not for one without", () => {
+  it("⚠️ the hook exposes NO dialog state — the panel under the results says everything", () => {
+    // "get rid of that big pop-up that comes up when you click into their
+    // profile". Reversed Josh's 2026-09-24 open-on-every-open.
     const h = setup({ p: pt({ intakeWarnings: PUMP }), running: false });
-    expect(h.result.current.dialogOpen).toBe(true);
-    const h2 = setup({ p: pt(), running: false });
-    expect(h2.result.current.dialogOpen).toBe(false);
+    expect("dialogOpen" in (h.result.current as object)).toBe(false);
+    expect("setDialogOpen" in (h.result.current as object)).toBe(false);
   });
 
-  it("opens for a Check with patient verdict, with the state guidance", () => {
+  it("the Check-with-patient guidance is still computed for the panel", () => {
     const h = setup({ p: pt({ stediInNetwork: CHECK, stediAddress: "1 Main St, Newark, NJ 07102" }), running: false });
-    expect(h.result.current.dialogOpen).toBe(true);
     expect(h.result.current.anthem?.switchTo).toBe("Horizon BCBS");
-  });
-
-  it("closing it holds for this visit; opening the patient again brings it back", () => {
-    const a = pt({ intakeWarnings: PUMP });
-    const h = setup({ p: a, running: false });
-    act(() => h.result.current.setDialogOpen(false));
-    h.rerender({ p: { ...a }, running: false }); // a poll: same answer
-    expect(h.result.current.dialogOpen).toBe(false);
-    h.rerender({ p: pt({ id: "2" }), running: false }); // another patient
-    expect(h.result.current.dialogOpen).toBe(false);
-    h.rerender({ p: { ...a }, running: false }); // back again
-    expect(h.result.current.dialogOpen).toBe(true);
-  });
-
-  it("never while a check is streaming in; once it finishes, yes", () => {
-    const h = setup({ p: pt(), running: true });
-    h.rerender({ p: pt({ intakeWarnings: PUMP }), running: true });
-    expect(h.result.current.dialogOpen).toBe(false);
-    h.rerender({ p: pt({ intakeWarnings: PUMP }), running: false });
-    expect(h.result.current.dialogOpen).toBe(true);
-  });
-
-  it("re-opens after a finished check even when the answer came back the same", () => {
-    const a = pt({ intakeWarnings: PUMP });
-    const h = setup({ p: a, running: false });
-    act(() => h.result.current.setDialogOpen(false));
-    h.rerender({ p: { ...a }, running: true });
-    h.rerender({ p: { ...a }, running: false });
-    expect(h.result.current.dialogOpen).toBe(true);
-  });
-
-  it("a new check that clears everything closes it", () => {
-    const h = setup({ p: pt({ intakeWarnings: PUMP }), running: false });
-    h.rerender({ p: pt({ intakeWarnings: PUMP }), running: true });
-    h.rerender({ p: pt(), running: false });
-    expect(h.result.current.dialogOpen).toBe(false);
-  });
-
-  it("stays shut on a finished record being reviewed", () => {
-    const h = setup({ p: pt({ intakeWarnings: PUMP }), running: false, enabled: false });
-    expect(h.result.current.dialogOpen).toBe(false);
   });
 });
 

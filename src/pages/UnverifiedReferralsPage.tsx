@@ -66,7 +66,7 @@ import {
 } from "@/lib/profile/intakeUnlock";
 import { CHECK_MANUALLY_HINT } from "@/lib/profile/networkVerdict";
 import { useIntakeWarnings } from "@/hooks/profile/useIntakeWarnings";
-import { IntakeWarningsDialog, IntakeWarningsPanel } from "@/components/profile/IntakeWarnings";
+import { IntakeWarningsPanel } from "@/components/profile/IntakeWarnings";
 import {
   applyCashPayReadiness, benefitCheckApplies, cashPayMirrorEdit, verifiedInsuranceStepApplies,
   advanceLabelForLive, ADVANCE_TO_MN,
@@ -1224,7 +1224,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
       if (res.ok) toast.success("Verified insurance saved");
       else {
         toast.error("Couldn't save verified insurance", {
-          description: res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "),
+          description: res.errors.map((e) => (e.label ? `${e.label}: ${e.error}` : e.error)).join(" · "),
         });
       }
       if (res.ok) await refetch(true);
@@ -1643,7 +1643,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
         } else {
           toast.error(
             isAdvance ? "Not advanced" : "That didn't go through",
-            { description: res.errors.map((e) => `${e.label}: ${e.error}`).join(" · ") },
+            { description: res.errors.map((e) => (e.label ? `${e.label}: ${e.error}` : e.error)).join(" · ") },
           );
         }
         if (res.ok) {
@@ -1718,7 +1718,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
         : managerOrigin === "final-decisions" ? "final-decisions"
         : "processor",
     );
-    if (!res.ok) throw new Error(res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "));
+    if (!res.ok) throw new Error(res.errors.map((e) => (e.label ? `${e.label}: ${e.error}` : e.error)).join(" · "));
   }, [selected, saveBeforePropose, stuckLevel, managerOrigin]);
 
   // Declared after save() deliberately: naming it in the dependency array
@@ -2372,7 +2372,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     >
                       {selected.name}
                     </h1>
-                    <IntakeProfileStatus patient={selected} ignoreFollowUp />
+                    <IntakeProfileStatus patient={selected} ignoreFollowUp hideActive />
                     {/* ⚠️ Reads the DUP CHECK verdict, not `alreadyInSystem`.
                         A partial lead is flagged and deliberately never filed,
                         so that column is blank for exactly the patients this
@@ -3858,7 +3858,6 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                 onClose={() => setDialOpen(false)}
                 onLogAttempt={() => setAttemptOpen(true)}
               />
-              <IntakeWarningsDialog state={intakeWarnings} patientName={selected.name} />
               <Dialog open={attemptOpen} onOpenChange={setAttemptOpen}>
                 <DialogContent>
                   <DialogHeader>

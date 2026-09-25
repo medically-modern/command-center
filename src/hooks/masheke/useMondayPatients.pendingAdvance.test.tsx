@@ -32,7 +32,7 @@ vi.mock("@/lib/masheke/mondayApi", async () => {
 });
 
 import { useMondayPatients } from "./useMondayPatients";
-import { PENDING_ADVANCE_TTL_MS } from "@/lib/shared/pendingAdvance";
+import { PENDING_ADVANCE_TTL_MS, resetPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 /** A board row at the given Stage Advancer value. */
 function row(id: string, name: string, subStage: string) {
@@ -53,6 +53,9 @@ const ids = (list: { id: string }[]) => list.map((p) => p.id);
 
 beforeEach(() => {
   vi.useRealTimers();
+  // The claims are module state shared by every queue (2026-09-25 — that is
+  // the fix, not an accident), so each test starts from an empty map.
+  resetPendingAdvances();
   localStorage.clear();
   fetchGroupItems.mockReset();
   fetchItemById.mockReset();

@@ -1,11 +1,14 @@
 /**
- * The warnings panel and pop-up (§5.20b), rendered.
+ * The warnings panel (§5.20b), rendered. The pop-up was DELETED on
+ * 2026-09-25 (Brandon: "get rid of that big pop-up that comes up when you
+ * click into their profile") — its removal is pinned at the bottom.
  */
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { IntakeWarningsDialog, IntakeWarningsPanel } from "./IntakeWarnings";
+import * as IW from "./IntakeWarnings";
+const { IntakeWarningsPanel } = IW;
 import { parseIntakeWarnings } from "@/lib/profile/intakeWarnings";
-import { ANTHEM_NETWORK_HEADLINE, anthemNetworkGuidance } from "@/lib/profile/networkVerdict";
+import { ANTHEM_PANEL_HEADLINE, ANTHEM_STATES_TEXT, anthemNetworkGuidance } from "@/lib/profile/networkVerdict";
 import type { IntakeWarningsState } from "@/hooks/profile/useIntakeWarnings";
 
 const RAW = [
@@ -21,9 +24,6 @@ function state(over: Partial<IntakeWarningsState> = {}): IntakeWarningsState {
     verdict: "yes",
     anthem: null,
     gatePatient: null,
-    hasNotices: true,
-    dialogOpen: false,
-    setDialogOpen: vi.fn(),
     busyKey: null,
     toggle: vi.fn(async () => true),
     markCheckStarted: vi.fn(),
@@ -73,10 +73,17 @@ describe("IntakeWarningsPanel", () => {
     for (const box of screen.getAllByRole("checkbox")) expect(box).toBeDisabled();
   });
 
-  it("shows the Check with patient note on its own, too", () => {
+  it("shows the Check with patient note on its own, too — and its heading NAMES the states (Brandon, 2026-09-25)", () => {
     const anthem = anthemNetworkGuidance({ stediAddress: "22 Oak Ave, Scranton, PA 18503" });
     render(<IntakeWarningsPanel state={state({ warnings: [], anthem, verdict: "checkWithPatient" })} />);
-    expect(screen.getByRole("note")).toHaveTextContent("Insurance has them in PA");
+    const note = screen.getByRole("note");
+    // "Let's just add the 4 states to this warning at bottom of benefit
+    // check" — plus Wyoming, which Josh added; the heading reads the one
+    // shared constant so it cannot drift from the backend's verdict.
+    expect(note).toHaveTextContent(ANTHEM_PANEL_HEADLINE);
+    expect(note).toHaveTextContent(`In network only if they live in ${ANTHEM_STATES_TEXT}`);
+    expect(note).toHaveTextContent("Insurance has them in PA");
+    expect(note).toHaveTextContent("confirm where they live before moving forward");
   });
 
   it("renders nothing when there is nothing to say", () => {
@@ -85,25 +92,8 @@ describe("IntakeWarningsPanel", () => {
   });
 });
 
-describe("IntakeWarningsDialog", () => {
-  it("lists the Anthem steps, the blocks and the confirmations", () => {
-    const anthem = anthemNetworkGuidance({ stediAddress: "1 Main St, Newark, NJ 07102" });
-    render(
-      <IntakeWarningsDialog
-        state={state({ dialogOpen: true, anthem, acks: ["MEDICARE_PUMP_MEDICAID_ID"] })}
-        patientName="Test Patient"
-      />,
-    );
-    expect(screen.getByText(ANTHEM_NETWORK_HEADLINE)).toBeInTheDocument();
-    expect(screen.getByText(/change Primary Insurance to Horizon BCBS/)).toBeInTheDocument();
-    expect(screen.getByText("Can't be advanced")).toBeInTheDocument();
-    expect(screen.getByText(/— confirmed/)).toBeInTheDocument();
-  });
-
-  it("Got it closes it", () => {
-    const s = state({ dialogOpen: true });
-    render(<IntakeWarningsDialog state={s} />);
-    fireEvent.click(screen.getByRole("button", { name: "Got it" }));
-    expect(s.setDialogOpen).toHaveBeenCalledWith(false);
+describe("the pop-up stays deleted (Brandon, 2026-09-25)", () => {
+  it("⚠️ the module exports NO dialog — the panel is the one place the check speaks", () => {
+    expect("IntakeWarningsDialog" in IW).toBe(false);
   });
 });
