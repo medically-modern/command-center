@@ -6,8 +6,10 @@
 > — then: *"read it and make a plan . note that his claude doesnt know shit. approve all ui asks,
 > 0 backend changes allowed."*
 
-**Status: Phase 1 BUILT on the test site (2026-09-24) — see "Phase 1 — as built" under §5; the
-other phases are not started.** CLAUDE.md §5.51 is the durable record. Brandon's instructions, with
+**Status: Phases 1–7 BUILT on the test site (2026-09-24/25) — see the "as built" block under each
+phase in §5. Not built: Phase 4 (Communications, left alone) and the Coordinator restyle inside
+Phase 7 (waits for his current file, §2.8).** CLAUDE.md §5.51–§5.51c (Phases 1–2) and §5.52
+(Phases 3–7) are the durable record. Brandon's instructions, with
 the patient in them redacted:
 [`_reference/brandon-redesign/PIXEL_MATCH_INSTRUCTIONS_2026-09-24.txt`](_reference/brandon-redesign/PIXEL_MATCH_INSTRUCTIONS_2026-09-24.txt).
 Every board fact below was read from the live Subscription board on 2026-09-24 (column names, types
@@ -437,6 +439,41 @@ Not built: nothing from the Phase 2 list above.
 - **Coordinator:** his look applied to today's page, until his current file says otherwise (§2.8).
   - The restyle happens only where it's shown as a home view.
   - `/care-coordinator` itself stays exactly as it is, per your "none of the roles need to be changed".
+
+#### Phase 7 — as built (2026-09-25)
+- **Stages view** (`pages/ProcessorView.tsx` `stages`, `components/dashboard/DailyBurndown.tsx`
+  `look="stages"`, `pages/home/home.css` `.cc-bars`): his `barsHome` — *"<name>'s stages"*, the numbered
+  `.bar` rows with a sqrt-scaled `.fill` (4% floor), *Done!* on an empty track, the ad-hoc tiles as
+  `.btn.teal` with a count badge. The SAME `openBar` / `linkFor` / `barClickable` and the same
+  `useFilteredRoleCounts`; `authDenied` stays inert. `HomeViewHost` is the one caller, so `Index.tsx`
+  ("as today") renders the old look unchanged.
+- **The Stages | Oversight toggle + Viewing dropdown** (`components/shell/HomeViewSwitch.tsx`,
+  `home.css` `.cc-hometop`): his `.home-top` row, `.segc.home-toggle`, `input.sm` picker. Same props,
+  same URL writes. The banner stays the shell's `ViewAsBanner` (CLAUDE.md §5.39h) — the borrow follows
+  you off the page, so the say-so has to.
+- **Oversight** (`components/oversight/OversightTab.tsx` + `oversight.css` `.cc-ov`; rules in
+  `lib/oversight/oversightFocus.ts`; `pages/OversightPage.tsx` `.cc-ov-page`): his `.ov-hdr` (title,
+  *"<me> · N patients in the pipeline"*, the finder, a native stage `<select>` with the same options,
+  sync, Edit scoring), his `.stage-row`, his chart cards (`hist`), and the pinned `.ov-focus` card.
+  - **The search is IN-OVERSIGHT ONLY and NAME ONLY** — the union of what the charts already hold, no
+    board read, `fuzzyNameMatch`, 8 rows; the placeholder says "by name" because the oversight read
+    carries no DOB or phone (your rule, and §2.9's). Picking a row switches the stage to theirs and pins
+    them; `?patient=` (his param) so Back lands on the pin. It REPLACED the old in-stage filter, which
+    hid every bar the name was not in — the charts now always show their whole population.
+  - **Every button on the pinned card is an existing door**: Open profile → the patient screen; Open in
+    stage tool → the drill-down row's own routing (`navigateToPatient`, manager-mode params, disabled
+    with the reason on Auth Denied); the decisions → `decisionActions` (the drill-down's rule, from the
+    patient's senior chart) through the drill-down's own confirm dialog (`DecisionConfirmModal`,
+    extracted and shared) and the drill-down's own `handleDecision`. One copy of the decision rules,
+    in `oversightFocus.ts`.
+  - **The reason bars stay** (§2.9), and the columns are one grid of cells keeping `rowOf` alignment —
+    not his three independent stacks (§2.9's "a row alignment his stacks lose").
+- **Coordinator: not restyled** — waits for his current file (§2.8). `/care-coordinator` is untouched.
+- Rendered on fake data at 1440 · 1440 dark · 1100 · 760 (+ home at 1440 · 700 and a borrowed view,
+  Oversight loading and failed states): no overflow, no console errors.
+- Tests: `components/dashboard/stagesLook.test.tsx`, `pages/processorView.test.tsx`,
+  `components/shell/homeViewSwitch.test.tsx`, `components/shell/homeLook.test.ts`,
+  `lib/oversight/oversightFocus.test.ts`, `components/oversight/oversightFinder.test.tsx`.
 
 ---
 

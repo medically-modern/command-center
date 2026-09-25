@@ -2,11 +2,16 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import OversightTab from "@/components/oversight/OversightTab";
 import { useAccessContext } from "@/components/AccessProvider";
+import "@/components/oversight/oversight.css";
 
 /**
  * Full-screen Oversight (the System Management › Oversight grid shown on its
  * own). Opened from the manager landing's "Managers" control. A back button
  * (upper-left) returns to wherever the user came from.
+ *
+ * The strip is Brandon's own page header for `#/oversight` (pixel-match
+ * Phase 7, §5.52) — `.cc-ov-page` in `oversight.css`. The tab below carries
+ * its own `.cc-ov` scope, so it looks the same in all three of its hosts.
  */
 export default function OversightPage() {
   const navigate = useNavigate();
@@ -29,14 +34,14 @@ export default function OversightPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-subtle">
-      <header className="bg-card border-b border-border px-4 sm:px-6 py-3 flex items-center gap-3 sticky top-0 z-20">
-        <button onClick={goBack} className="p-2 rounded-lg hover:bg-muted/50" title="Back">
-          <ArrowLeft className="w-5 h-5" />
+    <div className="cc-ov-page min-h-screen bg-gradient-subtle">
+      <header className="ov-page-hdr">
+        <button className="back" onClick={goBack} title="Back" aria-label="Back">
+          <ArrowLeft style={{ width: 18, height: 18 }} />
         </button>
-        <h1 className="text-base font-semibold text-foreground">Oversight</h1>
+        <b>Oversight</b>
       </header>
-      <main className="p-4 sm:p-6">
+      <main className="px-4 pb-6">
         <OversightTab />
       </main>
     </div>

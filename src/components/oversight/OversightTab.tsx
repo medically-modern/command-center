@@ -5,8 +5,17 @@
  *
  * Data is fetched from Monday.com via oversightApi, cached in localStorage
  * for instant reload, and polled every 90 seconds.
+ *
+ * ⚠️ **Brandon's `viewOversight` look (pixel-match Phase 7, §5.52) is VISUAL
+ * ONLY.** `oversight.css` restyles the header, the columns and the chart cards
+ * under `.cc-ov`; the finder and the pinned patient read the Map this tab
+ * already holds (`lib/oversight/oversightFocus`) and act through the SAME
+ * routes and decision writers the drill-down uses. Josh, 2026-09-24: *"a
+ * search inside oversight would be helpful but it would need to be keyed on
+ * only patients that are IN oversight"* — so it asks Monday nothing.
  */
-import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useId, useMemo, useRef } from "react";
+import "./oversight.css";
 import {
   fetchOversightData,
   fetchPriorityOptions,
@@ -40,17 +49,33 @@ import {
 import {
   approveWelcomeCallStuck, returnWelcomeCallToQueue, escalateWelcomeCallToFinal,
 } from "@/lib/welcomeCall/mondayWrite";
-import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
+// The in-oversight finder, the pinned patient and the decision rules the
+// drill-down shares with it (§5.52) — one reading of "which rows get a
+// button", never a second copy in this file.
+import {
+  pipelinePeople,
+  searchPipeline,
+  seniorChart,
+  columnOf,
+  decisionActions,
+  decisionCopy,
+  isBotOwnedRow,
+  searchFootLine,
+  searchEmptyLine,
+  type DecisionAction,
+  type PipelinePerson,
+} from "@/lib/oversight/oversightFocus";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
 import { returnAttemptReset } from "@/lib/masheke/attemptRollup";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM, MANAGER_BUCKET_PARAM } from "@/lib/shared/managerOrigin";
-import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getUser } from "@/lib/shared/auth";
+import { useAccessContext } from "@/components/AccessProvider";
+import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag, RefreshCw, User } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   loadPriorityConfig,
@@ -168,27 +193,20 @@ function snoozedUntil(raw: string | undefined): string | null {
   return `${ymd.slice(5, 7)}/${ymd.slice(8, 10)}`;
 }
 
-/** Reason bars whose state belongs to the DVS bot, not to a person. */
-const BOT_OWNED_REASONS = new Set(["DVS Retry", "DVS Manual Review"]);
-
-/**
- * Is this drill-down row purely a bot state, i.e. nothing for a manager to
- * decide? Only true when EVERY reason the row matched is bot-owned — a row
- * with no reasons at all (a day-bucketed chart, or a patient the bars missed)
- * is emphatically not, since that is the row most likely to be stranded.
- */
-const isBotOwnedRow = (reasons: string[]): boolean =>
-  reasons.length > 0 && reasons.every((r) => BOT_OWNED_REASONS.has(r));
+// ⚠️ `isBotOwnedRow` and the per-kind decision copy MOVED to
+// `lib/oversight/oversightFocus` (§5.52) when the pinned patient card needed
+// them too. Import them; never re-declare them here — two copies of "which rows
+// get a button" is how one column offers a decision the other refuses.
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const POLL_MS = 90_000;
 const LS_CACHE_KEY = "oversight-cache";
 
-// Three-column oversight layout (Active | Attempt 4+ | 3rd Attempt). Columns are
-// a fixed width so every chart keeps its size and the block scrolls horizontally
-// rather than shrinking the charts to fit. Gap matches the old 2-column gap-x-12.
-const OVERSIGHT_COL_GAP = 48; // px between the fluid manager-view columns
+/** Brandon's `fmt` — thousands separators, en-US. Kept here rather than
+ *  imported from `reports/reportsRules`, which would drag the patient screen and
+ *  the orders slice into this chunk for a one-liner. */
+const fmt = (n: number) => n.toLocaleString("en-US");
 
 // ── One card frame for all three chart kinds (Brandon, 2026-08-12) ──
 // The cards used to size themselves to their content, so a row's three columns
@@ -198,10 +216,15 @@ const OVERSIGHT_COL_GAP = 48; // px between the fluid manager-view columns
 // grid row (grid items stretch, so the row is the tallest card) and the plot
 // area takes the slack — which also lines the x-axis labels up across the row.
 // Any new chart kind must use these two or it will be the odd one out again.
+//
+// ⚠️ `hist` / `hbars` are Brandon's card and plot (§5.52, `oversight.css`). The
+// Tailwind classes stay: `.cc-ov .hist …` outranks every single-class utility,
+// so they only ever show through in a host that does not load that stylesheet.
 const CHART_CARD_CLASS =
-  "h-full flex flex-col rounded-2xl border bg-card shadow-sm p-4 transition-all duration-200 border-border hover:shadow-md hover:ring-1 hover:ring-foreground/10";
-/** The bars. min-h keeps the old 200px floor when a row has nothing taller. */
-const CHART_PLOT_CLASS = "flex items-end gap-1.5 flex-1 min-h-[200px]";
+  "h-full flex flex-col rounded-2xl border bg-card shadow-sm p-4 transition-all duration-200 border-border hover:shadow-md hover:ring-1 hover:ring-foreground/10 hist";
+/** The bars. min-h keeps the old 200px floor when a row has nothing taller
+ *  (Brandon's `.hbars` lowers it to his 120px under `.cc-ov`). */
+const CHART_PLOT_CLASS = "flex items-end gap-1.5 flex-1 min-h-[200px] hbars";
 
 /**
  * The "+N unknown" / "+N in no bar" line under a chart.
@@ -213,7 +236,7 @@ const CHART_PLOT_CLASS = "flex items-end gap-1.5 flex-1 min-h-[200px]";
 function ChartFootnote({ parts }: { parts: string[] }) {
   const text = parts.filter(Boolean).join(" · ");
   return (
-    <p className="text-[9px] text-muted-foreground mt-1.5 text-right min-h-[0.875rem]" aria-hidden={!text}>
+    <p className="text-[9px] text-muted-foreground mt-1.5 text-right min-h-[0.875rem] unk" aria-hidden={!text}>
       {text}
     </p>
   );
@@ -229,7 +252,7 @@ function ChartFootnote({ parts }: { parts: string[] }) {
  */
 function ChartSkeleton({ seed }: { seed: number }) {
   return (
-    <div className="h-full rounded-xl bg-card border shadow-card p-4">
+    <div className="h-full rounded-xl bg-card border shadow-card p-4 hist">
       <div className="flex items-center justify-between mb-3">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-4 w-8" />
@@ -424,19 +447,15 @@ function StageChart({ chart, patients: allPatients, priorityConfig, onChartClick
   return (
     <div className={cn(CHART_CARD_CLASS, "text-left w-full")}>
       {showsFormToggle && (
-        <div className="mb-3 inline-flex rounded-lg border bg-muted/40 p-0.5">
+        // Brandon's `.hist .toggle` (§5.52): the look is his, the filter is ours.
+        <div className="toggle">
           {FORM_GROUP_FILTERS.map((f) => (
             <button
               key={f.key}
               type="button"
               aria-pressed={formFilter === f.key}
               onClick={(e) => { e.stopPropagation(); setFormFilter(f.key); }}
-              className={cn(
-                "rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                formFilter === f.key
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
+              className={formFilter === f.key ? "on" : undefined}
             >
               {f.label}
             </button>
@@ -447,12 +466,12 @@ function StageChart({ chart, patients: allPatients, priorityConfig, onChartClick
       {/* Header — clickable to show all patients */}
       <button
         onClick={onChartClick}
-        className="flex items-center justify-between mb-3 w-full text-left group cursor-pointer"
+        className="flex items-center justify-between mb-3 w-full text-left group cursor-pointer h"
       >
-        <h3 className="text-[0.95rem] font-bold tracking-tight text-foreground truncate min-w-0 group-hover:underline decoration-foreground/30 underline-offset-4">
+        <h3 className="text-[0.95rem] font-bold tracking-tight text-foreground truncate min-w-0 group-hover:underline decoration-foreground/30 underline-offset-4 t">
           {chart.title}
         </h3>
-        <div className="flex items-center gap-1.5 ml-2 shrink-0">
+        <div className="flex items-center gap-1.5 ml-2 shrink-0 n">
           {totalVip > 0 && (
             <span
               className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white"
@@ -463,7 +482,7 @@ function StageChart({ chart, patients: allPatients, priorityConfig, onChartClick
               {totalVip}
             </span>
           )}
-          <span className="text-2xl font-bold text-foreground tabular-nums leading-none">
+          <span className="text-2xl font-bold text-foreground tabular-nums leading-none tn">
             {totalCount}
           </span>
         </div>
@@ -656,12 +675,12 @@ function ReasonStageChart({
     <div className={cn(CHART_CARD_CLASS, "text-left w-full")}>
       <button
         onClick={onChartClick}
-        className="flex items-center justify-between mb-3 w-full text-left group cursor-pointer"
+        className="flex items-center justify-between mb-3 w-full text-left group cursor-pointer h"
       >
-        <h3 className="text-[0.95rem] font-bold tracking-tight text-foreground truncate min-w-0 group-hover:underline decoration-foreground/30 underline-offset-4">
+        <h3 className="text-[0.95rem] font-bold tracking-tight text-foreground truncate min-w-0 group-hover:underline decoration-foreground/30 underline-offset-4 t">
           {chart.title}
         </h3>
-        <div className="flex items-center gap-1.5 ml-2 shrink-0">
+        <div className="flex items-center gap-1.5 ml-2 shrink-0 n">
           {totalVip > 0 && (
             <span
               className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white"
@@ -672,7 +691,7 @@ function ReasonStageChart({
               {totalVip}
             </span>
           )}
-          <span className="text-2xl font-bold text-foreground tabular-nums leading-none">
+          <span className="text-2xl font-bold text-foreground tabular-nums leading-none tn">
             {totalCount}
           </span>
         </div>
@@ -799,10 +818,10 @@ function StackedStageChart({
     <div className={cn(CHART_CARD_CLASS, "text-left w-full")}>
       <button
         onClick={onChartClick}
-        className="flex items-start justify-between mb-3 w-full text-left group cursor-pointer"
+        className="flex items-start justify-between mb-3 w-full text-left group cursor-pointer h"
       >
         <div className="min-w-0">
-          <h3 className="text-[0.95rem] font-bold tracking-tight text-foreground truncate group-hover:underline decoration-foreground/30 underline-offset-4">
+          <h3 className="text-[0.95rem] font-bold tracking-tight text-foreground truncate group-hover:underline decoration-foreground/30 underline-offset-4 t">
             {chart.title}
           </h3>
           <span className="inline-flex gap-1.5 mt-1">
@@ -822,7 +841,8 @@ function StackedStageChart({
             </span>
           </span>
         </div>
-        <span className="text-2xl font-bold text-foreground tabular-nums leading-none ml-2 shrink-0">
+        {/* No VIP badge on this chart, so the count IS the `.n` (§5.52). */}
+        <span className="text-2xl font-bold text-foreground tabular-nums leading-none ml-2 shrink-0 n">
           {total}
         </span>
       </button>
@@ -891,20 +911,23 @@ function StackedStageChart({
  * the series were the whole chart, and Processor Overview picked up the
  * remainder because it did not exclude escalated patients. It does now, so
  * anyone missing here is missing from the entire app.
+ *
+ * ⚠️ It took a name-filter callback until 2026-09-25, for the in-stage name
+ * filter the finder replaced (§5.52). The finder PINS a patient rather than
+ * hiding the others, so the charts always show their whole population now.
  */
 function stackedSeries(
   def: ChartDef,
   data: Map<string, OversightPatient[]> | null,
-  bySearch: (list: OversightPatient[]) => OversightPatient[],
 ): { a: OversightPatient[]; b: OversightPatient[]; others: OversightPatient[] } {
   const st = def.stacked!;
-  const b = bySearch(data?.get(st.bId) ?? []);
+  const b = data?.get(st.bId) ?? [];
   const seen = new Set(b.map((p) => p.id));
   const a = st.aId
-    ? bySearch(data?.get(st.aId) ?? []).filter((p) => !seen.has(p.id))
+    ? (data?.get(st.aId) ?? []).filter((p) => !seen.has(p.id))
     : [];
   for (const p of a) seen.add(p.id);
-  const others = bySearch(data?.get(def.id) ?? []).filter((p) => !seen.has(p.id));
+  const others = (data?.get(def.id) ?? []).filter((p) => !seen.has(p.id));
   return { a, b, others };
 }
 
@@ -925,7 +948,7 @@ interface DrilldownModalProps {
    *  Approve Stuck / Return to Queue. The Manager Intervention Submit Auth
    *  chart: "escalate" (→ Final Decisions, REQUIRED note). `appendNote` is
    *  stamped into the notes before the status flip. */
-  onDecision?: (patientId: string, action: "approve" | "return" | "escalate", appendNote?: string) => Promise<void>;
+  onDecision?: (patientId: string, action: DecisionAction, appendNote?: string) => Promise<void>;
 }
 
 /** Sortable table header cell. */
@@ -1005,40 +1028,13 @@ function DrilldownModal({
   // before a patient leaves the pipeline, and "escalate" (Submit Auth manager
   // review, 2026-07-29) REQUIRES the note: the justification is the whole
   // payload the Final Decisions reviewer works from.
-  const [decisionModal, setDecisionModal] = useState<{ id: string; action: "approve" | "return" | "escalate" } | null>(null);
-  const [returnNote, setReturnNote] = useState("");
-  // The decision kinds differ in WHERE the note lands and whether a return
-  // also re-dates the patient — Insurance deliberately doesn't re-date (Auth
-  // Outstanding buckets on that date).
-  const isDecisionChart = !!chart.decision;
-  const returnRedates = chart.decision === "proposed-stuck";
-  // Welcome Call board returns clear the Follow Up SNOOZE rather than writing a
-  // date — that board has no Next Action Date; a cleared Follow Up is "due now".
-  const returnClearsSnooze =
-    chart.decision === "welcome-call-manager" || chart.decision === "welcome-call-final";
-  const reasonNotesLabel =
-    chart.decision === "proposed-stuck"
-      ? "MN Notes"
-      : returnClearsSnooze
-        ? "Welcome Call Notes"
-        : "Reference Notes";
-  // Manager Intervention Submit Auth chart: the only action is Escalate to
-  // Final Decisions, and only Propose Stuck rows get it (a DVS retry/manual
-  // row is a bot state — there's nothing to escalate).
-  const isEscalateChart =
-    chart.decision === "submit-auth-manager" ||
-    chart.decision === "intake-manager" ||
-    chart.decision === "welcome-call-manager";
-  /** ⚠️ The bot-owned exemption is INSURANCE-only. A DVS retry/manual row has
-   *  nothing for a manager to decide; every Patient Intake escalation is a
-   *  human's, so every row there gets buttons — and must, since the escalation
-   *  is what took the patient out of the rep's queue. */
-  const skipBotRows = chart.decision === "submit-auth-manager";
-  // The proposal is stamped into the reason source, which is NOT always the
-  // chart's notesColId (Chase charts stamp the MN notes) — show the column the
-  // manager is actually deciding from.
-  const returnNotesColId = chart.reasonColId ?? chart.notesColId;
-  const runDecision = async (patientId: string, action: "approve" | "return" | "escalate", appendNote?: string) => {
+  const [decisionModal, setDecisionModal] = useState<{ id: string; action: DecisionAction } | null>(null);
+  // What a decision means on THIS chart — `decisionCopy` (§5.52) is the one
+  // reading, shared with the pinned patient card, so the row buttons here and
+  // the card's buttons cannot drift apart. The note's wording, its column and
+  // the required-note rule live with the dialog (`DecisionConfirmModal`).
+  const { isDecisionChart, isEscalateChart, skipBotRows } = decisionCopy(chart);
+  const runDecision = async (patientId: string, action: DecisionAction, appendNote?: string) => {
     if (!onDecision || decidingId) return;
     setDecidingId(patientId);
     try {
@@ -1047,27 +1043,22 @@ function DrilldownModal({
       setDecidingId(null);
     }
   };
-  const decide = async (patientId: string, action: "approve" | "return" | "escalate") => {
+  const decide = async (patientId: string, action: DecisionAction) => {
     // Every decision action confirms first (stamped note + a view of the
     // notes the proposal was made in).
     if (isDecisionChart) {
-      setReturnNote("");
       setDecisionModal({ id: patientId, action });
       return;
     }
     await runDecision(patientId, action);
   };
-  const confirmReturn = async () => {
+  // The dialog has already applied the required-note rule; it hands over the
+  // trimmed note, or undefined when the manager left it blank.
+  const confirmDecision = async (note: string | undefined) => {
     if (!decisionModal || decidingId) return;
     const { id, action } = decisionModal;
-    const note = returnNote.trim();
-    // Escalation without a reason is exactly the blind hand-off the two-step
-    // review exists to prevent — the confirm button is disabled, and this
-    // guard backs it up.
-    if (action === "escalate" && !note) return;
-    await runDecision(id, action, note || undefined);
+    await runDecision(id, action, note);
     setDecisionModal(null);
-    setReturnNote("");
   };
   const [search, setSearch] = useState("");
   // sortKey: "name" | "days" | a column id; null = default (day bucket desc)
@@ -1699,128 +1690,322 @@ function DrilldownModal({
         );
       })()}
 
-      {/* ── Return-to-queue modal (Proposed Stuck) — optional stamped note ── */}
+      {/* ── Decision confirm (every decision action) — a stamped note, and a
+          view of the notes the proposal was made in. The dialog is shared with
+          the pinned patient card (§5.52); this block only finds the row. ── */}
       {decisionModal && (() => {
-        const returnModalId = decisionModal.id;
-        const isApprove = decisionModal.action === "approve";
-        const isEscalate = decisionModal.action === "escalate";
-        // Manager Intervention's "send back to pipeline" REQUIRES a note (Josh,
-        // 2026-08-03). Returning a patient is the one decision that leaves no
-        // other trace: the escalation is cleared, the row vanishes from the
-        // manager column, and the rep picks them up with no idea what was
-        // looked at or why it came back. Final Decisions' return stays optional
-        // — that column's rows already carry the proposal being answered.
-        const noteRequired = isEscalate || (isEscalateChart && decisionModal.action === "return");
-        const rp = filtered.find((p) => p.id === returnModalId) ?? patients.find((p) => p.id === returnModalId);
+        const rp = filtered.find((p) => p.id === decisionModal.id) ?? patients.find((p) => p.id === decisionModal.id);
         if (!rp) return null;
-        const rpNotes = (returnNotesColId ? rp.cols[returnNotesColId] ?? "" : "").trim();
-        const busy = decidingId === returnModalId;
         return (
-          <div
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
-            onClick={() => !busy && setDecisionModal(null)}
-          >
-            <div
-              className="bg-card border border-border rounded-xl shadow-2xl w-[540px] max-h-[80vh] flex flex-col animate-in zoom-in-95 fade-in duration-150"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  {isApprove || isEscalate
-                    ? <Flag className="h-4 w-4 text-red-600 shrink-0" />
-                    : <RotateCcw className="h-4 w-4 text-blue-500 shrink-0" />}
-                  <h4 className="text-sm font-semibold text-foreground truncate">
-                    {isEscalate
-                      ? `Escalate ${rp.name} to Final Decisions`
-                      : isApprove
-                        ? `Approve ${rp.name} as Stuck`
-                        : `Return ${rp.name} to the queue`}
-                  </h4>
-                </div>
-                <button
-                  onClick={() => setDecisionModal(null)}
-                  disabled={busy}
-                  className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0 space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  {isEscalate
-                    ? "Flags the patient Final Escalation Required — they move to the Final Decisions column, where a manager approves Stuck or returns them to the rep. Your note below is REQUIRED: it's what the Final Decisions review works from, stamped into the "
-                    : isApprove
-                      ? "Moves the patient to the Stuck stage and clears the escalation — they leave the pipeline. "
-                      : returnRedates
-                        ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue. "
-                        : returnClearsSnooze
-                          ? "Clears the Follow Up snooze and the escalation, so the patient reappears in the rep's queue as due now. "
-                          : "Sets the Follow Up Date to today and clears the escalation, so the patient reappears in the rep's due queue. "}
-                  {isEscalate
-                    ? `${reasonNotesLabel}.`
-                    : noteRequired
-                      ? `Your note below is REQUIRED — it's the only record of this decision the rep will see, stamped into the ${reasonNotesLabel}.`
-                      : `Optionally add a note below — it's stamped into the ${reasonNotesLabel}.`}
-                </p>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">
-                    {reasonNotesLabel}
-                  </label>
-                  <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground/80 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-                    {rpNotes || <span className="text-muted-foreground">No notes yet.</span>}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">
-                    {isEscalate ? (
-                      <>Why does this need a final decision? <span className="text-red-500">*</span></>
-                    ) : noteRequired ? (
-                      <>What should the rep do next? <span className="text-red-500">*</span></>
-                    ) : (
-                      "Add a note (optional)"
-                    )}
-                  </label>
-                  <textarea
-                    value={returnNote}
-                    onChange={(e) => setReturnNote(e.target.value)}
-                    rows={3}
-                    placeholder={
-                      isEscalate
-                        ? "e.g. Rep is right — payer has denied twice and won't take a peer-to-peer. Recommend Stuck."
-                        : noteRequired
-                          ? "e.g. Called the payer — auth is on file, just re-submit the pump line with modifier KX."
-                          : "e.g. New clinicals arrived — back to Evaluate for re-review."
-                    }
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 px-4 py-3 border-t shrink-0">
-                <button
-                  onClick={() => setDecisionModal(null)}
-                  disabled={busy}
-                  className="inline-flex items-center rounded-md border border-border hover:bg-muted disabled:opacity-50 text-foreground/80 text-sm font-semibold px-3 py-1.5 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmReturn}
-                  disabled={busy || (noteRequired && !returnNote.trim())}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md disabled:opacity-50 text-white text-sm font-semibold px-3 py-1.5 transition-colors",
-                    isApprove || isEscalate ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700",
-                  )}
-                >
-                  {busy
-                    ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : isApprove || isEscalate ? <Flag className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
-                  {isEscalate ? "Escalate to Final Decisions" : isApprove ? "Approve Stuck" : "Return to Queue"}
-                </button>
-              </div>
-            </div>
-          </div>
+          <DecisionConfirmModal
+            key={`${decisionModal.id}:${decisionModal.action}`}
+            chart={chart}
+            patient={rp}
+            action={decisionModal.action}
+            busy={decidingId === decisionModal.id}
+            onCancel={() => setDecisionModal(null)}
+            onConfirm={confirmDecision}
+          />
         );
       })()}
+    </div>
+  );
+}
+
+// ── DecisionConfirmModal — every Oversight decision confirms here ──────────
+
+/**
+ * The confirm dialog behind every decision button: the drill-down's rows AND
+ * the pinned patient card (§5.52). One component, so the two surfaces cannot
+ * word a decision differently or disagree about when a note is required. It
+ * owns the note it collects and hands back the trimmed text (or undefined).
+ *
+ * Approving Stuck is the last thing recorded before a patient leaves the
+ * pipeline, and "escalate" (Submit Auth manager review, 2026-07-29) REQUIRES
+ * the note: the justification is the whole payload the Final Decisions
+ * reviewer works from.
+ *
+ * ⚠️ It also closes on Escape (unless a write is in flight). The drill-down
+ * keeps its own Escape chain on top — decision dialog first, then the notes
+ * popup, then the drill-down — and both close the same dialog, so the pair is
+ * harmless; the pinned card has no other listener, which is why this one exists.
+ */
+function DecisionConfirmModal({
+  chart,
+  patient,
+  action,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  chart: ChartDef;
+  patient: OversightPatient;
+  action: DecisionAction;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (note: string | undefined) => void | Promise<void>;
+}) {
+  const [note, setNote] = useState("");
+  const titleId = useId();
+  // The decision kinds differ in WHERE the note lands and whether a return
+  // also re-dates the patient — Insurance deliberately doesn't re-date (Auth
+  // Outstanding buckets on that date); Welcome Call clears a snooze instead.
+  const { returnRedates, returnClearsSnooze, reasonNotesLabel, isEscalateChart, returnNotesColId } = decisionCopy(chart);
+  const isApprove = action === "approve";
+  const isEscalate = action === "escalate";
+  // Manager Intervention's "send back to pipeline" REQUIRES a note (Josh,
+  // 2026-08-03). Returning a patient is the one decision that leaves no
+  // other trace: the escalation is cleared, the row vanishes from the
+  // manager column, and the rep picks them up with no idea what was
+  // looked at or why it came back. Final Decisions' return stays optional
+  // — that column's rows already carry the proposal being answered.
+  const noteRequired = isEscalate || (isEscalateChart && action === "return");
+  const rpNotes = (returnNotesColId ? patient.cols[returnNotesColId] ?? "" : "").trim();
+  const trimmed = note.trim();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onCancel]);
+
+  const confirm = () => {
+    // A required note with nothing in it is exactly the blind hand-off the
+    // two-step review exists to prevent — the confirm button is disabled, and
+    // this guard backs it up.
+    if (busy || (noteRequired && !trimmed)) return;
+    void onConfirm(trimmed || undefined);
+  };
+
+  const title = isEscalate
+    ? `Escalate ${patient.name} to Final Decisions`
+    : isApprove
+      ? `Approve ${patient.name} as Stuck`
+      : `Return ${patient.name} to the queue`;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
+      onClick={() => !busy && onCancel()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="bg-card border border-border rounded-xl shadow-2xl w-[540px] max-h-[80vh] flex flex-col animate-in zoom-in-95 fade-in duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            {isApprove || isEscalate
+              ? <Flag className="h-4 w-4 text-red-600 shrink-0" />
+              : <RotateCcw className="h-4 w-4 text-blue-500 shrink-0" />}
+            <h4 id={titleId} className="text-sm font-semibold text-foreground truncate">
+              {title}
+            </h4>
+          </div>
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            aria-label="Close"
+            className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {isEscalate
+              ? "Flags the patient Final Escalation Required — they move to the Final Decisions column, where a manager approves Stuck or returns them to the rep. Your note below is REQUIRED: it's what the Final Decisions review works from, stamped into the "
+              : isApprove
+                ? "Moves the patient to the Stuck stage and clears the escalation — they leave the pipeline. "
+                : returnRedates
+                  ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue. "
+                  : returnClearsSnooze
+                    ? "Clears the Follow Up snooze and the escalation, so the patient reappears in the rep's queue as due now. "
+                    : "Sets the Follow Up Date to today and clears the escalation, so the patient reappears in the rep's due queue. "}
+            {isEscalate
+              ? `${reasonNotesLabel}.`
+              : noteRequired
+                ? `Your note below is REQUIRED — it's the only record of this decision the rep will see, stamped into the ${reasonNotesLabel}.`
+                : `Optionally add a note below — it's stamped into the ${reasonNotesLabel}.`}
+          </p>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              {reasonNotesLabel}
+            </label>
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground/80 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+              {rpNotes || <span className="text-muted-foreground">No notes yet.</span>}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              {isEscalate ? (
+                <>Why does this need a final decision? <span className="text-red-500">*</span></>
+              ) : noteRequired ? (
+                <>What should the rep do next? <span className="text-red-500">*</span></>
+              ) : (
+                "Add a note (optional)"
+              )}
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              placeholder={
+                isEscalate
+                  ? "e.g. Rep is right — payer has denied twice and won't take a peer-to-peer. Recommend Stuck."
+                  : noteRequired
+                    ? "e.g. Called the payer — auth is on file, just re-submit the pump line with modifier KX."
+                    : "e.g. New clinicals arrived — back to Evaluate for re-review."
+              }
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t shrink-0">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="inline-flex items-center rounded-md border border-border hover:bg-muted disabled:opacity-50 text-foreground/80 text-sm font-semibold px-3 py-1.5 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={confirm}
+            disabled={busy || (noteRequired && !trimmed)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md disabled:opacity-50 text-white text-sm font-semibold px-3 py-1.5 transition-colors",
+              isApprove || isEscalate ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700",
+            )}
+          >
+            {busy
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : isApprove || isEscalate ? <Flag className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+            {isEscalate ? "Escalate to Final Decisions" : isApprove ? "Approve Stuck" : "Return to Queue"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PinnedPatientCard — Brandon's `.ov-focus` ──────────────────────────────
+
+/**
+ * The patient a finder pick pins on top (§5.52): who they are, how long they
+ * have been in the stage, every chart that counts them, and the actions their
+ * most senior chart offers.
+ *
+ * ⚠️⚠️ **Every action here is an EXISTING door.** Open profile is the patient
+ * screen's own route (§5.39); Open in stage tool is the drill-down row's own
+ * `navigateToPatient`; the decisions are `decisionActions` — the drill-down's
+ * rule — confirmed through the drill-down's own dialog and written by the
+ * drill-down's own `handleDecision`. Nothing on this card writes by itself.
+ *
+ * ⚠️ The decisions come from the SENIOR chart (Final Decisions over Manager
+ * Intervention over Processor Overview): that is where a manager's decision
+ * lives, and a patient in a Processor Overview chart only has nothing to
+ * decide — the row gets no buttons, exactly as in the drill-down.
+ */
+function PinnedPatientCard({
+  person,
+  selectedStage,
+  selectedStageTitle,
+  busy,
+  onSwitchStage,
+  onOpenStageTool,
+  onDecide,
+  onClear,
+}: {
+  person: PipelinePerson;
+  selectedStage: string;
+  selectedStageTitle: string;
+  busy: boolean;
+  onSwitchStage: () => void;
+  onOpenStageTool: (chartId: string) => void;
+  onDecide: (chart: ChartDef, action: DecisionAction) => void;
+  onClear: () => void;
+}) {
+  const p = person.patient;
+  const senior = seniorChart(person.charts);
+  const actions = senior ? decisionActions(senior, p) : [];
+  const initial = (p.name.trim()[0] ?? "?").toUpperCase();
+  // `null` is a deliberate "no page yet" (Auth Denied); the drill-down greys
+  // its rows out on the same test.
+  const noStageTool = !senior || CHART_ROUTES[senior.id] === null;
+  return (
+    <div className="row wrap" style={{ gap: 12, alignItems: "flex-start" }}>
+      <span className="avatar lg" aria-hidden="true">{initial}</span>
+      <div className="grow">
+        <div className="row wrap" style={{ gap: 8, alignItems: "baseline" }}>
+          <b className="name">{p.name}</b>
+          <span className="xs muted">{person.sectionTitle}</span>
+        </div>
+        <div className="row wrap" style={{ gap: 6, marginTop: 6 }}>
+          <span className="chip">
+            {p.dayBucket === "Unknown" ? "Days in stage unknown" : `${p.dayBucket} in stage`}
+          </span>
+          {person.charts.map((c) => {
+            const col = columnOf(c.id);
+            return (
+              <span key={c.id} className={cn("chip", col === 2 && "amber", col === 3 && "red")}>
+                {c.title}
+              </span>
+            );
+          })}
+        </div>
+        {person.sectionId !== selectedStage && (
+          <div className="xs muted" style={{ marginTop: 6 }}>
+            This patient is in <b>{person.sectionTitle}</b>, not {selectedStageTitle} —{" "}
+            <button type="button" className="link" onClick={onSwitchStage}>
+              switch to their stage
+            </button>
+            .
+          </div>
+        )}
+      </div>
+      <div className="acts">
+        <Link className="btn outline sm" to={`/patient/${encodeURIComponent(p.id)}?board=${p.boardId}`}>
+          <User aria-hidden="true" /> Open profile
+        </Link>
+        <button
+          type="button"
+          className="btn outline sm"
+          onClick={() => senior && onOpenStageTool(senior.id)}
+          disabled={noStageTool}
+          title={
+            noStageTool
+              ? "This stage doesn't have a dedicated page yet"
+              : `Open ${senior.title} for this patient — the same page the drill-down opens`
+          }
+        >
+          <ExternalLink aria-hidden="true" /> Open in stage tool
+        </button>
+        {senior &&
+          actions.map(({ action, label }) => (
+            <button
+              key={action}
+              type="button"
+              className={cn("btn sm", action === "return" ? "ghost" : "danger-outline")}
+              disabled={busy}
+              onClick={() => onDecide(senior, action)}
+            >
+              {action === "return" ? <RotateCcw aria-hidden="true" /> : <Flag aria-hidden="true" />} {label}
+            </button>
+          ))}
+        <button
+          type="button"
+          className="btn ghost xs"
+          title="Clear"
+          aria-label="Clear the pinned patient"
+          onClick={onClear}
+        >
+          <X aria-hidden="true" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -1869,15 +2054,31 @@ export default function OversightTab() {
     const s = searchParams.get("stage");
     return s && OVERSIGHT_SECTIONS.some((x) => x.id === s) ? s : OVERSIGHT_SECTIONS[0].id;
   });
-  // Patient-name search — fuzzy-filters the selected stage's charts so bars
-  // without a matching patient disappear, leaving the bar(s) they're in.
-  const [patientSearch, setPatientSearch] = useState("");
-  const searchActive = patientSearch.trim().length > 0;
-  const bySearch = useCallback(
-    (list: OversightPatient[]) =>
-      patientSearch.trim() ? list.filter((p) => fuzzyNameMatch(p.name, patientSearch)) : list,
-    [patientSearch],
-  );
+  // ── The finder + the pinned patient (Brandon's `.ov-search` / `.ov-focus`,
+  //    §5.52). ⚠️ This REPLACED the old in-stage name filter, which hid every
+  //    bar the name was not in: the finder searches every stage at once and
+  //    pins the patient instead, so the charts always show their whole
+  //    population and the count above them stays the stage's real total.
+  const [ovQuery, setOvQuery] = useState("");
+  const [ovOpen, setOvOpen] = useState(false);
+  /** The highlighted row — arrow keys move it, Enter picks it. */
+  const [ovHi, setOvHi] = useState(0);
+  const ovSearchRef = useRef<HTMLDivElement>(null);
+  const ovInputRef = useRef<HTMLInputElement>(null);
+  // Seeded from the URL like the stage and the drill-down, and mirrored back
+  // into it below, so Back from a stage tool lands on the same pinned patient.
+  const [focusId, setFocusId] = useState<string | null>(() => searchParams.get("patient"));
+  // The pinned card's decision dialog. The PATIENT is snapshotted when the
+  // dialog opens: a background poll that drops them mid-confirm must not pull
+  // the dialog out from under the manager.
+  const [pinDecision, setPinDecision] = useState<{ chartId: string; patient: OversightPatient; action: DecisionAction } | null>(null);
+  const [pinBusy, setPinBusy] = useState(false);
+  // Brandon's "<name> · N patients in the pipeline" — the signed-in person,
+  // exactly as Reports & Metrics resolves it (OperationsPage). ⚠️ Never the
+  // borrowed "Viewing" person: `lib/shell/viewAs` may only be read by the three
+  // shell files that own the borrow (§5.39h).
+  const { email, config } = useAccessContext();
+  const myName = getUser()?.name || config.processors?.[email]?.name || (email || "").split("@")[0] || "Signed in";
   const mountedRef = useRef(true);
 
   const updateConfig = useCallback((c: PriorityConfig) => {
@@ -1964,17 +2165,23 @@ export default function OversightTab() {
     setSelectedBucket(bucket);
   }, []);
 
-  const handlePatientClick = useCallback(
-    (patientId: string) => {
-      if (!expandedChart) return;
-      let route = CHART_ROUTES[expandedChart];
+  /**
+   * Open a patient in the page that works the chart they sit in. The drill-down
+   * row and the pinned card's "Open in stage tool" both land here, so the two
+   * doors carry the same manager-mode params and the same per-patient
+   * overrides — a second copy of this routing is how one of them would open a
+   * rep's page where the other opens the manager's.
+   */
+  const navigateToPatient = useCallback(
+    (chartId: string, patientId: string, bucket: string) => {
+      let route = CHART_ROUTES[chartId];
       // The merged Submit Auth manager charts mix stages: DVS rows open the
       // DVS monitor (the chart's base route), but a proposed-stuck row is a
       // Submit Auth patient and belongs on that stage page. Both the Manager
       // Intervention chart and its Final Decisions twin are reason-bucketed
       // the same way, so both need the per-patient override.
-      if (expandedChart === "submit-auth-manager" || expandedChart === "submit-auth-final-escalation") {
-        const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
+      if (chartId === "submit-auth-manager" || chartId === "submit-auth-final-escalation") {
+        const p = (data?.get(chartId) ?? []).find((x) => x.id === patientId);
         if (p && (p.cols["color_mm1ws96t"] ?? "").trim() === "Submit Auth.") route = "/submit-auth";
       }
       // Belt and braces: any patient whose Sub-Stage reads Doctor Appointment
@@ -1982,7 +2189,7 @@ export default function OversightTab() {
       // Doctor Appointments row routes there already, but a patient could
       // linger in another chart's population after a stage change.
       {
-        const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
+        const p = (data?.get(chartId) ?? []).find((x) => x.id === patientId);
         if (p && (p.cols["color_mm1wyr92"] ?? "").trim() === "Doctor Appointment") {
           route = "/doctor-appointments";
         }
@@ -1999,15 +2206,15 @@ export default function OversightTab() {
       // column needs no change here.
       const section = OVERSIGHT_SECTIONS.find(
         (s) =>
-          s.chartIds.includes(expandedChart) ||
-          s.secondaryChartIds?.includes(expandedChart) ||
-          s.tertiaryChartIds?.includes(expandedChart),
+          s.chartIds.includes(chartId) ||
+          s.secondaryChartIds?.includes(chartId) ||
+          s.tertiaryChartIds?.includes(chartId),
       );
-      const isTertiary = !!section?.tertiaryChartIds?.includes(expandedChart);
-      const isSecondary = !!section?.secondaryChartIds?.includes(expandedChart);
+      const isTertiary = !!section?.tertiaryChartIds?.includes(chartId);
+      const isSecondary = !!section?.secondaryChartIds?.includes(chartId);
       // The chart itself, for pages whose list must match one specific bar
       // chart rather than a whole column (two DVS charts share a column).
-      if (isTertiary || isSecondary) params.set(MANAGER_CHART_PARAM, expandedChart);
+      if (isTertiary || isSecondary) params.set(MANAGER_CHART_PARAM, chartId);
       if (isTertiary) {
         params.set(MANAGER_ORIGIN_PARAM, "final-decisions");
       } else if (isSecondary) {
@@ -2031,8 +2238,8 @@ export default function OversightTab() {
       // The destination page narrows its sidebar to exactly this bar
       // (lib/samantha/managerRail), so it also needs WHICH bar was clicked —
       // the chart id alone would list every reason on the card.
-      if ((isSecondary || isTertiary) && selectedBucket !== "all") {
-        params.set(MANAGER_BUCKET_PARAM, selectedBucket);
+      if ((isSecondary || isTertiary) && bucket !== "all") {
+        params.set(MANAGER_BUCKET_PARAM, bucket);
       }
       if (isSecondary || isTertiary) {
         // manager=1 unhides the manager actions. The rail filter is what makes
@@ -2043,7 +2250,7 @@ export default function OversightTab() {
         // patient really is escalated: the reason-bucketed charts are built on
         // board FACTS (the ">5d" bar aside, a patient can sit in one with no
         // escalation at all) and styling them as escalated would be a lie.
-        const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
+        const p = (data?.get(chartId) ?? []).find((x) => x.id === patientId);
         const esc = (p?.cols["color_mm2vsh2f"] ?? "").trim();
         if (esc === "Manager Escalation Required" || esc === "Final Escalation Required") {
           params.set("escalated", "1");
@@ -2051,12 +2258,20 @@ export default function OversightTab() {
       }
       navigate(`${route}?${params.toString()}`);
     },
-    [expandedChart, navigate, data, selectedBucket],
+    [navigate, data],
+  );
+
+  const handlePatientClick = useCallback(
+    (patientId: string) => {
+      if (expandedChart) navigateToPatient(expandedChart, patientId, selectedBucket);
+    },
+    [expandedChart, selectedBucket, navigateToPatient],
   );
 
   // Mirror stage + drill-down state into the URL (replace, no history spam) so
   // the entry that exists when the user clicks through to a patient already
-  // encodes this view — Back then lands right back on the open drilldown.
+  // encodes this view — Back then lands right back on the open drilldown, and
+  // on the pinned patient (`patient`, Brandon's own param name, §5.52).
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     next.set("tab", "oversight");
@@ -2065,27 +2280,85 @@ export default function OversightTab() {
     else next.delete("chart");
     if (expandedChart && selectedBucket !== "all") next.set("bucket", selectedBucket);
     else next.delete("bucket");
+    if (focusId) next.set("patient", focusId);
+    else next.delete("patient");
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStage, expandedChart, selectedBucket]);
+  }, [selectedStage, expandedChart, selectedBucket, focusId]);
 
   // ── Derived values ────────────────────────────────────────────
 
-  const totalPatients = useMemo(() => {
-    if (!data) return 0;
-    const seen = new Set<string>();
-    for (const patients of data.values()) {
-      for (const p of patients) seen.add(p.id);
-    }
-    return seen.size;
-  }, [data]);
+  /**
+   * ⚠️⚠️ **"IN oversight" means a chart on this screen counts them** (Josh,
+   * 2026-09-24). The population is the Map already on screen, deduplicated —
+   * never a board read — so the finder costs no request and cannot find a
+   * patient the columns do not show. It is also the header's count: the only
+   * charts outside every section are the stacked charts' source series, and
+   * both sit inside their merged chart's own population, so the old
+   * all-charts count and this one are the same number.
+   */
+  const people = useMemo(() => pipelinePeople(data), [data]);
+  const hits = useMemo(() => searchPipeline(people, ovQuery), [people, ovQuery]);
+  /** A highlight left past the end by a shrinking list falls back to the top. */
+  const ovHiSafe = ovHi < hits.length ? ovHi : 0;
+  const focusPerson = useMemo(
+    () => (focusId ? people.find((p) => p.patient.id === focusId) ?? null : null),
+    [people, focusId],
+  );
 
   const chartById = useMemo(
     () => new Map(CHART_DEFS.map((c) => [c.id, c])),
     [],
   );
+
+  // The drop-down closes on any mousedown outside the box (Brandon's rule).
+  // Rows swallow their own mousedown so the input keeps focus until the pick.
+  useEffect(() => {
+    if (!ovOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (ovSearchRef.current && !ovSearchRef.current.contains(e.target as Node)) setOvOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [ovOpen]);
+
+  /** Picking a row: switch the stage below to theirs and pin them on top. */
+  const pickPerson = useCallback((person: PipelinePerson) => {
+    setSelectedStage(person.sectionId);
+    setFocusId(person.patient.id);
+    setOvQuery("");
+    setOvOpen(false);
+    setOvHi(0);
+    ovInputRef.current?.blur();
+  }, []);
+
+  const onFinderKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!hits.length) return;
+      e.preventDefault();
+      // A closed list reopens on the row it shows highlighted, rather than
+      // opening one row further down than the manager can see.
+      if (!ovOpen) {
+        setOvOpen(true);
+        return;
+      }
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      setOvHi((i) => ((i < hits.length ? i : 0) + step + hits.length) % hits.length);
+    } else if (e.key === "Enter") {
+      const person = hits[ovHiSafe];
+      if (person) {
+        e.preventDefault();
+        pickPerson(person);
+      }
+    } else if (e.key === "Escape") {
+      setOvQuery("");
+      setOvOpen(false);
+      setOvHi(0);
+      ovInputRef.current?.blur();
+    }
+  };
 
   // Find the expanded chart's data for the modal
   const expandedChartDef = useMemo(
@@ -2093,8 +2366,8 @@ export default function OversightTab() {
     [expandedChart],
   );
   const expandedPatients = useMemo(() => {
-    // The drill-down honors the patient search too, so clicking the one
-    // remaining bar shows the matched patient(s), not the whole bucket.
+    // The whole chart — the finder pins a patient rather than filtering the
+    // charts (§5.52), and the drill-down keeps its own search box for rows.
     if (!expandedChart || !data) return [];
     const def = CHART_DEFS.find((c) => c.id === expandedChart);
     if (def?.stacked) {
@@ -2102,14 +2375,14 @@ export default function OversightTab() {
       // remainder, tagged via the synthetic __series__ column (red 3rd+ wins
       // the dedup, same as the bars).
       const st = def.stacked;
-      const { a, b, others } = stackedSeries(def, data, bySearch);
+      const { a, b, others } = stackedSeries(def, data);
       return [
         ...b.map((p) => ({ ...p, cols: { ...p.cols, __series__: st.bLabel } })),
         ...a.map((p) => ({ ...p, cols: { ...p.cols, __series__: st.aLabel } })),
         ...others.map((p) => ({ ...p, cols: { ...p.cols, __series__: "Other escalation" } })),
       ];
     }
-    let list = bySearch(data.get(expandedChart) ?? []);
+    let list = data.get(expandedChart) ?? [];
     // Final Decisions: the reason has no Monday column of its own — pull the
     // stamped line back out of the chart's reason source (MN notes for Medical
     // Evaluation, Reference Notes for Insurance) into a synthetic
@@ -2131,14 +2404,14 @@ export default function OversightTab() {
       }));
     }
     return list;
-  }, [expandedChart, data, bySearch]);
+  }, [expandedChart, data]);
 
   // Final Decisions (§3): Approve writes the real Stuck (main Stage Advancer) and
   // clears the escalation; Return re-dates + clears the escalation (Proposed
   // Stuck also stamps the manager's optional note into the MN notes). The row
   // disappears optimistically; the silent refetch reconciles.
   const handleDecision = useCallback(
-    async (patientId: string, action: "approve" | "return" | "escalate", kind: NonNullable<ChartDef["decision"]>, chartId: string, appendNote?: string) => {
+    async (patientId: string, action: DecisionAction, kind: NonNullable<ChartDef["decision"]>, chartId: string, appendNote?: string) => {
       try {
         if (kind === "intake-manager") {
           // Patient Intake, Manager Intervention. Escalate promotes to Final
@@ -2221,42 +2494,68 @@ export default function OversightTab() {
     [refetch],
   );
 
+  /** The pinned card's confirm: same writer, same busy lock as the drill-down. */
+  const confirmPinned = async (note: string | undefined) => {
+    if (!pinDecision || pinBusy) return;
+    const chart = chartById.get(pinDecision.chartId);
+    if (!chart?.decision) return;
+    setPinBusy(true);
+    try {
+      // handleDecision toasts its own failure and never rethrows, so the
+      // dialog closes either way — exactly as the drill-down's does.
+      await handleDecision(pinDecision.patient.id, pinDecision.action, chart.decision, chart.id, note);
+    } finally {
+      setPinBusy(false);
+      setPinDecision(null);
+    }
+  };
+
   // ── Render ────────────────────────────────────────────────────
 
   // Cold load (no cached data): render the SHAPE of the page rather than a bare
   // centred spinner, so the layout doesn't jump when the data lands and the
-  // manager can see what's coming while Monday is queried.
+  // manager can see what's coming while Monday is queried. Same cells as the
+  // real columns below, so the amber rule is already where it will be.
   if (loading && !data) {
     const section =
       OVERSIGHT_SECTIONS.find((s) => s.id === selectedStage) ?? OVERSIGHT_SECTIONS[0];
     const isManagerView = !!section.tertiaryChartIds?.length;
     const rows = section.chartIds.length || 3;
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
+      <div className="cc-ov space-y-4">
+        <div className="flex items-center gap-3 pt-3.5">
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           <p className="text-sm font-medium text-muted-foreground">
             Loading {section.title} from Monday…
           </p>
         </div>
-        <div
-          className="grid gap-4"
-          style={{
-            gridTemplateColumns: `repeat(${isManagerView ? 3 : 2}, minmax(0, 1fr))`,
-            columnGap: isManagerView ? OVERSIGHT_COL_GAP : 16,
-          }}
-        >
-          {Array.from({ length: rows * (isManagerView ? 3 : 2) }).map((_, i) => (
-            <ChartSkeleton key={i} seed={i} />
-          ))}
-        </div>
+        {isManagerView ? (
+          <div className="ov-cols">
+            <div className="ov-cell c1"><div className="eyebrow">{section.primaryTitle ?? "Active"}</div></div>
+            <div className="ov-cell c2"><div className="eyebrow">{section.secondaryTitle ?? "Escalations"}</div></div>
+            <div className="ov-cell c3"><div className="eyebrow">{section.tertiaryTitle ?? "Escalations"}</div></div>
+            {Array.from({ length: rows }).map((_, r) => (
+              <Fragment key={r}>
+                <div className="ov-cell c1"><ChartSkeleton seed={r * 3} /></div>
+                <div className="ov-cell c2"><ChartSkeleton seed={r * 3 + 1} /></div>
+                <div className="ov-cell c3"><ChartSkeleton seed={r * 3 + 2} /></div>
+              </Fragment>
+            ))}
+          </div>
+        ) : (
+          <div className="ov-grid g2">
+            {Array.from({ length: rows * 2 }).map((_, i) => (
+              <ChartSkeleton key={i} seed={i} />
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
   if (error && !data) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 gap-3">
+      <div className="cc-ov flex flex-col items-center justify-center py-24 gap-3">
         <p className="text-sm text-destructive">{error}</p>
         <button
           onClick={() => refetch(false)}
@@ -2268,73 +2567,182 @@ export default function OversightTab() {
     );
   }
 
+  const currentSection =
+    OVERSIGHT_SECTIONS.find((s) => s.id === selectedStage) ?? OVERSIGHT_SECTIONS[0];
+  const listboxId = "ov-search-list";
+
   return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h2 className="text-2xl font-bold text-foreground">
-            Pipeline Oversight
-          </h2>
-          <Select value={selectedStage} onValueChange={setSelectedStage}>
-            <SelectTrigger className="w-[220px] h-9 font-semibold">
-              <SelectValue placeholder="Select a stage…" />
-            </SelectTrigger>
-            <SelectContent>
-              {OVERSIGHT_SECTIONS.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="text-sm text-muted-foreground tabular-nums">
-            {totalPatients} total patients
-          </span>
-          <div className="relative w-[240px]">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              value={patientSearch}
-              onChange={(e) => setPatientSearch(e.target.value)}
-              placeholder="Search patient name…"
-              className="w-full h-9 rounded-md border border-input bg-background pl-8 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            {searchActive && (
-              <button
-                onClick={() => setPatientSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground"
-                aria-label="Clear patient search"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
+    <div className="cc-ov space-y-3">
+      {/* Header — Brandon's `.ov-hdr`: title + who and how many, the finder,
+          the stage, and the sync state beside Edit scoring. */}
+      <div className="ov-hdr">
+        <div>
+          <h1>Pipeline Oversight</h1>
+          <div className="xs muted">
+            {myName} · {fmt(people.length)} patient{people.length === 1 ? "" : "s"} in the pipeline
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Shown for every fetch, background polls included, so the manager
-              always knows when the numbers are being pulled from Monday. */}
-          {fetching && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Syncing with Monday…
-            </span>
+
+        {/* The finder. ⚠️ NAME ONLY and IN-OVERSIGHT ONLY, and the placeholder
+            says so: the oversight read carries no DOB or phone, and "keyed on
+            only patients that are IN oversight" is Josh's rule (§5.52). The
+            header's search is the one that covers every board. */}
+        <div className="ov-search" ref={ovSearchRef}>
+          <Search aria-hidden="true" />
+          <input
+            ref={ovInputRef}
+            className="input"
+            value={ovQuery}
+            onChange={(e) => {
+              setOvQuery(e.target.value);
+              setOvHi(0);
+              setOvOpen(true);
+            }}
+            onFocus={() => {
+              if (ovQuery.trim()) setOvOpen(true);
+            }}
+            onBlur={(e) => {
+              // Keyboard users tab away; a row click never blurs (its
+              // mousedown is swallowed), and the ✕ sits inside the box.
+              if (!ovSearchRef.current?.contains(e.relatedTarget as Node | null)) setOvOpen(false);
+            }}
+            onKeyDown={onFinderKey}
+            placeholder="Find a patient in the pipeline by name…"
+            aria-label="Search the pipeline"
+            autoComplete="off"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={ovOpen && !!ovQuery.trim()}
+            aria-controls={listboxId}
+            aria-activedescendant={ovOpen && hits.length ? `${listboxId}-${ovHiSafe}` : undefined}
+          />
+          {ovQuery && (
+            <button
+              type="button"
+              className="clear"
+              aria-label="Clear search"
+              onClick={() => {
+                setOvQuery("");
+                setOvOpen(false);
+                setOvHi(0);
+                ovInputRef.current?.focus();
+              }}
+            >
+              <X aria-hidden="true" />
+            </button>
           )}
-          {error && (
-            <span className="text-[10px] text-destructive">
-              Refresh failed
-            </span>
+          {ovOpen && ovQuery.trim() && (
+            <div className="gs-drop" role="listbox" id={listboxId} aria-label="Patients in the pipeline">
+              {hits.length ? (
+                <>
+                  {hits.map((person, i) => {
+                    const senior = seniorChart(person.charts);
+                    const col = senior ? columnOf(senior.id) : 1;
+                    const bucket = person.patient.dayBucket;
+                    return (
+                      <button
+                        key={person.patient.id}
+                        id={`${listboxId}-${i}`}
+                        type="button"
+                        role="option"
+                        aria-selected={i === ovHiSafe}
+                        className={cn("gs-row", i === ovHiSafe && "hi")}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => setOvHi(i)}
+                        onClick={() => pickPerson(person)}
+                      >
+                        <span className="who"><span className="nm">{person.patient.name}</span></span>
+                        <span className="st onb">
+                          {person.sectionTitle}{bucket !== "Unknown" ? ` · ${bucket}` : ""}
+                        </span>
+                        <span className="hit">
+                          {col === 2 && <span className="st amber">Manager intervention</span>}
+                          {col === 3 && <span className="st red">Final decisions</span>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  <div className="gs-foot">{searchFootLine(hits.length)}</div>
+                </>
+              ) : (
+                <div className="gs-foot">{searchEmptyLine(ovQuery)}</div>
+              )}
+            </div>
           )}
-          <button
-            onClick={() => setConfigOpen(true)}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <SlidersHorizontal className="h-4 w-4" /> Edit scoring
-          </button>
         </div>
+
+        <select
+          className="input"
+          aria-label="Stage"
+          value={selectedStage}
+          onChange={(e) => setSelectedStage(e.target.value)}
+        >
+          {OVERSIGHT_SECTIONS.map((s) => (
+            <option key={s.id} value={s.id}>{s.title}</option>
+          ))}
+        </select>
+
+        {/* Shown for every fetch, background polls included, so the manager
+            always knows when the numbers are being pulled from Monday. The
+            span renders even when empty: its auto margin is what keeps Edit
+            scoring on the right. */}
+        <span className="row xs muted sync">
+          {fetching && (
+            <>
+              <RefreshCw className="animate-spin" aria-hidden="true" />
+              Syncing with Monday…
+            </>
+          )}
+          {error && <span className="text-destructive">Refresh failed</span>}
+        </span>
+        <button type="button" className="btn ghost xs" onClick={() => setConfigOpen(true)}>
+          <SlidersHorizontal aria-hidden="true" /> Edit scoring
+        </button>
       </div>
+
+      {/* The pinned patient — Brandon's `.ov-focus`. */}
+      {focusId && (focusPerson || data) && (
+        <div className="ov-focus-wrap">
+          <section className="card pad ov-focus" aria-label="Pinned patient">
+            {focusPerson ? (
+              <PinnedPatientCard
+                person={focusPerson}
+                selectedStage={selectedStage}
+                selectedStageTitle={currentSection.title}
+                busy={pinBusy}
+                onSwitchStage={() => setSelectedStage(focusPerson.sectionId)}
+                onOpenStageTool={(chartId) => navigateToPatient(chartId, focusPerson.patient.id, "all")}
+                onDecide={(chart, action) =>
+                  setPinDecision({ chartId: chart.id, patient: focusPerson.patient, action })
+                }
+                onClear={() => setFocusId(null)}
+              />
+            ) : (
+              // ⚠️ Pinned from a stale link, or decided a moment ago: the Map no
+              // longer holds them, so there is nothing to act on — say so
+              // rather than render an empty card.
+              <div className="row" style={{ gap: 12 }}>
+                <span className="grow small muted">
+                  This patient isn't in the pipeline any more — the columns below no longer count them.
+                </span>
+                <button
+                  type="button"
+                  className="btn ghost xs"
+                  title="Clear"
+                  aria-label="Clear the pinned patient"
+                  onClick={() => setFocusId(null)}
+                >
+                  <X aria-hidden="true" />
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
       {/* Selected stage only — charts for the chosen pipeline stage */}
       {(() => {
-        const section =
-          OVERSIGHT_SECTIONS.find((s) => s.id === selectedStage) ?? OVERSIGHT_SECTIONS[0];
+        const section = currentSection;
 
         const resolve = (ids: string[]) =>
           ids.map((id) => chartById.get(id)).filter((c): c is ChartDef => Boolean(c));
@@ -2346,12 +2754,12 @@ export default function OversightTab() {
           ? resolve(section.tertiaryChartIds)
           : [];
 
-        // Unique patients across this stage's PRIMARY charts only
-        // (search-filtered). Deliberate: escalated + proposed-stuck patients
-        // left the active pool, so the header counts the workable queue —
-        // the manager columns carry their own per-chart counts.
+        // Unique patients across this stage's PRIMARY charts only.
+        // Deliberate: escalated + proposed-stuck patients left the active
+        // pool, so the header counts the workable queue — the manager columns
+        // carry their own per-chart counts.
         const seen = new Set<string>();
-        for (const c of charts) for (const p of bySearch(data?.get(c.id) ?? [])) seen.add(p.id);
+        for (const c of charts) for (const p of data?.get(c.id) ?? []) seen.add(p.id);
         const sectionTotal = seen.size;
 
         const renderChart = (chart: ChartDef) => {
@@ -2359,7 +2767,7 @@ export default function OversightTab() {
             return (
               <ReasonStageChart
                 chart={chart}
-                patients={bySearch(data?.get(chart.id) ?? [])}
+                patients={data?.get(chart.id) ?? []}
                 priorityConfig={priorityConfig}
                 onChartClick={() => handleChartClick(chart.id)}
                 onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
@@ -2369,7 +2777,7 @@ export default function OversightTab() {
           if (chart.stacked) {
             // Two-series merged chart: series B (3rd+ round, red) wins the
             // dedup — a patient matching both pools counts once, in red.
-            const { a, b, others } = stackedSeries(chart, data ?? null, bySearch);
+            const { a, b, others } = stackedSeries(chart, data ?? null);
             return (
               <StackedStageChart
                 chart={chart}
@@ -2384,7 +2792,7 @@ export default function OversightTab() {
           return (
             <StageChart
               chart={chart}
-              patients={bySearch(data?.get(chart.id) ?? [])}
+              patients={data?.get(chart.id) ?? []}
               priorityConfig={priorityConfig}
               onChartClick={() => handleChartClick(chart.id)}
               onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
@@ -2393,13 +2801,7 @@ export default function OversightTab() {
         };
 
         const renderGrid = (list: ChartDef[]) => (
-          <div
-            className={cn(
-              "grid gap-4 grid-cols-1",
-              list.length > 1 && "md:grid-cols-2",
-              list.length > 2 && "min-[1920px]:grid-cols-3",
-            )}
-          >
+          <div className={cn("ov-grid", list.length > 1 && "g2", list.length > 2 && "g3")}>
             {list.map((chart) => (
               <Fragment key={chart.id}>{renderChart(chart)}</Fragment>
             ))}
@@ -2413,95 +2815,58 @@ export default function OversightTab() {
         const tertFor = (chart: ChartDef) =>
           tertiaryCharts.find((s) => s.rowOf === chart.id) ?? null;
 
-        const colHeader = (label: string, tone: "gray" | "amber" | "rose" = "gray") => (
-          <div
-            className={cn(
-              "text-xs font-bold uppercase tracking-[0.15em]",
-              tone === "amber" && "text-amber-600",
-              tone === "rose" && "text-rose-700",
-              tone === "gray" && "text-muted-foreground",
-            )}
-          >
-            {label}
-          </div>
-        );
-
         return (
-          <section className="space-y-3">
-            <div className="flex items-baseline gap-3 border-b border-border pb-2">
-              <h3 className="text-xl font-bold tracking-tight text-foreground">{section.title}</h3>
-              <span className="text-sm font-semibold text-muted-foreground tabular-nums">
-                {sectionTotal} {searchActive ? "matching " : ""}patient{sectionTotal !== 1 ? "s" : ""}
+          <section>
+            <div className="stage-row">
+              <h2>{section.title}</h2>
+              <span className="small muted">
+                {fmt(sectionTotal)} patient{sectionTotal !== 1 ? "s" : ""}
+              </span>
+              <span className="xs muted hint">
+                the search above covers every stage — you don't have to pick the right one first
               </span>
             </div>
 
             {tertiaryCharts.length > 0 ? (
               // Three-column layout: Processor Overview | Manager Intervention |
-              // Final Decisions. Columns are FLUID (each 1fr) so all three fit the
-              // viewport on load — no horizontal scroll to reach Final Decisions.
-              // Two amber dividers sit in the column gaps. Each row pairs an
-              // original chart with its escalation counterparts (blank where a
-              // stage has no counterpart in that column). overflow-x-auto is only a
-              // safety net for very narrow screens.
-              <div className="overflow-x-auto pb-2">
-                <div className="relative w-full min-w-0">
-                  <div
-                    className="pointer-events-none absolute inset-y-0 w-0.5 bg-amber-300"
-                    style={{ left: `calc((100% - ${2 * OVERSIGHT_COL_GAP}px) / 3 + ${OVERSIGHT_COL_GAP / 2}px)` }}
-                    aria-hidden
-                  />
-                  <div
-                    className="pointer-events-none absolute inset-y-0 w-0.5 bg-amber-300"
-                    style={{ left: `calc((100% - ${2 * OVERSIGHT_COL_GAP}px) / 3 * 2 + ${OVERSIGHT_COL_GAP * 1.5}px)` }}
-                    aria-hidden
-                  />
-                  <div
-                    className="grid"
-                    style={{
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                      columnGap: OVERSIGHT_COL_GAP,
-                      rowGap: 16,
-                    }}
-                  >
-                    {colHeader(section.primaryTitle ?? "Active")}
-                    {colHeader(section.secondaryTitle ?? "Escalations", "amber")}
-                    {colHeader(section.tertiaryTitle ?? "Escalations", "rose")}
-                    {charts.map((chart) => {
-                      const esc = escFor(chart);
-                      const ter = tertFor(chart);
-                      return (
-                        <Fragment key={chart.id}>
-                          <div>{renderChart(chart)}</div>
-                          <div>{esc ? renderChart(esc) : null}</div>
-                          <div>{ter ? renderChart(ter) : null}</div>
-                        </Fragment>
-                      );
-                    })}
-                  </div>
-                </div>
+              // Final Decisions, Brandon's `.ov-cols`. ⚠️ ONE grid of cells,
+              // not his three stacks: each row pairs an original chart with its
+              // escalation counterparts (an empty cell where a stage has none),
+              // which is the row alignment Brandon asked for on 2026-08-12. The
+              // cells carry his column padding and amber rule, so the line reads
+              // continuous from the eyebrow down.
+              <div className="ov-cols">
+                <div className="ov-cell c1"><div className="eyebrow">{section.primaryTitle ?? "Active"}</div></div>
+                <div className="ov-cell c2"><div className="eyebrow">{section.secondaryTitle ?? "Escalations"}</div></div>
+                <div className="ov-cell c3"><div className="eyebrow">{section.tertiaryTitle ?? "Escalations"}</div></div>
+                {charts.map((chart) => {
+                  const esc = escFor(chart);
+                  const ter = tertFor(chart);
+                  return (
+                    <Fragment key={chart.id}>
+                      <div className="ov-cell c1">{renderChart(chart)}</div>
+                      <div className="ov-cell c2">{esc ? renderChart(esc) : null}</div>
+                      <div className="ov-cell c3">{ter ? renderChart(ter) : null}</div>
+                    </Fragment>
+                  );
+                })}
               </div>
             ) : secondaryCharts.length > 0 ? (
               // Paired layout: each original chart on the LEFT, its escalated
-              // counterpart on the RIGHT, split by a yellow line down the middle.
+              // counterpart on the RIGHT, split by the same amber rule.
               // Originals with no escalated counterpart leave the right side blank.
-              <div className="relative">
-                <div
-                  className="pointer-events-none absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-amber-300"
-                  aria-hidden
-                />
-                <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-                  {colHeader(section.primaryTitle ?? "Active")}
-                  {colHeader(section.secondaryTitle ?? "Escalations", "amber")}
-                  {charts.map((chart) => {
-                    const esc = escFor(chart);
-                    return (
-                      <Fragment key={chart.id}>
-                        <div>{renderChart(chart)}</div>
-                        <div>{esc ? renderChart(esc) : null}</div>
-                      </Fragment>
-                    );
-                  })}
-                </div>
+              <div className="ov-cols two">
+                <div className="ov-cell c1"><div className="eyebrow">{section.primaryTitle ?? "Active"}</div></div>
+                <div className="ov-cell c2"><div className="eyebrow">{section.secondaryTitle ?? "Escalations"}</div></div>
+                {charts.map((chart) => {
+                  const esc = escFor(chart);
+                  return (
+                    <Fragment key={chart.id}>
+                      <div className="ov-cell c1">{renderChart(chart)}</div>
+                      <div className="ov-cell c2">{esc ? renderChart(esc) : null}</div>
+                    </Fragment>
+                  );
+                })}
               </div>
             ) : (
               renderGrid(charts)
@@ -2525,6 +2890,23 @@ export default function OversightTab() {
           onDecision={expandedChartDef.decision ? (id, action, appendNote) => handleDecision(id, action, expandedChartDef.decision!, expandedChartDef.id, appendNote) : undefined}
         />
       )}
+
+      {/* The pinned card's decision — the drill-down's own dialog. */}
+      {pinDecision && (() => {
+        const chart = chartById.get(pinDecision.chartId);
+        if (!chart?.decision) return null;
+        return (
+          <DecisionConfirmModal
+            key={`${pinDecision.patient.id}:${pinDecision.action}`}
+            chart={chart}
+            patient={pinDecision.patient}
+            action={pinDecision.action}
+            busy={pinBusy}
+            onCancel={() => setPinDecision(null)}
+            onConfirm={confirmPinned}
+          />
+        );
+      })()}
 
       {/* Priority scoring config */}
       {configOpen && (

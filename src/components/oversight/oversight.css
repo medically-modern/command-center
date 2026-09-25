@@ -81,6 +81,11 @@
 .cc-ov .btn.danger-outline { background: var(--cd); border-color: hsl(0 75% 55% / 0.5); color: hsl(0 65% 45%); }
 .cc-ov .btn.danger-outline:hover:not(:disabled) { background: var(--red-bg); }
 .cc-ov .btn:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; }
+/* His `ic()` draws a button's icon at 14px (12 in an .xs); a lucide icon is
+   24px until told otherwise, which would make every pinned-card button a
+   different height from its label. */
+.cc-ov .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.cc-ov .btn.xs svg { width: 12px; height: 12px; }
 
 .cc-ov .input {
   width: 100%; border: 1px solid var(--inp); background: var(--cd); border-radius: 8px;
@@ -110,12 +115,14 @@
 .cc-ov .ov-hdr { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 0 8px; }
 .cc-ov .ov-hdr h1 { font-size: 20px; font-weight: 700; line-height: 1.25; margin: 0; }
 .cc-ov .ov-search { position: relative; flex: 1; min-width: 240px; max-width: 520px; }
-.cc-ov .ov-search > svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--mfg); pointer-events: none; }
-.cc-ov .ov-search .input { width: 100%; padding-left: 32px; }
+.cc-ov .ov-search > svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--mfg); pointer-events: none; width: 14px; height: 14px; }
+/* The right padding is the ✕'s room — his box has no clear button, ours does. */
+.cc-ov .ov-search .input { width: 100%; padding-left: 32px; padding-right: 28px; }
 .cc-ov .ov-search .clear {
   position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: 0;
   padding: 2px; color: var(--mfg); cursor: pointer; display: grid; place-items: center;
 }
+.cc-ov .ov-search .clear svg { width: 14px; height: 14px; }
 .cc-ov .ov-search .clear:hover { color: var(--tfg); }
 .cc-ov .ov-hdr .sync { margin-left: auto; gap: 6px; }
 .cc-ov .ov-hdr .sync svg { width: 13px; height: 13px; }
@@ -184,6 +191,10 @@
 .cc-ov .hist .h { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .cc-ov .hist .h .t { font-size: 13px; font-weight: 600; letter-spacing: 0; }
 .cc-ov .hist .h .n { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+/* ⚠️ The number is its own span carrying `text-2xl`, which sets a font-size ON
+   the span — so `.n`'s 18px never reaches it by inheritance. His markup is the
+   same shape (`.n > .tn`); this makes ours inherit like his does. */
+.cc-ov .hist .h .n .tn { font-size: inherit; }
 .cc-ov .hist .hbars { min-height: 120px; margin-top: 8px; }
 .cc-ov .hist .unk { text-align: right; font-size: 9px; color: var(--mfg); margin-top: 4px; }
 

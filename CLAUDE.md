@@ -11268,6 +11268,146 @@ one computation · `SubStageStep.passed` ⇄ `snapStamp`'s "Live record" case. T
 `onboardingHeader.test.tsx`, `outlineCollision.test.ts`, `patientScreen.test.ts`, `infoStrip.test.ts`,
 `stagePanelEmbed.test.ts`, `subscriptionView.test.ts`.
 
+### 5.52 Brandon's pixel-match, Phases 3–7 — the shell, Fax, Inventory, Reports, Users, and the dashboards (Sep 2026)
+Josh, 2026-09-24/25, phase by phase (*"Move forward with phase 3"* … *"keep going"*), under the rules
+§5.51 set — visuals only, zero backend, the board's own labels — and [`PIXEL_MATCH_PLAN.md`](PIXEL_MATCH_PLAN.md),
+whose "as built" blocks under each phase are the per-phase record. This entry is the dashboards half
+(Phase 7) plus the standing rules the earlier phases share; read the plan for Phases 3–6.
+**No board change; app only.**
+
+**The two rules every phase shares.**
+- ⚠️⚠️ **A "look" is OPT-IN, and "as today" stays byte-identical** (§5.39b's escape hatch). Every
+  restyled screen takes a prop (`DailyBurndown look="stages"`, `ProcessorView stages`, …) that exactly
+  one caller passes from inside the redesign; absent, the component renders what it always did. That
+  is what keeps the old layout an honest comparison rather than a slowly diverging copy.
+- ⚠️⚠️ **Every stylesheet is SCOPED and every colour is a token.** `pages/home/home.css` is `.cc-bars`
+  / `.cc-hometop`, `components/oversight/oversight.css` is `.cc-ov` / `.cc-ov-page`; nothing bare, because
+  `.pf-root` and `.bnr` own `.btn` and `.input` on the pages that share a route with these (§9). A hex
+  appears only as a `var()` fallback for a token `index.css` defines in BOTH `:root` and `.dark`, so
+  it never paints (§5.40); `homeLook.test.ts` scans for it.
+
+**Stages — "<name>'s stages"** (`ProcessorView stages`, `DailyBurndown look="stages"`, `home.css`).
+Brandon's `barsHome`: the owner's NAME even when it is mine, one hint line, and his `.bar` markup —
+a numbered label, the count, a 32px `.track` whose `.fill` is **square-root scaled** with a 4% floor
+(a queue of 2 beside one of 200 is still a visible bar), *Done!* on an empty track, the ad-hoc tiles
+(Subscription · Orders) as `.btn.teal` with a count badge, and a foot note saying it refreshes every
+60s. ⚠️ **The same `openBar` / `linkFor` / `barClickable` as the old look** — `authDenied` stays inert
+(§4), the manager's escalated filter rides the same link, confetti fires once per bar. Nothing about
+which bars render or what they count moved: `useFilteredRoleCounts` is untouched, and the look is a
+second render of the same `barData`.
+⚠️ **Measured, not preferred:** at 1440 the main is 1160px wide with 32px padding, h2 20px, the toggle
+222×38 with 6px/14px tab padding; at 700 the toggle takes the full width. Verified in a browser at both,
+and on a borrowed view (*"Masani Sample's stages … You are looking at Masani Sample's bars."* under the
+shell's ViewAs banner).
+⚠️ **Known and NOT fixed** (found by the tests, pre-existing in both looks): a home whose counts are
+ALL zero renders no bars at all (`if (!hasData) return;` never starts the snapshot), so the page reads
+"Click a bar to open that queue." over nothing. And CLAUDE.md §4's "`authDenied` has an empty route"
+is stale — `config.ts` gives it `/auth-denied`; the bar is inert only because `barClickable` checks the
+id. Tell whoever touches either.
+
+**The home toggle and the Viewing picker** (`components/shell/HomeViewSwitch.tsx`): his `.home-top`
+row — the `.segc.home-toggle` segmented control with his three icons, `.grow`, and the `input.sm`
+picker under an eye icon. Same props, same `setParam` writes, same null render with one view and no
+ability (§5.39c). ⚠️ The "you're looking at X's view" banner is still `ViewAsBanner` in the shell
+(§5.39h), not his in-page one — the borrow follows you off this page.
+
+**Oversight — his `.ov-hdr`, an in-oversight search, and the found patient pinned on top**
+(`components/oversight/OversightTab.tsx` + `oversight.css`; rules in `lib/oversight/oversightFocus.ts`,
++ tests). The header is his row: *Pipeline Oversight* over *"<signed-in name> · N patients in the
+pipeline"*, the finder, the stage as a **native `<select className="input">`** (the shadcn Select is
+gone; the options are `OVERSIGHT_SECTIONS`, unchanged), the sync line, and *Edit scoring* as a ghost
+button. Under it his `.stage-row` (stage title, its count, and a hint that the search covers every stage),
+then the columns.
+- ⚠️⚠️ **"IN oversight" means a chart on this screen counts them** (Josh, 2026-09-24: *"keyed on only
+  patients that are IN oversight"*). `pipelinePeople(data)` is the union of every rendered chart's
+  patients out of the Map `fetchOversightData()` already returns, deduplicated by item id — so the finder
+  **costs no request** and can never find somebody the columns do not show. It is also the header's
+  count, and the same number the old "total patients" was. A chart no section renders (a stacked
+  chart's source series) is not a chart of its own and adds nobody.
+- ⚠️ **NAME ONLY, and the placeholder says so** (*"Find a patient in the pipeline by name…"*). The
+  oversight read carries no DOB or phone (`columnsForBoard`), and widening a five-board 90-second poll
+  for a finder is more Monday, not a visual change. Brandon's box promises "name, DOB, phone, member
+  ID…"; ours promises what it does (§5.39f's placeholder rule). `fuzzyNameMatch`, two characters
+  minimum, eight rows, exact substring ranked above a typo match, pipeline order among ties. Each row
+  shows the name, *"<Stage> · <day bucket>"* and — from the patient's SENIOR chart — an amber
+  *Manager intervention* or red *Final decisions* chip. Arrow keys, Enter, Escape; a mousedown outside
+  closes it; `role="combobox"` / `listbox`.
+- ⚠️⚠️ **THIS REPLACED THE OLD IN-STAGE NAME FILTER, which HID every bar the name was not in.** The
+  finder searches every stage at once and PINS the patient instead, so the charts always show their
+  whole population and the stage count is the stage's real total. Picking a row switches the stage
+  below to theirs — well-defined because a chart is bound to one board and every section is one
+  board's stages, so one patient (one item id) sits in charts of exactly one section — and pins
+  `focusId`, mirrored into the URL as **`?patient=`** (Brandon's own param) beside `stage` / `chart` /
+  `bucket`, and seeded from it, so Back from a stage tool lands on the same pin. The drill-down keeps
+  its own row search.
+- **The pinned card** is his `.ov-focus` (3px primary left edge): avatar, name, section title, a chip
+  per fact — the day bucket and every chart that counts them, amber for column 2 and red for column 3
+  — and *"This patient is in X, not Y — switch to their stage"* when the stage below is another one.
+  ⚠️⚠️ **EVERY BUTTON IS AN EXISTING DOOR.** *Open profile* is the patient screen's route (§5.39);
+  *Open in stage tool* is the drill-down row's own routing — `handlePatientClick` became
+  `navigateToPatient(chartId, patientId, bucket)` so both doors carry the same manager-mode params and
+  per-patient overrides, and it is **disabled with the reason** where `CHART_ROUTES` is `null` (Auth
+  Denied, §7); the decisions are **`decisionActions(seniorChart, patient)`**, confirmed through the
+  drill-down's own dialog and written by the drill-down's own `handleDecision`. The senior chart
+  (Final Decisions over Manager Intervention over Processor Overview) is where a manager's decision
+  lives, so a patient held only by a processor chart gets no buttons, exactly as in the drill-down.
+  The pinned PATIENT is snapshotted when the dialog opens, so a poll that drops them mid-confirm cannot
+  pull the dialog out from under the manager; a pin the Map no longer holds says so instead of
+  rendering an empty card.
+- ⚠️⚠️ **The decision rules MOVED out of the tab, never copied**: `isBotOwnedRow`, `BOT_OWNED_REASONS`
+  and the per-kind copy (`decisionCopy`: re-dates · clears a snooze · which notes column · escalate
+  chart · skips bot rows) live in `oversightFocus.ts`, and the drill-down's rows and the card read the
+  ONE reading. Two copies of "which rows get a button" is how one column offers a decision the other
+  refuses. The confirm dialog is now `DecisionConfirmModal`, extracted from the drill-down and shared:
+  it owns its note, applies the required-note rule (escalate, and a Manager Intervention return), and
+  closes on Escape unless a write is in flight.
+- ⚠️ **The columns are ONE grid of CELLS** (`.ov-cols` → `.ov-cell.c1/.c2/.c3`), not his three
+  independent stacks: each row still pairs an original chart with its `rowOf` counterparts (an empty
+  cell where a stage has none), which is the row alignment Brandon asked for on 2026-08-12. The amber
+  rule is each cell's left border, so it reads continuous from the eyebrow down; `.ov-cols.two` for
+  the paired stages, `.ov-grid.g2/.g3` for the plain ones, one column under 760px. The cold-load
+  skeleton uses the same cells, so nothing jumps when the data lands. The chart cards wear his
+  `hist` / `h .t .n .tn` / `toggle` / `hbars` / `unk` classes on top of their Tailwind ones — `.cc-ov
+  .hist …` outranks every single-class utility, so the old look shows through only in a host without
+  the stylesheet, and every host now loads it.
+- ⚠️ **The signed-in name is the SIGNED-IN person** (`getUser()`, else the config's name, else the
+  email's local part) — never the borrowed "Viewing" one: `lib/shell/viewAs` may only be read by the
+  shell's three files (§5.39h).
+- `OversightPage` (`/oversight`) wraps the tab in `.cc-ov-page` with his back strip; the tab carries
+  its own `.cc-ov` scope, so it looks the same in all three hosts (the page, System Management, the
+  `oversight` home view).
+- **Measured in a browser** (a throwaway harness on fake data, nothing sent out) at 1440 · 1440 dark ·
+  1100 · 760, plus the loading and the failed-read states: header 64px, h1 20px, the finder 520×38,
+  the select 190×35; three cells 469px wide at identical y (356 at 1100, one column at 760); chart
+  title 13px, count 18px, plot 120px; the drop-down lists eight rows with the stage and column chips;
+  the eyebrows flip in dark mode (they are tokens); no horizontal overflow and no console errors in any
+  of them. ⚠️ Three CSS facts were found by rendering, not reading: a lucide icon is 24px until told
+  otherwise, so `.btn svg` is 14px (12 in an `.xs`); the count span carries `text-2xl`, which sets a
+  font-size ON the span, so `.n .tn { font-size: inherit }` is what lets his 18px reach it; and the
+  search box needs right padding for the ✕ his box does not have.
+
+**Coordinator — deliberately NOT restyled.** Plan item 8: his coordinator screen is "a rebuild, not a
+port" from a 9/18 file that predates §5.30c–h, and *"Phase 7 waits for his current file"*.
+`/care-coordinator` is exactly what it was, as a home view and as a page.
+
+**Keep-in-agreement:** `DailyBurndown`'s `look` ⇄ `ProcessorView`'s `stages` ⇄ `HomeViewHost`'s one
+pass (`homeLook.test.ts` pins the single caller of each and that `Index` / `DashboardMainView` pass
+none) · the stages branch's `openBar` / `linkFor` ⇄ the old look's (never a second routing rule) ·
+`home.css` / `oversight.css` scopes ⇄ the pages' own `.btn` / `.input` (§9) ·
+`oversightFocus.decisionCopy` / `decisionActions` / `isBotOwnedRow` ⇄ `DrilldownModal` ⇄
+`PinnedPatientCard` ⇄ `DecisionConfirmModal` (one reading; `oversightFinder.test.tsx` scans the tab for
+a second copy) · `navigateToPatient` ⇄ the drill-down row AND the card's *Open in stage tool* ·
+`pipelinePeople` ⇄ `OVERSIGHT_SECTIONS` (a chart in no section is in no finder) · `?patient=` ⇄ the
+tab's URL effect ⇄ `focusId`'s seed.
+Tests: `components/dashboard/stagesLook.test.tsx`, `pages/processorView.test.tsx`,
+`components/shell/homeViewSwitch.test.tsx`, `components/shell/homeLook.test.ts` (58 between them,
+55 of 56 mutations caught in a scratch copy), `lib/oversight/oversightFocus.test.ts` (29 — the
+population, the finder, the columns, `decisionActions` / `decisionCopy` against real chart defs) and
+`components/oversight/oversightFinder.test.tsx` (29, rendered with every writer mocked — the header,
+the finder's keys, every pinned-card button reaching the drill-down's own writer or route, the
+extracted dialog on both surfaces, and source scans for the native select, the URL mirror, the
+one-copy rule and the scoped stylesheet; the key ones verified to fail when their protection is removed).
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -12621,6 +12761,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's fifth order says "First Order" | §5.35 — the column is not maintained per item (all eleven to-place orders read `First Order` on 2026-09-15). `workflow.orderTypeLabel` hides the chip when another order for the same patient is dated on or before this one. ⚠️ It hides only — `email-serivce`'s first-order check-in text still keys off the COLUMN |
 | Somebody wants to place orders from the Command Center | §5.35 — `lib/orders/config.ts` `ORDERING_FROM_COMMAND_CENTER`, the write is `mondayWrite.markOrdered` (refuses anything not at "Order"). Read the four-point checklist there before flipping; `orderingSwitch.test.ts` will fail until updated |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
+| Oversight's search can't find a patient, or the pinned card has no decision buttons | §5.52 — `lib/oversight/oversightFocus.ts`. The finder searches ONLY the patients the charts already hold (no board read) and by NAME only, so a patient on no chart, or a phone/DOB query, finds nobody by design — the header's search is the one that asks Monday. No buttons means the patient's SENIOR chart has no `decision` (a Processor Overview patient, or a bot-owned DVS row), exactly as the drill-down row would show; `decisionActions` is the one rule for both |
+| The home page says "<name>'s stages" but the bars look wrong, or "as today" grew the new look | §5.52 — `ProcessorView stages` / `DailyBurndown look="stages"` are opt-in and `HomeViewHost` is the only caller; `homeLook.test.ts` pins that `Index` passes neither. The bars, their order, their counts and their links are the same `barData` / `openBar` / `linkFor` as the old look — only the render differs. An all-zero home rendering no bars is the pre-existing `if (!hasData) return;` in both looks |
 
 ---
 
