@@ -124,7 +124,8 @@
         "comms": true,
         "adjustOrders": false,
         "reports": false,
-        "inventory": false
+        "inventory": false,
+        "viewOthers": true
       },
       "homeView": [
         "oversight",
