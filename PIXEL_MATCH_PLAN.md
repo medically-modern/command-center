@@ -354,6 +354,20 @@ Not built: nothing from the Phase 2 list above.
   - Sign out.
   - These map onto the ring preferences that already exist (CLAUDE.md §5.13).
 
+#### Phase 3 — as built (2026-09-25)
+- **The header search is WIDE** — Josh: *"wider header search - yes i want it"*. `useLiveSearch(…, { fields: true })`
+  asks every board's member ids, doctor name, clinic, doctor phone and insurance in the same request
+  (`lib/systemMgmt/mondayApi.ts` `searchFields`, one aliased query, no new read), and each row's right edge says
+  which field matched (`lib/shell/searchHit.ts`, e.g. "Member ID ABC123"). His footer line under the rows.
+  The placeholder promises exactly what the box does (§5.39f: a placeholder is a contract).
+- **The settings menu in his look** (`GlobalHeader.tsx`, `shell.css`): who you are, a **Calls** group on the
+  ring preferences that already exist (`components/shell/CallSettings.tsx` + `lib/shell/callStatusLine.ts` —
+  status line, *Ring me*, *Which calls ring me*; *Only my patients* stays disabled, §2.12), **Appearance**
+  (Light / Dark / System), Sign out. **No "Texts: notify me"** — Josh: *"dont build that yet"*.
+- The Stage Manager tab stays for the people granted it (CLAUDE.md §5.41); his header has no such tab.
+- Tests: `components/shell/{globalSearch,settingsMenu}.test.tsx`, `lib/shell/searchHit.test.ts`,
+  `lib/systemMgmt/searchFields.test.ts`.
+
 ### Phase 4 — Communications *(medium to large; needs his current file)*
 - A pixel pass on the rail, the list, the thread, the resolve row, the logs and the profile pane.
 - For a caller on no board: match the number against doctors' office phones (patient boards and the
@@ -370,6 +384,18 @@ Not built: nothing from the Phase 2 list above.
 - First, a check that the old `/fax-inbox` does nothing the new one can't. The old page stays
   reachable until you say.
 
+#### Phase 5 — as built (2026-09-25)
+- **`/fax-inbox` is his 50/50 screen** — faxes on the left, Update Clinicals on the right — built from the
+  combined fax page (`FaxBarPage.tsx`, which already shares `ClinicalsWorkPane`), styled by
+  `pages/fax/faxInbox.css` (`.cc-fx`), with the list rules in `lib/fax/faxInbox.ts`. Page previews use the
+  PDF viewer the app already has.
+- **The old page stays reachable** as `/fax-inbox/classic` (`FaxInboxClassicPage.tsx`) until Josh says
+  otherwise — URL only, no menu entry.
+- Not built, deliberately: *"Attach this fax as clinicals"* as a one-press action (the pane's own flow does
+  it, with its stamps), preview icons per page, and marking a fax read on open (the read flag is
+  RingCentral's, §5.28).
+- Tests: `pages/faxInbox.test.tsx`.
+
 ### Phase 6 — Inventory, Reports, Users *(medium)*
 - **Inventory:** a pixel pass. It was already ported from his screen (CLAUDE.md §5.39i).
 - **Reports:** his full page (§3).
@@ -377,6 +403,30 @@ Not built: nothing from the Phase 2 list above.
     be framed, and link out to it, as the mockup does, if not.
   - The counts mirror the ones the dashboards already use.
 - **Users:** his cards — custom view, abilities, the role grid. Same saves, same `access.json`.
+
+#### Phase 6 — as built (2026-09-25)
+- **Inventory** (`components/orders/SkuTrackerView.tsx`): a pixel pass against his `.invy` / `.cat` /
+  `.fchip` / `.invt`. Kept beyond his mockup: the Orders | Inventory header and the **Open orders**
+  column, both function (§5.39i).
+- **Reports & Metrics** (`pages/OperationsPage.tsx` — the file name kept for the route and the lossless
+  test; `pages/reports/reports.css` `.cc-rp`; rules in `lib/reports/reportsRules.ts`, reads in
+  `lib/reports/reportsApi.ts` + `hooks/reports/useReportsData.ts`): his full page. Every number is a reading
+  of a rule that already exists — `searchBucket`, `SystemPatient.escalated`, `infoStrip.daysSince`,
+  `isFormLead`, `orderStage` / `orderFlags` / `isOpenStage`, `useRoleCounts` + `operationsGroups`.
+  - **Katie's tracker LINKS OUT, never an iframe:** measured 2026-09-25 with curl on the exact URL host
+    (`medicallymodern-force.monday.com` → 302 to sign-in; its `frame-ancestors` names only monday.com,
+    Microsoft and partner hosts). The card says so.
+  - Beyond his mockup, kept for function: a **Refresh** button, a fifth **Other** queues card, and the
+    Communications SLA card (§5.49) under a "Communications" eyebrow while the Inbox is on.
+  - DTC Intake is excluded from the four pipeline tiles (no page); Intake's "avg days in stage" reads the
+    item's creation date because Profile Send Off has no stage-start column (`BoardDef.stageStartColId`,
+    pinned to `INFO_COL` by test); the snapshot read gained `created_at` and that column.
+- **Users** (`pages/AccessAdminPage.tsx` + `components/shell/AbilitiesEditor.tsx`, `pages/access/users.css`
+  `.cc-us`): his cards — custom view, abilities (Answers calls / Manager / Admin on the same row), the role
+  grid. The same thirteen writers into the same `access.json`. Kept: the **managers-only** gate (his is
+  admins-only) and the two Add buttons (Add / Add as manager).
+- Tests: `components/orders/*`, `lib/reports/reportsRules.test.ts`, `hooks/reports/useReportsData.test.tsx`,
+  `pages/reports.test.tsx`, `pages/accessAdmin.test.tsx`; `lossless.test.ts` updated for the Reports page.
 
 ### Phase 7 — dashboards *(medium to large; the coordinator needs his current file)*
 - **Stages view:** *"<name>'s stages"*.
