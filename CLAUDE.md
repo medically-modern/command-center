@@ -2809,6 +2809,14 @@ WRITE side, which needs nothing from the live thread. Serving the union changes 
 so `/messaging/conversation` merges archived history **only under `SMS_ARCHIVE_SERVE=1`**; with
 the flag unset that route behaves exactly as it did before. Even switched on it can only ever ADD
 — the read is wrapped so a failing archive is logged and skipped, never surfaced.
+✅ **ON on the live gateway since 2026-09-25** (Josh: *"i want them to see the full history and
+everything we have … extending as far back as possible"*) — every thread now reaches back to the
+archive's start (2026-08-01), not just the Inbox timeline. Turning it off is deleting the variable,
+no revert. ⚠️ Serving old texts surfaced their PHOTOS' gap: `MessageAttachments` fetched bytes from
+RingCentral alone, which purges media at ~30 days, so a photo on a served-archive message read
+"attachment couldn't load" while the bytes sat in the bucket. It falls back to `/mms/media`
+(§5.47c) since the same day — presigned URL as a bare `src`, never fetch()ed, never cached
+(`messageAttachments.test.ts` pins all three rules).
 ⚠️ **LIVE WINS a collision**, and the direction matters: a text archived while `Queued` gets its
 real `SendingFailed` verdict seconds later (§5.5), so preferring the archive would pin the
 optimistic status and re-introduce the bug that field exists to prevent.
@@ -2837,8 +2845,9 @@ can't read healthy — nor when the last successful run was truncated.
 reads counters; a forced run spends up to 60 RingCentral calls on the account shared with live
 patient texting, and `running` blocks only CONCURRENT runs — a client that posts again each time
 the last one finishes gets a fresh full scan every time. Both guards, not either: the 2026-08-20
-incident (§10) was a runaway **authenticated** client. Point `services/calls-monitor` at the health
-route.
+incident (§10) was a runaway **authenticated** client. ✅ `services/calls-monitor` watches this
+route since 2026-09-25 (`SMS_ARCHIVE_HEALTH_URL`, `reconcileFaults`): a not-ok verdict pages, and
+an erroring or unreachable health check notifies too — as "could not check", never "it is broken".
 
 ✅ **MMS media is archived from 2026-09-23 — §5.47c.** This table still stores the attachment
 **metadata and uris only**, and that has not changed: the bytes live in the bucket, keyed by
@@ -3255,8 +3264,9 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
 ⚠️ **The list and the thread deliberately reach back different distances**, and §5.27 is why.
 The conversation LIST reads RingCentral's message store directly through `/rc/`, so it sees the
 vendor's rolling ~30-day window and nothing older — which is right for "recent conversations".
-The THREAD beside it goes through `/messaging/conversation`, so once `SMS_ARCHIVE_SERVE` is on it
-serves the Postgres archive too and reaches back as far as the archive goes. Don't "fix" the list
+The THREAD beside it goes through `/messaging/conversation`, so with `SMS_ARCHIVE_SERVE` on (live
+since 2026-09-25, §5.27) it serves the Postgres archive too and reaches back as far as the archive
+goes. Don't "fix" the list
 to match: a list of every conversation since the archive began is a different feature, and it
 would page the archive on every poll.
 
@@ -3317,7 +3327,9 @@ both directions**, and names the file to edit.
 **Routes:** `POST /directory/lookup` is **authenticated** (it returns names; the caller supplies the
 numbers, so nothing is disclosed it did not bring). `GET /directory/health` is **not** — counts and
 timestamps only, never a name or a number, matching `/calls/health` and `/messaging/archive-health`;
-point `services/calls-monitor` at it. ⚠️ It is **not ok when no run has ever succeeded**, however
+✅ `services/calls-monitor` watches it since 2026-09-25 (`DIRECTORY_HEALTH_URL`, at default
+priority — a dead refresh degrades to live Monday lookups, it loses nothing).
+⚠️ It is **not ok when no run has ever succeeded**, however
 many rows the table holds, nor when the last good run was **truncated**. `POST /directory/refresh`
 is authenticated **AND** rate-floored, for the §5.27 reason: `running` blocks only concurrent runs.
 `PATIENT_DIRECTORY_ENABLED=0` kills it from Railway without a revert.
