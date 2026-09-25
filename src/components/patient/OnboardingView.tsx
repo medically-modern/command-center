@@ -30,11 +30,23 @@
  * has but leave the link to open them"*), and now aims at the SELECTED
  * sub-stage: a manager reading the Confirm Receipt panel who presses Open
  * expects Confirm Receipt, not the board's default tool.
+ *
+ * ⚠️⚠️ **AND SINCE 2026-09-25 THE LINK IS ROLE-GATED** (Josh, on Brandon's
+ * "delete Open Final Profile Confirmation": *"people who are assigned the
+ * ROLE of final profile confirmation should see it — people who arent
+ * assigned that rols shouldnt see it and it should be the read only thing"*).
+ * `mayWorkRoute` applies the §5.3 model to the door: a manager sees every
+ * Open link, a processor only the ones for roles on their profile, and
+ * everybody still gets the read-only embed below. ⚠️ Gated on the SIGNED-IN
+ * person's resolved access (`useAccessContext().access`), never a borrowed
+ * view's (§5.39g) — this is a door into a tool where a rep can act.
  */
 import { Activity, AlertTriangle, ArrowUpRight, Check, ClipboardList, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
+import { useAccessContext } from "@/components/AccessProvider";
+import { mayWorkRoute } from "@/lib/roleView";
 import {
   itemOpenHref,
   snapStamp,
@@ -346,6 +358,9 @@ const SUB_STAGE_CAVEAT =
   " All this board's steps share one record, so a field a later step changed shows its latest value.";
 
 function OpenTool({ item, tool }: { item: DossierItem | null; tool: SubStageStep | null }) {
+  /* ⚠️ The SIGNED-IN person's resolved access, never a borrowed view's
+     (§5.39g): the link is a door into a tool where a rep can act. */
+  const { access } = useAccessContext();
   const href = (tool ? subStageOpenHref(item, tool.route) : null) ?? itemOpenHref(item);
   if (!item) return null;
   if (!href) {
@@ -355,6 +370,10 @@ function OpenTool({ item, tool }: { item: DossierItem | null; tool: SubStageStep
       </span>
     );
   }
+  /* ⚠️ ROLE-GATED (Josh, 2026-09-25): only somebody assigned the tool's role
+     — or a manager — gets the door; everybody else has the read-only embed
+     below and nothing is offered that they cannot work. */
+  if (!mayWorkRoute(access, href)) return null;
   /* His "Open <tool>". ⚠️ A finished record still opens in REVIEW MODE — the
      link carries `?completedStage=`, which disables the send there (§5.38) —
      so the label names the tool and the tooltip says what the page will be. */

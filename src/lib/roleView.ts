@@ -5,9 +5,54 @@
  * without pulling in the GitHub-sync machinery.
  */
 import { ROLES } from "./config";
-import type { CrossSellScope, EscalationFilter, ProcessorProfile, RoleFilter } from "./accessStore";
+import type { Access, CrossSellScope, EscalationFilter, ProcessorProfile, RoleFilter } from "./accessStore";
 
 const CONFIG_ORDER = new Map(ROLES.map((r, i) => [r.id, i]));
+
+/**
+ * The role ids whose stage page is `route` (a pathname; a querystring is
+ * tolerated and ignored).
+ *
+ * ⚠️ **The Chase pair maps BOTH WAYS.** The patient screen's Chase Clinicals
+ * step routes to `/chase-fax`, but the chase job is split across TWO roles by
+ * delivery method — `chaseFax` and `chaseParachute` (§5.9) — so a rep assigned
+ * either one works Chase Clinicals, and a door gated on the route alone would
+ * shut out half the chase team.
+ */
+const CHASE_ROUTES: ReadonlySet<string> = new Set(["/chase-fax", "/chase-parachute"]);
+export function rolesForRoute(route: string): string[] {
+  const path = (route || "").split("?")[0];
+  if (!path) return [];
+  const ids = ROLES.filter((r) => r.route === path).map((r) => r.id);
+  if (CHASE_ROUTES.has(path)) {
+    for (const r of ROLES) {
+      if (CHASE_ROUTES.has(r.route) && !ids.includes(r.id)) ids.push(r.id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * May this person WORK the stage page at `route`? (Josh, 2026-09-25, on the
+ * patient screen's "Open <tool>" link: *"people who are assigned the ROLE of
+ * final profile confirmation should see it; people who arent assigned that
+ * rols shouldnt see it and it should be the read only thing"*.)
+ *
+ * The §5.3 model, applied to a door: a MANAGER sees everything (and while
+ * `managers[]` is empty everyone resolves as one — the bootstrap window, so
+ * this changes nothing until roles are actually configured); a PROCESSOR only
+ * the pages of the roles on their profile; somebody the config does not know
+ * gets nothing. ⚠️ Callers pass the SIGNED-IN person's resolved access, never
+ * a borrowed view's (§5.39g): this decides what a rep may DO.
+ */
+export function mayWorkRoute(access: Access, route: string): boolean {
+  const path = (route || "").split("?")[0];
+  if (!path) return false;
+  if (access.type === "manager") return true;
+  if (access.type !== "processor") return false;
+  const roles = access.profile.roles ?? [];
+  return rolesForRoute(path).some((id) => roles.includes(id));
+}
 
 export const DEFAULT_ROLE_FILTER: RoleFilter = "nonEscalated";
 

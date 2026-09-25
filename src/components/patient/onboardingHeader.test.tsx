@@ -16,6 +16,15 @@ vi.mock("@/components/patient/StagePanelEmbed", () => ({
   StagePanelUnavailable: ({ tool }: { tool: string }) => <p>No panel for {tool}</p>,
 }));
 
+/** The signed-in person's RESOLVED access — what gates the Open link
+ *  (2026-09-25). The default is a manager, which is also what the §5.3
+ *  bootstrap resolves everyone to while `managers[]` is empty — so every
+ *  test written before the gate behaves exactly as it did. */
+const ctx = vi.hoisted(() => ({ access: { type: "manager" } as unknown }));
+vi.mock("@/components/AccessProvider", () => ({
+  useAccessContext: () => ctx,
+}));
+
 import { OnboardingView } from "./OnboardingView";
 
 const MED = 18406060017;
@@ -86,6 +95,7 @@ function renderView(
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-09-24T16:00:00Z"));
+  ctx.access = { type: "manager" };
 });
 afterEach(() => vi.useRealTimers());
 
@@ -160,5 +170,43 @@ describe("the snapshot header", () => {
     const live = item({ itemId: "2" });
     renderView([old, live], live);
     expect(screen.getByText("This patient has 2 profiles in this stage")).toBeInTheDocument();
+  });
+});
+
+describe("⚠️⚠️ the Open link is ROLE-GATED (Josh, 2026-09-25)", () => {
+  // "people who are assigned the ROLE of final profile confirmation should
+  // see it — people who arent assigned that rols shouldnt see it and it
+  // should be the read only thing." The read-only embed renders for everyone;
+  // only the door into the live tool follows the role.
+  it("a processor ASSIGNED the tool's role gets the door", () => {
+    ctx.access = { type: "processor", profile: { name: "Rep", roles: ["confirmReceipt"] } };
+    const live = item();
+    renderView([live], live);
+    expect(screen.getByRole("link", { name: /Open Confirm Receipt/ })).toBeInTheDocument();
+  });
+
+  it("a processor WITHOUT the role sees no link — and still gets the read-only embed", () => {
+    ctx.access = { type: "processor", profile: { name: "Rep", roles: ["welcomeCall", "finalConfirm"] } };
+    const live = item();
+    renderView([live], live);
+    expect(screen.queryByRole("link", { name: /Open / })).toBeNull();
+    expect(screen.getByText("Embedded Confirm Receipt")).toBeInTheDocument();
+    expect(screen.getByText("Read-only")).toBeInTheDocument();
+  });
+
+  it("a manager keeps every door — §5.3's model, applied to the link", () => {
+    ctx.access = { type: "manager" };
+    const live = item();
+    renderView([live], live);
+    expect(screen.getByRole("link", { name: /Open Confirm Receipt/ })).toBeInTheDocument();
+  });
+
+  it("⚠️ the gate covers a COMPLETED record's review-mode door too", () => {
+    // A non-assigned rep loses nothing they could act on: the embed below
+    // shows the same frozen record.
+    ctx.access = { type: "processor", profile: { name: "Rep", roles: ["benefits"] } };
+    const done = item({ isCompleted: true, stageAdvancerText: "Chase Clinicals" });
+    renderView([done], null);
+    expect(screen.queryByRole("link", { name: /Open / })).toBeNull();
   });
 });
