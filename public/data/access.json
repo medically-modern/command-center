@@ -67,7 +67,8 @@
         "scheduledCalls",
         "orders",
         "profile",
-        "intakeCleanup"
+        "intakeCleanup",
+        "unverifiedReferrals"
       ],
       "roleOrder": {},
       "roleFilters": {},
