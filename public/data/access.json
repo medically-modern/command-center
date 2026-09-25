@@ -121,7 +121,7 @@
         "welcomeCall"
       ],
       "perms": {
-        "comms": false,
+        "comms": true,
         "adjustOrders": false,
         "reports": false,
         "inventory": false
