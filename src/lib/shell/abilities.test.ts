@@ -225,6 +225,9 @@ describe("⚠️ the local kindOf copy agrees with resolveAccess", () => {
  * ⚠️⚠️ **`viewOthers` runs BACKWARDS from every other ability** (Josh,
  * 2026-09-18 — "that's something that should ONLY be applied to me and brandon
  * as users"). It is off for everybody, including managers, until it is granted.
+ * ⚠️ WHO may hold it widened on 2026-09-25 (Katie, granted on /access, Josh:
+ * "katies fine") — the OPT-IN mechanics below are unchanged: a grant is still
+ * an explicit tick, never the manager blanket.
  *
  * The fixture below is the real access.json shape: Josh and Brandon are in BOTH
  * `managers` and `processors`, and Corey is a manager with no processor entry at
@@ -252,7 +255,7 @@ describe("⚠️ viewOthers is opt-in, and only for the people granted it", () =
     expect(isOptInAbility("reports")).toBe(false);
   });
 
-  it("grants it to exactly Josh and Brandon", () => {
+  it("grants it to exactly the people ticked (the fixture's Josh and Brandon)", () => {
     expect(hasAbility("josh@medicallymodern.com", REAL, "viewOthers")).toBe(true);
     expect(hasAbility("brandon@medicallymodern.com", REAL, "viewOthers")).toBe(true);
   });
@@ -308,9 +311,13 @@ describe("⚠️ the shipped access.json", () => {
    * ⚠️ Who may hold each opt-in ability, as Josh set it — one entry per ability,
    * because the two abilities have DIFFERENT rules:
    *
-   *  · `viewOthers` — Josh and Brandon ONLY (Josh, 2026-09-18: "that's something
-   *    that should ONLY be applied to me and brandon as users"). A grant to
-   *    anybody else contradicts his own rule, so it fails the build.
+   *  · `viewOthers` — was Josh and Brandon ONLY (Josh, 2026-09-18: "that's
+   *    something that should ONLY be applied to me and brandon as users") until
+   *    2026-09-25, when he granted it to Katie on /access and confirmed the
+   *    grant ("katies fine") after the pin had turned that one tick into a
+   *    failed deploy for everybody — the exact failure the stageManager pin
+   *    caused two days earlier. It takes the stageManager treatment now:
+   *    granted on /access is granted.
    *  · `stageManager` — granted on /access to whoever needs it (§5.41: "Anyone
    *    else who needs it takes one tick on /access"). Janelle was given it at
    *    14:45 on 2026-09-23 and Josh confirmed that was deliberate. The old
@@ -325,7 +332,7 @@ describe("⚠️ the shipped access.json", () => {
    * predecessor passed unchanged when `stageManager` joined the list).
    */
   const GRANT_RULE: Record<string, readonly string[] | "grantedOnAccessPage"> = {
-    viewOthers: ["brandon@medicallymodern.com", "josh@medicallymodern.com"],
+    viewOthers: "grantedOnAccessPage",
     stageManager: "grantedOnAccessPage",
   };
 
@@ -340,10 +347,13 @@ describe("⚠️ the shipped access.json", () => {
     }
   });
 
-  it("View others' views is still restricted, and to Josh and Brandon", () => {
-    // Guards the classification itself: loosening viewOthers to
-    // "grantedOnAccessPage" would switch its check off without anything failing.
-    expect(GRANT_RULE.viewOthers).toEqual(["brandon@medicallymodern.com", "josh@medicallymodern.com"]);
+  it("View others' views is granted on /access — the 2026-09-25 decision", () => {
+    // The predecessor of this test pinned viewOthers to Josh and Brandon, and
+    // guarded the classification so loosening it would be a visible decision.
+    // It was: Katie's grant failed every deploy until Josh confirmed it, and he
+    // chose the stageManager treatment. This pins the NEW classification the
+    // same way, so tightening it back is a decision too, not a drive-by.
+    expect(GRANT_RULE.viewOthers).toBe("grantedOnAccessPage");
   });
 
   for (const { ability, allowed } of restricted) {

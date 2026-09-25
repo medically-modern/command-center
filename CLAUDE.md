@@ -5708,8 +5708,11 @@ config is unset is the permissive one, because the restrictive one has no escape
   people already have, and nobody has `viewOthers` today — absent config is "never granted", not
   "silently narrowed". What it grants is a look at somebody else's screen, where the safe direction
   is closed, and it strands nobody (a person without it still lands on their own home view).
-  Granted in `access.json` to **josh@ and brandon@** and nobody else, which
-  `abilities.test.ts` asserts against the shipped FILE. ⚠️ A second entry in `OPT_IN_ABILITIES` needs
+  Granted in `access.json` to **josh@ and brandon@** when it shipped; **Katie joined 2026-09-25**
+  (granted on /access, Josh: *"katies fine"*) — and the pin that grant tripped is GONE:
+  `abilities.test.ts` now classes `viewOthers` as `grantedOnAccessPage`, like Stage Manager, because
+  that grant failed every deploy until Josh confirmed it, which is §5.39j's lesson a second time.
+  ⚠️ A second entry in `OPT_IN_ABILITIES` needs
   both facts to hold of it — new, and not a way out of anywhere.
 - ⚠️⚠️ **THE GRANT IS READ WITH `storedProfile`, NEVER `kindOf`/`profileOf`.** `kindOf` answers
   "manager or processor" and returns `profile: null` for anybody in `managers[]` **without looking
@@ -6490,9 +6493,11 @@ each person's Abilities row is the one control onto `callAnswerers[]`, carrying 
 ⚠️ `abilities.test.ts` checks opt-in grants as a SUBSET, never an exact list: the file is edited
 live from this page, so an exact pin turned every revoke into a red deploy.
 ⚠️⚠️ **And only where Josh has said who may hold the ability** (`GRANT_RULE`, 2026-09-23).
-`viewOthers` is Josh + Brandon ONLY (his 2026-09-18 words) and a grant to anybody else still fails
-the build. `stageManager` is `grantedOnAccessPage` — §5.41's "anyone else who needs it takes one
-tick on /access". The subset check first covered BOTH, so when Janelle was given Stage Manager at
+**Both opt-in abilities are `grantedOnAccessPage` now** — `stageManager` from 2026-09-23 (§5.41's
+"anyone else who needs it takes one tick on /access"), and `viewOthers` from **2026-09-25**, when
+its Josh-+-Brandon-only pin (his 2026-09-18 words) turned Katie's grant into the SAME failed-deploy
+loop and Josh confirmed the grant (*"katies fine"*). The subset check first covered BOTH as
+allowlists, so when Janelle was given Stage Manager at
 14:45 that day, every test-site deploy failed for two hours — the MM-1094 patient-data fix among
 them — until Josh confirmed the grant was deliberate. A deploy gate is the wrong place to police a
 decision an admin makes on a page built for making it. A third opt-in ability with no
@@ -12622,7 +12627,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A search row opens "No board record was found for this item" | §5.39f — a search row is the only pick with an id and **no name**, so `fetchDossierItemsForPick` must resolve it by id (`fetchDossierItemById`) before looking for the trail. ⚠️ Monday's `items(ids:)` is board-agnostic, so that read refuses a `?board=` mismatch rather than rendering one board's item through another's column map; `dossierPickById.test.ts` pins both halves |
 | A setting ticked on `/access` reverts a few seconds later | §5.39j first — a poll that lands inside a save's quiet window must be dropped, or GitHub's stale copy puts the chip back. Then §5.39c — a top-level key the app reads must be normalised in `fetchAccess`, or the app never sees it (`admins` did this). `perms`/`homeView` are safe because they sit inside `processors` |
 | Another admin's change on `/access` vanished when somebody else saved | §5.39j — a sha conflict must MERGE: re-read the file and re-run the pending edits on it, never re-send this browser's whole config. A merge that refuses an edit (the person was removed; the answering slots filled) toasts |
-| "Let me see what a processor sees" / the Viewing dropdown is missing or shows me myself | §5.39c — the dropdown needs **`viewOthers`, which is OPT-IN**: granted to josh@ and brandon@ only, and a manager does **not** get it for being a manager. Missing dropdown ⇒ check `perms.viewOthers === true` on that person's **processor** entry (a pure manager with no processor entry cannot hold it). Dropdown present but the screen does not change ⇒ that is the `<Index />` bug, fixed 2026-09-18; the borrow must render `ProcessorView` with the borrowed profile. A stale `?viewing=` says so in amber rather than quietly showing you yourself. The grant does not cross a prod sync — tick it once on prod's `/access` |
+| "Let me see what a processor sees" / the Viewing dropdown is missing or shows me myself | §5.39c — the dropdown needs **`viewOthers`, which is OPT-IN**: granted on `/access` (josh@, brandon@ and — from 2026-09-25 — katie@), and a manager does **not** get it for being a manager. Missing dropdown ⇒ check `perms.viewOthers === true` on that person's **processor** entry (a pure manager with no processor entry cannot hold it). Dropdown present but the screen does not change ⇒ that is the `<Index />` bug, fixed 2026-09-18; the borrow must render `ProcessorView` with the borrowed profile. A stale `?viewing=` says so in amber rather than quietly showing you yourself. The grant does not cross a prod sync — tick it once on prod's `/access` |
 | A fax doesn't match an office, or "view fax is broken" | §5.39c — `/fax` is the combined bar; `/fax-inbox` and the Comms Fax tab still exist beside it. The join strips `@rcfax.com` via `faxDigits` and reads BOTH the patient boards and the Doctor Database; an unmatched number usually means the office sent from a different line than the one we fax to (§5.28, audited clean). A blank viewer means the attachment URI went in without `fetchFaxBlobUrl` |
 | A header tab opens the wrong thing / "where is Reports & Metrics?" | §5.39b — every tab points at an EXISTING page, and Reports & Metrics points at `/system-mgmt?tab=operations` deliberately (Josh, 2026-09-18). ⚠️ The real `#/reports` — Katie's tracker embedded (board `18425649613`) plus numbers computed from our own data — IS specified in the handoff and is UNBUILT (§5.39b); every number in it is a §5.8 counting-contract change |
 | Brandon asks for a screen to match his mockup exactly | [`PIXEL_MATCH_PLAN.md`](PIXEL_MATCH_PLAN.md) (2026-09-24) — UI asks approved, zero backend. Its §2 lists where his instructions are wrong about this codebase (the mockup's invented dropdown options, "Financials has no backend", a verification step that would block every Monday read). ⚠️ His sample mockup in `_reference/` is from 9/18 and predates the Communications screens he names |
