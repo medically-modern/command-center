@@ -125,7 +125,11 @@
         "adjustOrders": false,
         "reports": false,
         "inventory": false
-      }
+      },
+      "homeView": [
+        "oversight",
+        "bars"
+      ]
     },
     "janelle@medicallymodern.com": {
       "name": "janelle",
