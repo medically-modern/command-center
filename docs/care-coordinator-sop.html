@@ -178,8 +178,10 @@
   }
   .fbtn.call  { background: var(--ok-bg);   color: var(--ok);   border-color: transparent; }
   .fbtn.comms { background: var(--ok-bg);   color: var(--ok);   border-color: transparent; }
+  .fbtn.log   { background: var(--bot-bg);  color: var(--bot);  border-color: transparent; }
   .fbtn.book  { background: var(--save-bg); color: var(--save); border-color: transparent; }
-  .fbtn.open  { background: var(--accent);  color: #fff;        border-color: transparent; }
+  .fbtn.name  { background: transparent; color: var(--accent); border-color: transparent; text-decoration: underline; font-weight: 800; }
+  .nm-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
   .keys { list-style: none; padding: 0; margin: 16px 0 0; }
   .keys li { display: flex; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--rule); }
@@ -285,7 +287,7 @@
 
     <div class="anat">
       <div class="pcard">
-        <div class="nm">Jane Sample</div>
+        <div class="nm"><span class="nm-link">Jane Sample</span></div>
         <div class="sub">State: NY · Dr. Rivera — Lakeside Endocrine</div>
         <div class="pillrow">
           <span class="pill net">In network</span>
@@ -296,13 +298,14 @@
         <div class="btnrow">
           <span class="fbtn call">📞 Call</span>
           <span class="fbtn comms">💬 Communications</span>
+          <span class="fbtn log">✍️ Log attempt</span>
           <span class="fbtn book">🔗 Booking link</span>
-          <span class="fbtn open">Open →</span>
         </div>
       </div>
     </div>
 
     <ul class="keys">
+      <li><span class="key a">THE NAME</span><p><b>The name is the link.</b> Click it to open the patient's own page — there is no separate Open button.</p></li>
       <li><span class="key g">GREEN EDGE</span><p>Someone has already tried this patient. Gray edge = not yet touched.</p></li>
       <li><span class="key">PILLS</span><p>The facts at a glance: in-network or not, how much of their form is done, who their insurance is, and how they're covered. A missing pill means the answer is <b>unknown</b> — not "no".</p></li>
       <li><span class="key">COUNTS &amp; TIMES</span><p>The small phone and chat numbers are the calls and texts so far. "N days" is how long they've been waiting; a booked card shows its call time.</p></li>
@@ -325,8 +328,8 @@
         <p>A side panel opens on this card: the full text thread and call history in one place, and you can read and send texts from it.</p></li>
       <li><span class="fbtn book">🔗 Booking link</span><span class="arrow">→</span>
         <p>Opens the calendar link to send the patient — the dropdown picks <b>Intake call</b> or <b>Welcome call</b>. When the patient books, the time appears on the day strip and their card moves under <b>Scheduled</b> on its own.</p></li>
-      <li><span class="fbtn open">Open →</span><span class="arrow">→</span>
-        <p>Opens the patient's own page — notes, logging an attempt, and Advance all live there. <b>This screen is your view of the day; the patient's page is where the work happens.</b></p></li>
+      <li><span class="fbtn name">Jane Sample</span><span class="arrow">→</span>
+        <p><b>Clicking the patient's name</b> opens their own page — notes, logging an attempt, and Advance all live there. <b>This screen is your view of the day; the patient's page is where the work happens.</b></p></li>
     </ul>
 
     <div class="fx-lab">Logging an attempt — wherever you do it</div>
