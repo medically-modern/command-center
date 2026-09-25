@@ -76,8 +76,12 @@ describe("⚠️ nothing offers an action that would select nobody", () => {
     // merged row, which exists only for Subscription and live Medical
     // Necessity. A patient of this office sitting in Insurance is genuinely
     // with them — they just have nothing to update here, and the row says so.
+    // From 2026-09-24 the rows are his `.uc-row`s inside the find card (pixel-
+    // match Phase 5): the whole row is the pick, and only for a workable patient.
     const code = live(FAX);
-    expect(code).toContain("workable.has(p.itemId) ? (");
+    expect(code).toContain("const can = workable.has(p.itemId);");
+    expect(code).toContain('can && "pick"');
+    expect(code).toContain("onClick={can ? () => setWorkId(p.itemId) : undefined}");
     expect(code).toContain("nothing to update");
   });
 });

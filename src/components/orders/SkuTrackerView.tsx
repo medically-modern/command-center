@@ -28,11 +28,18 @@
  * whose count is three days old is grey. Sorting the raw label would order the
  * table by something nobody can see.
  *
+ * **Pixel pass 2026-09-24 (PIXEL_MATCH_PLAN.md Phase 6a):** his `.fchip` (a card
+ * pill that fills NAVY when on), his `.table` metrics (12px text, 8px cells,
+ * 10px uppercase headers, the table flush inside the card), his `.chip` for
+ * the status column (6px radius, 11px) and his search / Refresh sizes. What
+ * stays ours is function: the Open orders column, the last-run line, the
+ * staleness warning, the read error and the poll history — and the Orders |
+ * Inventory switch in the page header above, which is the way back to Orders.
+ *
  * This view edits nothing.
  */
 import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { AlertTriangle, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STOCK_STALE_DAYS, stockKey, stockVerdict, type StockTone, type StockVerdict } from "@/lib/welcomeCall/infusionStock";
@@ -40,7 +47,6 @@ import { etToday } from "@/lib/masheke/etDate";
 import { isRunLogRow, type SkuTrackerRow } from "@/lib/orders/skuTrackerApi";
 import { FAMILY_LABEL, FAMILY_ORDER, familyOfRow, openOrdersBySku } from "@/lib/orders/skuJoin";
 import { fmtMoney, isOpenStage, orderStage, type Order } from "@/lib/orders/workflow";
-import { StockPill } from "./pills";
 
 interface Props {
   rows: SkuTrackerRow[] | null;
@@ -93,6 +99,31 @@ export function shortStamp(raw: string): string {
 
 /** Worst first on an ascending sort — red · amber · grey · green. */
 const TONE_RANK: Record<StockTone, number> = { red: 0, amber: 1, grey: 2, green: 3 };
+
+/**
+ * His `.chip` — `border-radius:6px; padding:2px 8px; font-size:11px;
+ * font-weight:500` in his green / amber / red, and the plain muted chip for
+ * grey. Local to this table: `StockPill` is the Welcome Call stock pills' and
+ * the order lines' shape (§5.31b · §5.35) and is deliberately left as it is.
+ */
+const CHIP_TONE: Record<StockTone, string> = {
+  green: "bg-[hsl(152_68%_38%/0.1)] text-[hsl(152_60%_30%)] dark:bg-[hsl(152_68%_38%/0.16)] dark:text-[hsl(152_60%_65%)]",
+  amber: "bg-[hsl(38_92%_50%/0.1)] text-[hsl(30_80%_35%)] dark:bg-[hsl(38_92%_50%/0.14)] dark:text-[hsl(38_90%_70%)]",
+  red: "bg-[hsl(0_75%_55%/0.08)] text-[hsl(0_65%_42%)] dark:bg-[hsl(0_75%_55%/0.14)] dark:text-[hsl(0_80%_72%)]",
+  grey: "bg-muted text-foreground",
+};
+
+function StatusChip({ verdict }: { verdict: StockVerdict }) {
+  if (!verdict.label) return null;
+  return (
+    <span
+      title={verdict.detail || undefined}
+      className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-[6px] px-2 py-0.5 text-[11px] font-medium", CHIP_TONE[verdict.tone])}
+    >
+      {verdict.label}
+    </span>
+  );
+}
 
 interface InvRow {
   row: SkuTrackerRow;
@@ -169,7 +200,7 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
   const th = (k: SortKey, label: string, right = false) => {
     const on = sort === k;
     return (
-      <th className={cn("pb-2 text-[10px] font-semibold uppercase tracking-wider", right ? "text-right" : "text-left", on ? "text-foreground" : "text-muted-foreground")}>
+      <th className={cn("px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.06em]", right ? "text-right" : "text-left", on ? "text-foreground" : "text-muted-foreground")}>
         <button
           type="button"
           onClick={() => {
@@ -200,12 +231,17 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
               placeholder="Search product, SKU, status…"
               aria-label="Search inventory"
               autoComplete="off"
-              className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              className="h-[30px] w-full rounded-lg border border-border bg-card pl-7 pr-2 text-xs outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
-          <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading} className="gap-1.5">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="inline-flex h-[30px] items-center gap-2 rounded-[7px] border border-border bg-card px-2.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+          >
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -236,9 +272,10 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
               type="button"
               onClick={() => setCat(c.key)}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs transition-colors",
-                on ? "border-primary/40 bg-primary/10 font-semibold text-primary" : "border-border text-muted-foreground hover:bg-muted/40",
+                "rounded-full border px-[11px] py-1 text-xs font-medium transition-colors",
+                on ? "border-navy bg-navy text-white" : "border-border bg-card hover:bg-muted/40",
               )}
+              aria-pressed={on}
             >
               {c.label}
             </button>
@@ -250,19 +287,20 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
       {!rows ? (
         <Card className="p-6 text-sm text-muted-foreground">{loading ? "Loading the tracker…" : "The tracker hasn't loaded."}</Card>
       ) : (
-        <Card className="overflow-x-auto p-4">
+        <Card className="overflow-x-auto rounded-[14px] p-0">
           {/* ⚠️ `table-fixed` + an explicit colgroup, straight from his `.invt`:
               the filters swap ROWS and never move the columns, so a rep
               scanning a number does not have to re-find the column each time
-              they type a letter. */}
-          <table className="w-full min-w-[760px] table-fixed text-sm">
+              they type a letter. His 44 / 20 / 12×3 becomes 40 / 20 / 10×4 to
+              carry the Open orders column. */}
+          <table className="w-full min-w-[760px] table-fixed text-xs">
             <colgroup>
-              <col className="w-[38%]" />
+              <col className="w-[40%]" />
               <col className="w-[20%]" />
-              <col className="w-[10.5%]" />
-              <col className="w-[10.5%]" />
-              <col className="w-[10.5%]" />
-              <col className="w-[10.5%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-border">
@@ -277,7 +315,7 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
             <tbody>
               {shown.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="p-2 text-xs text-muted-foreground">
                     {needle
                       ? `Nothing matches “${q.trim()}”${cat !== "All" ? ` in ${cats.find((c) => c.key === cat)?.label ?? cat}` : ""}.`
                       : "Nothing in this category."}
@@ -285,22 +323,22 @@ export function SkuTrackerView({ rows, loading, error, lastRun, orders, ordersLo
                 </tr>
               ) : (
                 shown.map(({ row: r, verdict: v, familyLabel, openOrders: n }) => (
-                  <tr key={r.id} className={cn("border-t border-border/60 align-top", v.tone === "red" && "bg-rose-50/40 dark:bg-rose-950/20")}>
-                    <td className="py-2 pr-3 [overflow-wrap:anywhere]">
-                      <p className="font-medium">{r.name}</p>
-                      {r.notes && <p className="text-[11px] text-muted-foreground">{r.notes}</p>}
-                      <p className="font-mono text-[10px] text-muted-foreground">
+                  <tr key={r.id} className="border-t border-border align-top last:[&>td]:border-b-0">
+                    <td className="p-2 font-medium [overflow-wrap:anywhere]">
+                      {r.name}
+                      {r.notes && <div className="text-[11px] font-normal text-muted-foreground">{r.notes}</div>}
+                      <div className="font-mono text-[10px] font-normal text-muted-foreground">
                         {familyLabel}{r.sku ? ` · SKU ${r.sku}` : ""}
-                      </p>
+                      </div>
                     </td>
-                    <td className="py-2 pr-3">
-                      <StockPill verdict={v} />
-                      {r.lastChanged && <p className="mt-0.5 text-[10px] text-muted-foreground">last updated {shortStamp(r.lastChanged)}</p>}
+                    <td className="p-2">
+                      <StatusChip verdict={v} />
+                      {r.lastChanged && <div className="text-[10px] text-muted-foreground">last updated {shortStamp(r.lastChanged)}</div>}
                     </td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{r.qtyAvail == null ? "—" : r.qtyAvail.toLocaleString("en-US")}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{r.unitCost == null ? "—" : fmtMoney(String(r.unitCost))}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{r.oopPrice == null ? "—" : fmtMoney(String(r.oopPrice))}</td>
-                    <td className={cn("py-2 text-right tabular-nums", !ordersLoading && n > 0 && v.tone === "red" ? "font-bold text-rose-700 dark:text-rose-300" : ordersLoading || n === 0 ? "text-muted-foreground" : "")}>
+                    <td className="p-2 text-right tabular-nums">{r.qtyAvail == null ? "—" : r.qtyAvail.toLocaleString("en-US")}</td>
+                    <td className="p-2 text-right tabular-nums">{r.unitCost == null ? "—" : fmtMoney(String(r.unitCost))}</td>
+                    <td className="p-2 text-right tabular-nums">{r.oopPrice == null ? "—" : fmtMoney(String(r.oopPrice))}</td>
+                    <td className={cn("p-2 text-right tabular-nums", !ordersLoading && n > 0 && v.tone === "red" ? "font-bold text-rose-700 dark:text-rose-300" : ordersLoading || n === 0 ? "text-muted-foreground" : "")}>
                       {/* ⚠️ "—", never 0, until the order board has answered. */}
                       {ordersLoading ? "—" : n}
                     </td>

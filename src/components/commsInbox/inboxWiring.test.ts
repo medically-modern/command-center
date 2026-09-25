@@ -319,9 +319,13 @@ describe("phase 4 — the SLA card on Reports & Metrics (plan §1.2, Josh's D8)"
   const REPORTS = code("src/pages/OperationsPage.tsx");
   const CARD = code("src/components/commsInbox/SlaCard.tsx");
 
-  it("renders only with the Inbox switched on — off, the page is the blank one it was", () => {
-    expect(REPORTS).toMatch(/comms\.ui \? \(\s*<div className="mx-auto max-w-6xl">\s*<SlaCard \/>/);
-    expect(REPORTS).toContain("No reports available yet");
+  it("renders only with the Inbox switched on — off, Reports is Brandon's page without it", () => {
+    // Since pixel-match Phase 6b (§5.52) Reports & Metrics is Brandon's own
+    // page — the tracker link, the pipeline tiles, the queues — and the SLA
+    // card is its last section, drawn only while the Inbox is on. The blank
+    // "No reports available yet" line it replaced is gone with it.
+    expect(REPORTS).toMatch(/comms\.ui && \(\s*<>\s*<div className="eyebrow">Communications<\/div>\s*<SlaCard \/>/);
+    expect(REPORTS).not.toContain("No reports available yet");
     // It borrows nothing: still not the Operations burndown (lossless.test.ts).
     expect(REPORTS).not.toContain("<OperationsTab");
   });

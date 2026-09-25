@@ -1,5 +1,8 @@
 /**
- * The home screen's view toggle, and the "Viewing: <person>" dropdown (§5.39c).
+ * The home screen's view toggle, and the "Viewing: <person>" dropdown (§5.39c)
+ * — in Brandon's look since pixel-match Phase 7 (§5.52): his `.home-top` row,
+ * the `.segc.home-toggle` segmented control and the `input.sm` picker, styled
+ * under `pages/home/home.css`'s `.cc-hometop` scope.
  *
  * Brandon's model: a person's home is a CUSTOM VIEW rather than one fixed
  * screen — `bars` (today's role bars), `coordinator` ("My Patients"), or
@@ -19,17 +22,22 @@
  * ⚠️ **The "you're looking at X's view" banner is NOT here — it is
  * `ViewAsBanner`, in the shell (§5.39h).** The borrow follows you off this
  * page, so the say-so has to as well; this component kept a second copy, and
- * rendering a borrow showed two strips saying overlapping things.
+ * rendering a borrow showed two strips saying overlapping things. Brandon's
+ * page draws the banner here, under the toggle; ours is the strip above every
+ * page, for that reason.
  */
-import { Eye, Grid3x3, LineChart, Users } from "lucide-react";
+import { BarChart3, Eye, LayoutGrid, Users } from "lucide-react";
 import type { HomeView } from "@/lib/accessStore";
 import { HOME_VIEW_TAB } from "@/lib/shell/abilities";
+import "@/pages/home/home.css";
 
-const ICON: Record<HomeView, typeof Grid3x3> = {
-  bars: Grid3x3,
+/** His `ic('grid' | 'users' | 'chart')`. */
+const ICON: Record<HomeView, typeof LayoutGrid> = {
+  bars: LayoutGrid,
   coordinator: Users,
-  oversight: LineChart,
+  oversight: BarChart3,
 };
+const ICON_SIZE = { width: 13, height: 13 } as const;
 
 export function HomeViewSwitch({
   views,
@@ -66,25 +74,22 @@ export function HomeViewSwitch({
   if (!showToggle && !showPicker && !borrowedName && !missingViewing) return null;
 
   return (
-    <div className="border-b bg-card/60">
-      <div className="flex flex-wrap items-center gap-3 px-6 py-2.5">
+    <div className="cc-hometop">
+      <div className="home-top">
         {showToggle && (
-          <div className="inline-flex rounded-lg border bg-muted p-0.5">
+          <div className="segc home-toggle" role="tablist" aria-label="Home view">
             {views.map((v) => {
               const Icon = ICON[v];
               return (
                 <button
                   key={v}
                   type="button"
+                  role="tab"
+                  aria-selected={v === active}
                   onClick={() => onView(v)}
-                  className={[
-                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
-                    v === active
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  ].join(" ")}
+                  className={v === active ? "on" : undefined}
                 >
-                  <Icon className="h-3.5 w-3.5" />
+                  <Icon style={ICON_SIZE} />
                   {HOME_VIEW_TAB[v]}
                 </button>
               );
@@ -92,14 +97,17 @@ export function HomeViewSwitch({
           </div>
         )}
 
+        <span className="grow" />
+
         {showPicker && (
-          <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            <Eye className="h-3.5 w-3.5" />
+          <label className="row xs muted">
+            <Eye style={ICON_SIZE} />
             Viewing
             <select
               value={viewingKey}
               onChange={(e) => onViewing(e.target.value)}
-              className="max-w-[220px] rounded-md border bg-card px-2 py-1 text-xs"
+              className="input sm"
+              style={{ width: "auto", maxWidth: 260 }}
               aria-label="Whose view to show"
             >
               <option value="">My view</option>
@@ -114,18 +122,17 @@ export function HomeViewSwitch({
       </div>
 
       {missingViewing && (
-        <div className="mx-6 mb-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs">
-          <b>Showing your own view.</b> “{missingViewing}” isn't in the access list any more, so
-          there is no view of theirs to show.{" "}
-          {onClearViewing && (
-            <button
-              type="button"
-              className="font-semibold text-primary hover:underline"
-              onClick={onClearViewing}
-            >
-              Clear
-            </button>
-          )}
+        <div className="notice amber" style={{ margin: "10px 24px 4px" }} role="status">
+          <Eye style={ICON_SIZE} />
+          <div>
+            <b>Showing your own view.</b> “{missingViewing}” isn't in the access list any more, so
+            there is no view of theirs to show.{" "}
+            {onClearViewing && (
+              <button type="button" onClick={onClearViewing}>
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       )}
 

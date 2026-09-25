@@ -1,6 +1,14 @@
 /**
- * Fax Inbox page — view + download inbound faxes from RingCentral without
- * leaving the app, and mark them read/unread. Reached from the FAX bar.
+ * The CLASSIC Fax Inbox — the paged list that `/fax-inbox` was until
+ * 2026-09-24, kept reachable at `/fax-inbox/classic` (PIXEL_MATCH_PLAN.md,
+ * Phase 5: *"the old page stays reachable until you say"*).
+ *
+ * ⚠️ **No door in the chrome, deliberately.** Every function here — pages of
+ * 50 with Load more, Mark read / unread, View, Download, the total in the
+ * title — is on the new page (`FaxBarPage`, Brandon's 50/50 screen), which the
+ * FAX bar opens. This is Josh's escape hatch while he compares the two, not a
+ * second screen for reps; the route answers a typed URL and nothing else.
+ * Delete it when he says, together with its route in App.tsx.
  *
  * All client-side: RingCentral allows the message-store list, document, and
  * mark-read (PUT) endpoints cross-origin from this site (verified). Faxes load
@@ -34,7 +42,7 @@ function faxName(f: InboundFax): string {
   return `Fax — ${who}${d ? " " + d : ""}.pdf`;
 }
 
-export default function FaxInboxPage() {
+export default function FaxInboxClassicPage() {
   const navigate = useNavigate();
   const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate("/"));
 

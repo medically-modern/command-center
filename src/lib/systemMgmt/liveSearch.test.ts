@@ -35,6 +35,8 @@ function patient(name: string, over: Partial<SystemPatient> = {}): SystemPatient
     notes: "",
     stageAdvancerText: "",
     nextActionDate: "",
+    stageStart: "",
+    createdAt: "",
     ...over,
   };
 }

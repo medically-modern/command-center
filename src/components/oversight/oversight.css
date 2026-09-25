@@ -1,0 +1,214 @@
+/**
+ * Pipeline Oversight's visual language — Brandon's `viewOversight`
+ * (pixel-match Phase 7, CLAUDE.md §5.52), ported rule for rule from his
+ * `.ov-hdr`, `.ov-search`, `.ov-focus`, `.ov-cols` / `.ov-col`, `.hist`,
+ * `.hbars`, `.gs-drop` / `.gs-row` / `.gs-foot`, `.chip` and `.btn` CSS.
+ * Scoped under `.cc-ov`, which `OversightTab` puts on its root — so the same
+ * look rides into every host: `/oversight`, System Management's tab and the
+ * `oversight` home view.
+ *
+ * ⚠️ **The rows stay ALIGNED, and that is the one place his layout is not
+ * copied literally.** His `.ov-cols` is three independent `.ov-col` stacks —
+ * which works on sample cards that are all one height and loses the row
+ * pairing Brandon himself asked for on 2026-08-12 (a Processor Overview chart
+ * beside its Manager Intervention and Final Decisions counterparts, `rowOf`).
+ * The grid keeps interleaving cells per row; each cell wears his column
+ * padding and the amber left border, so the line reads continuous.
+ *
+ * ⚠️ Colours read the app's OWN tokens (`hsl(var(--x))`), which is what makes
+ * dark mode and the six accent themes work with nothing added (§5.40). The two
+ * column eyebrows and the amber rule are his absolute HSL, kept as he wrote them.
+ *
+ * ⚠️ Nothing here may be promoted to a bare selector (`.pf-root` and `.bnr`
+ * have their own `.btn` and `.input` languages, §9).
+ */
+
+.cc-ov {
+  --p: hsl(var(--primary));
+  --p10: hsl(var(--primary) / 0.1);
+  --bd: hsl(var(--border));
+  --inp: hsl(var(--input));
+  --cd: hsl(var(--card));
+  --mut: hsl(var(--muted));
+  --mfg: hsl(var(--muted-foreground));
+  --tfg: hsl(var(--foreground));
+  --blue-bg: hsl(var(--primary) / 0.08);
+  --amber-bg: hsl(var(--warning) / 0.1);
+  --amber-fg: hsl(30 80% 35%);
+  --red-bg: hsl(var(--destructive) / 0.1);
+  --red-fg: hsl(0 65% 40%);
+  --green-bg: hsl(var(--success) / 0.14);
+  --green-fg: hsl(var(--success));
+  --sh-sm: 0 1px 2px 0 hsl(215 40% 12% / 0.05);
+  --sh-md: 0 6px 20px hsl(215 40% 12% / 0.12);
+  color: var(--tfg);
+}
+.dark .cc-ov, :root[data-theme="dark"] .cc-ov {
+  --amber-fg: hsl(38 90% 70%);
+  --red-fg: hsl(0 80% 72%);
+  --sh-md: 0 6px 20px hsl(215 40% 2% / 0.5);
+}
+
+/* ── His utility classes, scoped ─────────────────────────────────────────── */
+
+.cc-ov .muted { color: var(--mfg); }
+.cc-ov .small { font-size: 12px; }
+.cc-ov .xs { font-size: 11px; }
+.cc-ov .grow { flex: 1; min-width: 0; }
+.cc-ov .row { display: flex; align-items: center; gap: 8px; }
+.cc-ov .wrap { flex-wrap: wrap; }
+.cc-ov .tn { font-variant-numeric: tabular-nums; }
+.cc-ov .eyebrow {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--mfg);
+}
+.cc-ov .card { background: var(--cd); border: 1px solid var(--bd); border-radius: 14px; box-shadow: var(--sh-sm); }
+.cc-ov .card.pad { padding: 18px 20px; }
+
+.cc-ov .btn {
+  display: inline-flex; align-items: center; gap: 8px; border-radius: 8px;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; border: 1px solid transparent;
+  background: none; color: inherit; font-family: inherit; cursor: pointer;
+  transition: opacity 0.15s, background 0.15s; white-space: nowrap; text-decoration: none;
+}
+.cc-ov .btn:disabled, .cc-ov .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+.cc-ov .btn.sm { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
+.cc-ov .btn.xs { padding: 3px 8px; font-size: 11px; border-radius: 6px; font-weight: 500; }
+.cc-ov .btn.ghost { color: var(--mfg); }
+.cc-ov .btn.ghost:hover:not(:disabled) { background: var(--mut); color: var(--tfg); }
+.cc-ov .btn.outline { background: var(--cd); border-color: var(--bd); color: var(--tfg); outline-style: none; }
+.cc-ov .btn.outline:hover:not(:disabled) { background: var(--mut); }
+.cc-ov .btn.danger-outline { background: var(--cd); border-color: hsl(0 75% 55% / 0.5); color: hsl(0 65% 45%); }
+.cc-ov .btn.danger-outline:hover:not(:disabled) { background: var(--red-bg); }
+.cc-ov .btn:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; }
+
+.cc-ov .input {
+  width: 100%; border: 1px solid var(--inp); background: var(--cd); border-radius: 8px;
+  padding: 8px 10px; font-size: 13px; color: var(--tfg); font-family: inherit;
+}
+.cc-ov select.input { appearance: auto; width: 190px; }
+.cc-ov .input::placeholder { color: var(--mfg); opacity: 0.8; }
+.cc-ov .input:focus-visible { outline: 2px solid var(--p); outline-offset: 1px; }
+
+.cc-ov .chip {
+  display: inline-flex; align-items: center; gap: 4px; border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; font-weight: 500; background: var(--mut); color: var(--tfg);
+  white-space: nowrap;
+}
+.cc-ov .chip.amber { background: var(--amber-bg); color: var(--amber-fg); }
+.cc-ov .chip.red { background: var(--red-bg); color: var(--red-fg); }
+
+.cc-ov .avatar {
+  width: 32px; height: 32px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px;
+  background: linear-gradient(135deg, var(--p), hsl(var(--primary) / 0.75));
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.cc-ov .avatar.lg { width: 48px; height: 48px; font-size: 18px; }
+
+/* ── The header — his `.ov-hdr` + `.ov-search` ───────────────────────────── */
+
+.cc-ov .ov-hdr { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 0 8px; }
+.cc-ov .ov-hdr h1 { font-size: 20px; font-weight: 700; line-height: 1.25; margin: 0; }
+.cc-ov .ov-search { position: relative; flex: 1; min-width: 240px; max-width: 520px; }
+.cc-ov .ov-search > svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--mfg); pointer-events: none; }
+.cc-ov .ov-search .input { width: 100%; padding-left: 32px; }
+.cc-ov .ov-search .clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: 0;
+  padding: 2px; color: var(--mfg); cursor: pointer; display: grid; place-items: center;
+}
+.cc-ov .ov-search .clear:hover { color: var(--tfg); }
+.cc-ov .ov-hdr .sync { margin-left: auto; gap: 6px; }
+.cc-ov .ov-hdr .sync svg { width: 13px; height: 13px; }
+
+/* His `.gs-drop` — the finder's rows. */
+.cc-ov .gs-drop {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); background: var(--cd); color: var(--tfg);
+  border: 1px solid var(--bd); border-radius: 12px; box-shadow: var(--sh-md); overflow: hidden; z-index: 60;
+}
+.cc-ov .gs-row {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 9px 12px; text-align: left;
+  border: 0; border-bottom: 1px solid var(--bd); background: none; color: inherit; font: inherit; cursor: pointer;
+}
+.cc-ov .gs-row:last-of-type { border-bottom: 0; }
+.cc-ov .gs-row:hover, .cc-ov .gs-row.hi { background: var(--p10); }
+.cc-ov .gs-row .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-ov .gs-row .nm { font-weight: 600; font-size: 13px; }
+.cc-ov .gs-row .hit { margin-left: auto; font-size: 11px; color: var(--mfg); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cc-ov .gs-row .st {
+  font-size: 10px; border-radius: 4px; padding: 1px 6px; background: var(--mut); color: var(--mfg);
+  font-weight: 600; white-space: nowrap;
+}
+.cc-ov .gs-row .st.onb { background: var(--blue-bg); color: var(--p); }
+.cc-ov .gs-row .st.amber { background: var(--amber-bg); color: var(--amber-fg); }
+.cc-ov .gs-row .st.red { background: var(--red-bg); color: var(--red-fg); }
+.cc-ov .gs-foot { padding: 6px 12px; font-size: 11px; color: var(--mfg); background: var(--mut); }
+
+/* ── The pinned patient — his `.ov-focus` ────────────────────────────────── */
+
+.cc-ov .ov-focus-wrap { padding: 0 0 10px; }
+.cc-ov .ov-focus { border-left: 3px solid var(--p); }
+.cc-ov .ov-focus .name { font-size: 15px; font-weight: 700; }
+.cc-ov .ov-focus .acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cc-ov .ov-focus .link { color: var(--p); font-weight: 600; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+.cc-ov .ov-focus .link:hover { text-decoration: underline; }
+
+/* ── The stage row and the three columns ─────────────────────────────────── */
+
+.cc-ov .stage-row { display: flex; align-items: center; gap: 8px; padding: 0 0 10px; flex-wrap: wrap; }
+.cc-ov .stage-row h2 { font-size: 16px; font-weight: 700; margin: 0; }
+.cc-ov .stage-row .hint { margin-left: auto; }
+
+.cc-ov .ov-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; padding: 0 0 24px; }
+.cc-ov .ov-cols.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cc-ov .ov-cell { padding: 0 16px 12px; min-width: 0; }
+.cc-ov .ov-cell.c1 { padding-left: 0; }
+.cc-ov .ov-cell.c2, .cc-ov .ov-cell.c3 { border-left: 1px solid hsl(38 92% 50% / 0.6); }
+.cc-ov .ov-cell .eyebrow { margin-bottom: 10px; }
+.cc-ov .ov-cell.c2 .eyebrow { color: hsl(38 90% 40%); }
+.cc-ov .ov-cell.c3 .eyebrow { color: hsl(0 70% 45%); }
+.cc-ov .ov-grid { display: grid; gap: 16px; grid-template-columns: 1fr; padding-bottom: 24px; }
+@media (min-width: 768px) { .cc-ov .ov-grid.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1920px) { .cc-ov .ov-grid.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* ── The chart card — his `.hist` ────────────────────────────────────────── */
+
+.cc-ov .hist {
+  background: var(--cd); border: 1px solid var(--bd); border-radius: 12px; padding: 12px; box-shadow: var(--sh-sm);
+}
+.cc-ov .hist .toggle {
+  display: inline-flex; border: 1px solid var(--bd); border-radius: 8px; padding: 2px; font-size: 10px;
+  margin-bottom: 8px; background: hsl(var(--background));
+}
+.cc-ov .hist .toggle button { padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 500; color: var(--mfg); background: none; border: 0; font-family: inherit; cursor: pointer; }
+.cc-ov .hist .toggle button.on { background: var(--cd); box-shadow: var(--sh-sm); font-weight: 600; color: var(--tfg); }
+.cc-ov .hist .h { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.cc-ov .hist .h .t { font-size: 13px; font-weight: 600; letter-spacing: 0; }
+.cc-ov .hist .h .n { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.cc-ov .hist .hbars { min-height: 120px; margin-top: 8px; }
+.cc-ov .hist .unk { text-align: right; font-size: 9px; color: var(--mfg); margin-top: 4px; }
+
+/* The home view has no host padding of its own (§5.39c), so the gutters are
+   his `.ov-hdr` / `.ov-cols` 16px here and nowhere else. */
+.cc-home > .cc-ov { padding: 0 16px 24px; }
+
+/* ── The full-screen page's header strip ─────────────────────────────────── */
+
+.cc-ov-page .ov-page-hdr {
+  background: hsl(var(--card)); border-bottom: 1px solid hsl(var(--border)); padding: 10px 16px;
+  display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 20;
+}
+.cc-ov-page .ov-page-hdr .back {
+  display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; border-radius: 7px;
+  padding: 5px 8px; color: hsl(var(--muted-foreground)); font: inherit; cursor: pointer;
+}
+.cc-ov-page .ov-page-hdr .back:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+
+/* ── Narrow (his breakpoint) ─────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .cc-ov .ov-search { max-width: none; flex-basis: 100%; }
+  .cc-ov .ov-cols, .cc-ov .ov-cols.two { grid-template-columns: 1fr; }
+  .cc-ov .ov-cell, .cc-ov .ov-cell.c1 { padding: 0 0 12px; }
+  .cc-ov .ov-cell.c2, .cc-ov .ov-cell.c3 { border-left: 0; }
+  .cc-ov select.input { width: 100%; }
+}

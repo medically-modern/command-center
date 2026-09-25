@@ -39,6 +39,8 @@ function patient(over: Partial<SystemPatient> & { id: string; name: string }): S
     notes: "",
     stageAdvancerText: "",
     nextActionDate: "",
+    stageStart: "",
+    createdAt: "",
     ...over,
   };
 }

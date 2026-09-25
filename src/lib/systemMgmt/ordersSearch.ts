@@ -101,6 +101,15 @@ export const ORDERS_SEARCH_BOARD: BoardDef = {
   dobColId: null,
   nextActionDateColId: null,
   extraColumnIds: Object.values(ORDER_SEARCH_COLS),
+  /* The identifiers, so the header search can print WHICH one a pasted number
+     matched — "Tracking <b>1Z…</b>" (§5.52). ⚠️ `fieldsLiteral` still asks the
+     order board NOTHING: these ride `rulesLiteral`, and an order's patient
+     fields (member id, doctor, insurance) are deliberately not searched. */
+  searchFields: {
+    orderNumber: [COL.cahOrderNumber],
+    poNumber: [COL.poNumber],
+    tracking: [COL.tracking1, COL.tracking2, COL.tracking3, COL.tracking4, COL.tracking5],
+  },
 };
 
 /**
@@ -113,10 +122,11 @@ export const ORDERS_SEARCH_BOARD: BoardDef = {
  * column and needs none: the PO Number **contains** it (`MM-<itemId>-<yyyymmdd>`,
  * verified live), so a `contains_text` on the digits reaches it anyway.
  *
- * ⚠️ These are SEARCHED but not FETCHED — deliberately absent from
- * `ORDER_SEARCH_COLS`. Monday does the matching server-side, so pulling six
- * more columns onto every order row would buy nothing a rep reads: the row
- * already names the order by date, group and CAH number.
+ * ⚠️ These are FETCHED too since 2026-09-24 — through `searchFields`, not
+ * `ORDER_SEARCH_COLS` — because the header's drop-down prints which identifier
+ * a pasted number matched ("PO # <b>MM-…</b>", "Tracking <b>1Z…</b>"), which
+ * is something a rep reads. Before that they were searched and not read: Monday
+ * matched server-side and the row named the order by date, group and CAH.
  *
  * ⚠️ All five tracking columns, not just the first. An order that ships in two
  * boxes carries a second number, and a rep pastes whichever one the patient

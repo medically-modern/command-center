@@ -16,6 +16,13 @@
  * ⚠️ **No new fetching.** `useLiveSearch` is the existing hook with its existing
  * debounce, abort and latest-wins guards; mounting it with an empty query asks
  * Monday nothing, so a header on every page costs nothing until somebody types.
+ *
+ * **The search is WIDE here (§5.52)** — Josh, 2026-09-24: *"wider header search
+ * - yes i want it"*. `fields: true` asks every board's member ids, doctor,
+ * clinic, doctor phone and insurance in the same request, and the row's right
+ * edge says which field matched (`searchHit`), exactly as Brandon draws it.
+ * The placeholder now promises only what the box does — the reason it used to
+ * be narrower is that a placeholder is a contract (§5.39f).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -24,10 +31,16 @@ import { useLiveSearch } from "@/hooks/systemMgmt/useLiveSearch";
 import { searchBucket } from "@/lib/systemMgmt/searchBuckets";
 import { looseSearchTerms } from "@/lib/systemMgmt/mondayApi";
 import { foldRedundantOrders, groupSearchHits, hitCaption } from "@/lib/shell/searchPeople";
+import { searchHit } from "@/lib/shell/searchHit";
+import {
+  MAX_ROWS,
+  SEARCH_PLACEHOLDER,
+  SEARCH_SCOPE,
+  chipTone,
+  countLine,
+  hitDob,
+} from "@/lib/shell/searchRow";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
-
-/** People, not board items — a patient with six records is ONE row (§5.42). */
-const MAX_ROWS = 8;
 
 /** Where a header hit goes. Orders keep their own page — an order is not a
  *  patient record, and the patient screen has nothing to say about one. */
@@ -46,7 +59,9 @@ export function GlobalSearch() {
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
 
-  const { results, searching, tooShort, error } = useLiveSearch(open ? query : "");
+  const { results, searching, tooShort, error } = useLiveSearch(open ? query : "", {
+    fields: true,
+  });
 
   /**
    * ⚠️ **GROUPED, THEN ORDERS FOLDED AWAY, THEN CAPPED** — the cap has to fall
@@ -56,10 +71,8 @@ export function GlobalSearch() {
    * person, and later one that returned a Subscription row plus three of that
    * patient's orders (§5.46b's `foldRedundantOrders`).
    */
-  const rows = useMemo(
-    () => foldRedundantOrders(groupSearchHits(results)).slice(0, MAX_ROWS),
-    [results],
-  );
+  const people = useMemo(() => foldRedundantOrders(groupSearchHits(results)), [results]);
+  const rows = useMemo(() => people.slice(0, MAX_ROWS), [people]);
 
   // Reset the cursor whenever the list changes under it, or Enter fires on a
   // row that is no longer the one highlighted on screen.
@@ -114,7 +127,8 @@ export function GlobalSearch() {
     }
   };
 
-  const typed = query.trim().length > 0;
+  const trimmed = query.trim();
+  const typed = trimmed.length > 0;
 
   /** "No exact match … showing anyone matching X or Y", when the loose pass
    *  answered. Derived from the query rather than threaded through the hook. */
@@ -137,12 +151,7 @@ export function GlobalSearch() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKey}
-        // ⚠️ The placeholder is a CONTRACT. It promised "member ID" and "doctor",
-        // neither of which any board is searched for — §5.39f recorded that as
-        // unbuilt spec, and a rep who types a member ID and gets "No patient
-        // matches" learns to distrust the whole box. DOB and phone are real
-        // (§5.44); the other two come off until they are built.
-        placeholder="Search patient name, DOB, phone or order #…"
+        placeholder={SEARCH_PLACEHOLDER}
         aria-label="Search patients"
         aria-expanded={open && typed}
         autoComplete="off"
@@ -156,30 +165,38 @@ export function GlobalSearch() {
               does not contain what the rep typed reads as the search
               misfiring — the same rule the same-number pass follows. */}
           {looseNote && <div className="gs-note">{looseNote}</div>}
-          {rows.map((hit, i) => (
-            <button
-              key={hit.key}
-              className={`gs-row${i === hi ? " hi" : ""}`}
-              role="option"
-              aria-selected={i === hi}
-              onMouseEnter={() => setHi(i)}
-              onClick={() => go(hit.lead)}
-            >
-              <span className="min-w-0">
-                <span className="nm block truncate">{hit.name || "(no name)"}</span>
-                {/* ⚠️ The count is part of the line, not a badge: it is the only
-                    thing saying that clicking opens ONE of several records and
-                    that the rest are inside. Without it a folded row looks
-                    exactly like a patient who has a single record. */}
-                <span className="sub block truncate">
+          {rows.map((hit, i) => {
+            const found = searchHit(hit.rows, trimmed);
+            const dob = hitDob(hit);
+            const tone = chipTone(hit);
+            return (
+              <button
+                key={hit.key}
+                className={`gs-row${i === hi ? " hi" : ""}`}
+                role="option"
+                aria-selected={i === hi}
+                onMouseEnter={() => setHi(i)}
+                onClick={() => go(hit.lead)}
+              >
+                <span className="who">
+                  <span className="nm">{hit.name || "(no name)"}</span>
+                  {dob && <span className="dob"> · DOB {dob}</span>}
+                </span>
+                <span className={`st${tone ? ` ${tone}` : ""}`}>
                   {hit.lead.subtitle || hitCaption(hit)}
                 </span>
-              </span>
-              <span className="hit">
-                <span className="st">{hit.lead.pipelineStage || hit.lead.boardName}</span>
-              </span>
-            </button>
-          ))}
+                {/* ⚠️ WHICH field matched — empty on a name match, because the
+                    name IS the row (Brandon's own rule). */}
+                <span className="hit">
+                  {found && (
+                    <>
+                      {found.label} <b>{found.value}</b>
+                    </>
+                  )}
+                </span>
+              </button>
+            );
+          })}
 
           {/* ⚠️ Every non-result state says which one it is. "Nothing found",
               "still looking" and "the search failed" are three different
@@ -191,15 +208,26 @@ export function GlobalSearch() {
               empty state: without it a rep reads a partial answer as the whole
               one and concludes a record is missing. */}
           {!!rows.length && searching && <div className="gs-note">Still looking…</div>}
+          {/* Brandon's count line. Counts PEOPLE, and says when the eight on
+              screen are not all of them. */}
+          {!!rows.length && !searching && (
+            <div className="gs-foot">
+              {countLine(people.length, rows.length)} · Enter opens the first · {SEARCH_SCOPE}
+            </div>
+          )}
           {!rows.length && searching && <div className="gs-note">Searching…</div>}
           {!rows.length && !searching && tooShort && (
-            <div className="gs-note">Keep typing — two characters at least.</div>
+            <div className="gs-foot">
+              Keep typing — a name, DOB, phone, member ID, order or tracking number, or a doctor.
+            </div>
           )}
           {!rows.length && !searching && !tooShort && error && (
             <div className="gs-note">Couldn't reach Monday — {error}</div>
           )}
           {!rows.length && !searching && !tooShort && !error && (
-            <div className="gs-note">No patient matches that.</div>
+            <div className="gs-foot">
+              No patient matches “{trimmed}”. Try the phone number or DOB.
+            </div>
           )}
         </div>
       )}

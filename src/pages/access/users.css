@@ -1,0 +1,171 @@
+/**
+ * User management's visual language — Brandon's `viewUsers` (pixel-match Phase
+ * 6c, 2026-09-25), ported rule for rule from his `.acc-body`, `.ucard .ugrid`,
+ * `.mgr-toggle`, `.role-grid` / `.role-cell`, `.avatar` and `.chip` CSS. Scoped
+ * under `.cc-us` so it can never reach another page: the mockup styles bare
+ * `.card` / `.btn` / `.chip` / `.input`, and those names already mean other
+ * things elsewhere in this app (`.pf-root` has its own `.btn` language, §9).
+ * Nothing below may be promoted to a bare selector — `pages/fax/faxInbox.css`,
+ * `pages/reports/reports.css` and `pages/patient/redesign.css` carry the same
+ * rule for the same reason.
+ *
+ * ⚠️ **Colours read the app's OWN tokens** (`hsl(var(--x))`), which is what
+ * makes dark mode and the six accent themes work with nothing added (§5.40).
+ *
+ * ⚠️ **Tailwind ships a utility named `outline`** (§5.51c), and it matches his
+ * `.btn.outline` — a 3px currentColor ring that reads as a heavy black border.
+ * Cancelled below with a focus ring of its own, so keyboard users keep one.
+ */
+
+.cc-us {
+  --p: hsl(var(--primary));
+  --p10: hsl(var(--primary) / 0.1);
+  --p20: hsl(var(--primary) / 0.2);
+  --p40: hsl(var(--primary) / 0.4);
+  --bd: hsl(var(--border));
+  --inp: hsl(var(--input));
+  --cd: hsl(var(--card));
+  --mut: hsl(var(--muted));
+  --mfg: hsl(var(--muted-foreground));
+  --tfg: hsl(var(--foreground));
+  --blue-bg: hsl(var(--primary) / 0.08);
+  --amber-bg: hsl(var(--warning) / 0.1);
+  --amber-bd: hsl(var(--warning) / 0.45);
+  --amber-fg: hsl(30 80% 35%);
+  --green-bg: hsl(var(--success) / 0.1);
+  --green-fg: hsl(152 60% 30%);
+  --navy2: hsl(var(--navy));
+  --navy-fg: hsl(var(--navy-foreground));
+  --sh-sm: 0 1px 2px 0 hsl(215 40% 12% / 0.05);
+  color: var(--tfg);
+}
+.dark .cc-us, :root[data-theme="dark"] .cc-us {
+  --amber-bg: hsl(var(--warning) / 0.14);
+  --amber-fg: hsl(38 90% 70%);
+  --green-bg: hsl(var(--success) / 0.16);
+  --green-fg: hsl(152 60% 68%);
+}
+
+/* ── His utility classes, scoped ─────────────────────────────────────────── */
+
+.cc-us .muted { color: var(--mfg); }
+.cc-us .small { font-size: 12px; }
+.cc-us .xs { font-size: 11px; }
+.cc-us .grow { flex: 1; min-width: 0; }
+.cc-us .row { display: flex; align-items: center; gap: 8px; }
+.cc-us .wrap { flex-wrap: wrap; }
+.cc-us .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-us .eyebrow {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--mfg);
+}
+.cc-us h1 { font-size: 16px; font-weight: 700; line-height: 1.25; margin: 0; }
+.cc-us h2 { font-size: 20px; font-weight: 700; line-height: 1.2; margin: 0; }
+
+.cc-us .card { background: var(--cd); border: 1px solid var(--bd); border-radius: 14px; box-shadow: var(--sh-sm); }
+.cc-us .card.pad { padding: 18px 20px; }
+
+.cc-us .btn {
+  display: inline-flex; align-items: center; gap: 8px; border-radius: 8px;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; border: 1px solid transparent;
+  background: none; color: inherit; font-family: inherit; cursor: pointer;
+  transition: opacity 0.15s, background 0.15s; white-space: nowrap;
+}
+.cc-us .btn:disabled, .cc-us .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+.cc-us .btn.sm { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
+.cc-us .btn.xs { padding: 3px 8px; font-size: 11px; border-radius: 6px; font-weight: 500; }
+.cc-us .btn.ghost { color: var(--mfg); }
+.cc-us .btn.ghost:hover:not(:disabled) { background: var(--mut); color: var(--tfg); }
+.cc-us .btn.blue { background: var(--p); color: hsl(var(--primary-foreground)); }
+.cc-us .btn.blue:hover:not(:disabled) { opacity: 0.92; }
+.cc-us .btn.outline { background: var(--cd); border-color: var(--bd); color: var(--tfg); outline-style: none; }
+.cc-us .btn.outline:hover:not(:disabled) { background: var(--mut); }
+.cc-us .btn.outline:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; }
+
+.cc-us .input {
+  width: 100%; border: 1px solid var(--inp); background: var(--cd); border-radius: 8px;
+  padding: 8px 10px; font-size: 13px; color: var(--tfg); font-family: inherit;
+}
+.cc-us .input.sm { padding: 5px 8px; font-size: 12px; }
+.cc-us .input::placeholder { color: var(--mfg); opacity: 0.8; }
+.cc-us .input:focus-visible { outline: 2px solid var(--p); outline-offset: 1px; }
+
+.cc-us .chip {
+  display: inline-flex; align-items: center; gap: 4px; border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; font-weight: 500; background: var(--mut); color: var(--tfg);
+  white-space: nowrap;
+}
+.cc-us .chip.amber { background: var(--amber-bg); color: var(--amber-fg); }
+.cc-us .chip.green { background: var(--green-bg); color: var(--green-fg); }
+.cc-us .chip.navy { background: var(--navy2); color: var(--navy-fg); }
+.cc-us .chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+
+/* His avatar: the initial on the primary gradient. */
+.cc-us .avatar {
+  width: 32px; height: 32px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px;
+  background: linear-gradient(135deg, var(--p), hsl(var(--primary) / 0.75));
+  display: grid; place-items: center; flex-shrink: 0;
+}
+
+/* ── The page — his inline header + `.acc-body` ──────────────────────────── */
+
+.cc-us .us-head {
+  background: var(--cd); border-bottom: 1px solid var(--bd); padding: 12px 24px;
+  display: flex; align-items: center; gap: 12px;
+}
+.cc-us .acc-body {
+  padding: 20px 24px 40px; max-width: 900px; margin: 0 auto; width: 100%;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.cc-us .empty-center { flex: 1; display: grid; place-items: center; padding: 32px; text-align: center; }
+
+/* ── The person card ─────────────────────────────────────────────────────── */
+
+.cc-us .ucard .ugrid {
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr);
+  gap: 14px; margin-top: 4px;
+}
+.cc-us .ucard .ugrid > div { background: var(--mut); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.cc-us .ucard .ugrid .eyebrow { margin-bottom: 8px; }
+
+/* His pill toggles — on = blue; the Manager one goes amber, the Admin one navy. */
+.cc-us .mgr-toggle {
+  display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--bd);
+  border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 600;
+  color: var(--mfg); background: none; font-family: inherit; cursor: pointer; line-height: 1.5;
+}
+.cc-us .mgr-toggle:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--cd); color: var(--tfg); }
+.cc-us .mgr-toggle.on { background: var(--blue-bg); color: var(--p); border-color: var(--p40); }
+.cc-us .mgr-toggle.warn.on { background: var(--amber-bg); color: var(--amber-fg); border-color: var(--amber-bd); }
+.cc-us .mgr-toggle.adm.on { background: var(--navy2); color: var(--navy-fg); border-color: var(--navy2); }
+.cc-us .mgr-toggle:disabled, .cc-us .mgr-toggle[aria-disabled="true"] { opacity: 0.6; cursor: not-allowed; }
+.cc-us .mgr-toggle:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; }
+.cc-us .mgr-toggle .cnt { opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+/* ── The role grid ───────────────────────────────────────────────────────── */
+
+.cc-us .role-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+.cc-us .role-cell {
+  display: flex; align-items: center; gap: 6px; border: 1px solid var(--bd); border-radius: 6px;
+  padding: 5px 8px; font-size: 12px; min-height: 30px; min-width: 0;
+}
+.cc-us .role-cell.on { background: var(--p10); border-color: var(--p20); }
+.cc-us .role-cell label { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; cursor: pointer; }
+.cc-us .role-cell .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.cc-us .role-cell select {
+  margin-left: auto; font-size: 10px; border: 1px solid var(--bd); border-radius: 4px;
+  background: var(--cd); padding: 1px 2px; color: var(--tfg); font-family: inherit;
+}
+.cc-us .role-cell .ord {
+  width: 36px; font-size: 10px; border: 1px solid var(--bd); border-radius: 4px;
+  padding: 1px 4px; background: var(--cd); color: var(--tfg); font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Narrow (his breakpoints) ────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .cc-us .ucard .ugrid { grid-template-columns: 1fr; }
+  .cc-us .role-grid { grid-template-columns: 1fr; }
+  .cc-us .acc-body, .cc-us .us-head { padding-left: 16px; padding-right: 16px; }
+}

@@ -94,6 +94,17 @@ interface Props {
    *  which escalation scope to show. Defaults per role to escalated
    *  (managerMode) or nonEscalated. */
   roleFilters?: Record<string, RoleFilter>;
+  /**
+   * `"stages"` draws Brandon's Stages view (pixel-match Phase 7, §5.52): his
+   * `.bar` / `.track` / `.fill` markup under `pages/home/home.css`'s `.cc-bars`
+   * scope. Everything else — the baseline, the counts, which bar opens what,
+   * the confetti — is the same code either way; only the markup differs.
+   *
+   * ⚠️ Absent, the component is BYTE-IDENTICAL to what it was, which is what
+   * keeps the "as today" layout (`Index.tsx`, `DashboardMainView`) untouched —
+   * §5.39b's escape hatch. Only `ProcessorView` inside the redesign passes it.
+   */
+  look?: "stages";
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -128,6 +139,7 @@ export function DailyBurndown({
   managerMode = false,
   order,
   roleFilters,
+  look,
 }: Props) {
   const navigate = useNavigate();
   const { baseline: serverBaseline, loading: serverLoading } = useServerBaseline();
@@ -262,6 +274,165 @@ export function DailyBurndown({
   /* Track which bars already celebrated so confetti fires once */
   const celebratedRef = useRef<Set<string>>(new Set());
 
+  const allClear =
+    managerMode &&
+    !countsLoading &&
+    barData.every((d) => d.current === 0) &&
+    taskRoles.every((r) => (roleCounts[r.id] ?? 0) === 0);
+
+  // ── Brandon's Stages look (pixel-match Phase 7, §5.52) ─────────────────
+  // Same computed bars, same handlers, his markup. The skeleton state and the
+  // "nothing to draw" state are decided exactly as the default look decides
+  // them below; only what is rendered differs.
+  if (look === "stages") {
+    const skeleton = !snapshot || (barData.length === 0 && taskRoles.length === 0);
+    if (skeleton && !(countsLoading || serverLoading)) return null;
+
+    const barRow = (role: RoleConfig, i: number, d: { current: number; full: number } | null) => {
+      const hex = COLOR_MAP[role.color] ?? "#6366f1";
+      const hasRoute = barClickable(role.id, role.route);
+      const isDone = !!d && !countsLoading && d.current === 0;
+      const pct =
+        d && maxSqrt > 0 ? Math.max((sqrtScale(d.current) / maxSqrt) * 100, d.current > 0 ? 4 : 0) : 0;
+      return (
+        <button
+          key={role.id}
+          type="button"
+          className={cn("bar", !hasRoute && "inert")}
+          onClick={() => {
+            if (hasRoute) openBar(role.id, role.route);
+          }}
+          title={hasRoute ? `Open ${role.label}` : role.id === "authDenied" ? "Auth Denied has no page yet" : role.label}
+        >
+          <div className="lbl">
+            <span className="row">
+              {numbered && <span className="n">{i + 1}</span>}
+              <span className={cn("dot", role.color)} />
+              {role.label}
+              {hasRoute && <ExternalLink className="ext" />}
+            </span>
+            {!d ? (
+              <span className="tn muted">…</span>
+            ) : isDone ? (
+              <span className="done-lbl">
+                {managerMode ? (
+                  <>
+                    <CheckCircle2 style={{ width: 13, height: 13 }} />
+                    Clear
+                  </>
+                ) : (
+                  "🎉 Done!"
+                )}
+              </span>
+            ) : (
+              <span className="tn">{countsLoading ? "…" : d.current}</span>
+            )}
+          </div>
+          <div
+            className={cn("track", isDone && "done")}
+            ref={(el) => {
+              if (!managerMode && isDone && animateIn && el && !celebratedRef.current.has(role.id)) {
+                celebratedRef.current.add(role.id);
+                requestAnimationFrame(() => fireBarConfetti(el));
+              }
+            }}
+          >
+            {!d ? (
+              <div
+                className="absolute inset-y-0 w-1/3 burndown-shimmer"
+                style={{
+                  background: `linear-gradient(90deg, transparent, ${hexToRgba(hex, 0.35)}, transparent)`,
+                  animationDelay: `${i * 120}ms`,
+                }}
+              />
+            ) : isDone ? null : (
+              <div
+                className="fill"
+                style={{
+                  width: animateIn ? `${pct}%` : "0%",
+                  background: `linear-gradient(90deg, ${hex}, ${hexToRgba(hex, 0.75)})`,
+                  transitionDelay: `${i * 60 + 200}ms`,
+                }}
+              />
+            )}
+          </div>
+        </button>
+      );
+    };
+
+    return (
+      <div className="cc-bars">
+        {managerMode && !skeleton && (
+          <div className={cn("notice", allClear ? "green" : "red")} style={{ marginBottom: 14 }} role="status">
+            {allClear ? <CheckCircle2 style={{ width: 16, height: 16 }} /> : <ShieldAlert style={{ width: 16, height: 16 }} />}
+            <div>
+              <b>{allClear ? "All clear — no escalated patients" : "Escalated patients only"}</b>
+              <div className="xs">
+                {allClear
+                  ? "Nothing in these roles is flagged for escalation right now."
+                  : "Bars show patients flagged for escalation in each role — not the full queue."}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="bars">
+          {skeleton
+            ? roles.map((role, i) => barRow(role, i, null))
+            : barData.map((d, i) => barRow(d.role, i, d))}
+        </div>
+
+        {/* ⚠️ His redesign draws NO ad-hoc tiles on the Stages view; ours keeps
+            them because Subscription, Update Clinicals and Orders have no other
+            door from the home screen (§5.39f's lossless rule — the tiles are
+            built from the role registry, and `lossless.test.ts` says so). */}
+        {taskRoles.length > 0 && (
+          <div className="adhoc">
+            <div className="eyebrow">Ad-hoc tasks</div>
+            {taskRoles.map((role) => {
+              const count = roleCounts[role.id] ?? 0;
+              return (
+                <button
+                  key={role.id}
+                  type="button"
+                  className="btn teal"
+                  onClick={() => role.route && navigate(linkFor(role.id, role.route))}
+                  title={`Open ${role.label}`}
+                >
+                  <Zap style={{ width: 16, height: 16 }} />
+                  {role.label}
+                  {(skeleton || count > 0) && (
+                    <span className="count-badge tn">{skeleton || countsLoading ? "…" : count}</span>
+                  )}
+                  <ExternalLink className="ext" />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="foot-note">
+          {skeleton ? (
+            <span className="row">
+              <Clock style={{ width: 12, height: 12 }} className="animate-pulse" />
+              Pulling live counts…
+            </span>
+          ) : (
+            <>
+              <span className="row">
+                <Zap style={{ width: 12, height: 12 }} />
+                Refreshes every 60s
+              </span>
+              <span>
+                {managerMode ? "Click a bar to open that role's escalated patients" : "Click a bar to open that role's dashboard"}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (!snapshot || (barData.length === 0 && taskRoles.length === 0)) {
     if (countsLoading || serverLoading) {
       // Skeleton bars: while live counts are being fetched, show a shimmer
@@ -347,12 +518,6 @@ export function DailyBurndown({
     }
     return null;
   }
-
-  const allClear =
-    managerMode &&
-    !countsLoading &&
-    barData.every((d) => d.current === 0) &&
-    taskRoles.every((r) => (roleCounts[r.id] ?? 0) === 0);
 
   return (
     <div className="space-y-6">

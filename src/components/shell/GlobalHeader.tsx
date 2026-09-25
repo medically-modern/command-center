@@ -36,16 +36,16 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Activity, ArrowRightLeft, BarChart3, ChevronDown, Grid3x3, KeyRound, ListChecks, LogOut, MessageSquare, Package, Monitor, Moon, Settings, Sliders, Stethoscope, Sun, Users } from "lucide-react";
+import { ArrowRightLeft, BarChart3, Grid3x3, KeyRound, LogOut, MessageSquare, Package, Settings, Stethoscope, Users } from "lucide-react";
 import { getUser, signOut } from "@/lib/shared/auth";
 import { GlobalSearch } from "./GlobalSearch";
-import CallConnectionBadge from "@/components/inboundCalls/CallConnectionBadge";
-import { useShellLayout } from "@/hooks/shell/useShellLayout";
+import { CallSettings } from "./CallSettings";
+import CallConnectionBadge, { useCallStatus } from "@/components/inboundCalls/CallConnectionBadge";
 import { useAppearance } from "@/hooks/shell/useAppearance";
 import { useTheme } from "@/hooks/shell/useTheme";
 import { THEMES } from "@/lib/shell/theme";
 import { useAccessContext } from "@/components/AccessProvider";
-import { hasAbility, isAdmin, isManagerOf } from "@/lib/shell/abilities";
+import { HOME_VIEW_LABEL, hasAbility, homeViewsOf, isAdmin, isManagerOf } from "@/lib/shell/abilities";
 import { useViewAs } from "@/lib/shell/viewAs";
 import { useCommsConfig, useInboxBadge } from "@/hooks/commsInbox/useInbox";
 import type { Ability } from "@/lib/accessStore";
@@ -115,7 +115,6 @@ const TABS: Tab[] = [
 export function GlobalHeader() {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
-  const [layout, setLayout] = useShellLayout();
   const { appearance, setAppearance } = useAppearance();
   const { theme, setTheme } = useTheme();
   const { email, config } = useAccessContext();
@@ -149,28 +148,35 @@ export function GlobalHeader() {
    */
   const commsConfig = useCommsConfig();
   const inboxBadge = useInboxBadge(commsConfig.ui && hasAbility(who, config, "comms"));
+  /**
+   * The dot on the gear (Brandon's `.sdot`) — the same reading the phone icon
+   * beside it draws, so the two cannot disagree; grey for somebody the line
+   * never rings. The sentence itself is inside the menu (`CallSettings`).
+   */
+  const call = useCallStatus();
   const [menu, setMenu] = useState(false);
   const menuBox = useRef<HTMLSpanElement>(null);
-  const [manage, setManage] = useState(false);
-  const manageBox = useRef<HTMLSpanElement>(null);
+
+  /** Brandon's `.who` line: who is signed in, what they are, which home view
+   *  they land on. The name is the Google one, then the configured one. */
+  const me = getUser();
+  const myName = me?.name || config.processors?.[email]?.name || email.split("@")[0] || "Signed in";
+  const myRole = isAdmin(email, config) ? "Admin" : isManagerOf(email, config) ? "Manager" : "Processor";
+  const viewLabel = homeViewsOf(who, config).map((v) => HOME_VIEW_LABEL[v]).join(" + ");
 
   useEffect(() => {
     if (!menu) return;
     const away = (e: MouseEvent) => {
-      if (menuBox.current && !menuBox.current.contains(e.target as Node)) setMenu(false);
+      // ⚠️ The pinned-numbers dialog is a portal OUTSIDE this box; a click in
+      // it must not read as a click away, or the dialog closes under the rep.
+      const t = e.target as Node;
+      if (menuBox.current && !menuBox.current.contains(t) && !(t instanceof Element && t.closest("[role=dialog]"))) {
+        setMenu(false);
+      }
     };
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);
   }, [menu]);
-
-  useEffect(() => {
-    if (!manage) return;
-    const away = (e: MouseEvent) => {
-      if (manageBox.current && !manageBox.current.contains(e.target as Node)) setManage(false);
-    };
-    document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
-  }, [manage]);
 
   return (
     <header className="gh">
@@ -195,7 +201,13 @@ export function GlobalHeader() {
               to={t.to}
               className={`tab${active ? " active" : ""}`}
               aria-current={active ? "page" : undefined}
-              title={n ? `${n} unresolved${inboxBadge?.over ? ` · ${inboxBadge.over} over 24h` : ""}` : undefined}
+              title={
+                n
+                  ? `${n} unresolved${inboxBadge?.over ? ` · ${inboxBadge.over} over 24h` : ""}`
+                  : t.key === "home"
+                    ? `My Dashboard — ${viewLabel}`
+                    : undefined
+              }
             >
               <Icon style={{ width: 15, height: 15 }} />
               <span className="lbl">{t.label}</span>
@@ -253,157 +265,102 @@ export function GlobalHeader() {
             aria-expanded={menu}
           >
             <Settings style={{ width: 16, height: 16 }} />
+            {/* Brandon's `.sdot`: the line's colour at a glance, on the gear —
+                the same reading as the phone icon beside it. */}
+            <span className={`sdot ${call.enabled ? call.tone : "grey"}`} aria-hidden="true" />
           </button>
           {menu && (
-            <div className="menu" role="menu">
-              {/* ⚠️⚠️ **THE LAYOUT TOGGLE IS GONE** (Josh, 2026-09-21: "remove
-                  switch to tlayout as it ws"). The redesign is the app now.
-                  The MECHANISM survives — `AppShell` still branches and
-                  `?layout=current` still works — so there is a way to compare
-                  if something ever looks wrong, but it is no longer a control
-                  anybody can land on by accident. ⚠️ `readLayout` migrates a
-                  stored "current" back to the redesign at boot, or the handful
-                  of browsers sitting in the old layout would have been stranded
-                  in it with no header and therefore no menu (§5.39d, the exact
-                  one-way door this project already paid for once). */}
-              {/* ⚠️ Appearance is a SEPARATE axis from the colour theme in the
-                  settings popover, not a seventh theme (§5.40) — and it is in
-                  BOTH menus for the layout toggle's reason: a scheme you cannot
-                  read is a scheme you must be able to leave from wherever you
-                  are. `?appearance=light` is the route from a page with neither
-                  menu. */}
-              <div className="eyebrow">Appearance</div>
-              <div className="seg" role="group" aria-label="Appearance">
-                {([
-                  ["light", "Light", Sun],
-                  ["dark", "Dark", Moon],
-                  ["system", "System", Monitor],
-                ] as const).map(([id, label, Icon]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className={appearance === id ? "on" : undefined}
-                    aria-pressed={appearance === id}
-                    onClick={() => setAppearance(id)}
-                  >
-                    <Icon style={{ width: 13, height: 13 }} />
-                    {label}
-                  </button>
-                ))}
+            <div className="menu settings" role="menu">
+              {/* His `.who` line: who is signed in, what they are, which home
+                  view they land on. The signed-in person, always — a borrow is
+                  named after it rather than impersonated (§5.39g). */}
+              <div className="who">
+                <span className="avatar">{myName[0]?.toUpperCase() || "?"}</span>
+                <div>
+                  <b className="small">{myName}</b>
+                  <div className="xs muted">
+                    {email || "Signed in"} · {myRole} · view: {viewLabel}
+                    {borrowedName ? ` · viewing ${borrowedName}` : ""}
+                  </div>
+                </div>
               </div>
-              <div className="divider" />
-              {/* ⚠️ **THE MANAGE ▾ MENU WAS REMOVED** (Josh, 2026-09-21: "also
-                  remove the manage tab / i think everything that exists there
-                  exists other places now"). Two of its three entries did NOT
-                  exist elsewhere, so they moved here rather than going with it:
-                  **System Management** had no other door at all, and
-                  **Access & permissions** had only the Users button beside this
-                  one — which is ADMIN-only, and `isAdmin` is true for every
-                  manager merely because `admins` is empty (§5.39c). The day
-                  somebody names the first admin, a manager who is not one would
-                  have lost `/access` entirely. Stage Manager really did have
-                  another door: it is a header tab. */}
-              {/* ⚠️ **GATED ON `managerish`, which the pre-2026-09-21 version of
-                  this section was NOT.** It already offered Pipeline Oversight
-                  and System Management to every processor — harmless for
-                  Oversight, which guards itself with "Managers only." — and the
-                  Manage ▾ menu that just folded into it WAS gated. Folding an
-                  admin-shaped entry into an ungated list is how a move becomes
-                  a widening, so the gate comes with them. Nothing is lost: the
-                  pages that guard themselves still do, and Stage Manager is
-                  ability-gated at its route either way. */}
-              {/* ⚠️ **Pipeline Oversight and Stage Manager came off on 2026-09-21**
-                  (Josh: "remove the pipeline oversight stage manager and
-                  stystmen =managment from the settings"). Stage Manager is a
-                  header TAB, so it lost nothing.
-                  ⚠️⚠️ **Oversight is the one that narrowed**, and it is worth
-                  knowing rather than discovering: its only remaining doors are
-                  the assignable `oversight` HOME VIEW (§5.39c) and the
-                  `/oversight` URL. A manager who has not been given that home
-                  view now has no route to it from the chrome. If that bites,
-                  the fix is a header tab, not a menu entry — this menu is
-                  settings now, not navigation.
-                  ⚠️ Access & permissions STAYS, and must: the Users button
-                  beside this menu is ADMIN-only, and `isAdmin` reads as
-                  manager-wide merely because `admins` is empty (§5.39c). The
-                  day somebody names the first admin, this is the one route a
-                  non-admin manager has. */}
+
+              {/* Calls — his status line, "Ring me", "Which calls ring me" and
+                  the ringtone, on the ring preferences that already exist
+                  (§5.13). The answerer gate stays in the badge file (§5.13b). */}
+              <CallSettings />
+
+              {/* ⚠️ NO "Texts" section. Brandon's menu carries "Notify me about
+                  new texts from my patients"; Josh, 2026-09-24: "dont build
+                  that yet". */}
+
+              {/* ⚠️ The ONE manager entry, still gated (§5.44). Access &
+                  permissions stays here because the Users button beside this
+                  menu is ADMIN-only, and `isAdmin` reads as manager-wide only
+                  while `admins` is empty (§5.39c). Oversight, System Management,
+                  Stage Manager, Daily operations and the Faxes section all left
+                  this menu on Josh's word (2026-09-21/22) — the top bar has
+                  them, or their door is recorded elsewhere (`lossless.test.ts`). */}
               {managerish && (
                 <>
-                  <div className="eyebrow">Manager</div>
-                  {/* ⚠️⚠️ **DAILY OPERATIONS IS COMMENTED OUT OF THIS MENU, NOT
-                      DELETED** (Josh, 2026-09-22: *"daily op[erations doesnt
-                      need to be in ui, just comment it out"*), the same day it
-                      was added here to keep Operations reachable after the
-                      Reports tab stopped opening it.
-                      ⚠️⚠️ **SO OPERATIONS HAS NO DOOR IN THE CHROME AT ALL** —
-                      its only routes are the `/system-mgmt?tab=operations` URL
-                      (a bookmark) and System Management's own Operations tab,
-                      which is itself only reachable by typing `/system-mgmt`
-                      since §5.44 took that off this menu. That is a deliberate
-                      narrowing on Josh's word, not the §5.39f failure: the tool
-                      is intact and the tab is live. Uncomment the button to put
-                      the door back; `lossless.test.ts` records the narrowing in
-                      place of a door, the way §5.44 does for Oversight.
-                      ⚠️ It is `/system-mgmt?tab=operations`, not `/operations`:
-                      that route is the blank Reports page now.
-                  <button
-                    className="opt"
-                    role="menuitem"
-                    onClick={() => { setMenu(false); navigate("/system-mgmt?tab=operations"); }}
-                  >
-                    <BarChart3 style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                    Daily operations
-                  </button>
-                  */}
-                  <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/access"); }}>
-                    <KeyRound style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                    Access &amp; permissions
-                  </button>
-                  <div className="divider" />
+                  <div className="sec">
+                    <div className="eyebrow">Manager</div>
+                    <button className="opt" role="menuitem" onClick={() => { setMenu(false); navigate("/access"); }}>
+                      <KeyRound style={{ width: 13, height: 13 }} />
+                      Access &amp; permissions
+                    </button>
+                  </div>
                 </>
               )}
-              {/* ⚠️ **THE FAXES SECTION WAS REMOVED on 2026-09-21** (Josh: "no
-                  need for the faxes section in settings i think either").
-                  Checked before removing, because §5.39c added `/fax` BESIDE
-                  `/fax-inbox` rather than replacing it and this menu was the
-                  only place both were listed:
-                    · `/fax-inbox` keeps a real door — the **FAX role bar**,
-                      which is clickable in both `DailyBurndown` and
-                      `OperationsTab` and is special-cased to open it (§4).
-                    · `/fax` had NO other door. Its function is not lost: the
-                      Communications hub's **Fax tab** already shows the sending
-                      office and its patients (§5.28), and Communications is a
-                      header tab. The route survives for a bookmark. */}
-              {/* ⚠️ **THE LOWER-LEFT FLOATING GEAR IS GONE** (Josh, 2026-09-21:
-                  "putt everything in the lower left setting into the upper
-                  right settings"). Everything it held is here: the appearance
-                  switch above, these six colour themes, and sign-out below. It
-                  was also the button the call-status notices kept covering
-                  (§5.39d) — a corner this menu cannot be pushed into. */}
-              <div className="divider" />
-              <div className="eyebrow">Theme</div>
-              <div className="swatches" role="group" aria-label="Colour theme">
-                {THEMES.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    title={t.label}
-                    aria-label={t.label}
-                    aria-pressed={theme === t.id}
-                    className={theme === t.id ? "on" : undefined}
-                    onClick={() => setTheme(t.id)}
-                  >
-                    <span className={`sw ${t.swatch}`} />
-                  </button>
-                ))}
+
+              {/* ⚠️ Appearance is a SEPARATE axis from the colour theme, not a
+                  seventh theme (§5.40) — his `segc` for Light · Dark · System,
+                  and the six swatches under it, which the mockup lists too
+                  (handoff line 166). `?appearance=light` is the route from a
+                  page with no menu. */}
+              <div className="sec">
+                <div className="eyebrow">Appearance</div>
+                <div className="segc sm" role="group" aria-label="Appearance">
+                  {([
+                    ["light", "Light"],
+                    ["dark", "Dark"],
+                    ["system", "System"],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={appearance === id ? "on" : undefined}
+                      aria-pressed={appearance === id}
+                      onClick={() => setAppearance(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="swatches" role="group" aria-label="Colour theme">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      title={t.label}
+                      aria-label={t.label}
+                      aria-pressed={theme === t.id}
+                      className={theme === t.id ? "on" : undefined}
+                      onClick={() => setTheme(t.id)}
+                    >
+                      <span className={`sw ${t.swatch}`} />
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="divider" />
-              <div className="eyebrow">{getUser()?.email || "Signed in"}</div>
-              <button className="opt" role="menuitem" onClick={signOut}>
-                <LogOut style={{ width: 13, height: 13, marginRight: 6, verticalAlign: -2 }} />
-                Sign out
-              </button>
+
+              {/* Sign out is HERE, where nothing can cover it (§5.39d). */}
+              <div className="sec">
+                <button className="opt" role="menuitem" onClick={signOut}>
+                  <LogOut style={{ width: 13, height: 13 }} />
+                  Sign out
+                </button>
+              </div>
             </div>
           )}
         </span>

@@ -66,6 +66,92 @@ async function gql<T>(
 
 // ── Board definitions ────────────────────────────────────────
 
+/**
+ * The columns the HEADER search matches beyond the name, phone and DOB —
+ * Brandon's "member ID, order #, doctor…" placeholder made true (Josh,
+ * 2026-09-24: *"wider header search - yes i want it"*). Each key is one FIELD a
+ * rep might type; a board names every column that holds it, because the same
+ * fact is spread over several (Profile Send Off has four member-id columns).
+ *
+ * ⚠️ These columns are both SEARCHED (`fieldsLiteral`) and READ
+ * (`searchColumnIds`): the drop-down prints WHICH field matched — "Member ID
+ * <b>W123…</b>" — and `searchHit` works that caption out from the fetched
+ * values, so a column asked and not fetched is a match with no explanation.
+ *
+ * ⚠️ Every id here was read off the live board (DTC Intake and Secondary
+ * Claims, 2026-09-24) or comes from the slice's own `COL` map — never inferred
+ * from another board. Member ID alone is `text_mm1x2qk2` on four boards,
+ * `text_mkvp6zfg` on Subscription and `text_mktat89m` on the other two; a
+ * wrong id is not an error, it is a field that never matches and never prints
+ * (§5.11's trap).
+ */
+export interface SearchFieldCols {
+  memberId?: string[];
+  doctor?: string[];
+  clinic?: string[];
+  doctorPhone?: string[];
+  insurance?: string[];
+  /** The three ORDER identifiers, on the New Order Board only (§5.35). */
+  orderNumber?: string[];
+  poNumber?: string[];
+  tracking?: string[];
+}
+
+/** The fetched values of a board's `SearchFieldCols`, blanks dropped. */
+export interface SearchFieldValues {
+  memberIds: string[];
+  doctors: string[];
+  clinics: string[];
+  doctorPhones: string[];
+  insurances: string[];
+  orderNumbers: string[];
+  poNumbers: string[];
+  trackingNumbers: string[];
+}
+
+/** Every column a board's search fields name, once each. */
+export function searchFieldColumnIds(fields: SearchFieldCols | undefined): string[] {
+  if (!fields) return [];
+  return [
+    ...new Set([
+      ...(fields.memberId ?? []),
+      ...(fields.doctor ?? []),
+      ...(fields.clinic ?? []),
+      ...(fields.doctorPhone ?? []),
+      ...(fields.insurance ?? []),
+      ...(fields.orderNumber ?? []),
+      ...(fields.poNumber ?? []),
+      ...(fields.tracking ?? []),
+    ]),
+  ];
+}
+
+/**
+ * Read a row's search-field values off its column values. Pure — `colVal` is
+ * whatever the row can answer — so the caption rule can be tested without a
+ * board.
+ */
+export function searchFieldValues(
+  fields: SearchFieldCols | undefined,
+  colVal: (id: string) => string,
+): SearchFieldValues | undefined {
+  if (!fields) return undefined;
+  const read = (ids?: string[]) =>
+    (ids ?? [])
+      .map((id) => colVal(id).trim())
+      .filter((v) => v.length > 0);
+  return {
+    memberIds: read(fields.memberId),
+    doctors: read(fields.doctor),
+    clinics: read(fields.clinic),
+    doctorPhones: read(fields.doctorPhone),
+    insurances: read(fields.insurance),
+    orderNumbers: read(fields.orderNumber),
+    poNumbers: read(fields.poNumber),
+    trackingNumbers: read(fields.tracking),
+  };
+}
+
 export interface BoardDef {
   boardId: number;
   boardName: string;
@@ -108,6 +194,17 @@ export interface BoardDef {
   stageAdvancerColId: string | null;
   /** Column ID for "Days Since Stage Started" status */
   daysSinceStageColId: string | null;
+  /**
+   * The board's stage-start DATE column, for Reports & Metrics' average days in
+   * stage (§5.52). Same ids as `lib/patient/infoStrip.ts` `INFO_COL[…].stageStart`
+   * — `reportsRules.test.ts` pins the two together, because a drift here reads
+   * as a wrong average with nothing erroring. `null` on Profile Send Off, whose
+   * stage start is the item's creation date (Brandon's own rule, §5.46f), and on
+   * the boards that are not onboarding stages. Optional so a test fixture need
+   * not carry it; the pinning test is what catches an omission on a board that
+   * HAS one. One more column on a query that already runs — never a second read.
+   */
+  stageStartColId?: string | null;
   /** Column ID for notes (long_text or text) */
   notesColId: string | null;
   /**
@@ -157,6 +254,13 @@ export interface BoardDef {
    * error (§5.11's trap).
    */
   extraColumnIds?: string[];
+  /**
+   * What the header search matches beyond name, phone and DOB — see
+   * `SearchFieldCols`. Absent on a board is "nothing more to search there";
+   * every patient board declares one (`searchFields.test.ts` pins that), and
+   * the order board declares only its identifiers.
+   */
+  searchFields?: SearchFieldCols;
 }
 
 /**
@@ -222,10 +326,20 @@ export const BOARDS: BoardDef[] = [
     phoneColId: "phone_mkwrkc73",
     stageAdvancerColId: "color_mkyw6287",
     daysSinceStageColId: "color_mkxn3nm5",
+    stageStartColId: "date_mkzc4p2m",
     notesColId: "long_text_mm1b4jf7",
     notesColType: "long_text",
     nextActionDateColId: null,
     dobColId: "text_mkzsyzmf",
+    // Read off the live board 2026-09-24. Three member-id columns and three
+    // primary-insurance ones, because this board has grown them over time.
+    searchFields: {
+      memberId: ["text_mktat89m", "text_mm1fvf24", "text_mm1f941y"],
+      doctor: ["text_mm1gg2ad"],
+      clinic: ["short_textan8zbfqx"],
+      doctorPhone: ["phone_mm1g1ne5"],
+      insurance: ["color_mm164qr0", "color_mm1gdfjy", "color_mkxkpx71", "text_mkyy7hv2"],
+    },
   },
   {
     // Second source for Patient Questions (§7); its patients were unfindable
@@ -248,10 +362,19 @@ export const BOARDS: BoardDef[] = [
     phoneColId: "phone_mm1znnww",
     stageAdvancerColId: null,
     daysSinceStageColId: "color_mm29awe7",
+    stageStartColId: null,
     notesColId: "long_text_mkzrx7ke",
     notesColType: "long_text",
     nextActionDateColId: "date_mkxpynj",
     dobColId: "text_mkp3y5ax",
+    // Read off the live board 2026-09-24 (Primary Payor · Secondary Payer ·
+    // the two member ids · Doctor · Dr. Phone). No clinic column here.
+    searchFields: {
+      memberId: ["text_mktat89m", "text_mm3a7ega"],
+      doctor: ["text_mkxrh4a4"],
+      doctorPhone: ["phone_mm1zy789"],
+      insurance: ["color_mm3a93ek", "color_mkxq1a2p"],
+    },
   },
   {
     boardId: 18407459988,
@@ -266,6 +389,7 @@ export const BOARDS: BoardDef[] = [
     altPhoneColIds: ["phone_mm72r19q"],
     stageAdvancerColId: null,
     daysSinceStageColId: null,
+    stageStartColId: null,
     // ⚠️ Was null until 2026-09-01, which read as "this board has no notes".
     // It does — Subscription Patient Notes — and the Communications Hub's
     // dossier reads notes through this field, so a Subscription patient's pane
@@ -276,6 +400,14 @@ export const BOARDS: BoardDef[] = [
     notesColType: "text",
     nextActionDateColId: null,
     dobColId: "text_mkvdefh1",
+    // `subscription/mondayApi` COL — memberId1 · memberId2 · stediMemberId ·
+    // doctor · doctorPhone · primary · secondary · stediPlanName.
+    searchFields: {
+      memberId: ["text_mkvp6zfg", "text_mm25cpx6", "text_mm2phve4"],
+      doctor: ["text_mkxn3wza"],
+      doctorPhone: ["phone_mkxnv7e5"],
+      insurance: ["color_mm254qxj", "color_mm25cr82", "dropdown_mm2n7ps1"],
+    },
   },
   {
     boardId: 18406352652,
@@ -302,10 +434,21 @@ export const BOARDS: BoardDef[] = [
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: null,
     daysSinceStageColId: null,
+    stageStartColId: null,
     notesColId: "text_mm389fs",
     notesColType: "text",
     nextActionDateColId: null,
     dobColId: "text_mm1xvxst",
+    // `profile/mondayApi` COL. The form's own "Provided" doctor name and
+    // clinic phone ride along: on a DTC lead they are the ONLY doctor on the
+    // row until Select Correct Provider fills the verified ones (§5.20).
+    searchFields: {
+      memberId: ["text_mm1x2qk2", "text_mm1xaccx", "text_mm4t8gbq", "text_mm5ztdq9"],
+      doctor: ["text_mm1x46et", "text_mm5z586h"],
+      clinic: ["dropdown_mm1xbvas"],
+      doctorPhone: ["phone_mm1xz8c0", "text_mm5zjh88"],
+      insurance: ["color_mm1xg10n", "color_mm24ap4j"],
+    },
   },
   {
     boardId: 18406060017,
@@ -321,10 +464,19 @@ export const BOARDS: BoardDef[] = [
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1wyr92",
     daysSinceStageColId: "color_mm1wwm05",
+    stageStartColId: "date_mm1w6jeq",
     notesColId: "text_mm6vevjf",
     notesColType: "text",
     nextActionDateColId: "date_mm1wadgs",
     dobColId: "text_mm1xvxst",
+    // `masheke/mondayApi` COL.
+    searchFields: {
+      memberId: ["text_mm1x2qk2", "text_mm1xaccx"],
+      doctor: ["text_mm1x46et"],
+      clinic: ["dropdown_mm1xbvas"],
+      doctorPhone: ["phone_mm1xz8c0"],
+      insurance: ["color_mm1x157j"],
+    },
   },
   {
     boardId: 18410601299,
@@ -344,10 +496,21 @@ export const BOARDS: BoardDef[] = [
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
+    stageStartColId: "date_mm1w6jeq",
     notesColId: "text_mm6vzc7q",
     notesColType: "text",
     nextActionDateColId: null,
     dobColId: "text_mm1xvxst",
+    // `samantha/mondayApi` COL — plus the two plan-name dropdowns Stedi fills
+    // in, so "Empire" finds a patient whose plan is Empire BCBS whatever
+    // Primary Insurance reads.
+    searchFields: {
+      memberId: ["text_mm1x2qk2", "text_mm1xaccx"],
+      doctor: ["text_mm1x46et"],
+      clinic: ["dropdown_mm1xbvas"],
+      doctorPhone: ["phone_mm1xz8c0"],
+      insurance: ["color_mm1x157j", "dropdown_mm2w11t4", "dropdown_mm5ex8wx"],
+    },
   },
   {
     boardId: 18410804557,
@@ -365,10 +528,19 @@ export const BOARDS: BoardDef[] = [
     altPhoneColIds: ["phone_mm7265hp"],
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
+    stageStartColId: "date_mm1w6jeq",
     notesColId: "text_mm6vqq2k",
     notesColType: "text",
     nextActionDateColId: null,
     dobColId: "text_mm1xvxst",
+    // `welcomeCall/mondayApi` COL.
+    searchFields: {
+      memberId: ["text_mm1x2qk2", "text_mm1xaccx"],
+      doctor: ["text_mm1x46et"],
+      clinic: ["dropdown_mm1xbvas"],
+      doctorPhone: ["phone_mm1xz8c0"],
+      insurance: ["color_mm1x157j", "dropdown_mm2wrzrk"],
+    },
   },
 ];
 
@@ -400,6 +572,13 @@ export interface SystemPatient {
    * reads as the search misfiring rather than as the answer.
    */
   matchedBy?: "phone" | "partial";
+  /**
+   * The board's search-field values (member ids, doctor, clinic, doctor phone,
+   * insurance — or an order's identifiers), read so the header search can say
+   * WHICH field a row matched on (`searchHit`). Undefined on a board that
+   * declares no `searchFields`.
+   */
+  fields?: SearchFieldValues;
   boardId: number;
   boardName: string;
   groupId: string;
@@ -439,6 +618,14 @@ export interface SystemPatient {
   isCompleted: boolean;
   /** "Days Since Stage Started" label, e.g. "0–2 Days", "30+ Days" */
   daysSinceStage: string;
+  /**
+   * The stage-start DATE (`YYYY-MM-DD`, Eastern) from `BoardDef.stageStartColId`,
+   * blank on a board without one. Reports' days-in-stage (§5.52) reads this
+   * first and falls back to `createdAt`, which is Profile Send Off's rule.
+   */
+  stageStart: string;
+  /** Monday's `created_at` — a real UTC instant (§5.15's one exception). */
+  createdAt: string;
   /** Most recent notes text */
   notes: string;
   /** Raw Stage Advancer text from Monday (e.g. "Benefits / SoS") */
@@ -452,6 +639,8 @@ export interface SystemPatient {
 interface RawItem {
   id: string;
   name: string;
+  /** ISO instant — Profile Send Off's stage start (§5.52). */
+  created_at?: string;
   group: { id: string; title: string };
   column_values: { id: string; text: string | null; value: string | null }[];
 }
@@ -486,9 +675,17 @@ export function searchColumnIds(board: BoardDef): string[] {
   if (board.escalationNotesColId) colIds.push(board.escalationNotesColId);
   if (board.stageAdvancerColId) colIds.push(board.stageAdvancerColId);
   if (board.daysSinceStageColId) colIds.push(board.daysSinceStageColId);
+  if (board.stageStartColId) colIds.push(board.stageStartColId);
   if (board.notesColId) colIds.push(board.notesColId);
   if (board.nextActionDateColId) colIds.push(board.nextActionDateColId);
   if (board.extraColumnIds) colIds.push(...board.extraColumnIds);
+  /* The header search's extra fields ride the same read, for the same reason
+     the DOB does: the drop-down prints which one matched, and a column searched
+     but not fetched is a row with no explanation. Once each — a board may
+     name a column twice across two fields, and Monday returns it once. */
+  for (const id of searchFieldColumnIds(board.searchFields)) {
+    if (!colIds.includes(id)) colIds.push(id);
+  }
   return colIds;
 }
 
@@ -504,6 +701,7 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
           items {
             id
             name
+            created_at
             group { id title }
             column_values(ids: $cols) { id text value }
           }
@@ -526,7 +724,7 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
         query ($cursor: String!, $cols: [String!]) {
           next_items_page(limit: ${PAGE}, cursor: $cursor) {
             cursor
-            items { id name group { id title } column_values(ids: $cols) { id text value } }
+            items { id name created_at group { id title } column_values(ids: $cols) { id text value } }
           }
         }
       `;
@@ -609,6 +807,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   const daysSinceStage = board.daysSinceStageColId
     ? colVal(board.daysSinceStageColId)
     : "";
+  const stageStart = board.stageStartColId ? colVal(board.stageStartColId) : "";
   const notesRaw = board.notesColId
     ? colVal(board.notesColId)
     : "";
@@ -661,6 +860,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     name: item.name,
     phone,
     dob,
+    fields: searchFieldValues(board.searchFields, colVal),
     subtitle: order?.subtitle,
     boardId: board.boardId,
     boardName: board.boardName,
@@ -675,6 +875,8 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     hasPage,
     isCompleted,
     daysSinceStage,
+    stageStart,
+    createdAt: item.created_at ?? "",
     notes,
     stageAdvancerText,
     nextActionDate,
@@ -993,6 +1195,74 @@ export function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string | 
   return `{rules: [${list.join(", ")}], operator: and}`;
 }
 
+/** One `contains_text` rule, and the OR of several — shared by the field pass. */
+const containsRule = (columnId: string, value: string) =>
+  `{column_id: ${JSON.stringify(columnId)}, compare_value: [${JSON.stringify(value)}], operator: contains_text}`;
+const anyOf = (rules: string[]) => `{rules: [${rules.join(", ")}], operator: or}`;
+
+/**
+ * Fewest digits a typed number needs before it is also matched against MEMBER
+ * IDS. Three digits (the phone floor) inside a member id is noise — most ids
+ * are nine or more digits long, so a three-digit fragment sits inside a large
+ * share of them. Brandon's own search uses four; so does this.
+ */
+export const FIELD_MIN_MEMBER_DIGITS = 4;
+
+/**
+ * The SECOND question the header search asks each board: the same query
+ * against the board's search fields — member ids, doctor, clinic, doctor
+ * phone, insurance (`SearchFieldCols`). Returns null when the board has
+ * nothing to ask, and `fetchLiveRows` then sends no second alias for it.
+ *
+ * ⚠️ **A second alias, never more rules on the first.** Name terms are ANDed
+ * (`rulesLiteral`), and Monday's `query_params` do not nest, so "jose delgado
+ * AND-in-the-name, OR anywhere in these columns" cannot be one rule list. Two
+ * aliases in ONE request cost one round trip, and `fetchLiveRows` de-duplicates
+ * a row both returned.
+ *
+ * ⚠️ **A multi-word query is matched as the PHRASE** — "health plans" against
+ * "Health Plans Inc (PHCS)" — not word by word. Word-by-word would need an AND
+ * per column, i.e. an alias per column per board (forty-odd); and a two-word
+ * query is nearly always a patient's NAME, which the first alias already
+ * covers. The whole-phrase match is what Brandon's own search does.
+ *
+ * ⚠️ **Digits ask the phone-shaped fields only** — doctor phone, and member
+ * ids once there are `FIELD_MIN_MEMBER_DIGITS` of them. Insurance, doctor and
+ * clinic are words; a digits query asked of them can only match nothing.
+ * ⚠️ A DOB query asks nothing here: it is one column, and it is on the first
+ * alias.
+ *
+ * ⚠️ **The ORDER board asks nothing here, and its patient fields are
+ * deliberately not searched.** Its identifiers already ride `rulesLiteral`
+ * (the typed query's own alias, §5.35), so a second alias would ask the same
+ * question twice; and an order is not a patient record — a doctor's name
+ * returning a hundred of their patients' reorders would spend the drop-down on
+ * rows that fold into people already on it (`foldRedundantOrders`).
+ */
+export function fieldsLiteral(board: BoardDef, rules: LiveSearchRules): string | null {
+  const f = board.searchFields;
+  if (!f || isOrderRow(board) || rules.kind === "dob") return null;
+  if (rules.kind === "phone") {
+    const cols = [
+      ...(f.doctorPhone ?? []),
+      ...(rules.digits.length >= FIELD_MIN_MEMBER_DIGITS ? f.memberId ?? [] : []),
+    ];
+    if (!cols.length) return null;
+    /* Both needles — as typed, and the last ten of an 11-digit number — for
+       the same reason the phone columns take both (`phoneNeedlesFor`). */
+    const needles = phoneNeedlesFor(rules.digits);
+    return anyOf(needles.flatMap((d) => cols.map((c) => containsRule(c, d))));
+  }
+  const cols = [
+    ...(f.memberId ?? []),
+    ...(f.doctor ?? []),
+    ...(f.clinic ?? []),
+    ...(f.insurance ?? []),
+  ];
+  if (!cols.length) return null;
+  return anyOf(cols.map((c) => containsRule(c, rules.terms.join(" "))));
+}
+
 /**
  * The same name terms, ORed instead of ANDed — the LOOSE pass (§5.44).
  *
@@ -1152,11 +1422,21 @@ export async function searchPatientsLive(
    * the current query from a partial answer to one the rep has typed past.
    */
   onPartial?: (rows: SystemPatient[]) => void,
+  /**
+   * `fields: true` also asks every board's search FIELDS — member ids, doctor,
+   * clinic, doctor phone, insurance (`fieldsLiteral`) — in the same request.
+   * The header search passes it; System Management's own search box and the
+   * Communications hub's find-a-patient pane do not, and are unchanged.
+   */
+  opts?: { fields?: boolean },
 ): Promise<SystemPatient[]> {
   const rules = liveSearchRules(query);
   if (!rules || !hasToken()) return [];
 
-  let named = await fetchLiveRows((b) => rulesLiteral(b, rules), signal);
+  /* ⚠️ The field pass rides the FIRST request only. The loose pass loosens the
+     NAME, and the same-number pass asks by NUMBER — neither has a field half. */
+  const fieldsFor = opts?.fields ? (b: BoardDef) => fieldsLiteral(b, rules) : undefined;
+  let named = await fetchLiveRows((b) => rulesLiteral(b, rules), signal, fieldsFor);
   /* ⚠️ Only when there IS something to show. An empty first pass is exactly
      the case the loose pass exists for, so painting "No patient matches" here
      would flash the one answer this search must not give prematurely. */
@@ -1246,26 +1526,35 @@ export async function searchPatientsLive(
   return rows;
 }
 
-/** One aliased request across every board, mapped to rows. */
+/**
+ * One aliased request across every board, mapped to rows.
+ *
+ * `fieldsFor`, when given, is a SECOND `query_params` per board — the header
+ * search's field pass (`fieldsLiteral`) — sent as its own alias in the same
+ * request. A row both aliases return is kept once, from the first.
+ */
 async function fetchLiveRows(
   literalFor: (board: BoardDef) => string | null,
   signal?: AbortSignal,
+  fieldsFor?: (board: BoardDef) => string | null,
 ): Promise<SystemPatient[]> {
   /* ⚠️ A board may DECLINE a query — a DOB search skips the boards with no DOB
      column (§5.44). The alias index stays the board's index in
      `LIVE_SEARCH_BOARDS` rather than its position in this filtered list, or the
      results come back attached to the wrong board and every row is mapped with
      another board's column ids: not an error, just wrong data. */
-  const asked = LIVE_SEARCH_BOARDS.map((b, i) => ({ b, i, literal: literalFor(b) })).filter(
-    (a): a is { b: BoardDef; i: number; literal: string } => a.literal !== null,
-  );
+  const asked = LIVE_SEARCH_BOARDS.map((b, i) => ({
+    b,
+    i,
+    literal: literalFor(b),
+    fields: fieldsFor?.(b) ?? null,
+  })).filter((a) => a.literal !== null || a.fields !== null);
   // Nothing can answer this question. An empty `query { }` is a syntax error,
   // and "no board can be asked" is an empty result, not a failure.
   if (!asked.length) return [];
 
-  const aliases = asked.map(
-    ({ b, i, literal }) => `
-      b${i}: boards(ids: [${b.boardId}]) {
+  const block = (alias: string, b: BoardDef, literal: string) => `
+      ${alias}: boards(ids: [${b.boardId}]) {
         items_page(limit: ${LIVE_SEARCH_PER_BOARD}, query_params: ${literal}) {
           items {
             id
@@ -1274,8 +1563,11 @@ async function fetchLiveRows(
             column_values(ids: ${JSON.stringify(searchColumnIds(b))}) { id text value }
           }
         }
-      }`,
-  );
+      }`;
+  const aliases = asked.flatMap(({ b, i, literal, fields }) => [
+    ...(literal !== null ? [block(`b${i}`, b, literal)] : []),
+    ...(fields !== null ? [block(`x${i}`, b, fields)] : []),
+  ]);
   const data = await gql<Record<string, { items_page: { items: RawItem[] } }[]>>(
     `query { ${aliases.join("\n")} }`,
     {},
@@ -1284,8 +1576,10 @@ async function fetchLiveRows(
 
   const rows: SystemPatient[] = [];
   asked.forEach(({ b, i }) => {
-    const items = data[`b${i}`]?.[0]?.items_page?.items ?? [];
-    const mapped = items.map((item) => mapToSystemPatient(item, b));
+    const primary = data[`b${i}`]?.[0]?.items_page?.items ?? [];
+    const seen = new Set(primary.map((it) => it.id));
+    const extra = (data[`x${i}`]?.[0]?.items_page?.items ?? []).filter((it) => !seen.has(it.id));
+    const mapped = [...primary, ...extra].map((item) => mapToSystemPatient(item, b));
     // Monday answers in board order — by group, then position — which on the
     // order board is roughly OLDEST first. A patient ringing about an order
     // means their latest one, and `rankLiveResults` sorts stably, so ordering

@@ -155,7 +155,7 @@ function patient(over: Partial<SystemPatient>): SystemPatient {
     id: "1", name: "Jane Doe", phone: "", dob: "", boardId: MASHEKE, boardName: "Medical Evaluation",
     groupId: MASHEKE_DONE, groupTitle: "Completed", roleRoute: "", pipelineStage: "Completed",
     escalated: false, escalationText: "", escalationLevel: null, escalationNotes: "", hasPage: false, isCompleted: true,
-    daysSinceStage: "", notes: "", stageAdvancerText: "Completed", nextActionDate: "",
+    daysSinceStage: "", notes: "", stageAdvancerText: "Completed", nextActionDate: "", stageStart: "", createdAt: "",
     ...over,
   };
 }

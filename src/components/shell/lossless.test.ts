@@ -130,8 +130,32 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     // /fax has NO door left. That is accepted, not overlooked: its function —
     // an inbound fax joined to the sending office and that office's patients —
     // is the Communications hub's Fax tab (§5.28), which is a header tab.
-    expect(live(read("App.tsx")), "the route is gone as well").toContain('path="/fax"');
+    // ⚠️ And from 2026-09-24 it is ALSO /fax-inbox itself: the combined bar
+    // BECAME the FAX bar's page (pixel-match Phase 5), so /fax is a redirect
+    // there, query preserved, rather than a second copy of the same screen.
+    const app = live(read("App.tsx"));
+    expect(app, "the route is gone as well").toContain('path="/fax"');
+    expect(app, "/fax is a second copy of the fax screen again").toMatch(/path="\/fax" element=\{<FaxRedirect/);
+    expect(app, "the FAX bar opens something other than the combined screen").toMatch(
+      /path="\/fax-inbox" element=\{<FaxBarPage/,
+    );
     expect(live(read("hooks/commsHub/useHubData.ts")), "the hub lost its fax list").toContain("fax");
+  });
+
+  it("⚠️ the classic fax list answers at /fax-inbox/classic with NO door, until Josh says", () => {
+    // PIXEL_MATCH_PLAN.md Phase 5: "the old page stays reachable until you
+    // say". Every function it has — pages of 50, Mark read / unread, View,
+    // Download — is on the new screen, so this is Josh's escape hatch while he
+    // compares the two, not a rep's door. Recorded here rather than linked.
+    const app = live(read("App.tsx"));
+    expect(app).toMatch(/path="\/fax-inbox\/classic" element=\{<FaxInboxClassicPage/);
+    expect(header()).not.toContain("/fax-inbox/classic");
+    expect(live(read("components/dashboard/DailyBurndown.tsx"))).not.toContain("/fax-inbox/classic");
+    // And the new page carries the classic list's function, not just its route.
+    const fax = live(read("pages/FaxBarPage.tsx"));
+    for (const fn of ["fetchInboundFaxes(", "setFaxRead(", "fetchFaxBlobUrl(", "a.download", "Load more"]) {
+      expect(fax, `the new fax screen lost ${fn}`).toContain(fn);
+    }
   });
 
   it("⚠️⚠️ Operations has NO door in the chrome, and this is where that is recorded", () => {
@@ -152,13 +176,16 @@ describe("⚠️ every manager tool still has a door in the redesign", () => {
     expect(h, "Daily operations is back on the settings menu").not.toContain(
       'navigate("/system-mgmt?tab=operations")',
     );
-    // And /operations is still not Operations, so the tab is not a door either:
-    // the blank page, or — with the Communications inbox switched on — the
-    // Communications SLA card (COMMS_INBOX_PLAN.md, Josh's D8), which borrows
-    // nothing from Operations.
+    // And /operations is still not Operations, so the tab is not a door either.
+    // Since 2026-09-25 it is Brandon's Reports & Metrics page (§5.52): the
+    // tracker link, the pipeline tiles and the queue bars — which ARE
+    // `useRoleCounts`, the same numbers as the burndown — plus the
+    // Communications SLA card while the Inbox is on. It borrows nothing from
+    // Operations: no baseline, no `OperationsTab`.
     const page = live(read("pages/OperationsPage.tsx"));
-    expect(page).toContain("No reports available yet");
-    expect(page, "the Reports tab is borrowing Operations again").not.toContain("<OperationsTab");
+    expect(page).toContain("Patient Pipeline Tracker");
+    expect(page).toContain("useRoleCounts(");
+    expect(page, "the Reports tab is borrowing Operations again").not.toContain("OperationsTab");
     // The tool itself is untouched and still wired into System Management —
     // which is the whole of what makes the narrowing acceptable.
     expect(sysMgmt()).toContain('label="Operations"');

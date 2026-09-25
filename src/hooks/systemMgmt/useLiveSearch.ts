@@ -48,7 +48,18 @@ export interface LiveSearchState {
   refresh: () => void;
 }
 
-export function useLiveSearch(query: string): LiveSearchState {
+export interface LiveSearchOptions {
+  /**
+   * Also match the boards' search FIELDS — member ids, doctor, clinic, doctor
+   * phone, insurance, an order's identifiers (`fieldsLiteral`). The header
+   * search sets it; System Management's search box and the Communications
+   * hub's find-a-patient pane leave it off and are exactly what they were.
+   */
+  fields?: boolean;
+}
+
+export function useLiveSearch(query: string, opts: LiveSearchOptions = {}): LiveSearchState {
+  const fields = !!opts.fields;
   const [results, setResults] = useState<SystemPatient[]>([]);
   const [searchedQuery, setSearchedQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -91,14 +102,19 @@ export function useLiveSearch(query: string): LiveSearchState {
          the first. The merged set replaces this a moment later.
          ⚠️ Guarded by the SAME generation check as the final answer — a partial
          answer to a query the rep has typed past must not paint either. */
-      const rows = await searchPatientsLive(q, controller.signal, (partial) => {
-        if (gen !== generation.current) return;
-        setResults(rankLiveResults(partial, q));
-        setSearchedQuery(q);
-        /* ⚠️ `searching` stays TRUE: rows are on screen and more may still
-           arrive, and the spinner is the only thing saying so. Turning it off
-           here would report a partial answer as the whole one. */
-      });
+      const rows = await searchPatientsLive(
+        q,
+        controller.signal,
+        (partial) => {
+          if (gen !== generation.current) return;
+          setResults(rankLiveResults(partial, q));
+          setSearchedQuery(q);
+          /* ⚠️ `searching` stays TRUE: rows are on screen and more may still
+             arrive, and the spinner is the only thing saying so. Turning it off
+             here would report a partial answer as the whole one. */
+        },
+        fields ? { fields: true } : undefined,
+      );
       if (gen !== generation.current) return; // superseded
       setResults(rankLiveResults(rows, q));
       setSearchedQuery(q);
@@ -110,7 +126,7 @@ export function useLiveSearch(query: string): LiveSearchState {
     } finally {
       if (gen === generation.current) setSearching(false);
     }
-  }, []);
+  }, [fields]);
 
   // Debounced search on every query change.
   useEffect(() => {

@@ -52,14 +52,20 @@ import { cn } from "@/lib/utils";
  *  spend there in one go: the provision deadline plus the start deadline. */
 export const STUCK_ELSEWHERE_MS = 45_000;
 
-export default function CallConnectionBadge({
-  className,
-  compact = false,
-}: {
-  className?: string;
-  /** The global header's icon-only form (§5.39c). */
-  compact?: boolean;
-}) {
+export type CallTone = "green" | "amber" | "red" | "grey";
+
+/**
+ * Where this browser stands with the line — ONE reading, shared by the two
+ * badge forms and by the settings menu's Calls section (§5.52, Brandon's
+ * `.status` line and the dot on the gear).
+ *
+ * ⚠️ **This is the one place `canAnswerCalls` is asked** (`shellRemovals.test.ts`
+ * pins it): a second copy is how somebody who was never assigned gets a phone
+ * icon, or how an assigned person stops getting one and never learns their
+ * line is down. The settings menu imports THIS rather than re-deriving it.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- the gate must live beside the badge (shellRemovals.test.ts)
+export function useCallStatus() {
   const { email, config } = useAccessContext();
   const phone = useSoftphone();
   const enabled = !authRequired() || canAnswerCalls(email, config);
@@ -83,8 +89,6 @@ export default function CallConnectionBadge({
     return () => clearTimeout(id);
   }, [followerWaiting]);
 
-  if (!enabled) return null;
-
   const reg = phone.registration;
   const connected = reg === "registered";
   const here = connected && phone.leader;
@@ -92,7 +96,7 @@ export default function CallConnectionBadge({
   const stuck = stuckElsewhere && followerWaiting;
   const pending = !stuck && (reg === "registering" || (reg === "off" && !settled));
 
-  let tone: "green" | "amber" | "red" | "grey" = "grey";
+  let tone: CallTone = "grey";
   let label = "Not connected for calls";
   let detail: string | null = phone.registrationError;
   if (here) {
@@ -119,13 +123,30 @@ export default function CallConnectionBadge({
     label = "Not connected for calls";
   }
 
+  // ⚠️ The phone IS the takeover button when another tab holds the line —
+  // Josh's "a button that moves to this tab". When this tab already has it
+  // there is nothing to move, so it is inert and only reports.
+  const canTake = (elsewhere || stuck) && !phone.call;
+
+  return { phone, enabled, tone, label, detail, connected, pending, elsewhere, stuck, canTake };
+}
+
+export default function CallConnectionBadge({
+  className,
+  compact = false,
+}: {
+  className?: string;
+  /** The global header's icon-only form (§5.39c). */
+  compact?: boolean;
+}) {
+  const { phone, enabled, tone, label, detail, connected, pending, elsewhere, stuck, canTake } =
+    useCallStatus();
+
+  if (!enabled) return null;
+
   const StateIcon = pending ? Loader2 : connected ? PhoneCall : PhoneOff;
 
   if (compact) {
-    // ⚠️ The phone IS the takeover button when another tab holds the line —
-    // Josh's "a button that moves to this tab". When this tab already has it
-    // there is nothing to move, so it is inert and only reports.
-    const canTake = (elsewhere || stuck) && !phone.call;
     return (
       <span className={cn("cc-phone", className)} role="status">
         <button

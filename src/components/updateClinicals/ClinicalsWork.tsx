@@ -20,6 +20,7 @@
  * are deliberately not gated — a running record is not the profile.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/subscription/useMondayPatients";
 import { formatDateMDY } from "@/lib/subscription/workflow";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
@@ -44,6 +45,8 @@ import {
   hasToken as mnHasToken,
 } from "@/lib/masheke/mondayApi";
 import { returnToEvaluateVerified } from "@/lib/masheke/mondayWrite";
+import { BOARD_ID as MN_BOARD_ID } from "@/lib/masheke/mondayApi";
+import { BOARD_ID as SUB_BOARD_ID } from "@/lib/subscription/mondayApi";
 import { mondayItemToPatient as mnItemToPatient } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -513,6 +516,15 @@ function PatientClinicalsCard({ patient }: { patient: ClinicalsRow }) {
             )}
           </div>
         )}
+        {/* His uc-head's Profile button (pixel-match Phase 5): the patient
+            screen for this record — a link, on both screens this pane serves. */}
+        <Link
+          to={`/patient/${encodeURIComponent(patient.id)}?board=${patient.board === "mn" ? MN_BOARD_ID : SUB_BOARD_ID}`}
+          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-muted"
+          title="Open the patient screen"
+        >
+          <User className="h-3 w-3" /> Profile
+        </Link>
       </Card>
 
       {/* Upload Clinicals — the main action (column + board picked by row) */}
@@ -597,6 +609,13 @@ export function ClinicalsWorkPane({
   context,
   /** The Fax bar's "attach this fax as clinicals", inside the patient block. */
   attachSlot,
+  /** Appended to the find card's sentence — the Fax bar's "— this fax came
+   *  from X (number)." Inline, so it reads as one line, as his mockup does. */
+  findExtra,
+  /** Rendered inside the find card under the results, and ONLY while the box
+   *  is empty (his `likely.length && !query` rule) — the Fax bar's "Likely
+   *  matches" list. Typing a name replaces it with the results. */
+  findSlot,
   autoFocusSearch = true,
 }: {
   patients: ClinicalsRow[];
@@ -605,6 +624,8 @@ export function ClinicalsWorkPane({
   onRefresh: () => void;
   context?: React.ReactNode;
   attachSlot?: React.ReactNode;
+  findExtra?: React.ReactNode;
+  findSlot?: React.ReactNode;
   autoFocusSearch?: boolean;
 }) {
   const [search, setSearch] = useState("");
@@ -657,7 +678,7 @@ export function ClinicalsWorkPane({
       <div className="rounded-xl bg-card border shadow-card p-6">
         <p className="text-base font-semibold mb-1">Find a patient</p>
         <p className="text-sm text-muted-foreground mb-4">
-          Search any patient to update their clinical docs or visit date.
+          Search any patient to update their clinical docs or visit date{findExtra ?? "."}
         </p>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -671,11 +692,11 @@ export function ClinicalsWorkPane({
           />
         </div>
 
-        {/* ⚠️ No "likely matches" list here, deliberately: on the Fax bar the
-            *Their patients* section directly above IS that list — the same
-            `buildFaxDirectory` join — and offering it twice on one screen is
-            the duplication a card stops being read for. That section selects
-            into this pane instead. */}
+        {/* ⚠️ The "likely matches" list is the CALLER's (`findSlot`), never
+            built here: on the Fax bar it is the `buildFaxDirectory` join, which
+            this pane has no business re-deriving, and `/update-clinicals` has
+            no fax to match against. Shown only while the box is empty — a
+            typed name replaces it with the results, as his mockup does. */}
         {search.trim() ? (
           results.length ? (
             <ul className="mt-4 space-y-1.5">
@@ -686,7 +707,9 @@ export function ClinicalsWorkPane({
           ) : (
             <p className="text-sm text-muted-foreground mt-4">No patients match “{search.trim()}”.</p>
           )
-        ) : null}
+        ) : (
+          findSlot ?? null
+        )}
       </div>
     </>
   );

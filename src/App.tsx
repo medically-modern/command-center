@@ -56,14 +56,17 @@ const OversightPage = lazyWithReload(() => import("./pages/OversightPage"));
 const OperationsPage = lazyWithReload(() => import("./pages/OperationsPage"));
 const StageManagerPage = lazyWithReload(() => import("./pages/StageManagerPage"));
 
-// Fax Inbox (RingCentral inbound faxes)
-const FaxInboxPage = lazyWithReload(() => import("./pages/FaxInboxPage"));
+// The classic Fax Inbox list — /fax-inbox/classic, no door, until Josh says
+// (PIXEL_MATCH_PLAN.md Phase 5). The FAX bar's page is FaxBarPage below.
+const FaxInboxClassicPage = lazyWithReload(() => import("./pages/FaxInboxClassicPage"));
 
 const AssignedPatientsPage = lazyWithReload(() => import("./pages/AssignedPatientsPage"));
 
 // Orders — the New Order Board + Cardinal SKU Tracker, read-only (§5.35)
 const OrdersPage = lazyWithReload(() => import("./pages/OrdersPage"));
 const PatientPage = lazyWithReload(() => import("./pages/PatientPage"));
+// The Fax Inbox — Brandon's 50/50 screen (§5.52, Phase 5): the inbound faxes,
+// the office a fax came from, and Update Clinicals in place. The FAX bar opens it.
 const FaxBarPage = lazyWithReload(() => import("./pages/FaxBarPage"));
 
 const queryClient = new QueryClient();
@@ -84,6 +87,13 @@ const basename = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 const ChaseBenefitsRedirect = () => {
   const location = useLocation();
   return <Navigate to={`/chase-fax${location.search}`} replace />;
+};
+
+/** The combined fax bar's own door (§5.39c) → the Fax Inbox it became on
+ *  2026-09-24, query preserved (?from=system-mgmt drives Back). */
+const FaxRedirect = () => {
+  const location = useLocation();
+  return <Navigate to={`/fax-inbox${location.search}`} replace />;
 };
 
 /** Old Scheduled Calls route → the Care Coordinator dashboard it became
@@ -188,7 +198,11 @@ const App = () => (
               </AbilityGate>
             }
           />
-          <Route path="/fax-inbox" element={<FaxInboxPage />} />
+          {/* The FAX bar's page — Brandon's 50/50 Fax Inbox with Update Clinicals
+              in the right pane (pixel-match Phase 5). The classic list it
+              replaced answers at /classic with no door (PIXEL_MATCH_PLAN.md). */}
+          <Route path="/fax-inbox" element={<FaxBarPage />} />
+          <Route path="/fax-inbox/classic" element={<FaxInboxClassicPage />} />
           {/* ⚠️ Gated on `comms` (§5.39g). The header tab is not enough on its
               own: the route still answers a typed URL, a bookmark and a Back,
               so an ability that stops at the tab is decoration. */}
@@ -205,9 +219,10 @@ const App = () => (
           <Route path="/orders" element={<OrdersPage />} />
           {/* The patient screen (§5.39) — additive; every stage page is unchanged. */}
           <Route path="/patient/:itemId" element={<PatientPage />} />
-          {/* Brandon's combined fax bar (§5.39c) — ADDED beside /fax-inbox and
-              the Comms hub's Fax tab, replacing neither. */}
-          <Route path="/fax" element={<FaxBarPage />} />
+          {/* Brandon's combined fax bar (§5.39c) was ADDED beside /fax-inbox on
+              2026-09-18 and BECAME it on 2026-09-24 — one fax screen, as his
+              audit asked. The route survives for bookmarks. */}
+          <Route path="/fax" element={<FaxRedirect />} />
           <Route path="*" element={<Index />} />
         </Routes>
       </Suspense>

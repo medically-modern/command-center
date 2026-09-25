@@ -196,6 +196,9 @@ export function HomeViewHost() {
             email={barsEmail}
             allRoles={allRoles}
             mine={!borrowed}
+            // Brandon's Stages look (§5.52) — the redesign's home only, which
+            // this branch always is (`Index` renders this page for "as today").
+            stages
           />
         ) : (
           <div className="p-8 text-sm text-muted-foreground">

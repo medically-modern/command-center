@@ -172,18 +172,32 @@
 }
 .cc-shell .gs-row:last-child { border-bottom: 0; }
 .cc-shell .gs-row:hover, .cc-shell .gs-row.hi { background: hsl(var(--primary) / 0.1); }
+/* Brandon's row (his `.gs-row`): name · DOB on one line, the stage chip, and
+   WHICH field matched at the right edge. `.who` gets the ellipsis so a long
+   name never pushes the chip and the caption off the row. */
+.cc-shell .gs-row .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-shell .gs-row .nm { font-weight: 600; font-size: 13px; }
-.cc-shell .gs-row .sub { font-size: 11px; color: hsl(var(--muted-foreground)); }
+.cc-shell .gs-row .dob { font-size: 12px; color: hsl(var(--muted-foreground)); }
 .cc-shell .gs-row .hit {
   margin-left: auto; font-size: 11px; color: hsl(var(--muted-foreground));
-  white-space: nowrap; text-align: right;
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
 }
+.cc-shell .gs-row .hit b { color: hsl(var(--foreground)); font-weight: 600; }
 .cc-shell .gs-row .st {
   font-size: 10px; border-radius: 4px; padding: 1px 6px;
   background: hsl(var(--muted)); color: hsl(var(--muted-foreground));
-  font-weight: 600; white-space: nowrap;
+  font-weight: 600; white-space: nowrap; flex-shrink: 0;
 }
+/* Tokens only — this file carries no `.dark` block and never will (§5.40). */
+.cc-shell .gs-row .st.onb { background: hsl(var(--primary) / 0.12); color: hsl(var(--primary)); }
+.cc-shell .gs-row .st.sub { background: hsl(var(--success) / 0.14); color: hsl(var(--success)); }
+.cc-shell .gs-row .st.stuck { background: hsl(var(--destructive) / 0.12); color: hsl(var(--destructive)); }
 .cc-shell .gs-note { padding: 10px 12px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+/* His `.gs-foot`: the count, the Enter hint and what the box searches. */
+.cc-shell .gs-foot {
+  padding: 6px 12px; font-size: 11px; color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted));
+}
 
 /* ── Settings menu ────────────────────────────────────────────────────────── */
 .cc-shell .menu {
@@ -209,17 +223,6 @@
 .cc-shell .menu a.opt:hover { background: hsl(var(--muted)); }
 .cc-shell .menu .divider { height: 1px; background: hsl(var(--border)); margin: 6px 0; }
 
-/* Light · Dark · System, as one segmented row rather than three menu lines —
-   they are one question with three answers, and the current one has to be
-   readable at a glance (§5.40). */
-.cc-shell .menu .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 2px 6px 4px; }
-.cc-shell .menu .seg button {
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 7px 2px; border-radius: 6px; font-size: 11px; font-weight: 500;
-  background: none; border: 1px solid hsl(var(--border)); cursor: pointer;
-  color: hsl(var(--muted-foreground)); font-family: inherit;
-}
-.cc-shell .menu .seg button:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 /* The six colour themes, as swatches rather than six more menu lines — they
    are one question with six answers and the current one has to be readable at
    a glance, exactly like the appearance row above (§5.44). */
@@ -329,3 +332,86 @@
    `--cc-head` stays the HEADER's height, or the header grows by the banner as
    well as sitting above it (measured; see the variable's own note). */
 .cc-shell.has-viewas { --cc-chrome: calc(var(--cc-head) + 36px); }
+
+/* ── Brandon's settings menu (§5.52) ─────────────────────────────────────────
+   `.menu.settings` — his `.who` line, the Calls section, Appearance, Sign out.
+   ⚠️ Tokens only, no `.dark` block, every selector under `.cc-shell` (§5.40 /
+   `patientScreen.test.ts`). The gear's dot and the header's phone tints are the
+   one place a hardcoded hsl is right: the bar is navy in BOTH appearances. */
+.cc-shell .gh .ib .sdot {
+  position: absolute; top: 5px; right: 5px; width: 7px; height: 7px;
+  border-radius: 50%; border: 1.5px solid hsl(215 40% 14%); background: hsl(220 9% 62%);
+}
+.cc-shell .gh .ib .sdot.green { background: hsl(142 71% 45%); }
+.cc-shell .gh .ib .sdot.amber { background: hsl(38 92% 50%); }
+.cc-shell .gh .ib .sdot.red   { background: hsl(0 84% 60%); }
+.cc-shell .gh .ib .sdot.grey  { background: hsl(220 9% 62%); }
+
+.cc-shell .menu.settings { min-width: 320px; max-width: calc(100vw - 24px); padding: 0; overflow: hidden; }
+.cc-shell .menu.settings .who {
+  display: flex; gap: 10px; align-items: center; padding: 12px 14px;
+  border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+}
+.cc-shell .menu.settings .who .small { font-size: 12px; font-weight: 600; }
+.cc-shell .menu.settings .xs { font-size: 11px; }
+.cc-shell .menu.settings .muted { color: hsl(var(--muted-foreground)); }
+.cc-shell .menu.settings .avatar {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+  font-weight: 700; font-size: 11px; display: grid; place-items: center;
+}
+.cc-shell .menu.settings .sec { padding: 8px 8px 10px; border-bottom: 1px solid hsl(var(--border)); }
+.cc-shell .menu.settings .sec:last-child { border-bottom: 0; }
+.cc-shell .menu.settings .eyebrow { padding: 2px 6px 6px; }
+.cc-shell .menu.settings .status {
+  display: flex; align-items: center; gap: 7px; font-size: 12px;
+  padding: 4px 6px 8px; color: hsl(var(--muted-foreground));
+}
+.cc-shell .menu.settings .status .dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--muted-foreground)); flex-shrink: 0; }
+.cc-shell .menu.settings .status .dot.green { background: hsl(var(--success)); }
+.cc-shell .menu.settings .status .dot.amber { background: hsl(var(--warning)); }
+.cc-shell .menu.settings .status .dot.red   { background: hsl(var(--destructive)); }
+/* His `.tog-row` + `.tog` switch. A disabled row is DIMMED, never hidden — a
+   non-answerer still sees what an answerer gets (§5.13b). */
+.cc-shell .menu.settings .tog-row {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 7px 6px; border-radius: 8px; text-align: left; font-size: 12px;
+  color: hsl(var(--foreground)); background: none; border: 0; cursor: pointer; font-family: inherit;
+}
+.cc-shell .menu.settings .tog-row:hover { background: hsl(var(--muted)); }
+.cc-shell .menu.settings .tog-row.off { opacity: 0.55; cursor: not-allowed; }
+.cc-shell .menu.settings .tog-row.off:hover { background: none; }
+.cc-shell .menu.settings .tog-row b { font-weight: 600; }
+.cc-shell .menu.settings .tog {
+  width: 32px; height: 18px; border-radius: 999px; position: relative; flex-shrink: 0;
+  background: hsl(var(--muted-foreground) / 0.4); transition: background 0.15s;
+}
+.cc-shell .menu.settings .tog::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: 50%; background: hsl(var(--card)); box-shadow: 0 1px 2px hsl(0 0% 0% / 0.25);
+  transition: transform 0.15s;
+}
+.cc-shell .menu.settings .tog.on { background: hsl(var(--primary)); }
+.cc-shell .menu.settings .tog.on::after { transform: translateX(14px); }
+.cc-shell .menu.settings .sel-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 6px; font-size: 12px;
+}
+.cc-shell .menu.settings .sel-row select {
+  font-size: 12px; border: 1px solid hsl(var(--border)); border-radius: 6px; padding: 3px 6px;
+  background: hsl(var(--card)); color: hsl(var(--foreground)); max-width: 170px; font-family: inherit;
+}
+.cc-shell .menu.settings .sel-row select:disabled { opacity: 0.55; }
+/* His `segc sm` — Light · Dark · System as one segmented control. */
+.cc-shell .menu.settings .segc {
+  display: inline-flex; background: hsl(var(--muted)); padding: 2px; border-radius: 8px;
+  border: 1px solid hsl(var(--border)); margin: 0 6px;
+}
+.cc-shell .menu.settings .segc button {
+  padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;
+  color: hsl(var(--muted-foreground)); white-space: nowrap;
+  background: none; border: 0; cursor: pointer; font-family: inherit;
+}
+.cc-shell .menu.settings .segc button.on { background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px hsl(215 40% 12% / 0.12); }
+.cc-shell .menu.settings .swatches { padding: 8px 6px 2px; flex-wrap: wrap; }
+.cc-shell .menu.settings button.opt { padding: 7px 8px; font-size: 12px; }

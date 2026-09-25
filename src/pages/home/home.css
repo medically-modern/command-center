@@ -1,0 +1,173 @@
+/**
+ * The home screen's visual language — Brandon's Stages view and home toggle
+ * (pixel-match Phase 7, CLAUDE.md §5.52), ported rule for rule from his
+ * `.proc-main`, `.bars` / `.bar`, `.adhoc`, `.foot-note`, `.notice`,
+ * `.home-top` and `.segc.home-toggle` CSS.
+ *
+ * Two scopes, and nothing outside them:
+ *   `.cc-bars`    — `ProcessorView`'s Stages look and `DailyBurndown`'s
+ *                   `look="stages"` markup. The same component still draws the
+ *                   old dashboard's bars ("as today", `Index.tsx`) with no look
+ *                   prop, byte-identical, so the escape hatch stays one (§5.39b).
+ *   `.cc-hometop` — `HomeViewSwitch`, the Stages | Oversight toggle and the
+ *                   "Viewing" dropdown.
+ *
+ * ⚠️ Colours read the app's OWN tokens (`hsl(var(--x))`), which is what makes
+ * dark mode and the six accent themes work with nothing added (§5.40). The one
+ * exception is the track: Brandon sets it in absolute HSL for light and dark,
+ * and both are kept as he wrote them.
+ *
+ * ⚠️ Nothing here may be promoted to a bare selector — the mockup styles bare
+ * `.bar`, `.notice`, `.btn` and `.input`, and those names mean other things
+ * elsewhere in this app (`.pf-root` has its own `.btn` language, §9).
+ */
+
+.cc-bars, .cc-hometop {
+  --p: hsl(var(--primary));
+  --bd: hsl(var(--border));
+  --cd: hsl(var(--card));
+  --mut: hsl(var(--muted));
+  --mfg: hsl(var(--muted-foreground));
+  --mfg2: hsl(var(--muted-foreground) / 0.7);
+  --tfg: hsl(var(--foreground));
+  --green-fg: hsl(152 60% 30%);
+  --green-bg: hsl(var(--success) / 0.1);
+  --red-bg: hsl(var(--destructive) / 0.08);
+  --red-bd: hsl(var(--destructive) / 0.3);
+  --red-fg: hsl(0 65% 40%);
+  --amber-bg: hsl(var(--warning) / 0.1);
+  --amber-bd: hsl(var(--warning) / 0.45);
+  --amber-fg: hsl(30 80% 35%);
+  --blue-bg: hsl(var(--primary) / 0.08);
+  --track: hsl(215 25% 94% / 0.6);
+  --sh-sm: 0 1px 2px 0 hsl(215 40% 12% / 0.05);
+  color: var(--tfg);
+}
+.dark .cc-bars, :root[data-theme="dark"] .cc-bars,
+.dark .cc-hometop, :root[data-theme="dark"] .cc-hometop {
+  --green-fg: hsl(152 60% 68%);
+  --red-fg: hsl(0 80% 72%);
+  --amber-fg: hsl(38 90% 70%);
+  --track: hsl(215 40% 16% / 0.6);
+}
+
+/* ── His utility classes, scoped ─────────────────────────────────────────── */
+
+.cc-bars .muted, .cc-hometop .muted { color: var(--mfg); }
+.cc-bars .small, .cc-hometop .small { font-size: 12px; }
+.cc-bars .xs, .cc-hometop .xs { font-size: 11px; }
+.cc-bars .row, .cc-hometop .row { display: flex; align-items: center; gap: 8px; }
+.cc-hometop .grow { flex: 1; min-width: 0; }
+.cc-bars .tn, .cc-hometop .tn { font-variant-numeric: tabular-nums; }
+.cc-bars .eyebrow {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--mfg);
+}
+.cc-bars .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── The Stages page — his `.proc-main` + `barsHome` heading ─────────────── */
+
+.cc-bars.proc-main { padding: 32px; max-width: 1160px; margin: 0 auto; width: 100%; }
+.cc-bars .ttl { font-size: 20px; font-weight: 700; line-height: 1.25; margin: 0; }
+
+/* ── The bars — his `.bars` / `.bar` ─────────────────────────────────────── */
+
+.cc-bars .bars { max-width: 1160px; display: flex; flex-direction: column; gap: 12px; }
+.cc-bars .bar {
+  width: 100%; text-align: left; display: block; background: none; border: 0;
+  padding: 0; color: inherit; font: inherit; cursor: pointer;
+}
+.cc-bars .bar.inert { cursor: default; }
+.cc-bars .bar .lbl {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px; font-size: 13px; font-weight: 500;
+}
+.cc-bars .bar .lbl .n {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--mut); font-size: 11px; font-weight: 700; color: var(--mfg);
+  font-variant-numeric: tabular-nums;
+}
+.cc-bars .bar .lbl .ext { opacity: 0.35; width: 12px; height: 12px; }
+.cc-bars .bar .track {
+  position: relative; height: 32px; border-radius: 8px; background: var(--track); overflow: hidden;
+}
+.cc-bars .bar .fill {
+  position: absolute; inset: 0 auto 0 0; border-radius: 8px; transition: width 0.8s ease-out;
+}
+.cc-bars .bar .track.done { background: hsl(152 68% 38% / 0.12); }
+.cc-bars .bar .done-lbl {
+  color: var(--green-fg); font-weight: 600; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.cc-bars .bar:not(.inert):hover .lbl { color: var(--p); }
+.cc-bars .bar .tn { font-weight: 600; }
+.cc-bars .bar:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; border-radius: 8px; }
+
+/* ── Ad-hoc tiles — his `.adhoc` + `.btn.teal` ───────────────────────────── */
+
+.cc-bars .adhoc { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-top: 24px; }
+.cc-bars .adhoc .eyebrow { margin-bottom: 2px; }
+.cc-bars .btn.teal {
+  display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; border: 0;
+  padding: 9px 16px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+  background: var(--mm-teal, #3f5c63); color: var(--mm-on-teal, #fff); box-shadow: var(--sh-sm);
+  transition: opacity 0.15s;
+}
+.cc-bars .btn.teal:hover { opacity: 0.9; }
+.cc-bars .btn.teal .ext { opacity: 0.7; width: 13px; height: 13px; }
+.cc-bars .count-badge {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; height: 22px;
+  padding: 0 6px; border-radius: 999px; background: hsl(0 0% 100% / 0.25); font-size: 11px; font-weight: 700;
+}
+
+/* ── The footer and the manager notice ───────────────────────────────────── */
+
+.cc-bars .foot-note {
+  display: flex; justify-content: space-between; gap: 12px; padding-top: 6px;
+  font-size: 11px; color: var(--mfg2); max-width: 1160px; margin-top: 24px;
+}
+.cc-bars .foot-note .row { gap: 4px; }
+.cc-bars .notice, .cc-hometop .notice {
+  border-radius: 10px; padding: 10px 14px; font-size: 12px; display: flex; gap: 8px; align-items: flex-start;
+}
+.cc-bars .notice.red { background: var(--red-bg); border: 1px solid var(--red-bd); color: var(--red-fg); }
+.cc-bars .notice.green { background: var(--green-bg); border: 1px solid hsl(152 68% 38% / 0.3); color: var(--green-fg); }
+.cc-hometop .notice.amber { background: var(--amber-bg); border: 1px solid var(--amber-bd); color: var(--amber-fg); }
+.cc-bars .notice svg { flex-shrink: 0; margin-top: 1px; }
+.cc-bars .notice b { display: block; }
+.cc-hometop .notice a, .cc-hometop .notice button {
+  color: var(--p); font-weight: 600; background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+}
+
+/* ── The home toggle — his `.home-top` + `.segc.home-toggle` ─────────────── */
+
+.cc-hometop .home-top { display: flex; align-items: center; gap: 12px; padding: 14px 24px 0; flex-wrap: wrap; }
+.cc-hometop .segc {
+  display: inline-flex; background: var(--mut); padding: 2px; border-radius: 8px; border: 1px solid var(--bd);
+}
+.cc-hometop .segc button {
+  padding: 5px 9px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--mfg);
+  white-space: nowrap; background: none; border: 0; font-family: inherit; cursor: pointer;
+}
+.cc-hometop .segc button.on { background: var(--cd); color: var(--tfg); box-shadow: var(--sh-sm); }
+.cc-hometop .home-toggle button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 13px; }
+.cc-hometop .home-toggle button:focus-visible { outline: 2px solid var(--p); outline-offset: 1px; }
+.cc-hometop .input {
+  border: 1px solid hsl(var(--input)); background: var(--cd); border-radius: 8px;
+  padding: 8px 10px; font-size: 13px; color: var(--tfg); font-family: inherit;
+}
+.cc-hometop .home-top .input.sm { padding: 4px 8px; font-size: 12px; }
+.cc-hometop .input:focus-visible { outline: 2px solid var(--p); outline-offset: 1px; }
+.cc-hometop .home-top label { gap: 6px; }
+
+/* ── Narrow (his breakpoints) ────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .cc-bars.proc-main { padding-left: 16px; padding-right: 16px; }
+  .cc-hometop .home-top { padding: 12px 16px 0; }
+  .cc-hometop .home-toggle { width: 100%; }
+  .cc-hometop .home-toggle button { flex: 1; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cc-bars .bar .fill { transition: none; }
+}

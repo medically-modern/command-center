@@ -17,7 +17,7 @@ const row = (name: string): SystemPatient => ({
   id: name, name, phone: "", dob: "", boardId: 1, boardName: "B", groupId: "g", groupTitle: "G",
   roleRoute: "", pipelineStage: "", escalated: false, escalationText: "", escalationLevel: null,
   escalationNotes: "", hasPage: false, isCompleted: false, daysSinceStage: "", notes: "",
-  stageAdvancerText: "", nextActionDate: "",
+  stageAdvancerText: "", nextActionDate: "", stageStart: "", createdAt: "",
 });
 
 /** A promise the test resolves by hand, plus the AbortSignal it was given. */

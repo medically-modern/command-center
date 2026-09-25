@@ -275,14 +275,14 @@ describe("searching an order by its own number", () => {
     expect(lit).toContain(orders.phoneColId);
   });
 
-  it("searches the identifiers without fetching them", () => {
-    // Monday matches server-side, so pulling six more columns onto every order
-    // row would buy nothing a rep reads. CAH is the one exception: the row
-    // prints it, so it is in the READ set for that reason, not this one.
+  it("fetches the identifiers too, so the header can say WHICH one matched", () => {
+    // Until 2026-09-24 these were searched and not read — Monday matched
+    // server-side and the row named the order by date, group and CAH. The
+    // header's drop-down now prints "PO # <b>…</b>" / "Tracking <b>…</b>"
+    // (`searchHit`), which is something a rep reads, so they ride the read.
     const read = searchColumnIds(orders);
-    for (const col of ORDER_IDENTIFIER_COLS) {
-      if (col === ORDER_SEARCH_COLS.cahOrderNumber) continue;
-      expect(read, col).not.toContain(col);
-    }
+    for (const col of ORDER_IDENTIFIER_COLS) expect(read, col).toContain(col);
+    // Once each — CAH is in ORDER_SEARCH_COLS and in searchFields.
+    expect(new Set(read).size).toBe(read.length);
   });
 });

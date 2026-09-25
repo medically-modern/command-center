@@ -1,0 +1,172 @@
+/**
+ * The Fax Inbox's visual language — Brandon's `viewFaxInbox` / `ucPane`
+ * (pixel-match Phase 5, 2026-09-24), ported rule for rule from his `.fx*` and
+ * `.uc-row` / `.chip` CSS. Scoped under `.cc-fx` so it can never reach another
+ * page: the mockup styles bare `.card` / `.btn` / `.pill` / `.chip`, and those
+ * names already mean other things elsewhere in this app (`.pf-root` has its own
+ * `.btn` language, §9). Nothing below may be promoted to a bare selector —
+ * `pages/patient/redesign.css` carries the same rule for the same reason.
+ *
+ * ⚠️ **Colours read the app's OWN tokens.** The mockup re-declares `--primary`
+ * as a full `hsl(...)`; this build stores HSL triplets because Tailwind wraps
+ * them, so everything here is `hsl(var(--x))` — which is also what makes dark
+ * mode and the six accent themes work with nothing added (§5.40).
+ *
+ * ⚠️ **Tailwind ships a utility named `outline`** (§5.51c), and it matches his
+ * `.btn.outline` — a 3px currentColor ring that reads as a heavy black border.
+ * Cancelled below with a focus ring of its own, so keyboard users keep one.
+ */
+
+.cc-fx {
+  --p: hsl(var(--primary));
+  --p20: hsl(var(--primary) / 0.2);
+  --bd: hsl(var(--border));
+  --cd: hsl(var(--card));
+  --mut: hsl(var(--muted));
+  --mfg: hsl(var(--muted-foreground));
+  --tfg: hsl(var(--foreground));
+  --blue-bg: hsl(var(--primary) / 0.08);
+  --warn-bg: hsl(38 92% 50% / 0.1);
+  --warn-bd: hsl(38 92% 50% / 0.45);
+  --warn-fg: hsl(30 80% 35%);
+  --sub-bg: hsl(174 60% 40% / 0.12);
+  --sub-fg: hsl(174 60% 28%);
+  --mn-bg: hsl(270 60% 55% / 0.12);
+  --mn-fg: hsl(270 50% 42%);
+  --sh-sm: 0 1px 2px 0 hsl(215 40% 12% / 0.05);
+  color: var(--tfg);
+}
+
+.dark .cc-fx, :root[data-theme="dark"] .cc-fx {
+  --warn-bg: hsl(38 92% 50% / 0.14);
+  --warn-fg: hsl(38 90% 70%);
+  --sub-fg: hsl(174 60% 65%);
+  --mn-fg: hsl(270 60% 75%);
+}
+
+/* ── His utility classes, scoped ─────────────────────────────────────────── */
+
+.cc-fx .muted { color: var(--mfg); }
+.cc-fx .small { font-size: 12px; }
+.cc-fx .xs { font-size: 11px; }
+.cc-fx .grow { flex: 1; min-width: 0; }
+.cc-fx .min0 { min-width: 0; }
+.cc-fx .row { display: flex; align-items: center; gap: 8px; }
+.cc-fx .wrap { flex-wrap: wrap; }
+.cc-fx .stack { display: flex; flex-direction: column; gap: 12px; }
+.cc-fx .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-fx .eyebrow {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--mfg);
+}
+
+.cc-fx .card { background: var(--cd); border: 1px solid var(--bd); border-radius: 14px; box-shadow: var(--sh-sm); }
+.cc-fx .card.pad { padding: 18px 20px; }
+
+.cc-fx .pill {
+  display: inline-flex; align-items: center; gap: 5px; border-radius: 999px;
+  padding: 2px 9px; font-size: 11px; font-weight: 600; border: 1px solid transparent;
+  font-family: inherit; line-height: 1.4;
+}
+.cc-fx .pill.grey { background: var(--mut); color: var(--mfg); }
+.cc-fx .pill.blue { background: var(--blue-bg); color: var(--p); }
+
+.cc-fx .chip {
+  display: inline-flex; align-items: center; gap: 4px; border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; font-weight: 500; background: var(--mut); color: var(--tfg);
+  white-space: nowrap;
+}
+.cc-fx .chip.sub { background: var(--sub-bg); color: var(--sub-fg); }
+.cc-fx .chip.mn { background: var(--mn-bg); color: var(--mn-fg); }
+
+.cc-fx .btn {
+  display: inline-flex; align-items: center; gap: 8px; border-radius: 8px;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; border: 1px solid transparent;
+  background: none; color: inherit; font-family: inherit; cursor: pointer;
+  transition: opacity 0.15s, background 0.15s; white-space: nowrap;
+}
+.cc-fx .btn:disabled { opacity: 0.5; cursor: default; }
+.cc-fx .btn.sm { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
+.cc-fx .btn.xs { padding: 3px 8px; font-size: 11px; border-radius: 6px; font-weight: 500; }
+.cc-fx .btn.ghost { color: var(--mfg); }
+.cc-fx .btn.ghost:hover:not(:disabled) { background: var(--mut); color: var(--tfg); }
+.cc-fx .btn.outline { background: var(--cd); border-color: var(--bd); color: var(--tfg); outline-style: none; }
+.cc-fx .btn.outline:hover:not(:disabled) { background: var(--mut); }
+.cc-fx .btn.outline:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; }
+.cc-fx .btn.primary { background: var(--p); color: hsl(var(--primary-foreground)); }
+/* The navy header's action: white on navy, whatever the appearance — the bar
+   itself is navy in both (§5.40's carve-out for the page headers). */
+.cc-fx .btn.white { background: #fff; color: hsl(215 60% 12%); box-shadow: 0 12px 32px -8px hsl(217 91% 50% / 0.18); }
+.cc-fx .btn.white:hover:not(:disabled) { opacity: 0.92; }
+
+.cc-fx .notice {
+  border-radius: 10px; padding: 10px 14px; font-size: 12px;
+  display: flex; gap: 8px; align-items: flex-start;
+}
+.cc-fx .notice.blue { background: var(--blue-bg); border: 1px solid var(--p20); color: var(--tfg); }
+.cc-fx .notice.amber { background: var(--warn-bg); border: 1px solid var(--warn-bd); color: var(--warn-fg); }
+.cc-fx .notice svg { flex-shrink: 0; margin-top: 1px; }
+
+/* ── The two panes ───────────────────────────────────────────────────────── */
+
+.cc-fx .fx {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0; flex: 1; min-height: 0;
+}
+.cc-fx .fx-list {
+  border-right: 1px solid var(--bd); background: var(--cd);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.cc-fx .fx-list-h {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--bd);
+}
+.cc-fx .fx-scroll { overflow-y: auto; flex: 1; }
+.cc-fx .fx-row {
+  display: flex; gap: 12px; align-items: center; width: 100%; text-align: left;
+  padding: 12px 16px; border-bottom: 1px solid var(--bd);
+  font-family: inherit; color: inherit; cursor: pointer;
+}
+.cc-fx .fx-row .fx-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--mfg); }
+/* His page preview — a 44×56 sheet with the file glyph. An ICON, never a
+   rendered page (see the page's header comment). */
+.cc-fx .fx-row .fx-pv {
+  width: 44px; height: 56px; border: 1px solid var(--bd); border-radius: 6px;
+  background: var(--mut); display: grid; place-items: center; color: var(--mfg); flex-shrink: 0;
+}
+.cc-fx .fx-row:hover { background: var(--mut); }
+.cc-fx .fx-row:focus-visible { outline: 2px solid var(--p); outline-offset: -2px; }
+.cc-fx .fx-row.sel { background: var(--blue-bg); box-shadow: inset 3px 0 0 var(--p); }
+.cc-fx .fx-row .nm { font-size: 13px; }
+.cc-fx .fx-foot { display: flex; justify-content: center; align-items: center; gap: 12px; padding: 8px; border-top: 1px solid var(--bd); }
+
+.cc-fx .fx-pane {
+  padding: 16px 20px 40px; overflow-y: auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.cc-fx .fx-fax { border-left: 4px solid var(--p); }
+.cc-fx .fx-fax .nm { font-size: 15px; }
+.cc-fx .fx-office { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--bd); font-size: 12px; display: flex; gap: 6px; align-items: flex-start; }
+.cc-fx .fx-office svg { flex-shrink: 0; margin-top: 2px; color: var(--mfg); }
+
+/* ── Likely matches — his `.uc-row`s inside the find card ────────────────── */
+
+.cc-fx .uc-results { margin-top: 8px; border: 1px solid var(--bd); border-radius: 10px; overflow: hidden; }
+.cc-fx .uc-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 8px 12px; border-bottom: 1px solid var(--bd); font-family: inherit;
+  color: inherit; font-size: 13px; background: none;
+}
+.cc-fx .uc-row:last-child { border-bottom: 0; }
+.cc-fx .uc-row.pick { cursor: pointer; }
+.cc-fx .uc-row.pick:hover { background: var(--mut); }
+.cc-fx .uc-row.chase { box-shadow: inset 3px 0 0 var(--p); }
+.cc-fx .uc-row .btn { flex-shrink: 0; }
+.cc-fx .uc-row > svg { flex-shrink: 0; color: var(--mfg); }
+
+/* ── Narrow: one column, the list capped (his ≤900 rule) ─────────────────── */
+
+@media (max-width: 900px) {
+  .cc-fx .fx { grid-template-columns: 1fr; }
+  .cc-fx .fx-list { max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--bd); }
+}
