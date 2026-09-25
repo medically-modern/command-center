@@ -10335,6 +10335,20 @@ applies to (§5.12 · §5.20 · §5.31c · §5.31d · §5.33 · §5.36).
 ⚠️ **Generate is a VERIFIED write with the action as `stageColumnId`** (§5.2): monday returns 200 on
 the amount before it is indexed, and the webhook reads that very cell the instant the automation
 fires, so an unverified pair mints for the PREVIOUS amount or for a blank.
+⚠️⚠️ **The amount is the CANONICAL number string, and the returned failures are CHECKED** (both
+fixed 2026-09-25, pre-prod flight check). `expectedText` is matched EXACTLY against Monday's
+read-back with deliberately no snapshot escape hatch (the Insurance Plan note in
+profile/mondayWrite.ts), and a number column reads back with no trailing zero — so toFixed's
+"1030.70" against the cell's "1030.7" could never verify: every total whose cents end in 0
+(~1 in 10) died on a ~12s client throw, or a gateway job failing on "verify timeout" AFTER the
+browser had already reported success. It is `String(Number(toFixed(2)))` now, byte-identical
+across the declared `value`, `writeNumber`'s `String(num)` and `expectedText`; the board CELL is
+unchanged either way (Monday stores the number canonically), so coins reads what it always has,
+and the display string stays the card's. And `executeWritesWithVerification` RETURNS data-write
+failures rather than throwing (it throws only on verify timeout) — the array was discarded, so a
+failed Cash Pay Amount write resolved green, the card's 45s watcher ran against a board holding
+nothing, and it ended on "No answer yet … don't press again". The failures throw now, naming the
+column. `cashPayGenerate.test.ts` pins both, each verified to fail when reverted.
 ⚠️ **Both presses CLEAR the trigger first when it already holds a value**, the §5.35 rule: a status
 write onto its own value is taken at 200, fires nothing and records no activity, so a chase — or a
 retry after a *Link failed* — would be a silent no-op under a green toast.

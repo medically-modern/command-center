@@ -288,8 +288,23 @@ export async function generateCashPayLink(
   }
   if (action.trim()) await clearStatus(itemId, COL.cashPayAction);
 
-  const amount = totalDollars.toFixed(2);
-  await executeWritesWithVerification({
+  /* ⚠️ The CANONICAL number string — `String(Number(toFixed(2)))`, never
+     toFixed's padded one. Three strings must be byte-identical or verification
+     can never pass: the declared `value` (what the gateway's /send writes),
+     what `writeNumber` sends on the client path (`String(num)`), and
+     `expectedText` — which is matched EXACTLY against Monday's read-back, with
+     deliberately no snapshot-difference escape hatch (the Insurance Plan note
+     in profile/mondayWrite.ts), and a number column reads back with no
+     trailing zero. `toFixed(2)` alone made every total whose cents end in 0 —
+     $250.00, $105.90, $1,030.70 — unverifiable for ever: expectedText
+     "1030.70" against a cell reading "1030.7", a ~12s client-path throw, or a
+     gateway job dying on "verify timeout" AFTER the browser had already
+     reported success. `toFixed` still does the rounding to cents; the display
+     string ($1,030.70) stays the card's job, and the BOARD CELL is unchanged
+     either way (Monday stores the number canonically), so the coins service
+     reads exactly what it always has. */
+  const amount = String(Number(totalDollars.toFixed(2)));
+  const failures = await executeWritesWithVerification({
     itemId,
     boardId: String(BOARD_ID),
     label: "Cash pay — generate link",
@@ -312,6 +327,19 @@ export async function generateCashPayLink(
       },
     ],
   });
+  /* ⚠️ Failures are RETURNED, not thrown — `executeWritesWithVerification`
+     throws only on a verification TIMEOUT; a data write that fails after
+     retries comes back in this array, and every other caller checks it.
+     Discarded, a failed Cash Pay Amount write resolved cleanly, the card
+     started its 45-second watcher, and — with no amount and no trigger on the
+     board — it ended on "No answer yet … don't press again" over a mint that
+     was never asked for. The trigger was never written on this path, so
+     pressing Generate again is the right move and the message says so. */
+  if (failures.length > 0) {
+    throw new Error(
+      `The price didn't land on the board, so no link was requested — ${failures.join("; ")}. Press Generate link again.`,
+    );
+  }
 }
 
 /**
