@@ -67,7 +67,8 @@
         "assignedPatients",
         "scheduledCalls",
         "intakeCleanup",
-        "orders"
+        "orders",
+        "profile"
       ],
       "roleOrder": {},
       "roleFilters": {},
