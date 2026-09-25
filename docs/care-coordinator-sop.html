@@ -304,7 +304,7 @@
 
     <ul class="keys">
       <li><span class="key g">GREEN EDGE</span><p>Someone has already tried this patient. Gray edge = not yet touched.</p></li>
-      <li><span class="key">PILLS</span><p>The facts at a glance: network verdict, form Partial/Completed, insurance, coverage paths. A missing pill means the answer is <b>unknown</b> — not "no".</p></li>
+      <li><span class="key">PILLS</span><p>The facts at a glance: in-network or not, how much of their form is done, who their insurance is, and how they're covered. A missing pill means the answer is <b>unknown</b> — not "no".</p></li>
       <li><span class="key">COUNTS &amp; TIMES</span><p>The small phone and chat numbers are the calls and texts so far. "N days" is how long they've been waiting; a booked card shows its call time.</p></li>
       <li><span class="key">BUTTONS</span><p>Each one is explained in the next section.</p></li>
     </ul>
@@ -318,7 +318,7 @@
     <div class="fx-lab">On the card</div>
     <ul class="fx">
       <li><span class="fbtn call">📞 Call</span><span class="arrow">→</span>
-        <p>Rings the patient right in the browser, from the company number, and the pop-up carries the attempt form — you can fill in "What happened on the call?" while still talking. The call lands in their history automatically.</p></li>
+        <p>Rings the patient without leaving this page — the call goes out on the company number. The pop-up carries the attempt form, so you can fill in "What happened on the call?" while still talking. The call shows up in their history on its own.</p></li>
       <li><span class="fbtn" style="background:var(--bot-bg); color:var(--bot); border-color:transparent;">✍️ Log attempt</span><span class="arrow">→</span>
         <p>The same attempt form <b>without placing a call</b> — for right after you hang up. It's also inside the pop-up when you click a booking on the day strip.</p></li>
       <li><span class="fbtn comms">💬 Communications</span><span class="arrow">→</span>
@@ -326,21 +326,21 @@
       <li><span class="fbtn book">🔗 Booking link</span><span class="arrow">→</span>
         <p>Opens the calendar link to send the patient — the dropdown picks <b>Intake call</b> or <b>Welcome call</b>. When the patient books, the time appears on the day strip and their card moves under <b>Scheduled</b> on its own.</p></li>
       <li><span class="fbtn open">Open →</span><span class="arrow">→</span>
-        <p>Opens the patient's own page. <b>Everything that changes a patient happens there</b> — the dashboard only reads. Notes, logging an attempt, and Advance all live on that page.</p></li>
+        <p>Opens the patient's own page — notes, logging an attempt, and Advance all live there. <b>This screen is your view of the day; the patient's page is where the work happens.</b></p></li>
     </ul>
 
     <div class="fx-lab">Logging an attempt — wherever you do it</div>
     <ul class="fx">
       <li><span class="fbtn">Log call attempt</span><span class="arrow">→</span>
-        <p>Answered or not, three things write to the patient's board row: <b>"What happened on the call?"</b> is stamped into their notes as "Call attempt N — …" (the notes line at the bottom of the card shows it), <b>"Follow up on"</b> sets their follow-up date, and the attempt counter goes up — so the card's left edge turns <b>green</b> and they slide to <b>Unscheduled · Future</b> until that date.</p></li>
+        <p>Answered or not, three things are saved with the patient: your <b>"What happened on the call?"</b> note (it shows on the notes line at the bottom of their card), the <b>"Follow up on"</b> date, and one more on their attempt count. The card's left edge turns <b>green</b> and they slide to <b>Unscheduled · Future</b> until that date.</p></li>
       <li><span class="fbtn">Advance</span><span class="arrow">→</span>
-        <p>The app saves the data, double-checks it landed, and only then tells Monday to move the patient to the next stage. The card leaves your columns right away. <b>One press does it</b> — pressing again only shows an "…is already…" message, and nothing ever sends twice.</p></li>
+        <p>Everything you've entered is saved, and <b>the patient's stage moves forward</b>. Their card leaves your columns right away. <b>One press does it</b> — if you ever see an "…is already…" message, they had already moved on; nothing happens twice.</p></li>
     </ul>
 
     <div class="fx-lab">On its own</div>
     <ul class="fx">
       <li><span class="fbtn">Nothing</span><span class="arrow">→</span>
-        <p>The page keeps itself fresh — it re-reads the boards about every minute, and <b>Refresh</b> at the top forces it now. A patient who vanishes from a list has moved forward.</p></li>
+        <p>The page keeps itself fresh on its own, about every minute — <b>Refresh</b> at the top does it right now. A patient who vanishes from a list has moved forward.</p></li>
     </ul>
   </section>
 
@@ -360,7 +360,7 @@
       </div>
       <div class="bkt">
         <div class="bt"><small>Unscheduled</small>Today</div>
-        <p>No booking, and due: their follow-up date is today, past, or blank. Blank means <b>call them</b> — nothing else brings a dateless patient back.</p>
+        <p>No booking, and due for a call: their follow-up date is today, already past, or blank. Blank counts as due — <b>call them</b>.</p>
       </div>
       <div class="bkt">
         <div class="bt"><small>Unscheduled</small>Future</div>
