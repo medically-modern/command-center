@@ -81,6 +81,7 @@ import {
   groupKeyFor,
   inboxHealth,
   itemState,
+  markBrowserPickups,
   mirrorPending,
   SUBSCRIPTION_INACTIVE_GROUP,
   applyStageFresh,
@@ -763,7 +764,7 @@ function attributed({ texts = [], calls = [], voicemails = [], sent = [], dials 
 /** Everything for one item's numbers, for its timeline. */
 async function loadGroupAll(pool, hmacs) {
   const has = await archivesPresent(pool);
-  const [t, c, v, res, sent, dials, media] = await Promise.all([
+  const [t, c, v, res, sent, dials, media, answered] = await Promise.all([
     !has.texts ? NONE : pool.query(
       `SELECT rc_message_id, phone_hmac, last4, direction, body, message_status, delivery_error, attachments, created_at
          FROM sms_archive WHERE phone_hmac = ANY($1) ORDER BY created_at DESC LIMIT 3000`,
@@ -792,8 +793,23 @@ async function loadGroupAll(pool, hmacs) {
     optionalTable(
       pool.query(`SELECT rc_message_id, rc_attachment_id, media_state FROM mms_archive WHERE phone_hmac = ANY($1)`, [hmacs]),
     ),
+    // ⚠️ The telephony webhook's own registry (§5.13), on this same pool — the
+    // ONE thing that knows a call RingCentral logged as Outbound was really an
+    // inbound call answered in the browser (markBrowserPickups). optionalTable:
+    // a build with inbound calls unconfigured has no call_events, and losing
+    // the relabel must never lose the timeline.
+    optionalTable(
+      pool.query(
+        `SELECT session_id, phone_hmac, at FROM call_events
+          WHERE phone_hmac = ANY($1) AND kind = 'end' AND state = 'answered'`,
+        [hmacs],
+      ),
+    ),
   ]);
-  const events = dropOwn(attributed({ texts: t.rows, calls: c.rows, voicemails: v.rows, sent: sent.rows, dials: dials.rows }));
+  const events = markBrowserPickups(
+    dropOwn(attributed({ texts: t.rows, calls: c.rows, voicemails: v.rows, sent: sent.rows, dials: dials.rows })),
+    answered.rows,
+  );
   // RingCentral's media URLs, for playback of anything the archive has not got
   // yet — Play falls back to RingCentral, on the press, never on open.
   const callUri = new Map(c.rows.map((r) => [String(r.rc_call_id), r.content_uri || ""]));

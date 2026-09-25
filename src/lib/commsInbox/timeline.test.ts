@@ -141,6 +141,14 @@ describe("callLine", () => {
     );
     expect(callLine(call({ dir: "out", connected: false, missed: false }))).toBe("We called · no answer");
   });
+  it("⚠️ a browser pickup reads as THEIR call — RingCentral logged it backwards (2026-09-25)", () => {
+    // Josh's own test call: answered in the browser, logged as a single
+    // Outbound/Accepted record toward the caller. The gateway marks it from
+    // call_events; the wording must say who really called whom.
+    expect(callLine(call({ dir: "out", connected: true, missed: false, pickedUp: true }))).toBe(
+      "They called — we picked up · 3:12",
+    );
+  });
   it("formatDuration", () => {
     expect(formatDuration(0)).toBe("0:00");
     expect(formatDuration(65)).toBe("1:05");

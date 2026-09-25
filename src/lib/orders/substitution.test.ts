@@ -3,7 +3,7 @@ import { mkOrder } from "./fixtures";
 import {
   backorderedEntries, backorderedSetOnOrder, hasSubstitutionStory, normalizeSetName,
   substitutionAnswered, substitutionBlockers, substitutionEmailPreview, substitutionOptions,
-  substitutionPronouns, substitutionSendKind, substitutionSendRefusal, substitutionVerdict,
+  substitutionPronouns, substitutionSendKind, substitutionSendRefusal, substitutionVerdict, swapWorkable,
   SUBSTITUTION_FIX,
 } from "./substitution";
 
@@ -133,6 +133,20 @@ describe("hasSubstitutionStory", () => {
     expect(hasSubstitutionStory(mkOrder({ substituteInfusionSet: 'TruSteel 6 mm 23"' }))).toBe(true);
     expect(hasSubstitutionStory(mkOrder({ substitutionStatus: "Sent" }))).toBe(true);
     expect(hasSubstitutionStory(mkOrder({ substitutionCahNumber: "1120960999" }))).toBe(true);
+  });
+
+  it("⚠️ the swap is WORKABLE on a partially shipped order — the whole live population, 2026-09-25", () => {
+    // Measured: all 25 live orders carrying a backordered set read
+    // "Partially Shipped" — stage `shipped`, i.e. closed — so an isOpenStage
+    // gate made the picker read-only for everyone it exists for (Josh:
+    // "i cant click, need a drop down").
+    const partial = mkOrder({ orderStatus: "Process Claim", apiStatus: "Partially Shipped", backordered: 'AutoSoft 90 6mm 23" infusion sets' });
+    expect(swapWorkable(partial)).toBe(true);
+    expect(swapWorkable(mkOrder({ orderStatus: "Process Claim", apiStatus: "Substitution Needed" }))).toBe(true);
+    // A finished order's backorder flag is history, not this patient's problem
+    // — the sweep writes the dropdown on every order and never clears it.
+    expect(swapWorkable(mkOrder({ orderStatus: "Process Claim", apiStatus: "SHIPPED", backordered: "x" }))).toBe(false);
+    expect(swapWorkable(mkOrder({ orderStatus: "Process Claim", apiStatus: "Delivered", backordered: "x" }))).toBe(false);
   });
 
   it("⚠️ Cardinal's own verdict counts — Mauricio Valencia, 2026-09-25", () => {

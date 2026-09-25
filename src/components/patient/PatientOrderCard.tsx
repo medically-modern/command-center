@@ -25,7 +25,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { SubstitutionCard } from "@/components/orders/SubstitutionCard";
 import { useSkuTracker } from "@/hooks/orders/useSkuTracker";
 import { FAMILY_LABEL, orderLines, type OrderLine, type ProductFamily } from "@/lib/orders/skuJoin";
-import { hasSubstitutionStory } from "@/lib/orders/substitution";
+import { hasSubstitutionStory, swapWorkable } from "@/lib/orders/substitution";
 import { orderTimeline, type TimelineStep } from "@/lib/orders/timeline";
 import { cardinalStatus, fmtDate, isOpenStage, orderStage, type Order } from "@/lib/orders/workflow";
 import {
@@ -353,7 +353,7 @@ export function PatientOrderCard({ order: o, canAdjust }: { order: Order; canAdj
       {hasSubstitutionStory(o) &&
         (canAdjust ? (
           <SwapCard order={o} />
-        ) : open ? (
+        ) : swapWorkable(o) ? (
           <div className="notice grey xs">
             Swapping a backordered set emails Cardinal and needs <b>Adjust orders</b> — an admin can turn it on
             in Users.

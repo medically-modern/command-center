@@ -28,6 +28,7 @@ import {
   isReplyToAutomation,
   itemState,
   leftVmCallFor,
+  markBrowserPickups,
   mirrorPending,
   normalizeNote,
   noteTargetFor,
@@ -812,6 +813,63 @@ describe("buildTimeline", () => {
     expect(tl[3]).toMatchObject({ how: "left_vm", linkedCallId: cb.id });
     expect(tl[4]).toMatchObject({ how: "called", label: "Called", note: "Told her Friday" });
     expect(tl.filter((e) => e.type === "resolution")).toHaveLength(1); // one click → one divider
+  });
+});
+
+/* ── browser pickups — an answered inbound call logged as Outbound ───────── */
+
+describe("markBrowserPickups", () => {
+  // Josh's own test call, 2026-09-25: answered in the browser, and RingCentral
+  // logged a single Outbound/Accepted record toward the caller — no inbound
+  // record at all. call_events (the telephony webhook) holds the truth.
+  const pickup = (t) => call(A, t, { dir: "out", result: "Accepted", legResults: ["Accepted", "Call connected", "Stopped"], durationSec: 34 });
+  const answeredEnd = (t, over = {}) => ({ session_id: "", phone_hmac: A, at: new Date(t).toISOString(), ...over });
+
+  it("marks the outbound record whose end sits beside an answered inbound ring", () => {
+    const c = pickup(TUE_9AM);
+    const out = markBrowserPickups([c], [answeredEnd(TUE_9AM + 34_000 + 5_000)]);
+    expect(out[0].pickedUp).toBe(true);
+    expect(out[0]).not.toBe(c); // a new object, never a mutation
+  });
+
+  it("matches on the telephony session id when the Detailed scan backfilled one", () => {
+    const c = { ...pickup(TUE_9AM), sessionId: "s-123" };
+    // Far outside the time window — the session id alone carries it.
+    const out = markBrowserPickups([c], [answeredEnd(TUE_9AM + 30 * MIN, { session_id: "s-123" })]);
+    expect(out[0].pickedUp).toBe(true);
+  });
+
+  it("⚠️ a call somebody PRESSED CALL for is a genuine outbound, whatever rang around it", () => {
+    const events = [{ ...pickup(TUE_9AM), dialedBy: "rep@medicallymodern.com" }];
+    const out = markBrowserPickups(events, [answeredEnd(TUE_9AM + 34_000)]);
+    expect(out).toBe(events); // untouched, identity included
+  });
+
+  it("⚠️ an answered event beside an INBOUND connected record belongs to that record (an RC-app pickup)", () => {
+    const inbound = call(A, TUE_9AM, { result: "Accepted", durationSec: 34 });
+    const callback = pickup(TUE_9AM + 40_000); // a real callback moments later
+    const out = markBrowserPickups([inbound, callback], [answeredEnd(TUE_9AM + 34_000)]);
+    expect(out[1].pickedUp).toBeUndefined();
+  });
+
+  it("never marks an unconnected outbound call, a fax, or another number's call", () => {
+    const noAnswer = call(A, TUE_9AM, { dir: "out", result: "No Answer" });
+    const fax = call(A, TUE_9AM, { dir: "out", result: "Accepted", durationSec: 10, callType: "Fax" });
+    const otherNumber = call(B, TUE_9AM, { dir: "out", result: "Accepted", durationSec: 10 });
+    const out = markBrowserPickups([noAnswer, fax, otherNumber], [answeredEnd(TUE_9AM + 10_000)]);
+    expect(out.every((e) => !e.pickedUp)).toBe(true);
+  });
+
+  it("⚠️ identity-stable when nothing matches (incident rule 2)", () => {
+    const events = [call(A, TUE_9AM, { dir: "out", result: "Accepted", durationSec: 10 })];
+    expect(markBrowserPickups(events, [answeredEnd(TUE_9AM + 20 * MIN)])).toBe(events);
+    expect(markBrowserPickups(events, [])).toBe(events);
+  });
+
+  it("buildTimeline carries the flag onto the call entry", () => {
+    const c = { ...pickup(TUE_9AM), pickedUp: true };
+    const tl = buildTimeline({ events: [c], resolutions: [] });
+    expect(tl[0]).toMatchObject({ type: "call", dir: "out", pickedUp: true, connected: true });
   });
 });
 

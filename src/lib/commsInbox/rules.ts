@@ -177,6 +177,12 @@ export type TimelineEntry =
       connected: boolean;
       missed: boolean;
       blocked: boolean;
+      /** An inbound call answered in the BROWSER, which RingCentral logged as a
+       *  single Outbound record toward the caller (measured 2026-09-25 — Josh's
+       *  own test call). The gateway joins the call log to its own telephony
+       *  webhook registry (`call_events`) to say so; `dir` stays "out" because
+       *  that is what the record is, and the WORDING and icon flip on this. */
+      pickedUp?: boolean;
       audioState: string;
       dialedBy: string;
       /** RingCentral's own recording uri, for a call our archive has not got yet. */

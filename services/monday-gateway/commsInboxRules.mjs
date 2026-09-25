@@ -335,6 +335,67 @@ export function isFaxCall(e) {
   return e?.kind === "call" && norm(e.callType) === "fax";
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Browser pickups — an answered inbound call RingCentral logged as OUTBOUND
+ *
+ * ⚠️⚠️ MEASURED, NOT REASONED (Josh, 2026-09-25, his own two test calls: "the
+ * second says we called when in reality we picked up" · "i answered in the
+ * browser"). A call answered on the WebRTC softphone comes back from the call
+ * log as a SINGLE Outbound/Accepted record toward the CALLER's number, with no
+ * inbound record at all — direction inverted, so every surface honestly worded
+ * it "We called". The one thing that knows the truth is our own telephony
+ * webhook: `call_events` (§5.13) watched that inbound call ring and get
+ * answered, on this same pool.
+ *
+ * The join is hmac + TIME (an `end/answered` event lands when the call ends,
+ * so it sits within seconds of the log record's start + duration), or the
+ * telephony session id when the Detailed scan has backfilled one. Guards, each
+ * load-bearing:
+ *  · `dialedBy` skips — a call somebody PRESSED CALL for is a genuine
+ *    outbound whatever rang around it (Answer is not a dial, so a pickup can
+ *    never carry one).
+ *  · An answered event within the window of an INBOUND connected record is
+ *    that record's own answer (an RC-app pickup logs Inbound/Accepted and
+ *    raises the same event) — it must not relabel a neighbouring callback.
+ *  · Fax rows and unconnected outbound calls never match.
+ * A dropped webhook (§5.13's immortal-ring class) simply means no match: the
+ * row keeps reading "We called", which is today's behaviour, never worse.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export const PICKUP_MATCH_MS = 3 * 60_000;
+
+/** `call_events` rows (kind=end, state=answered) → pickups marked on the
+ *  matching outbound call events. Identity-stable when nothing matches. */
+export function markBrowserPickups(events, answeredEnds = []) {
+  if (!Array.isArray(events) || !events.length || !answeredEnds.length) return events;
+  const accounted = events
+    .filter((e) => e.kind === "call" && e.dir === "in" && callConnected(e))
+    .map((e) => e.at + (Number(e.durationSec) || 0) * 1000);
+  const free = answeredEnds
+    .map((r) => ({
+      sessionId: r.session_id ? String(r.session_id) : "",
+      hmac: r.phone_hmac ? String(r.phone_hmac) : "",
+      at: toMs(r.at),
+    }))
+    .filter((r) => Number.isFinite(r.at))
+    .filter((r) => !accounted.some((endAt) => Math.abs(endAt - r.at) <= PICKUP_MATCH_MS));
+  if (!free.length) return events;
+  let changed = false;
+  const out = events.map((e) => {
+    if (e.kind !== "call" || e.dir !== "out" || e.dialedBy || isFaxCall(e) || !callConnected(e)) return e;
+    const endAt = e.at + (Number(e.durationSec) || 0) * 1000;
+    const hit = free.some(
+      (r) =>
+        (r.sessionId && e.sessionId && r.sessionId === e.sessionId) ||
+        (r.hmac && r.hmac === e.hmac && Math.abs(r.at - endAt) <= PICKUP_MATCH_MS),
+    );
+    if (!hit) return e;
+    changed = true;
+    return { ...e, pickedUp: true };
+  });
+  return changed ? out : events;
+}
+
 /**
  * The same RingCentral record read twice in one tick, collapsed to one.
  *
@@ -1292,6 +1353,9 @@ export function buildTimeline({ events = [], resolutions = [] } = {}) {
         connected,
         missed: e.dir === "in" && !connected && !isBlockedCall(e),
         blocked: isBlockedCall(e),
+        // An inbound call answered in the browser, which RingCentral logged as
+        // Outbound (markBrowserPickups) — the wording and the icon flip on it.
+        pickedUp: !!e.pickedUp,
         audioState: e.audioState,
         dialedBy: e.dialedBy,
         voicemail: vm

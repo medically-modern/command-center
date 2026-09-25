@@ -33,9 +33,9 @@ import { requestSubstitution } from "@/lib/orders/mondayWrite";
 import {
   backorderedEntries, backorderedSetOnOrder, hasSubstitutionStory, substitutionAnswered,
   substitutionBlockers, substitutionEmailPreview, substitutionOptions, substitutionSendKind,
-  substitutionSendRefusal, substitutionVerdict,
+  substitutionSendRefusal, substitutionVerdict, swapWorkable,
 } from "@/lib/orders/substitution";
-import { isOpenStage, orderStage, type Order } from "@/lib/orders/workflow";
+import type { Order } from "@/lib/orders/workflow";
 import { StockPill } from "./pills";
 import { Field, SectionTitle } from "./Field";
 
@@ -53,7 +53,11 @@ export function SubstitutionCard({
   /** Ask the page to refetch once the service has answered. */
   onSent?: () => void;
 }) {
-  const open = isOpenStage(orderStage(order));
+  // ⚠️ `swapWorkable`, never `isOpenStage` alone: every live backordered order
+  // reads "Partially Shipped" — stage `shipped`, i.e. closed — so the stage
+  // gate made the picker read-only for the whole population it exists for
+  // (Josh, 2026-09-25: "i cant click, need a drop down").
+  const open = swapWorkable(order);
   const onBoard = (order.substituteInfusionSet ?? "").trim();
 
   const [picked, setPicked] = useState(onBoard);

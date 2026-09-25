@@ -168,6 +168,9 @@ export function formatDuration(sec: number): string {
 export function callLine(e: CallEntry): string {
   const who = e.dialedBy ? ` · ${whoShort(e.dialedBy)}` : "";
   if (e.dir === "out") {
+    // A browser pickup: their call, our answer — RingCentral just logged it
+    // backwards (the record is Outbound toward the caller, §5.49).
+    if (e.pickedUp) return `They called — we picked up · ${formatDuration(e.durationSec)}`;
     return e.connected ? `We called · ${formatDuration(e.durationSec)}${who}` : `We called · no answer${who}`;
   }
   if (e.blocked) return "Blocked call";

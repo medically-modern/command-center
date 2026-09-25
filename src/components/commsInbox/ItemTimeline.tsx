@@ -394,17 +394,18 @@ function Entry({ e, entries, numbers }: { e: TimelineEntry; entries: TimelineEnt
     );
   }
 
-  // A call.
-  const Icon = e.dir === "out" ? PhoneOutgoing : e.missed ? PhoneMissed : PhoneIncoming;
+  // A call. ⚠️ A browser pickup wears the INBOUND face — the record's
+  // direction is RingCentral's inversion, not the call's (callLine's note).
+  const Icon = e.pickedUp ? PhoneIncoming : e.dir === "out" ? PhoneOutgoing : e.missed ? PhoneMissed : PhoneIncoming;
   const hasRecording = e.connected && (e.audioState === "stored" || !!e.recordingUri);
   return (
     <EventRow
-      dir={e.dir}
+      dir={e.pickedUp ? "in" : e.dir}
       icon={
         <Icon
           className={cn(
             "h-3.5 w-3.5",
-            e.missed ? "text-orange-500" : e.dir === "out" ? "text-[color:var(--mm-green)]" : "text-muted-foreground",
+            e.missed ? "text-orange-500" : e.dir === "out" && !e.pickedUp ? "text-[color:var(--mm-green)]" : "text-muted-foreground",
           )}
         />
       }

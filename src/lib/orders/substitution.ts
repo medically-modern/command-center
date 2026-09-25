@@ -23,7 +23,7 @@
  * same set is a chase, not a duplicate, which is why the fix for every error
  * below ends "…then re-pick the substitute set".
  */
-import { cardinalStatus, type Order } from "./workflow";
+import { cardinalStatus, isOpenStage, orderStage, type Order } from "./workflow";
 
 /**
  * The live labels on Substitution Status, read from the board's `settings_str`
@@ -180,6 +180,28 @@ export function substitutionBlockers(
   if (!set) out.push("no infusion set on the order to switch away from");
   else if (set.ambiguous) out.push(`two infusion sets on the order (${set.ambiguous.join(" and ")}) and nothing singles one out`);
   return out;
+}
+
+/**
+ * May the swap be WORKED from this order — the picker and Send live, rather
+ * than the read-only record of a pick already made?
+ *
+ * ⚠️⚠️ **AN OPEN STAGE IS NOT ENOUGH, MEASURED 2026-09-25** (Josh: *"i cant
+ * click, need a drop down"*). Every one of the 25 live orders carrying a
+ * backordered set read API Status **"Partially Shipped"** — kind `partial`,
+ * stage `shipped`, `isOpenStage` false — so the picker was read-only for the
+ * ENTIRE real backorder population, on `/orders` and the patient screen
+ * alike. A partially shipped order still owes a box, and the box it owes is
+ * the backordered one: that is exactly who this control exists for. A fully
+ * SHIPPED or DELIVERED order stays read-only — the daily sweep writes the
+ * Backordered dropdown on every order and never clears it (§5.35), so a
+ * finished order's backorder flag is history, not this patient's problem.
+ */
+export function swapWorkable(
+  o: Pick<Order, "groupId" | "orderStatus" | "apiStatus" | "holdReason" | "apiMessage">,
+): boolean {
+  if (isOpenStage(orderStage(o))) return true;
+  return cardinalStatus(o.apiStatus, o.holdReason, o.apiMessage).kind === "partial";
 }
 
 /**

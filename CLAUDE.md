@@ -10728,6 +10728,23 @@ leaves nothing on Monday. A closed tab is caught up the next time that rep opens
   ⚠️ **The open item follows its row by comparing the two** (`inboxStateSig` on the row and on the
   item's own state), never the row with its previous self — a row that left the Unresolved list and
   came back reopened used to read as a first sighting, and the item kept showing it resolved.
+  ⚠️⚠️ **A BROWSER PICKUP IS LOGGED BACKWARDS BY RINGCENTRAL, and the timeline corrects it**
+  (measured 2026-09-25 on Josh's own test calls — *"the second says we called when in reality we
+  picked up" · "i answered in the browser"*). An inbound call answered on the WebRTC softphone
+  comes back from the call log as a **single Outbound/Accepted record toward the CALLER**, with no
+  inbound record at all — so every direction-keyed surface honestly said "We called".
+  `commsInboxRules.markBrowserPickups` joins the call log to the gateway's OWN telephony webhook
+  registry (`call_events`, §5.13, same pool): an outbound connected non-fax record with **no
+  `dialedBy`** (Answer is not a dial, so a pickup can never carry one) whose end sits within
+  `PICKUP_MATCH_MS` of an `end/answered` event for the same number — or shares its telephony
+  session id — is marked `pickedUp`, and the row reads **"They called — we picked up · 0:34"**
+  with the inbound icon. An answered event beside an INBOUND connected record is that record's own
+  answer (an RC-app pickup logs Inbound/Accepted), so it never relabels a neighbouring callback;
+  a dropped webhook just means no match and today's wording, never worse. ⚠️ **Deliberately
+  narrower than the whole app**: the all-time call counts (`contact-totals`, §5.30i/§5.51b) and
+  the popup's FALLBACK `CallHistoryList` still count/word a pickup as outbound — the first is
+  grouped SQL that cannot join per-call without redesign, the second reads RingCentral directly in
+  the browser where `call_events` is unreachable. Recorded, not fixed.
 - ⚠️⚠️ **The composer and the conversation were EXTRACTED from `ConversationThread`**
   (`assignedPatients/Composer.tsx`, `hooks/assignedPatients/useConversation.ts`), so the opt-out,
   delivery and Can Text guards exist ONCE and both screens render them. Can Text applies only when
