@@ -46,6 +46,17 @@ import { hasAbility } from "@/lib/shell/abilities";
 
 type View = "orders" | "stock";
 
+/**
+ * ⚠️ The ORDERS tab is hidden from the view switcher (Josh, 2026-09-25:
+ * *"comment out 'orders' tab from inventory for now, we will work on this in
+ * the future"*) — the `SHOW_CHASE_COLUMN` convention, one flip to bring it
+ * back. Only the TAB is off: the orders VIEW itself still renders for every
+ * door that lands on it directly — the role tile, `?orderId=` deep links, the
+ * patient screen's "Open on Orders", System Search — and selecting an order
+ * from Inventory's search still switches to it (`select`).
+ */
+const SHOW_ORDERS_TAB = false;
+
 const OrdersPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -183,7 +194,9 @@ const OrdersPage = () => {
                   </span>
                 )}
                 <div className="inline-flex rounded-lg bg-white/10 p-0.5" role="tablist" aria-label="View">
-                  <ViewTab active={view === "orders"} onClick={() => setView("orders")} icon={<PackageSearch className="h-3.5 w-3.5" />} label="Orders" />
+                  {(SHOW_ORDERS_TAB || view === "orders") && (
+                    <ViewTab active={view === "orders"} onClick={() => setView("orders")} icon={<PackageSearch className="h-3.5 w-3.5" />} label="Orders" />
+                  )}
                   <ViewTab active={view === "stock"} onClick={() => setView("stock")} icon={<Boxes className="h-3.5 w-3.5" />} label="Inventory" />
                 </div>
                 <Button onClick={() => void refetch(false)} disabled={loading} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">

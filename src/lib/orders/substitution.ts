@@ -23,7 +23,7 @@
  * same set is a chase, not a duplicate, which is why the fix for every error
  * below ends "…then re-pick the substitute set".
  */
-import type { Order } from "./workflow";
+import { cardinalStatus, type Order } from "./workflow";
 
 /**
  * The live labels on Substitution Status, read from the board's `settings_str`
@@ -182,15 +182,35 @@ export function substitutionBlockers(
   return out;
 }
 
-/** Whether the substitution section has anything to say about this order. */
+/**
+ * Whether the substitution section has anything to say about this order.
+ *
+ * ⚠️⚠️ **CARDINAL'S OWN VERDICT COUNTS** (Josh, 2026-09-25, on Mauricio
+ * Valencia's order 1119520914). API Status can read "Substitution Needed"
+ * while ALL FOUR substitution columns are still blank — measured live: the
+ * daily backorder sweep had not named the set, nobody had picked one, and the
+ * service had written nothing. Keyed on the columns alone, the order card's
+ * banner said "Pick a replacement below" over NO picker, on `/orders` and the
+ * patient screen alike — a promise with no control under it. The verdict is
+ * read through `cardinalStatus`, the ONE reading of the three columns
+ * (§5.35), never a second copy of its label set. The card copes with a blank
+ * Backordered dropdown already: `backorderedSetOnOrder` falls back to the
+ * order's single set, and an ambiguous pair is a named blocker, not a hidden
+ * card.
+ */
 export function hasSubstitutionStory(
-  o: Pick<Order, "backordered" | "substituteInfusionSet" | "substitutionStatus" | "substitutionCahNumber">,
+  o: Pick<
+    Order,
+    | "backordered" | "substituteInfusionSet" | "substitutionStatus" | "substitutionCahNumber"
+    | "apiStatus" | "holdReason" | "apiMessage"
+  >,
 ): boolean {
   return !!(
     (o.backordered ?? "").trim() ||
     (o.substituteInfusionSet ?? "").trim() ||
     (o.substitutionStatus ?? "").trim() ||
-    (o.substitutionCahNumber ?? "").trim()
+    (o.substitutionCahNumber ?? "").trim() ||
+    cardinalStatus(o.apiStatus, o.holdReason, o.apiMessage).kind === "substitution"
   );
 }
 

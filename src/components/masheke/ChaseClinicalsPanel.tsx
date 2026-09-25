@@ -758,7 +758,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
                                   style={{ borderColor: "var(--mm-card-border)" }}
                                 >
                                   <FileText className="h-3.5 w-3.5 shrink-0 text-[color:var(--mm-teal)]" />
-                                  <span className="max-w-[220px] truncate">{f.name}</span>
+                                  <span className="max-w-[220px] truncate" title={f.name}>{f.name}</span>
                                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{tag}</span>
                                 </button>
                               );
@@ -919,7 +919,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
                                   style={{ borderColor: "var(--mm-card-border)" }}
                                 >
                                   <FileText className="h-3.5 w-3.5 shrink-0 text-[color:var(--mm-teal)]" />
-                                  <span className="max-w-[220px] truncate">{f.name}</span>
+                                  <span className="max-w-[220px] truncate" title={f.name}>{f.name}</span>
                                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{tag}</span>
                                 </button>
                               );

@@ -1114,7 +1114,7 @@ function CourtesyFax({
               style={{ borderColor: "var(--mm-mint-ring)", background: "var(--mm-mint)" }}
             >
               <FileText className="h-3.5 w-3.5 shrink-0 text-[color:var(--mm-teal)]" />
-              <span className="max-w-[200px] truncate">{f.name}</span>
+              <span className="max-w-[200px] truncate" title={f.name}>{f.name}</span>
               <span className="text-[10px] uppercase tracking-wider text-[color:var(--mm-teal)]">New</span>
               <button
                 type="button"

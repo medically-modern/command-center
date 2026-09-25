@@ -36,8 +36,11 @@ export interface InboundCall {
 }
 
 export interface RingPrefs {
-  /** Where RingCentral rings this person when they take a call — the one
-   *  per-person call setting left (2026-09-25). */
+  /** Where RingCentral rings this person when they take a call. ⚠️ The EDITOR
+   *  for this is gone (2026-09-25 — "we dont do call forwarding anymore,
+   *  everyone answers in the browser"); the gateway still stores and reads the
+   *  numbers people saved while it existed, so "Take it" keeps working for
+   *  them, and this type still describes the SSE prefs payload. */
   forwardNumber: string;
 }
 
@@ -92,10 +95,3 @@ export async function claimCall(callId: string): Promise<{ ringingAt: string }> 
   return json<{ ok: boolean; ringingAt: string }>(res, "Taking the call");
 }
 
-export async function fetchRingPrefs(): Promise<RingPrefs> {
-  return json<RingPrefs>(await call("/calls/prefs"), "Loading call settings");
-}
-
-export async function saveRingPrefs(prefs: RingPrefs): Promise<void> {
-  await json(await call("/calls/prefs", { method: "PUT", body: JSON.stringify(prefs) }), "Saving call settings");
-}

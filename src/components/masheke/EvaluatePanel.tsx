@@ -1088,7 +1088,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
                 ) : (
                   <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
                 )}
-                <span className="flex-1 truncate">{f.name}</span>
+                <span className="flex-1 truncate" title={f.name}>{f.name}</span>
                 <span
                   className={cn(
                     "font-medium",
@@ -1654,7 +1654,7 @@ function MondayScriptViewer({
         >
           <span className="flex items-center gap-2 truncate text-xs text-emerald-900">
             <FileText className="h-3 w-3 shrink-0" />
-            <span className="truncate font-medium">{f.name}</span>
+            <span className="truncate font-medium" title={f.name}>{f.name}</span>
           </span>
           <div className="flex items-center gap-1 shrink-0">
             <Button
@@ -1958,7 +1958,7 @@ function FileUploadCard({
                     )}
                   </div>
                   <FileText className="h-4 w-4 shrink-0 text-[color:var(--mm-teal)]" />
-                  <span className="truncate font-semibold flex-1">{f.name}</span>
+                  <span className="truncate font-semibold flex-1" title={f.name}>{f.name}</span>
                   {url && (
                     <button
                       onClick={(e) => {

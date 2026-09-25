@@ -428,7 +428,7 @@ export function FileList({
                 {tag}
               </span>
             )}
-            <span className="flex-1 min-w-0 truncate text-[0.95rem] font-semibold">{f.name}</span>
+            <span className="flex-1 min-w-0 truncate text-[0.95rem] font-semibold" title={f.name}>{f.name}</span>
             <button
               disabled={!url}
               onClick={() => url && view(url, f.name)}

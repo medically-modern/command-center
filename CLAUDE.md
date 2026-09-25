@@ -1074,10 +1074,15 @@ the same reason.
 > `WatchCallbackButton` (the bell) and `call_ring_allow` behind `list`. Every connected answerer
 > now sees every inbound call: `shouldNotify` and `RING_MODES` are deleted from `callRules.mjs`,
 > `audienceFor` returns every subscriber, the `/calls/allow*` routes are gone, and the bell left
-> every thread header. What survives: the **"Take it" forward number** (the slimmed
-> `RingPreferencesDialog`, still `normalizePrefs`' one field), the **per-browser ringtone mute**
-> (§5.13b), and the desktop-alert opt-in. `call_ring_allow` and the old `mode` column stay in
-> Postgres unread — never dropped, the assignments.json precedent. The paragraphs below about
+> every thread header. What survives: the **per-browser ringtone mute**
+> (§5.13b), and the desktop-alert opt-in. ⚠️ **The "Take it" forward-number EDITOR went the same
+> night** (Josh: *"cut this we dont do call forwarding anymore everyone answers in the browser"*) —
+> `RingPreferencesDialog` is status + desktop alerts now, `fetchRingPrefs`/`saveRingPrefs` left
+> `callsApi`, and the settings menu's opener became the desktop-alert opt-in. The gateway's
+> `/calls/prefs` routes and every SAVED forward number are deliberately untouched, so the Take it
+> button still forwards for anyone who set a number while the editor existed; a NEW person cannot
+> set one, which is accepted — answering happens in the browser. `call_ring_allow` and the old
+> `mode` column stay in Postgres unread — never dropped, the assignments.json precedent. The paragraphs below about
 > `list` membership and the privacy boundary are HISTORY explaining why no inference-based filter
 > may come back; the marker in `callRules.test.mjs` pins the prefs shape.
 
@@ -6765,8 +6770,13 @@ a formatter that guesses at an unfamiliar shape prints a wrong date rather than 
 **The page is called Inventory on every surface now** — the global header tab already was, so the
 in-page view tab and the header title follow it. `?view=stock` keeps its name, so every existing
 link still works. The ORDER sidebar is hidden while Inventory is open (it is the orders view's
-search, and on this screen it lists things this page cannot open); the Orders tab is one click back
-and brings it with it.
+search, and on this screen it lists things this page cannot open).
+⚠️ **The Orders TAB is hidden from Inventory since 2026-09-25** (Josh: *"comment out 'orders' tab
+from inventory for now, we will work on this in the future"*) — `SHOW_ORDERS_TAB = false` in
+`OrdersPage.tsx`, the `SHOW_CHASE_COLUMN` convention. Only the TAB is off: the orders VIEW still
+renders for every door that lands on it directly (the role tile, `?orderId=` deep links, the
+patient screen's "Open on Orders", System Search), it still shows its own tab pair while you are ON
+it, and picking an order from Inventory's search still switches to it.
 
 ### 5.45 The patient screen's Subscription view — Brandon's Profile | Orders (Sep 2026)
 Josh, 2026-09-21, looking at what shipped: *"is this what brandons mockup did here? if not follow
@@ -9031,6 +9041,13 @@ the Send button, and that second column as the notification.
 - ⚠️ **The backordered set is not offered** — the service refuses it (`Error: Same Set Picked`), so
   listing it is offering a guaranteed error. Dropped only when we know WHICH set that is: an
   ambiguous pair drops nothing and `substitutionBlockers` says so before the send instead.
+- ⚠️ **The card MOUNTS on Cardinal's own verdict too, from 2026-09-25** (`hasSubstitutionStory`
+  reads `cardinalStatus(...).kind === "substitution"` beside the four columns). Measured live on
+  Mauricio Valencia's order 1119520914: API Status said "Substitution Needed" while the Backordered
+  dropdown, the pick, the status and the CAH number were ALL blank — the daily sweep had not named
+  the set — so the card returned null and the swap was unreachable on `/orders` and the patient
+  screen alike, under a banner promising a picker. `backorderedSetOnOrder`'s single-set fallback is
+  what makes the pick workable in that state; an ambiguous pair is still a named blocker.
 - ⚠️ **The watcher's stop condition is the NOTES, not the status** (`substitutionAnswered`): a
   re-send writes the same `Sent`, which is a Monday no-op, so a value-only test would wait for ever
   on exactly the chase the resend path exists for. Polls one item's three columns every 3s for 45s.
@@ -11260,7 +11277,15 @@ patient asks what arrived.
 
 ⚠️⚠️ **The backorder swap is `/orders`' own Substitution card, unchanged** — its pick IS the email to
 Cardinal (§5.35) — rendered when the order has a substitution story, and only for somebody with
-**Adjust orders** (the signed-in person, never a borrowed view, §5.39h). Without it the order still
+**Adjust orders** (the signed-in person, never a borrowed view, §5.39h).
+⚠️ **"A substitution story" includes Cardinal's OWN verdict from 2026-09-25** (Josh, on Mauricio
+Valencia's order 1119520914: *"i should be able to add an order substitution from here, it looks
+like that was thought of but isnt possible"*). API Status read "Substitution Needed" while all four
+substitution columns were still blank — measured live — so `hasSubstitutionStory` keyed on the
+columns alone left the banner promising "Pick a replacement below" over no picker, here AND on
+`/orders`. It now also fires on `cardinalStatus(...).kind === "substitution"`, the same reading the
+banner uses, so the two cannot disagree again; `backorderedSetOnOrder`'s single-set fallback is what
+makes the card workable with the Backordered dropdown still empty. Without it the order still
 reads in full, the backordered set is named in the still-to-come block, and on an open order one
 grey line says who can swap. The sentence *"the backordered set can be swapped below"* appears only
 where the swap really is: the card sends from an OPEN order alone. `patientScreen.test.ts` lists it

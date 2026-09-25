@@ -134,6 +134,17 @@ describe("hasSubstitutionStory", () => {
     expect(hasSubstitutionStory(mkOrder({ substitutionStatus: "Sent" }))).toBe(true);
     expect(hasSubstitutionStory(mkOrder({ substitutionCahNumber: "1120960999" }))).toBe(true);
   });
+
+  it("⚠️ Cardinal's own verdict counts — Mauricio Valencia, 2026-09-25", () => {
+    // API Status read "Substitution Needed" with ALL FOUR substitution columns
+    // blank (measured live), so the banner promised a picker no screen had.
+    expect(hasSubstitutionStory(mkOrder({ apiStatus: "Substitution Needed" }))).toBe(true);
+    expect(hasSubstitutionStory(mkOrder({ apiStatus: "Substitution Ordered" }))).toBe(true);
+    // A SHIPPED substitution is a finished story only when the columns say so —
+    // the shipped label alone is not a reason to mount the swap card.
+    expect(hasSubstitutionStory(mkOrder({ apiStatus: "Substitution Shipped" }))).toBe(false);
+    expect(hasSubstitutionStory(mkOrder({ apiStatus: "SHIPPED" }))).toBe(false);
+  });
 });
 
 /** The live Substitute Infusion Set labels, read 2026-09-15 (a sample). */

@@ -45,7 +45,10 @@ vi.mock("@/lib/shared/auth", () => ({
   signOut: () => {},
 }));
 // Radix, portals and a fetch of its own — not what this test is about.
-vi.mock("@/components/inboundCalls/RingPreferencesDialog", () => ({ default: () => null }));
+vi.mock("@/components/inboundCalls/RingPreferencesDialog", () => ({
+  default: () => null,
+  askDesktopAlerts: vi.fn(),
+}));
 
 import { CallSettings } from "./CallSettings";
 import { callStatusLine } from "@/lib/shell/callStatusLine";
@@ -90,13 +93,15 @@ describe("the menu's shape", () => {
   it("⚠️ the ring-mode controls are GONE and stay gone (Josh, 2026-09-25)", () => {
     // "Remove the ability to select which call rings them and the pinned
     // numbers — the ring tone in the browser stays." Everyone connected rings
-    // for every call; the only per-person setting left is the Take-it forward
-    // number, which lives in the dialog this section opens.
+    // for every call, and the "Take it" forward-number EDITOR went the same
+    // night ("we dont do call forwarding anymore everyone answers in the
+    // browser") — no per-person call setting is stored from here at all.
     expect(calls).not.toContain("Which calls ring me");
     expect(calls).not.toContain("Ring me for incoming patient calls");
     expect(calls).not.toContain("Only my patients");
     expect(calls).not.toContain("saveRingPrefs");
-    expect(calls).toContain("The number Take it forwards to");
+    expect(calls).not.toContain("The number Take it forwards to");
+    expect(calls).toContain("Alert me when this tab is in the background");
     expect(calls).toContain("Play a ringtone in this browser");
   });
 });
@@ -110,14 +115,14 @@ describe("the status sentence", () => {
 });
 
 describe("the Calls section, rendered", () => {
-  it("an answerer: the line's status, the ringtone on, and the dialog opener", async () => {
+  it("an answerer: the line's status, the ringtone on, and the alerts opt-in", async () => {
     render(<CallSettings />);
     expect(await screen.findByText("Connected — calls ring in this tab")).toBeTruthy();
     const rows = screen.getAllByRole("switch");
     expect(rows).toHaveLength(1); // the ringtone — the mode rows are gone
     expect(rows[0].getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByText("The number Take it forwards to…")).toBeTruthy();
-    // Nothing to fetch any more: the dialog loads its own forward number.
+    expect(screen.getByText("Alert me when this tab is in the background…")).toBeTruthy();
+    // No per-person call setting is stored from here any more.
     expect(fetchRingPrefs).not.toHaveBeenCalled();
   });
 

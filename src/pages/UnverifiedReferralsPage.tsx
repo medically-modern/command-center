@@ -546,7 +546,7 @@ function FileColumnRow({
               title="Click to preview"
               onClick={() => openFileViewer({ url: a.public_url || a.url, name: a.name })}
             >
-              <span className="fname">{a.name}</span>
+              <span className="fname" title={a.name}>{a.name}</span>
               <span className="fmeta">{a.name.includes(".") ? a.name.split(".").pop() : ""}</span>
             </div>
           ))}
@@ -593,12 +593,12 @@ function FileColumnRow({
             title="Click to preview"
             onClick={() => openFileViewer({ url, name: e.name })}
           >
-            <span className="fname">{e.name}</span>
+            <span className="fname" title={e.name}>{e.name}</span>
             <span className="fmeta">{ext}</span>
           </div>
         ) : (
           <div key={`${e.name}-${i}`} className="file-row" style={{ opacity: 0.6, cursor: "default" }}>
-            <span className="fname">{e.name}</span>
+            <span className="fname" title={e.name}>{e.name}</span>
             <span className="fmeta">{assets === null ? "loading" : ext}</span>
           </div>
         );
@@ -2633,7 +2633,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                           className="file-row"
                           onClick={() => openFileViewer({ url: a.public_url || a.url, name: a.name })}
                         >
-                          <span className="fname">{a.name}</span>
+                          <span className="fname" title={a.name}>{a.name}</span>
                           <span className="fmeta">{source}</span>
                         </div>
                       );
