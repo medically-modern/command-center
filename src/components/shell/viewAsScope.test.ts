@@ -65,6 +65,25 @@ describe("⚠️ the borrow reaches the header", () => {
   });
 });
 
+describe("⚠️ the borrow reaches the patient screen's Open link (Josh, 2026-09-25)", () => {
+  // "i viewed as masani and the open profile send off button is still there —
+  // she doesnt have it assigned to her." The link is a DISPLAY gate — the
+  // door writes nothing, and every tool page's own write guard still reads
+  // the signed-in person — so it answers for the viewed person, through the
+  // one shared hook rather than a second copy of the header's lines.
+  it("useDisplayAccess mirrors the header's `who` — viewOthers checked, then the borrowed access", () => {
+    const hook = live(read("components/shell/displayAccess.ts"));
+    expect(hook).toContain('hasAbility(email, config, "viewOthers")');
+    expect(hook).toContain("resolveAccess(borrowing, config)");
+  });
+
+  it("the Open link gate consults it — and not the signed-in context directly", () => {
+    const view = live(read("components/patient/OnboardingView.tsx"));
+    expect(view).toContain("useDisplayAccess()");
+    expect(view).not.toContain("useAccessContext");
+  });
+});
+
 describe("⚠️⚠️ the borrow does NOT reach anything that writes", () => {
   it("AbilityGate reads the signed-in person", () => {
     const gate = live(read("components/shell/AbilityGate.tsx"));

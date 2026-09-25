@@ -16,16 +16,23 @@ vi.mock("@/components/patient/StagePanelEmbed", () => ({
   StagePanelUnavailable: ({ tool }: { tool: string }) => <p>No panel for {tool}</p>,
 }));
 
-/** The signed-in person's RESOLVED access — what gates the Open link
- *  (2026-09-25). The default is a manager, which is also what the §5.3
- *  bootstrap resolves everyone to while `managers[]` is empty — so every
- *  test written before the gate behaves exactly as it did. */
-const ctx = vi.hoisted(() => ({ access: { type: "manager" } as unknown }));
+/** The signed-in person's context — what the Open link's DISPLAY access is
+ *  resolved from (2026-09-25). The default is a manager with no borrow on,
+ *  which is also what the §5.3 bootstrap resolves everyone to while
+ *  `managers[]` is empty — so every test written before the gate behaves
+ *  exactly as it did. The borrow tests below drive the REAL `viewAs` store
+ *  and the REAL `useDisplayAccess` against this mocked context. */
+const ctx = vi.hoisted(() => ({
+  access: { type: "manager" } as unknown,
+  email: "",
+  config: { managers: [], processors: {} } as unknown,
+}));
 vi.mock("@/components/AccessProvider", () => ({
   useAccessContext: () => ctx,
 }));
 
 import { OnboardingView } from "./OnboardingView";
+import { setViewAs } from "@/lib/shell/viewAs";
 
 const MED = 18406060017;
 
@@ -96,6 +103,10 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-09-24T16:00:00Z"));
   ctx.access = { type: "manager" };
+  ctx.email = "";
+  ctx.config = { managers: [], processors: {} };
+  // The viewAs store is module state — no test inherits another's borrow.
+  setViewAs("");
 });
 afterEach(() => vi.useRealTimers());
 
@@ -208,5 +219,61 @@ describe("⚠️⚠️ the Open link is ROLE-GATED (Josh, 2026-09-25)", () => {
     const done = item({ isCompleted: true, stageAdvancerText: "Chase Clinicals" });
     renderView([done], null);
     expect(screen.queryByRole("link", { name: /Open / })).toBeNull();
+  });
+});
+
+describe("⚠️⚠️ Viewing as somebody shows THEIR doors (Josh, 2026-09-25)", () => {
+  // "i viewed as masani and the open profile send off button is still there —
+  // she doesnt have it assigned to her." The link is a DISPLAY gate, so the
+  // borrow's §5.39g promise ("the whole ui should be EXACTLY what they see")
+  // applies; the tool pages' own write guards still read the signed-in person.
+  const JOSH = "josh@medicallymodern.com";
+  const MASANI = "masani@medicallymodern.com";
+  const config = (perms?: Record<string, boolean>) => ({
+    managers: [JOSH],
+    processors: {
+      [JOSH]: { name: "Josh", roles: [], ...(perms ? { perms } : {}) },
+      // Masani's real shape: the dashboard role, not the stage tools.
+      [MASANI]: { name: "Masani", roles: ["scheduledCalls"] },
+    },
+  });
+
+  it("a manager borrowing an unassigned person's view loses the link — and keeps the embed", () => {
+    ctx.access = { type: "manager" };
+    ctx.email = JOSH;
+    ctx.config = config({ viewOthers: true });
+    setViewAs(MASANI);
+    const live = item();
+    renderView([live], live);
+    expect(screen.queryByRole("link", { name: /Open / })).toBeNull();
+    expect(screen.getByText("Embedded Confirm Receipt")).toBeInTheDocument();
+  });
+
+  it("⚠️ without `viewOthers` the borrow is inert here, exactly as in the header", () => {
+    // A revoked grant must end the borrow everywhere at once, or this screen
+    // would keep previewing a person the header no longer answers for.
+    ctx.access = { type: "manager" };
+    ctx.email = JOSH;
+    ctx.config = config();
+    setViewAs(MASANI);
+    const live = item();
+    renderView([live], live);
+    expect(screen.getByRole("link", { name: /Open Confirm Receipt/ })).toBeInTheDocument();
+  });
+
+  it("borrowing a view that HOLDS the role shows the door, whoever is signed in", () => {
+    ctx.access = { type: "processor", profile: { name: "Rep", roles: ["benefits"] } };
+    ctx.email = JOSH;
+    ctx.config = {
+      managers: ["someone-else@medicallymodern.com"],
+      processors: {
+        [JOSH]: { name: "Josh", roles: ["benefits"], perms: { viewOthers: true } },
+        [MASANI]: { name: "Masani", roles: ["confirmReceipt"] },
+      },
+    };
+    setViewAs(MASANI);
+    const live = item();
+    renderView([live], live);
+    expect(screen.getByRole("link", { name: /Open Confirm Receipt/ })).toBeInTheDocument();
   });
 });

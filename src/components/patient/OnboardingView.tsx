@@ -37,15 +37,21 @@
  * assigned that rols shouldnt see it and it should be the read only thing"*).
  * `mayWorkRoute` applies the §5.3 model to the door: a manager sees every
  * Open link, a processor only the ones for roles on their profile, and
- * everybody still gets the read-only embed below. ⚠️ Gated on the SIGNED-IN
- * person's resolved access (`useAccessContext().access`), never a borrowed
- * view's (§5.39g) — this is a door into a tool where a rep can act.
+ * everybody still gets the read-only embed below. ⚠️ Gated on the DISPLAY
+ * access (`useDisplayAccess`, §5.39g's split): the link is a "what does
+ * their screen look like" question, so Viewing as somebody shows exactly the
+ * doors THEY see (Josh, 2026-09-25: *"i viewed as masani and the open
+ * profile send off button is still there — she doesnt have it assigned to
+ * her"*). The first cut read the signed-in access, on the "door into a tool"
+ * argument — but the door itself writes nothing, and every tool page's own
+ * write guard still reads the signed-in person, so hiding it in a borrow
+ * costs no ability and showing it broke the borrow's one promise.
  */
 import { Activity, AlertTriangle, ArrowUpRight, Check, ClipboardList, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail } from "@/lib/commsHub/stageDetail";
-import { useAccessContext } from "@/components/AccessProvider";
+import { useDisplayAccess } from "@/components/shell/displayAccess";
 import { mayWorkRoute } from "@/lib/roleView";
 import {
   itemOpenHref,
@@ -358,9 +364,10 @@ const SUB_STAGE_CAVEAT =
   " All this board's steps share one record, so a field a later step changed shows its latest value.";
 
 function OpenTool({ item, tool }: { item: DossierItem | null; tool: SubStageStep | null }) {
-  /* ⚠️ The SIGNED-IN person's resolved access, never a borrowed view's
-     (§5.39g): the link is a door into a tool where a rep can act. */
-  const { access } = useAccessContext();
+  /* ⚠️ The DISPLAY access (§5.39g's split): the borrowed person's while a
+     borrow is on, so Viewing as somebody shows the doors THEY see — the
+     tool pages' own write guards still read the signed-in person. */
+  const access = useDisplayAccess();
   const href = (tool ? subStageOpenHref(item, tool.route) : null) ?? itemOpenHref(item);
   if (!item) return null;
   if (!href) {
