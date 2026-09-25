@@ -27,8 +27,10 @@ import {
   isFaxCall,
   isReplyToAutomation,
   itemState,
+  joinInbound,
   leftVmCallFor,
   markBrowserPickups,
+  markInvertedInbound,
   mirrorPending,
   normalizeNote,
   noteTargetFor,
@@ -870,6 +872,88 @@ describe("markBrowserPickups", () => {
     const c = { ...pickup(TUE_9AM), pickedUp: true };
     const tl = buildTimeline({ events: [c], resolutions: [] });
     expect(tl[0]).toMatchObject({ type: "call", dir: "out", pickedUp: true, connected: true });
+  });
+});
+
+/* ── inverted missed calls — the unanswered variant of the same flip ─────── */
+
+describe("markInvertedInbound", () => {
+  // Brandon's morning audit, 2026-09-25: Fidelis's 8:26 AM call rang the
+  // browser leg, nobody answered, voicemail took it — and RingCentral logged
+  // ONE Outbound record toward the caller. The timeline read "We called · no
+  // answer", the voicemail orphaned, and had no message been left the call
+  // would have opened no inbox item at all.
+  const phantom = (t, over = {}) =>
+    call(A, t, { dir: "out", result: "Voicemail", legResults: ["Voicemail"], durationSec: 100, ...over });
+  const missedEnd = (t, over = {}) => ({ session_id: "", phone_hmac: A, at: new Date(t).toISOString(), ...over });
+
+  it("re-labels the outbound record our webhook watched ring and END unanswered", () => {
+    const c = phantom(TUE_9AM);
+    const out = markInvertedInbound([c], [missedEnd(TUE_9AM + 100_000 + 8_000)]);
+    expect(out[0]).toMatchObject({ dir: "in", inverted: true });
+    expect(out[0]).not.toBe(c); // a new object, never a mutation
+  });
+
+  it("matches on the telephony session id when the Detailed scan backfilled one", () => {
+    const c = { ...phantom(TUE_9AM), sessionId: "s-909" };
+    const out = markInvertedInbound([c], [missedEnd(TUE_9AM + 45 * MIN, { session_id: "s-909" })]);
+    expect(out[0].dir).toBe("in");
+  });
+
+  it("the ordinary missed-call rules then apply unchanged: it opens an item and its voicemail joins", () => {
+    const c = phantom(TUE_9AM);
+    const v = vm(A, TUE_9AM + 100_000 + 10_000);
+    const [inv] = markInvertedInbound([c], [missedEnd(TUE_9AM + 100_000)]);
+    expect(opensItem(inv)).toBe(true);
+    const joined = joinInbound([inv, v]);
+    expect(joined.get(String(inv.id))?.id).toBe(v.id);
+    const tl = buildTimeline({ events: [inv, v], resolutions: [] });
+    expect(tl[0]).toMatchObject({ type: "call", dir: "in", missed: true, voicemail: { id: v.id } });
+    expect(tl).toHaveLength(1); // one event, not an orphaned voicemail row too
+  });
+
+  it("⚠️ a call somebody PRESSED CALL for is a genuine outbound, whatever rang around it", () => {
+    const events = [{ ...phantom(TUE_9AM), dialedBy: "rep@medicallymodern.com" }];
+    expect(markInvertedInbound(events, [missedEnd(TUE_9AM + 100_000)])).toBe(events);
+  });
+
+  it("⚠️ a missed end beside an INBOUND unconnected record is that record's own ending — a genuine callback beside it stays outbound", () => {
+    const nativeMissed = call(A, TUE_9AM, { result: "Voicemail", durationSec: 100 });
+    const callback = call(A, TUE_9AM + 100_000 + 60_000, { dir: "out", result: "No Answer", durationSec: 0 });
+    const events = [nativeMissed, callback];
+    const out = markInvertedInbound(events, [missedEnd(TUE_9AM + 100_000)]);
+    expect(out).toBe(events); // accounted evidence → nothing inverts → same array
+    expect(out[1].dir).toBe("out");
+    expect(out[1].inverted).toBeUndefined();
+  });
+
+  it("⚠️ guardCalls covers the covered: the LIST pre-filters resolved inbound calls out of events, and their evidence must still be consumed", () => {
+    // The resolved (covered) missed call is NOT in events — only its evidence
+    // and a rep's real callback are. Without the guard the callback inverts
+    // and REOPENS the item the rep resolved.
+    const covered = call(A, TUE_9AM, { result: "Voicemail", durationSec: 100 });
+    const callback = call(A, TUE_9AM + 100_000 + 60_000, { dir: "out", result: "No Answer", durationSec: 0 });
+    const events = [callback];
+    const withGuard = markInvertedInbound(events, [missedEnd(TUE_9AM + 100_000)], [covered, callback]);
+    expect(withGuard).toBe(events); // the guard consumed the evidence — untouched
+    expect(withGuard[0].dir).toBe("out");
+    // …and the same call WITHOUT the guard is exactly the reopen hazard:
+    const without = markInvertedInbound(events, [missedEnd(TUE_9AM + 100_000)]);
+    expect(without[0].dir).toBe("in");
+  });
+
+  it("never touches a connected outbound call (markBrowserPickups' half), a fax, or another number", () => {
+    const connected = call(A, TUE_9AM, { dir: "out", result: "Accepted", durationSec: 30 });
+    const fax = call(A, TUE_9AM, { dir: "out", result: "Voicemail", callType: "Fax" });
+    const other = call(B, TUE_9AM, { dir: "out", result: "No Answer" });
+    const out = markInvertedInbound([connected, fax, other], [missedEnd(TUE_9AM + 30_000)]);
+    expect(out.every((e) => e.dir === "out")).toBe(true);
+  });
+
+  it("⚠️ identity-stable when nothing matches (incident rule 2)", () => {
+    const events = [phantom(TUE_9AM)];
+    expect(markInvertedInbound(events, [missedEnd(TUE_9AM + 45 * MIN)])).toBe(events);
+    expect(markInvertedInbound(events, [])).toBe(events);
   });
 });
 

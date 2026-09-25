@@ -82,6 +82,7 @@ import {
   inboxHealth,
   itemState,
   markBrowserPickups,
+  markInvertedInbound,
   mirrorPending,
   SUBSCRIPTION_INACTIVE_GROUP,
   applyStageFresh,
@@ -662,7 +663,7 @@ async function loadInboundForList(pool, { epoch, now }) {
   const epochAt = new Date(epoch);
   const labels = CONNECTED_RESULT_LABELS;
   const has = await archivesPresent(pool);
-  const [t, c, v] = await Promise.all([
+  const [t, c, v, cand] = await Promise.all([
     !has.texts ? NONE : pool.query(
       `WITH ${COVER_CTE}
        SELECT s.rc_message_id, s.phone_hmac, s.last4, s.direction, s.body, s.message_status, s.delivery_error,
@@ -695,12 +696,76 @@ async function loadInboundForList(pool, { epoch, now }) {
           AND (v.created_at >= $1 OR (v.created_at >= $2 AND v.created_at > COALESCE(cov.covered, '-infinity'::timestamptz)))`,
       [windowStart, epochAt],
     ),
+    // ⚠️ Candidates for markInvertedInbound — an unanswered inbound call
+    // RingCentral logged as OUTBOUND toward the caller (observed 2026-09-25,
+    // the §5.49 inversion's unanswered variant) opens nothing under the
+    // Inbound-only arms above: a real missed patient call, absent from the
+    // list. Same window, same cover clause, same connected-labels PRE-filter
+    // (an outbound call that connected can never invert).
+    !has.calls ? NONE : pool.query(
+      `WITH ${COVER_CTE}
+       SELECT a.rc_call_id, a.rc_session_id, a.phone_hmac, a.last4, a.direction, a.result, a.leg_results,
+              a.duration_sec, a.started_at, a.audio_state, a.call_type
+         FROM call_archive a LEFT JOIN cov ON cov.phone_hmac = a.phone_hmac
+        WHERE a.direction = 'Outbound' AND a.phone_hmac IS NOT NULL
+          AND a.call_type IS DISTINCT FROM 'Fax'
+          AND NOT (lower(btrim(COALESCE(a.result, ''))) = ANY($3))
+          AND NOT EXISTS (
+                SELECT 1 FROM jsonb_array_elements_text(COALESCE(a.leg_results, '[]'::jsonb)) AS x(v)
+                 WHERE lower(btrim(x.v)) = ANY($3))
+          AND (a.started_at >= $1 OR (a.started_at >= $2 AND a.started_at > COALESCE(cov.covered, '-infinity'::timestamptz)))`,
+      [windowStart, epochAt, labels],
+    ),
   ]);
-  return dropOwn([
+  const inboundEvents = [
     ...t.rows.map((r) => textEvent(r)),
     ...c.rows.map((r) => callEvent(r)),
     ...v.rows.map((r) => voicemailEvent(r)),
-  ]);
+  ];
+  let events = inboundEvents;
+  if (cand.rows.length) {
+    // The inversion's evidence and guards. Evidence: our own telephony
+    // webhook's missed ends (§5.13). Guard: EVERY inbound unconnected call in
+    // the evidence window — deliberately without the cover clause, because a
+    // resolved (covered) missed call is dropped from the arms above while its
+    // end evidence remains, and without the guard that evidence would invert a
+    // rep's genuine callback beside it and reopen the item they resolved.
+    // Dials: a call somebody pressed Call for is a genuine outbound.
+    const evidenceFrom = new Date(Math.min(now - DISPLAY_WINDOW_MS, epoch));
+    const [evid, guard, dialRows] = await Promise.all([
+      optionalTable(
+        pool.query(
+          `SELECT session_id, phone_hmac, at FROM call_events
+            WHERE kind = 'end' AND state = 'missed' AND at >= $1`,
+          [evidenceFrom],
+        ),
+      ),
+      pool.query(
+        `SELECT rc_call_id, rc_session_id, phone_hmac, last4, direction, result, leg_results,
+                duration_sec, started_at, audio_state, call_type
+           FROM call_archive
+          WHERE direction = 'Inbound' AND phone_hmac IS NOT NULL
+            AND call_type IS DISTINCT FROM 'Fax' AND started_at >= $1`,
+        [evidenceFrom],
+      ),
+      pool.query(`SELECT phone_hmac, dialed_by, at FROM comms_dials WHERE at >= $1`, [evidenceFrom]),
+    ]);
+    const dialList = dialRows.rows.map((d) => ({ hmac: d.phone_hmac, by: d.dialed_by, at: toMs(d.at) }));
+    const candidates = cand.rows.map((r) => {
+      const e = callEvent(r);
+      e.dialedBy = dialerFor(e, dialList);
+      return e;
+    });
+    const inverted = markInvertedInbound(
+      [...inboundEvents, ...candidates],
+      evid.rows,
+      guard.rows.map((r) => callEvent(r)),
+    );
+    // Only a candidate that really inverted belongs on the list; the rest are
+    // the ordinary We-called rows this loader has never carried.
+    events = inverted.filter((e) => !(e.kind === "call" && e.dir === "out"));
+  }
+  return dropOwn(events);
 }
 
 /** Outbound texts (with who sent them) and calls (with who dialed) for these
@@ -764,7 +829,7 @@ function attributed({ texts = [], calls = [], voicemails = [], sent = [], dials 
 /** Everything for one item's numbers, for its timeline. */
 async function loadGroupAll(pool, hmacs) {
   const has = await archivesPresent(pool);
-  const [t, c, v, res, sent, dials, media, answered] = await Promise.all([
+  const [t, c, v, res, sent, dials, media, ends] = await Promise.all([
     !has.texts ? NONE : pool.query(
       `SELECT rc_message_id, phone_hmac, last4, direction, body, message_status, delivery_error, attachments, created_at
          FROM sms_archive WHERE phone_hmac = ANY($1) ORDER BY created_at DESC LIMIT 3000`,
@@ -795,20 +860,27 @@ async function loadGroupAll(pool, hmacs) {
     ),
     // ⚠️ The telephony webhook's own registry (§5.13), on this same pool — the
     // ONE thing that knows a call RingCentral logged as Outbound was really an
-    // inbound call answered in the browser (markBrowserPickups). optionalTable:
-    // a build with inbound calls unconfigured has no call_events, and losing
-    // the relabel must never lose the timeline.
+    // inbound call: answered in the browser (markBrowserPickups), or rung and
+    // MISSED (markInvertedInbound — the 2026-09-25 variant, where the wrong
+    // direction also orphaned the call's voicemail and hid it from opensItem).
+    // optionalTable: a build with inbound calls unconfigured has no
+    // call_events, and losing the relabel must never lose the timeline.
     optionalTable(
       pool.query(
-        `SELECT session_id, phone_hmac, at FROM call_events
-          WHERE phone_hmac = ANY($1) AND kind = 'end' AND state = 'answered'`,
+        `SELECT session_id, phone_hmac, at, state FROM call_events
+          WHERE phone_hmac = ANY($1) AND kind = 'end' AND state IN ('answered','missed')`,
         [hmacs],
       ),
     ),
   ]);
+  // Inversion first, pickups second — the two partition on callConnected, so
+  // the order is only for reading; each consumes its own evidence state.
   const events = markBrowserPickups(
-    dropOwn(attributed({ texts: t.rows, calls: c.rows, voicemails: v.rows, sent: sent.rows, dials: dials.rows })),
-    answered.rows,
+    markInvertedInbound(
+      dropOwn(attributed({ texts: t.rows, calls: c.rows, voicemails: v.rows, sent: sent.rows, dials: dials.rows })),
+      ends.rows.filter((r) => r.state === "missed"),
+    ),
+    ends.rows.filter((r) => r.state !== "missed"),
   );
   // RingCentral's media URLs, for playback of anything the archive has not got
   // yet — Play falls back to RingCentral, on the press, never on open.
@@ -852,11 +924,50 @@ async function loadOpening(client, hmacs, epoch, has) {
         [hmacs, at],
       );
   const res = await client.query(`SELECT * FROM comms_resolutions WHERE phone_hmac = ANY($1)`, [hmacs]);
-  const events = dropOwn([
+  // ⚠️ The same inversion the list applies (markInvertedInbound), or the two
+  // disagree about which events exist: the snapshot would show an inverted
+  // missed call open while this loader — what the resolve validates against —
+  // could not see it. Sequential, like everything else on this client.
+  let events = [
     ...t.rows.map((r) => textEvent(r)),
     ...c.rows.map((r) => callEvent(r)),
     ...v.rows.map((r) => voicemailEvent(r)),
-  ]);
+  ];
+  if (has.calls) {
+    const at = new Date(epoch);
+    const cand = await client.query(
+      `SELECT rc_call_id, rc_session_id, phone_hmac, last4, direction, result, leg_results, duration_sec,
+              started_at, call_type
+         FROM call_archive
+        WHERE phone_hmac = ANY($1) AND direction = 'Outbound' AND started_at >= $2
+          AND call_type IS DISTINCT FROM 'Fax'`,
+      [hmacs, at],
+    );
+    if (cand.rows.length) {
+      const evid = await optionalTable(
+        client.query(
+          `SELECT session_id, phone_hmac, at FROM call_events
+            WHERE phone_hmac = ANY($1) AND kind = 'end' AND state = 'missed' AND at >= $2`,
+          [hmacs, at],
+        ),
+      );
+      const dials = await client.query(
+        `SELECT phone_hmac, dialed_by, at FROM comms_dials WHERE phone_hmac = ANY($1) AND at >= $2`,
+        [hmacs, at],
+      );
+      const dialList = dials.rows.map((d) => ({ hmac: d.phone_hmac, by: d.dialed_by, at: toMs(d.at) }));
+      const candidates = cand.rows.map((r) => {
+        const e = callEvent(r);
+        e.dialedBy = dialerFor(e, dialList);
+        return e;
+      });
+      // The inbound arm above is epoch-bound and un-covered, so it IS the
+      // guard here — no separate guard query.
+      const inverted = markInvertedInbound([...events, ...candidates], evid.rows);
+      events = inverted.filter((e) => !(e.kind === "call" && e.dir === "out"));
+    }
+  }
+  events = dropOwn(events);
   return { events, resolutions: res.rows.map(resolutionFromRow) };
 }
 
@@ -986,7 +1097,14 @@ async function computeSnapshot(pool) {
   if (open.length) {
     const openHmacs = [...new Set(open.flatMap((i) => i.numbers.map((n) => n.hmac)))];
     const since = Math.min(...open.map((i) => i.openedBy.at));
-    const outbound = await loadOutbound(pool, openHmacs, since);
+    // ⚠️ Pass one can now carry an INVERTED ex-outbound call (markInvertedInbound);
+    // loadOutbound would hand the same rc_call_id back as a raw Outbound row,
+    // and two copies of one call — one opening the item, one not — is the
+    // list/timeline disagreement the whole inversion exists to end.
+    const seenCalls = new Set(inbound.filter((e) => e.kind === "call").map((e) => String(e.id)));
+    const outbound = (await loadOutbound(pool, openHmacs, since)).filter(
+      (e) => !(e.kind === "call" && seenCalls.has(String(e.id))),
+    );
     items = buildInbox({ events: [...inbound, ...outbound], resolutions, targets: freshTargets, now, epoch });
   } else if (freshTargets !== targets) {
     items = buildInbox({ events: inbound, resolutions, targets: freshTargets, now, epoch });
@@ -1732,6 +1850,17 @@ export function registerCommsInbox({ app, pool }) {
   void (async () => {
     try {
       await pool.query(SCHEMA);
+      // The inversion evidence read (markInvertedInbound) filters call_events
+      // by kind/state/at with no hmac. Guarded separately because the table
+      // belongs to inboundCalls (§5.13) and may not exist in a build without
+      // it — and a CREATE INDEX inside SCHEMA would abort the whole block
+      // (§8's request_log lesson).
+      const ce = await pool.query(`SELECT to_regclass('call_events') AS t`);
+      if (ce.rows[0]?.t) {
+        await pool.query(
+          `CREATE INDEX IF NOT EXISTS call_events_end_state_at_idx ON call_events (state, at) WHERE kind = 'end'`,
+        );
+      }
       await loadEpoch(pool);
       console.log(`Comms inbox schema ready (epoch ${new Date(epochMs).toISOString()}, ui ${UI ? "on" : "off"})`);
     } catch (e) {

@@ -83,13 +83,25 @@ function messageOf(err: unknown): string {
  * When to try registering again after a failure.
  *   full     — a fixed minute: a slot may have freed up, and hammering the SIP
  *              server with REGISTERs is how you get the whole account throttled.
- *   auth     — a short beat after the cached sipInfo has been thrown away.
+ *   auth     — exponential, 10s → 60s. The first retry is quick because the
+ *              cached sipInfo has been thrown away and fresh credentials fix
+ *              the ordinary case — but ⚠️ it is a LADDER, never a flat beat:
+ *              every auth retry re-fetches provision (the cache was just
+ *              cleared), so a REGISTER that keeps being refused re-provisions
+ *              on every cycle. On 2026-09-25 a browser did exactly that at a
+ *              flat 5s for twelve straight minutes — ~10 gateway + RingCentral
+ *              sip-provision calls a minute, a fresh RC device record minted
+ *              each time — and helped draw a real RingCentral 429 on the
+ *              shared account at 9:48 AM. The gateway also floors the
+ *              provision route now (`SIP_PROVISION_FLOOR_MS`, messaging.mjs);
+ *              this ladder's first rung must stay ABOVE that floor or every
+ *              genuine auth recovery eats a 429 on its first retry.
  *   network / unknown — exponential, 2s → 60s, the SDK README's own ladder.
  */
 export function retryDelayMs(kind: RegistrationFailure, attempt: number): number {
   if (kind === "full") return FULL_RETRY_MS;
-  if (kind === "auth") return 5_000;
   const n = Math.max(0, Math.floor(attempt));
+  if (kind === "auth") return Math.min(60_000, 10_000 * 2 ** n);
   return Math.min(60_000, 2_000 * 2 ** n);
 }
 

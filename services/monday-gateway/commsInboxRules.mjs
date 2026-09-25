@@ -396,6 +396,75 @@ export function markBrowserPickups(events, answeredEnds = []) {
   return changed ? out : events;
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Inverted MISSED calls — the same direction flip, unanswered
+ *
+ * ⚠️⚠️ OBSERVED LIVE 2026-09-25 (Brandon's morning audit). Fidelis Care rang
+ * the line three times; the third call (8:26 AM, browser leg rung, nobody
+ * answered, voicemail took it) came back from the call log as a single
+ * OUTBOUND record toward the caller — the §5.49 inversion again, this time
+ * with nobody picking up. Every surface then honestly told the wrong story:
+ * the timeline said "We called · no answer" about a call the patient made
+ * ("i don't think we called them back"), its voicemail could not join
+ * (`joinInbound` pairs voicemails with INBOUND calls only) and rendered as an
+ * orphaned row — and, the half that costs real work, an inverted missed call
+ * that leaves NO voicemail opens NO inbox item at all: a patient who called
+ * and got nobody, absent from the very queue built to catch them.
+ *
+ * The repair mirrors `markBrowserPickups`, evidence and all: our own
+ * telephony webhook (`call_events`, §5.13) watched the real inbound call ring
+ * and END unanswered (`kind='end', state='missed'`), so an outbound,
+ * UNCONNECTED, undialled record that matches one of those ends is that
+ * inbound call wearing the wrong direction. Guards, each load-bearing:
+ *  · `dialedBy` skips — a call somebody PRESSED CALL for is a genuine
+ *    outbound however close it landed to a missed inbound ring.
+ *  · A missed end within the window of an INBOUND unconnected record is that
+ *    record's own ending (the ordinary, correctly-logged missed call raises
+ *    the same event) — it must never invert a genuine callback beside it.
+ *    ⚠️ `guardCalls` exists because the LIST loaders pre-filter resolved
+ *    (covered) inbound calls out of `events` in SQL: the guard has to see
+ *    those too, or a covered missed call's end evidence would invert a rep's
+ *    real callback and REOPEN the item they resolved.
+ *  · Connected outbound records never match — those are `markBrowserPickups`'
+ *    (the two rules partition on `callConnected`).
+ * A dropped webhook simply means no match: the row keeps reading "We called",
+ * which is the pre-repair behaviour, never worse.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** `call_events` rows (kind=end, state=missed) → the matching outbound call
+ *  events re-labelled INBOUND (`dir: "in"`, `inverted: true`), after which the
+ *  ordinary missed-call rules — the voicemail join, `opensItem`, the chips —
+ *  apply unchanged. Identity-stable when nothing matches. */
+export function markInvertedInbound(events, missedEnds = [], guardCalls = events) {
+  if (!Array.isArray(events) || !events.length || !missedEnds.length) return events;
+  const accounted = (Array.isArray(guardCalls) ? guardCalls : [])
+    .filter((e) => e.kind === "call" && e.dir === "in" && !callConnected(e) && !isFaxCall(e))
+    .map((e) => e.at + (Number(e.durationSec) || 0) * 1000);
+  const free = missedEnds
+    .map((r) => ({
+      sessionId: r.session_id ? String(r.session_id) : "",
+      hmac: r.phone_hmac ? String(r.phone_hmac) : "",
+      at: toMs(r.at),
+    }))
+    .filter((r) => Number.isFinite(r.at))
+    .filter((r) => !accounted.some((endAt) => Math.abs(endAt - r.at) <= PICKUP_MATCH_MS));
+  if (!free.length) return events;
+  let changed = false;
+  const out = events.map((e) => {
+    if (e.kind !== "call" || e.dir !== "out" || e.dialedBy || isFaxCall(e) || callConnected(e)) return e;
+    const endAt = e.at + (Number(e.durationSec) || 0) * 1000;
+    const hit = free.some(
+      (r) =>
+        (r.sessionId && e.sessionId && r.sessionId === e.sessionId) ||
+        (r.hmac && r.hmac === e.hmac && Math.abs(r.at - endAt) <= PICKUP_MATCH_MS),
+    );
+    if (!hit) return e;
+    changed = true;
+    return { ...e, dir: "in", inverted: true };
+  });
+  return changed ? out : events;
+}
+
 /**
  * The same RingCentral record read twice in one tick, collapsed to one.
  *

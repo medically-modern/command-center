@@ -59,6 +59,14 @@ const pool = ASSIGNMENTS_DATABASE_URL
 
 const configured = () => !!(pool && hashingConfigured());
 
+/**
+ * The sip-provision floor — see the route. 8s: comfortably under the client's
+ * first auth-retry rung (10s, registration.ts) and well over the ~6s metronome
+ * the 2026-09-25 runaway ran at, so it refuses only a loop.
+ */
+export const SIP_PROVISION_FLOOR_MS = 8_000;
+const sipProvisionLast = new Map(); // caller|ua → last provision ms
+
 if (!pool) console.warn("WARN: ASSIGNMENTS_DATABASE_URL not set — patient texting is DISABLED");
 else if (!hashingConfigured()) console.warn("WARN: PHONE_HMAC_PEPPER not set — patient texting is DISABLED");
 
@@ -437,6 +445,30 @@ export function registerMessaging({ app }) {
   app.get("/messaging/sip-provision", async (req, res) => {
     const who = await requireCaller(req, res);
     if (who === null && authEnforced()) return;
+    // ⚠️ A per-browser floor, because a client stuck in an auth-classified
+    // registration loop re-fetches provision on EVERY retry (the failure
+    // clears its sipInfo cache) — measured 2026-09-25: one browser at a flat
+    // ~6s for twelve minutes, ~10 RingCentral sip-provision calls a minute,
+    // each minting a device record, feeding the real RC 429 at 9:48 AM. The
+    // client ladder backs off now (registration.ts retryDelayMs), but a stale
+    // tab runs old code for days; this floor is the gateway's own guard. Keyed
+    // by caller + user agent so one person's two MACHINES opening together are
+    // not each other's floor; a loop is one tab, so it always keys the same.
+    // The floor sits BELOW the client ladder's first auth rung (10s), so a
+    // genuine credential recovery is never refused.
+    const floorKey = `${who || req.ip || "?"}|${String(req.headers["user-agent"] || "")}`;
+    const lastAt = sipProvisionLast.get(floorKey) || 0;
+    if (Date.now() - lastAt < SIP_PROVISION_FLOOR_MS) {
+      res.set("Retry-After", String(Math.ceil(SIP_PROVISION_FLOOR_MS / 1000)));
+      return res.status(429).json({
+        error: `Provisioned moments ago — wait ${Math.ceil(SIP_PROVISION_FLOOR_MS / 1000)}s before asking again`,
+      });
+    }
+    sipProvisionLast.set(floorKey, Date.now());
+    if (sipProvisionLast.size > 200) {
+      // Bounded: drop entries past the floor rather than growing per UA string.
+      for (const [k, at] of sipProvisionLast) if (Date.now() - at >= SIP_PROVISION_FLOOR_MS) sipProvisionLast.delete(k);
+    }
     try {
       const up = await rcApiFetch(SIP_PROVISION_PATH, {
         method: "POST",

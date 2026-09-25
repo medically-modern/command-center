@@ -358,6 +358,78 @@ describe("⚠️ the list query's two pre-filters can never drop what the JS rul
   });
 });
 
+/* ── the inverted missed call reaches all THREE loaders (2026-09-25) ─────── */
+
+describe("⚠️ markInvertedInbound runs wherever events are read — list, timeline and resolve in lockstep", () => {
+  // Brandon's 8:26 AM Fidelis call: rung in the browser, unanswered, voicemail
+  // took it — and RingCentral logged ONE Outbound record toward the caller.
+  // The repair is only safe if every loader applies it: an inversion the list
+  // shows and the resolve's own loader cannot see is a resolve that validates
+  // against different events than the rep was shown.
+
+  it("loadGroupAll (the timeline): reads BOTH end states and partitions them between the two rules", () => {
+    const body = fnBody("loadGroupAll");
+    expect(body).toMatch(/state IN \('answered','missed'\)/);
+    // Inversion takes the missed ends, pickups the answered — never both to either.
+    expect(body).toMatch(
+      /markBrowserPickups\(\s*markInvertedInbound\(\s*dropOwn\(attributed\([\s\S]*?state === "missed"\)[\s\S]*?state !== "missed"\)/,
+    );
+    // optionalTable: a build without inboundCalls has no call_events, and
+    // losing the relabel must never lose the timeline.
+    const ce = body.indexOf("FROM call_events");
+    expect(body.lastIndexOf("optionalTable(", ce)).toBeGreaterThan(-1);
+  });
+
+  it("loadInboundForList: the candidate arm is Outbound, non-fax, cover-claused, and label-pre-filtered by the rules' own list", () => {
+    const body = fnBody("loadInboundForList");
+    const cand = body.slice(body.indexOf("a.direction = 'Outbound'"));
+    expect(cand).toContain("a.call_type IS DISTINCT FROM 'Fax'");
+    expect(cand).toContain("COALESCE(cov.covered"); // same cover clause as the inbound arms
+    // The connected-labels pre-filter appears on the inbound call arm AND the
+    // candidate arm — a connected outbound call can never invert.
+    expect(body.match(/= ANY\(\$3\)/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("⚠️ loadInboundForList's guard query is deliberately UN-covered — a resolved missed call's evidence must still be consumed", () => {
+    const body = fnBody("loadInboundForList");
+    const guard = body.slice(body.indexOf("kind = 'end' AND state = 'missed'"), body.indexOf("comms_dials"));
+    expect(guard).toContain("direction = 'Inbound'");
+    expect(guard).not.toContain("cov."); // no COVER_CTE join — covered calls ARE the point
+    // …and candidates carry who dialed, so a pressed call never inverts.
+    expect(body).toContain("e.dialedBy = dialerFor(e, dialList);");
+    // Only a candidate that really inverted joins the list.
+    expect(body).toMatch(/inverted\.filter\(\(e\) => !\(e\.kind === "call" && e\.dir === "out"\)\)/);
+  });
+
+  it("loadOpening (what a resolve validates against): same candidates, same evidence, the epoch-bound inbound arm as the guard", () => {
+    const body = fnBody("loadOpening");
+    expect(body).toContain("direction = 'Outbound'");
+    expect(body).toMatch(/kind = 'end' AND state = 'missed'/);
+    expect(body).toContain("e.dialedBy = dialerFor(e, dialList);");
+    // Two args: events already hold every inbound call since the epoch,
+    // un-covered, so the default guard IS the guard.
+    expect(body).toMatch(/markInvertedInbound\(\[\.\.\.events, \.\.\.candidates\], evid\.rows\)/);
+    expect(body).toMatch(/inverted\.filter\(\(e\) => !\(e\.kind === "call" && e\.dir === "out"\)\)/);
+  });
+
+  it("⚠️ computeSnapshot never carries one rc_call_id twice — the inverted copy wins over loadOutbound's raw one", () => {
+    const body = fnBody("computeSnapshot");
+    expect(body).toMatch(/const seenCalls = new Set\(inbound\.filter\(\(e\) => e\.kind === "call"\)/);
+    expect(body).toMatch(/loadOutbound\(pool, openHmacs, since\)\)\.filter\(\s*\(e\) => !\(e\.kind === "call" && seenCalls\.has\(String\(e\.id\)\)\)/);
+  });
+
+  it("the evidence index is guarded on to_regclass and OUTSIDE SCHEMA — call_events belongs to inboundCalls and may not exist", () => {
+    const schema = SRC.slice(SRC.indexOf("export const SCHEMA"), SRC.indexOf("`;", SRC.indexOf("export const SCHEMA")));
+    expect(schema).not.toContain("call_events");
+    const c = code(SRC);
+    const gate = c.indexOf("to_regclass('call_events')");
+    const idx = c.indexOf("CREATE INDEX IF NOT EXISTS call_events_end_state_at_idx");
+    expect(gate).toBeGreaterThan(0);
+    expect(idx).toBeGreaterThan(gate);
+    expect(c.slice(idx, idx + 200)).toContain("WHERE kind = 'end'");
+  });
+});
+
 /* ── the resolve ─────────────────────────────────────────────────────────── */
 
 describe("⚠️ a resolve is a compare-and-set under a lock", () => {

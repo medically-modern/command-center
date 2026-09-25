@@ -36,7 +36,7 @@ import { contactKey } from "@/lib/contactState/contactState";
 import type { VoicemailRecord } from "@/lib/fax/ringcentralApi";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { resolveDisplayName, type NameSource } from "@/lib/commsHub/directory";
-import type { PickedCall } from "@/lib/commsHub/callVoicemail";
+import { voicemailForCall, type PickedCall } from "@/lib/commsHub/callVoicemail";
 import { cn } from "@/lib/utils";
 import { FilterPill, HubListHeader, Initials, ListEmpty, ListError, NamingProgress, listTime } from "./HubList";
 import { CALL_LOG_FILTERS, callLogMatches, type CallLogFilter } from "@/lib/commsHub/logFilters";
@@ -104,9 +104,27 @@ function toRows(records: RcCallLogRecord[]): CallRow[] {
  *
  * ⚠️ **"We", never "You".** This is a shared line worked by several reps; the
  * person reading the row is usually not the person who dialled.
+ *
+ * ⚠️⚠️ **"Left voicemail" claims a MESSAGE, and RingCentral's `result` cannot
+ * back that claim** (Brandon, 2026-09-25: a test call rung out to voicemail
+ * with nothing recorded read "Left voicemail" on this rail and "Missed call"
+ * on the item timeline). `result: "Voicemail"` means the voicemail SYSTEM
+ * answered — whether or not the caller said a word — so the words come from
+ * `hasMessage`: the same `voicemailForCall` join the row's own click uses to
+ * open the message, which is what keeps the label and the click one fact.
+ *   · true  — a matching message exists: "Left voicemail".
+ *   · false — the voicemail list is loaded and holds no message for this
+ *     call: they rang out, so it reads as the missed call it is.
+ *   · null  — the list has not loaded yet: fall back to the old result-based
+ *     claim rather than flickering every real voicemail through "Missed"
+ *     first. (The gateway's timeline makes the same call with the same join —
+ *     `joinCallsToVoicemails`, commsInboxRules.)
  */
-export function callLabel(r: { voicemail: boolean; inbound: boolean; connected: boolean }): string {
-  if (r.voicemail) return "Left voicemail";
+export function callLabel(
+  r: { voicemail: boolean; inbound: boolean; connected: boolean },
+  hasMessage: boolean | null = null,
+): string {
+  if (hasMessage ?? r.voicemail) return "Left voicemail";
   if (r.inbound) return r.connected ? "They called" : "Missed their call";
   return "We called";
 }
@@ -241,6 +259,23 @@ export function PhonePanel({
     () => shownRows(rows, names),
     [rows, names],
   );
+
+  /**
+   * Which call rows have an actual voicemail MESSAGE — the label's evidence
+   * (see `callLabel`). Null while the voicemail list is loading, so the label
+   * can tell "no message" from "haven't looked yet". Same join, same list, as
+   * the click that opens the message (`voicemailForCall` on `voicemails`), so
+   * a row can never say "Left voicemail" and then open nothing.
+   */
+  const vmMatched = useMemo(() => {
+    if (!voicemails) return null;
+    const has = new Set<string>();
+    for (const r of rows) {
+      if (!r.voicemail) continue;
+      if (voicemailForCall({ phone: r.phone, at: r.at, voicemail: true }, voicemails)) has.add(r.id);
+    }
+    return has;
+  }, [rows, voicemails]);
 
   const callFilter = log?.callFilter;
   const shownCalls = useMemo(
@@ -503,7 +538,7 @@ export function PhonePanel({
                       <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground">
                         <Icon className={cn("h-3 w-3 shrink-0", missed && "text-rose-500")} />
                         <span className={cn("shrink-0", missed && "text-rose-600 dark:text-rose-400")}>
-                          {callLabel(r)}
+                          {callLabel(r, vmMatched ? vmMatched.has(r.id) : null)}
                         </span>
                         {r.connected && r.durationSec > 0 && (
                           <span className="shrink-0 tabular-nums">· {mmss(r.durationSec)}</span>

@@ -107,6 +107,41 @@ export const PROVISION_DEADLINE_MS = 15_000;
 const START_TIMEOUT_MESSAGE = "RingCentral's phone server timed out before this browser was registered";
 
 /**
+ * How long a dialled call may sit with NO SIP progress before it is given up.
+ *
+ * ⚠️⚠️ THE SDK'S `call()` HAS TWO WAYS TO NEVER TELL US ANYTHING (read in
+ * ringcentral-web-phone 2.5.1, call-session/outbound.ts, after Brandon's
+ * 2026-09-25 stuck call — the gateway's webhook log shows his 8:43 AM INVITE
+ * never became a telephony session at RingCentral at all):
+ *   · The first INVITE awaits `sipClient.request()`, which has NO rejection
+ *     path (§5.13b's measurement) — a socket that silently died, or an edge
+ *     that swallows the INVITE, leaves the promise pending for ever.
+ *   · A SIP 403 makes `call()` `return` QUIETLY: no "failed" event, no state
+ *     change — a healthy socket, and still nothing to move the overlay.
+ * Either way the session never reaches "ringing" and the overlay sat on
+ * "Setting up…" indefinitely. Real progress (a 183/180 via the authorised
+ * INVITE) arrives within a couple of seconds on a live socket — the PSTN's
+ * post-dial delay is on the audio, not the SIP progress — so fifteen seconds
+ * with nothing at all means the attempt is dead.
+ */
+export const DIAL_PROGRESS_DEADLINE_MS = 15_000;
+const DIAL_DEAD_MESSAGE =
+  "RingCentral didn't respond to the call attempt — the phone connection is being re-checked. Try the call again in a moment.";
+
+/**
+ * How long Hang up waits for RingCentral to acknowledge the CANCEL/BYE.
+ *
+ * ⚠️⚠️ The SDK's `cancel()` and `hangup()` are bare `await sipClient.request()`
+ * — no timeout, no rejection path — so a teardown written to an unresponsive
+ * socket NEVER settles, and the overlay sat on "Hanging up…" for 20+ minutes
+ * (Brandon, 2026-09-25). The rep's intent is already final at the press: the
+ * deadline only bounds how long we keep the overlay up waiting for a reply
+ * nobody needs. A real BYE round-trip is sub-second.
+ */
+export const HANGUP_DEADLINE_MS = 8_000;
+const HANGUP_TIMEOUT_MESSAGE = "RingCentral didn't acknowledge the hang-up";
+
+/**
  * Settle `p` or reject after `ms`, whichever comes first. The losing promise is
  * still observed by the race, so a late rejection is never unhandled.
  */
@@ -132,6 +167,9 @@ interface Session {
   answer?: () => Promise<void>;
   hangup(): Promise<void>;
   cancel?: () => Promise<void>;
+  /** Local teardown only — closes the RTC peer and emits `disposed`. Never
+   *  touches the network, so it is what a timed-out CANCEL/BYE falls back to. */
+  dispose?: () => void;
   reInvite?: () => Promise<void>;
   mute(): void;
   unmute(): void;
@@ -833,14 +871,64 @@ class Softphone {
       if (!this.wp || this.registration !== "registered") {
         throw new Error(this.registrationError || "Browser calling isn't available right now.");
       }
+      // ⚠️ The INVITE can go unanswered with nothing to reject: a silently
+      // dead socket, or an edge that swallows it (Brandon's 2026-09-25 dial —
+      // no telephony session ever existed at RingCentral). The watchdog is the
+      // only thing that ends that state; see DIAL_PROGRESS_DEADLINE_MS.
+      this.armDialWatchdog(token, this.wp);
       // callerId is passed EXPLICITLY: every call must reach the patient as
       // the MM main line, never the extension's own default.
       await this.wp.call(phone, mmPhoneNumber());
+      // ⚠️ A SIP 403 makes the SDK's call() RESOLVE with the session still in
+      // "init" — no "failed" event, no state change (outbound.ts:
+      // `if (subject.startsWith("SIP/2.0 403 ")) return;`). Without this the
+      // overlay sits on "Setting up…" for ever on a perfectly healthy socket.
+      if (this.dialToken === token && this.active?.call.status === "connecting") {
+        this.failDial(token, "RingCentral refused the call. Try again in a moment.", false);
+      }
     } catch (e) {
       if (this.dialToken !== token) return;
       this.lastError = errorText(e) || "The call couldn't be connected.";
       this.endActive();
     }
+  }
+
+  /**
+   * Give up on a dial that is showing no signs of life. `suspectSocket` says
+   * whether the silence indicts the CONNECTION (an INVITE nothing answered ⇒
+   * re-check the socket via the bounded `recover()`) or only the call (a 403 —
+   * the socket demonstrably answered).
+   */
+  private failDial(token: symbol, message: string, suspectSocket: boolean): void {
+    if (this.dialToken !== token || !this.active) return;
+    const s = this.active.session;
+    const wp = this.wp;
+    this.lastError = message;
+    this.endActive();
+    // Local teardown only — a network goodbye to a dialog that never formed
+    // would just be another unanswerable request.
+    if (s) {
+      try {
+        s.dispose?.();
+      } catch {
+        /* already down */
+      }
+    }
+    if (suspectSocket && wp && this.wp === wp) void this.recover();
+  }
+
+  /**
+   * The only thing that ends a dial neither answered nor failed — see
+   * DIAL_PROGRESS_DEADLINE_MS. Fire-and-check rather than managed: the token
+   * and status re-checks make a stale timer a no-op, so nothing has to clear it.
+   */
+  private armDialWatchdog(token: symbol, wp: WebPhone): void {
+    setTimeout(() => {
+      if (this.dialToken !== token || !this.active) return;
+      if (this.active.call.status !== "connecting") return;
+      if (this.wp !== wp) return;
+      this.failDial(token, DIAL_DEAD_MESSAGE, true);
+    }, DIAL_PROGRESS_DEADLINE_MS);
   }
 
   private async doHangup(): Promise<void> {
@@ -853,13 +941,43 @@ class Softphone {
       return;
     }
     this.patchCall({ status: "ending" });
+    const wp = this.wp;
+    let acked = true;
     try {
-      if (s.direction === "outbound" && s.state === "ringing" && s.cancel) await s.cancel();
-      else await s.hangup();
-    } catch {
+      // ⚠️ BOUNDED — see HANGUP_DEADLINE_MS. The SDK's cancel()/hangup() await
+      // a SIP reply with no timeout and no rejection path, so on a socket that
+      // has silently died this await never settles and the overlay sat on
+      // "Hanging up…" for 20+ minutes (Brandon, 2026-09-25).
+      //
+      // An outbound call that never reached "answered" is torn down with
+      // CANCEL, not BYE: there is no established dialog to BYE, and on a
+      // session still in "init" cancel() throws synchronously (no remote peer
+      // yet) — an immediate local cleanup, where hangup() would build a BYE
+      // from undefined headers and wait the whole deadline on it.
+      await withDeadline(
+        (async () => {
+          if (s.direction === "outbound" && s.state !== "answered" && s.cancel) await s.cancel();
+          else await s.hangup();
+        })(),
+        HANGUP_DEADLINE_MS,
+        HANGUP_TIMEOUT_MESSAGE,
+      );
+    } catch (e) {
+      acked = !(e instanceof Error && e.message === HANGUP_TIMEOUT_MESSAGE);
       /* the call is going away either way */
     }
     if (this.active === cur) this.endActive();
+    if (!acked) {
+      // Nothing answered the teardown, so nothing will answer anything else on
+      // this dialog: end it locally, and re-check the connection it happened
+      // on — recover() is bounded (START_DEADLINE_MS) and one-at-a-time.
+      try {
+        s.dispose?.();
+      } catch {
+        /* already down */
+      }
+      if (wp && this.wp === wp) void this.recover();
+    }
   }
 
   private setMuted(muted: boolean): void {

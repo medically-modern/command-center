@@ -66,8 +66,20 @@ describe("retryDelayMs", () => {
     expect(retryDelayMs("network", 4)).toBe(32_000);
     expect(retryDelayMs("network", 10)).toBe(60_000);
   });
-  it("retries auth quickly, after the cache has been dropped", () => {
-    expect(retryDelayMs("auth", 3)).toBe(5_000);
+  it("⚠️ auth is a LADDER, never a flat beat — the 2026-09-25 metronome", () => {
+    // Every auth retry re-fetches provision (the failure just cleared the
+    // sipInfo cache), so a REGISTER that keeps being refused re-provisions on
+    // every cycle. A flat 5s ran one browser at ~10 gateway + RingCentral
+    // sip-provision calls a minute for twelve straight minutes and helped
+    // draw a real RC 429 on the shared account. First rung 10s — quick enough
+    // for the ordinary stale-credential recovery, and ABOVE the gateway's
+    // 8s provision floor (messaging.mjs SIP_PROVISION_FLOOR_MS), so a genuine
+    // recovery is never refused by our own guard.
+    expect(retryDelayMs("auth", 0)).toBe(10_000);
+    expect(retryDelayMs("auth", 1)).toBe(20_000);
+    expect(retryDelayMs("auth", 2)).toBe(40_000);
+    expect(retryDelayMs("auth", 3)).toBe(60_000);
+    expect(retryDelayMs("auth", 10)).toBe(60_000);
   });
 });
 
