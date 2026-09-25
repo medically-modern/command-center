@@ -25,6 +25,8 @@
  *                VOICEMAIL_ARCHIVE_HEALTH_URL  also watch the voicemail archive
  *                MMS_ARCHIVE_HEALTH_URL   also watch the MMS media archive
  *                COMMS_INBOX_HEALTH_URL   also watch the Communications inbox
+ *                SMS_ARCHIVE_HEALTH_URL   also watch the SMS text archive
+ *                DIRECTORY_HEALTH_URL     also watch the patient name directory
  *                DRY_RUN=1                print, don't notify
  */
 
@@ -35,6 +37,8 @@ const {
   VOICEMAIL_ARCHIVE_HEALTH_URL,
   MMS_ARCHIVE_HEALTH_URL,
   COMMS_INBOX_HEALTH_URL,
+  SMS_ARCHIVE_HEALTH_URL,
+  DIRECTORY_HEALTH_URL,
   NTFY_URL,
   NTFY_TOPIC,
   DRY_RUN,
@@ -268,6 +272,85 @@ export function inboxFaults(health) {
 }
 
 /**
+ * The two nightly reconcile jobs → human-readable problems. Empty means healthy.
+ *
+ * The SMS archive (`/messaging/archive-health`) and the patient name directory
+ * (`/directory/health`) answer with the same shape — `archiveHealth` /
+ * `directoryHealth` on the gateway: `{ok, stale, truncated, reason?, lastError,
+ * ageHours, rows}` — and the same discipline: `ok` is false when no run has
+ * EVER succeeded, when the last good run is stale, or when it was truncated.
+ * The verdict is the gateway's, unit-tested there; this only decides whether to
+ * wake somebody, and composes a reason where the payload carries none (the
+ * directory's has no `reason` field).
+ *
+ * ⚠️ A single failed nightly run does NOT flip `ok` — the gateway's staleness
+ * window (3 days for texts, 48h for the directory) absorbs it, because a
+ * reconcile repairs every prior gap on its next success and a page every ten
+ * minutes for a self-healing blip is the kind that teaches everybody to swipe
+ * these away. Sustained failure crosses the window and pages until fixed.
+ *
+ * ⚠️ Unreachable still notifies (the ask is "tell me if the health check itself
+ * ever errors"), but says "could not check", never "it is broken" — declaring
+ * an outage we have not established is the mirror image of the silence this
+ * monitor exists to break. ⚠️ One wrinkle these two have that the media
+ * archives do not: their kill switches (`SMS_ARCHIVE_ENABLED=0`,
+ * `PATIENT_DIRECTORY_ENABLED=0`) unregister the route entirely, so "switched
+ * off on purpose" arrives here as a 404, indistinguishable from a broken
+ * gateway. The wording carries that.
+ */
+export function reconcileFaults(health, labels = {}) {
+  const noun = labels.noun || "archive";
+  const broken = labels.broken || "The archive is not running";
+  if (health === null) {
+    return [
+      `Could not reach the ${noun} health check — this says nothing about the ${noun} itself, ` +
+        `only that we could not ask. (A 404 here can also mean it was switched off on the gateway.)`,
+    ];
+  }
+  if (health.ok === false) {
+    const reason =
+      health.reason ||
+      health.error ||
+      (health.stale
+        ? health.ageHours == null
+          ? "no successful run recorded yet"
+          : `last successful run was ${health.ageHours}h ago`
+        : null) ||
+      (health.truncated ? "the last successful run was truncated" : null) ||
+      "reason not reported";
+    const err = health.lastError && health.lastError !== reason ? ` Last error: ${health.lastError}.` : "";
+    return [`${broken}: ${reason}.${err} (${health.rows ?? 0} rows held)`];
+  }
+  return [];
+}
+
+/**
+ * Ask one reconcile job how it is, and push if it says it is not ok.
+ * Same shape as `watchArchive` below; only the fault rule and the OK line
+ * differ, because the payloads do.
+ */
+async function watchReconcile({ url, title, logName, labels, priority }) {
+  if (!url) return;
+  let health = null;
+  try {
+    const res = await get(url);
+    if (res.ok) health = await res.json();
+    else console.error(`${logName} health returned ${res.status}`);
+  } catch (e) {
+    console.error(`${logName} health unreachable:`, e.message);
+  }
+  const problems = reconcileFaults(health, labels);
+  if (problems.length) {
+    console.error(`${logName.toUpperCase()} PROBLEMS:\n` + problems.map((p) => ` - ${p}`).join("\n"));
+    await notify(title, problems.join("\n") + "\n\nCheck: " + url, priority);
+    return;
+  }
+  if (health) {
+    console.log(`${logName} OK — ${health.rows ?? "?"} rows, last good run ${health.ageHours ?? "?"}h ago`);
+  }
+}
+
+/**
  * Ask one archive how it is, and push if it says it is not ok.
  *
  * ⚠️ An unreachable health check is "could not check", never "the archive is
@@ -351,6 +434,28 @@ async function main() {
     title: "Command Center: MMS media",
     logName: "MMS archive",
     labels: { noun: "MMS-media-archive", notArchived: "Patient photos are not being archived" },
+  });
+
+  // ⚠️ The SMS archive is the one that made §5.27 necessary: RingCentral keeps
+  // ~30 days of texts, so an outage here starts LOSING patient messages
+  // permanently once it outlives the slack — and until then it looks exactly
+  // like a quiet month. Same unrecoverability as the media archives above.
+  await watchReconcile({
+    url: SMS_ARCHIVE_HEALTH_URL,
+    title: "Command Center: SMS archive",
+    logName: "SMS archive",
+    labels: { noun: "SMS-archive", broken: "Patient texts are not being archived" },
+  });
+  // The patient name directory degrades rather than loses: a miss falls back to
+  // a live Monday lookup (§5.29), so a dead reconcile means slower names on
+  // incoming calls, not missing data. Notified at default priority — it is a
+  // today problem, not a now problem.
+  await watchReconcile({
+    url: DIRECTORY_HEALTH_URL,
+    title: "Command Center: patient directory",
+    logName: "Patient directory",
+    labels: { noun: "patient-directory", broken: "The patient name directory is not refreshing" },
+    priority: "default",
   });
 
   // The Communications inbox: its own push, for the same reason each archive

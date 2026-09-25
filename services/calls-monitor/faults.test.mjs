@@ -8,10 +8,11 @@ import { beforeAll, describe, expect, it } from "vitest";
 let faults;
 let archiveFaults;
 let inboxFaults;
+let reconcileFaults;
 beforeAll(async () => {
   // Stops index.mjs from running a live check on import.
   process.env.CALLS_MONITOR_TEST = "1";
-  ({ faults, archiveFaults, inboxFaults } = await import("./index.mjs"));
+  ({ faults, archiveFaults, inboxFaults, reconcileFaults } = await import("./index.mjs"));
 });
 
 const healthy = {
@@ -289,6 +290,83 @@ describe("archiveFaults", () => {
       expect(archiveFaults({ ...ok, pending: 4000 }, mmsLabels)).toEqual([]);
       expect(archiveFaults({ ok: true, enabled: false }, mmsLabels)).toEqual([]);
     });
+  });
+});
+
+/**
+ * The two nightly reconcile jobs — the SMS text archive and the patient name
+ * directory. Same discipline as everything above: the VERDICT is the gateway's
+ * (`archiveHealth` / `directoryHealth`, unit-tested there); these rules only
+ * decide whether to wake somebody, and must not page for a working system.
+ */
+describe("reconcileFaults — the SMS archive and the patient directory", () => {
+  const smsLabels = { noun: "SMS-archive", broken: "Patient texts are not being archived" };
+  const dirLabels = { noun: "patient-directory", broken: "The patient name directory is not refreshing" };
+  const ok = { ok: true, stale: false, truncated: false, reason: null, lastError: null, ageHours: 11, rows: 7191 };
+
+  it("stays quiet when the job is keeping up", () => {
+    expect(reconcileFaults(ok, smsLabels)).toEqual([]);
+    expect(reconcileFaults(ok, dirLabels)).toEqual([]);
+  });
+
+  // ⚠️ A single failed nightly run does not flip the gateway's `ok` (its
+  // staleness window absorbs it, and the next success repairs every prior
+  // gap), so `lastError` beside ok:true must stay quiet — otherwise one bad
+  // night pages every ten minutes for a day about a job that already healed.
+  it("does not page on a stale lastError beside a healthy verdict", () => {
+    expect(reconcileFaults({ ...ok, lastError: "RingCentral 429" }, smsLabels)).toEqual([]);
+  });
+
+  it("speaks up when the gateway says not ok, and passes on WHY", () => {
+    const f = reconcileFaults({ ...ok, ok: false, stale: true, reason: "last successful run was 80h ago" }, smsLabels);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatch(/^Patient texts are not being archived/);
+    expect(f[0]).toMatch(/80h ago/);
+    expect(f[0]).toMatch(/7191 rows/);
+  });
+
+  // The directory's payload carries no `reason` field, so the sentence is
+  // composed here from what it does carry — and each shape has a reading.
+  it("composes a reason for the directory, which reports none", () => {
+    expect(reconcileFaults({ ...ok, ok: false, stale: true, ageHours: 60 }, dirLabels)[0]).toMatch(
+      /^The patient name directory is not refreshing: last successful run was 60h ago/,
+    );
+    expect(reconcileFaults({ ...ok, ok: false, stale: true, ageHours: null }, dirLabels)[0]).toMatch(
+      /no successful run recorded yet/,
+    );
+    expect(reconcileFaults({ ...ok, ok: false, truncated: true }, dirLabels)[0]).toMatch(/truncated/);
+  });
+
+  it("carries the last error when the verdict is bad, without repeating the reason", () => {
+    const f = reconcileFaults(
+      { ...ok, ok: false, stale: true, reason: "last successful run was 80h ago", lastError: "connect ETIMEDOUT" },
+      smsLabels,
+    );
+    expect(f[0]).toMatch(/Last error: connect ETIMEDOUT/);
+    const same = reconcileFaults({ ...ok, ok: false, reason: "boom-9", lastError: "boom-9" }, smsLabels);
+    expect(same[0].match(/boom-9/g)).toHaveLength(1);
+  });
+
+  // ⚠️ "Tell me if the health check itself ever errors" — unreachable NOTIFIES,
+  // unlike a quiet skip, but says "could not check", never "it is broken". And
+  // these two routes 404 when their kill switch unregisters them, so the
+  // sentence has to leave room for "off on purpose".
+  it("notifies on an unreachable health check without declaring an outage", () => {
+    const f = reconcileFaults(null, smsLabels);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatch(/Could not reach the SMS-archive health check/);
+    expect(f[0]).toMatch(/says nothing about the SMS-archive itself/);
+    expect(f[0]).toMatch(/switched off on the gateway/);
+    expect(f[0]).not.toMatch(/not being archived/);
+  });
+
+  it("passes a 500 body's own error through as the reason", () => {
+    const f = reconcileFaults({ ok: false, error: "archive pool not configured" }, smsLabels);
+    expect(f[0]).toMatch(/archive pool not configured/);
+  });
+
+  it("a not-ok with nothing to explain it says so rather than inventing one", () => {
+    expect(reconcileFaults({ ok: false }, dirLabels)[0]).toMatch(/reason not reported/);
   });
 });
 

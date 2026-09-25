@@ -45,6 +45,8 @@ Deploy `services/calls-monitor` with **cron** `*/10 * * * *`.
 | `VOICEMAIL_ARCHIVE_HEALTH_URL` | optional — `…/voicemail/archive-health` |
 | `MMS_ARCHIVE_HEALTH_URL` | optional — `…/mms/archive-health` |
 | `COMMS_INBOX_HEALTH_URL` | optional — `…/comms/inbox-health`. Pages when the Communications inbox's minute-by-minute capture tick has stopped (the list would silently stop growing). Notes waiting to be copied to Monday are logged, never paged |
+| `SMS_ARCHIVE_HEALTH_URL` | optional — `…/messaging/archive-health`. Pages when the SMS text archive stops keeping up (the gateway's own verdict: no run ever, stale past 3 days, or truncated) AND when the health check itself errors or is unreachable — texts age out of RingCentral at ~30 days, so a dead archive loses them permanently |
+| `DIRECTORY_HEALTH_URL` | optional — `…/directory/health`. Same rule for the patient name directory, at default priority — a dead refresh degrades to live Monday lookups (slower names on incoming calls), it loses nothing |
 
 ⚠️ **The ntfy topic is the only thing protecting these alerts.** An ntfy topic
 is readable by anyone who knows its name, so it is generated with ~145 bits of
