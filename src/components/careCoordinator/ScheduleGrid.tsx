@@ -120,7 +120,7 @@ function shortTime(hhmmss: string): string {
 }
 
 export function ScheduleGrid({
-  calls, welcomeItems, nowMinutes, onOpen, remindersOn,
+  calls, welcomeItems, nowMinutes, onOpen, onLogAttempt, remindersOn,
 }: {
   /**
    * The monday mirror's intake bookings — the BACKUP source, and the join that
@@ -138,6 +138,10 @@ export function ScheduleGrid({
   nowMinutes: number;
   /** Given a route. Blocks we can't identify a patient for don't call this. */
   onOpen: (href: string) => void;
+  /** The page's attempt form, for the booking popup's during- and post-call
+   *  Log call attempt (Josh, 2026-09-25). Blocks that resolved to no board
+   *  item never call this — see `BookingDetailsDialog`. */
+  onLogAttempt?: (entry: ScheduleEntry) => void;
   /** Whether THIS viewer gets the ten-minute toast. `ScheduledCallHost` fires
    *  it only for a processor holding the role. */
   remindersOn: boolean;
@@ -420,6 +424,9 @@ export function ScheduleGrid({
         entry={openBooking}
         onOpenChange={(v) => { if (!v) setOpenBooking(null); }}
         onOpenProfile={(href) => { setOpenBooking(null); onOpen(href); }}
+        /* Closed on the way through, like Open profile: the attempt form the
+           page raises replaces this popup rather than stacking on it. */
+        onLogAttempt={onLogAttempt ? (e) => { setOpenBooking(null); onLogAttempt(e); } : undefined}
       />
     </section>
   );

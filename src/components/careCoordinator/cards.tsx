@@ -92,13 +92,16 @@ export interface CardExtras {
 
 const FROM = "from=care-coordinator";
 
-/** The board's own attempt counter, floored at 0 — one per column. */
-function attemptsOf(lead: IntakeLead): number {
+/** The board's own attempt counter, floored at 0 — one per column. Exported
+ *  for the page's booking-popup log path, which must count exactly as the
+ *  cards do — two parsers is how the same patient gets two different "next"
+ *  attempt numbers. */
+export function attemptsOf(lead: IntakeLead): number {
   const n = Number(lead.attemptCounter);
   return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
 }
 
-function welcomeAttemptsOf(item: WelcomeCallItem): number {
+export function welcomeAttemptsOf(item: WelcomeCallItem): number {
   const n = Number(item.callAttempts);
   return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
 }
@@ -122,6 +125,25 @@ function callHandler(
   const raise = extras.onCall;
   if (!raise || !item.phone.trim()) return undefined;
   return () => raise({ column, itemId: item.id, name: item.name, phone: item.phone, attempts, openHref });
+}
+
+/**
+ * The card's POST-CALL Log attempt: the same target `callHandler` builds,
+ * opened log-only (`dial: false`). Until 2026-09-25 the attempt form's only
+ * door on this page was the Call button, so saying what happened after the
+ * dialog was closed meant placing a whole new call (Josh: *"make sure log
+ * call attempt here is wired up to work post and during call"*).
+ *
+ * ⚠️ Unlike Call it does NOT require a phone number — an attempt against a
+ * patient with no number on file is still an attempt worth recording.
+ */
+function logAttemptHandler(
+  extras: CardExtras, column: CallTarget["column"],
+  item: { id: string; name: string; phone: string }, attempts: number, openHref: string,
+): (() => void) | undefined {
+  const raise = extras.onCall;
+  if (!raise) return undefined;
+  return () => raise({ column, itemId: item.id, name: item.name, phone: item.phone, attempts, openHref, dial: false });
 }
 
 /**
@@ -232,6 +254,7 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake"
       onCall={callHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
+      onLogAttempt={logAttemptHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
       onBookingLink={() => onBookingLink(lead)}
     />
   );
@@ -263,6 +286,7 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake — log the attempt there"
       onCall={callHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
+      onLogAttempt={logAttemptHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
       onBookingLink={() => onBookingLink(lead)}
     />
   );
@@ -366,6 +390,7 @@ export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
       openHref={intakeHref(lead)}
       openLabel="Open on Patient Intake — review and advance"
       onCall={callHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
+      onLogAttempt={logAttemptHandler(extras, "intake", lead, attemptsOf(lead), intakeHref(lead))}
       onBookingLink={() => onBookingLink(lead)}
     />
   );
@@ -427,6 +452,7 @@ export function WelcomeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       openHref={welcomeHref(item)}
       openLabel="Open on Welcome Call"
       onCall={callHandler(extras, "welcome", item, welcomeAttemptsOf(item), welcomeHref(item))}
+      onLogAttempt={logAttemptHandler(extras, "welcome", item, welcomeAttemptsOf(item), welcomeHref(item))}
       onBookingLink={() => onBookingLink(item)}
     />
   );
@@ -454,6 +480,7 @@ export function WelcomeUnscheduledCard({ entry, today, onBookingLink, extras }: 
       openHref={welcomeHref(item)}
       openLabel="Open on Welcome Call — log the attempt there"
       onCall={callHandler(extras, "welcome", item, welcomeAttemptsOf(item), welcomeHref(item))}
+      onLogAttempt={logAttemptHandler(extras, "welcome", item, welcomeAttemptsOf(item), welcomeHref(item))}
       onBookingLink={() => onBookingLink(item)}
     />
   );

@@ -98,6 +98,14 @@ export interface ScheduleEntry extends BookedSlot {
    * patient would be worse than not linking.
    */
   href: string | null;
+  /**
+   * The monday item this booking resolved to, or null — the SAME resolution
+   * `href` and `phone` come from, exposed on its own so the booking popup's
+   * "Log call attempt" (Josh, 2026-09-25: *"make sure log call attempt here
+   * is wired up to work post and during call"*) can hand the page a patient
+   * to write against without parsing its own deep link back apart.
+   */
+  itemId: string | null;
 }
 
 const FROM = "from=care-coordinator";
@@ -123,6 +131,7 @@ export function intakeEntry(c: ScheduledCall): ScheduleEntry {
     email: c.email,
     phone: c.phone,
     href: hrefFor("intake", c.id, c.groupId),
+    itemId: c.id,
   };
 }
 
@@ -208,6 +217,7 @@ export function calendlyEntry(
     email: b.email,
     phone: linked?.phone ?? "",
     href: linked ? hrefFor(kind, linked.id, linked.groupId) : null,
+    itemId: linked?.id ?? null,
   };
 }
 

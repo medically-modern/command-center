@@ -51,7 +51,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle, ArrowDownLeft, ArrowUpRight, CalendarPlus, ChevronDown, ChevronUp,
-  MessageSquare, Phone,
+  MessageSquare, NotebookPen, Phone,
 } from "lucide-react";
 
 import { PatientContact } from "@/components/masheke/mmKit";
@@ -355,7 +355,7 @@ function NetworkPill({ pill }: { pill: NetworkPillFacts }) {
 
 export function PatientCard({
   name, attempted, nextUp = false, state, doctor, clinic, networkPill, when, pills, pillActions, variant, contact,
-  phone, notes, notesLabel, openHref, openLabel, onBookingLink, onCall, reached, blocker,
+  phone, notes, notesLabel, openHref, openLabel, onBookingLink, onCall, onLogAttempt, reached, blocker,
   inSystem = false, warnings,
 }: {
   name: string;
@@ -424,6 +424,13 @@ export function PatientCard({
    * its own dial-only popup — never a `tel:` handoff (§5.50).
    */
   onCall?: () => void;
+  /**
+   * The attempt form WITHOUT a dial — the post-call path (Josh, 2026-09-25:
+   * *"make sure log call attempt here is wired up to work post and during
+   * call"*). Call opens the same form but places a call first, so once the
+   * dialog was closed the only road back rang the patient again.
+   */
+  onLogAttempt?: () => void;
   /**
    * The duplicate check matched this person to a patient we already serve.
    *
@@ -617,6 +624,19 @@ export function PatientCard({
             onCall={onCall}
             commsPresentation="panel"
           />
+          {onLogAttempt && (
+            <button
+              type="button"
+              onClick={onLogAttempt}
+              /* Amber like every attempt button in the app, but the washed
+                 treatment Booking Link wears: it is the after-step of a call,
+                 not the action itself, so it must not outshout Call. */
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-500/15 px-3 py-1.5 text-sm font-semibold text-amber-800 hover:bg-amber-500/25 dark:border-amber-500/40 dark:text-amber-200"
+            >
+              <NotebookPen className="h-3.5 w-3.5" aria-hidden />
+              Log attempt
+            </button>
+          )}
           <button
             type="button"
             onClick={onBookingLink}

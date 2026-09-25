@@ -21,7 +21,7 @@
  * which is why the disabled button says WHY rather than just being dead.
  */
 import { useState } from "react";
-import { CalendarClock, ExternalLink, Mail, Phone, User } from "lucide-react";
+import { CalendarClock, ExternalLink, Mail, NotebookPen, Phone, User } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { displayTime } from "@/lib/scheduledCalls/workflow";
@@ -56,12 +56,23 @@ const Missing = ({ children }: { children: React.ReactNode }) => (
 );
 
 export function BookingDetailsDialog({
-  entry, onOpenChange, onOpenProfile,
+  entry, onOpenChange, onOpenProfile, onLogAttempt,
 }: {
   /** The clicked block, or null when the popup is closed. */
   entry: ScheduleEntry | null;
   onOpenChange: (open: boolean) => void;
   onOpenProfile: (href: string) => void;
+  /**
+   * Open the page's attempt form for this booking's patient — during the call
+   * (the dial popup's button) and after it (the button under Open profile).
+   * A scheduled call is the one the coordinator makes MOST, and until
+   * 2026-09-25 this popup could dial and then offered nowhere to say what
+   * happened (Josh: *"make sure log call attempt here is wired up to work
+   * post and during call"*). Only offered when the booking resolved to a
+   * board item — there is no patient to write against otherwise, the same
+   * reason Open profile grays out.
+   */
+  onLogAttempt?: (entry: ScheduleEntry) => void;
 }) {
   const kindLabel = entry?.kind === "welcome" ? "Welcome call" : "Intake call";
   /** The number being dialled from this popup, or null. Rendered INSIDE the
@@ -133,6 +144,16 @@ export function BookingDetailsDialog({
               <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />
               {entry.href ? "Open profile" : "No profile to open"}
             </button>
+            {onLogAttempt && entry.itemId && (
+              <button
+                type="button"
+                onClick={() => onLogAttempt(entry)}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-700"
+              >
+                <NotebookPen className="h-4 w-4 shrink-0" aria-hidden />
+                Log call attempt
+              </button>
+            )}
             {!entry.href && (
               <p className="text-center text-[11px] leading-snug text-muted-foreground">
                 This booking isn&apos;t matched to a patient on the board — usually because it was
@@ -145,6 +166,11 @@ export function BookingDetailsDialog({
                 phone={dialing}
                 name={entry.name}
                 onClose={() => setDialing(null)}
+                /* The during-call half: the dial popup's own Log call attempt
+                   button (DialPatientDialog renders one only when this is
+                   passed). It closes the dial popup — the call carries on in
+                   the app-wide overlay — and opens the attempt form. */
+                onLogAttempt={entry.itemId && onLogAttempt ? () => { setDialing(null); onLogAttempt(entry); } : undefined}
               />
             )}
           </>

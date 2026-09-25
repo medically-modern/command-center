@@ -74,11 +74,14 @@ import { invalidateContactTotals, totalsKey, useContactTotals } from "@/hooks/ca
 import { IntakeFilter } from "@/components/careCoordinator/IntakeFilter";
 import { PipelineColumn, Section } from "@/components/careCoordinator/PipelineColumn";
 import {
+  attemptsOf, welcomeAttemptsOf,
   IntakeReviewCard, IntakeScheduledCard, IntakeUnscheduledCard,
   WelcomeScheduledCard, WelcomeUnscheduledCard,
   type CardExtras,
 } from "@/components/careCoordinator/cards";
 import { ScheduleGrid } from "@/components/careCoordinator/ScheduleGrid";
+import type { ScheduleEntry } from "@/lib/careCoordinator/scheduleEntries";
+import { toast } from "sonner";
 
 /** Board polls. The intake read is the ~1,700-row Partial Leads group at ~25
  *  columns — the same order of cost as the intake sidebar's own list read
@@ -141,9 +144,9 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
    */
   /* ⚠️ The Welcome Call column hides advanced patients the same way the
      Patient Intake one does below (2026-09-25 — Keith Dye): the claims in
-     `sharedPendingAdvances` are written by the role pages' sends, and every
-     list this column derives (emails for Calendly, the buckets, the ids the
-     grid gets) starts from this filtered read. */
+     `sharedPendingAdvances` are written by the role pages' sends, and the
+     COLUMN's lists (the Calendly emails, the buckets) start from this
+     filtered read. The day strip stays on the raw read — see `welcomeItems`. */
   const welcomeRows = useMemo(
     () => applyPendingAdvances(welcome.data ?? [], sharedPendingAdvances),
     [welcome.data],
@@ -367,11 +370,46 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
   /** The strip hands back a ready route — it knows which board a block belongs to. */
   const openFromGrid = useCallback((href: string) => navigate(href), [navigate]);
 
+  /**
+   * The strip's Log call attempt (Josh, 2026-09-25: *"make sure log call
+   * attempt here is wired up to work post and during call"*). The booking
+   * popup hands back its entry; this turns it into the SAME `CallTarget` a
+   * card's Call button builds — the matched board row supplies the column's
+   * own counter, so the strip and the cards can never disagree on the next
+   * attempt number — and opens the form log-only (`dial: false`).
+   *
+   * ⚠️ The row is looked up in the RAW reads, the strip's own rule: a booked
+   * call is the day's schedule, not a view of the columns, so an attempt on a
+   * patient the filters (or a pending-advance claim) hide is still loggable.
+   * No row yet means the board read is still landing — said out loud, never
+   * written against a guessed counter (writing attempt 1 over a real 3 is a
+   * silent lie to whoever reads the log next).
+   */
+  const logFromBooking = useCallback((entry: ScheduleEntry) => {
+    if (!entry.itemId) return;
+    const base = { itemId: entry.itemId, name: entry.name, openHref: entry.href ?? "", dial: false as const };
+    const row = entry.kind === "welcome"
+      ? (welcome.data ?? []).find((r) => r.id === entry.itemId)
+      : (intake.data ?? []).find((r) => r.id === entry.itemId);
+    if (!row) {
+      toast.error("Still loading this patient's board row", {
+        description: "Give the column below a moment to finish loading, then try again — the attempt needs the board's own counter.",
+      });
+      return;
+    }
+    setCallTarget(entry.kind === "welcome"
+      ? { ...base, column: "welcome", phone: row.phone || entry.phone, attempts: welcomeAttemptsOf(row as WelcomeCallItem) }
+      : { ...base, column: "intake", phone: row.phone || entry.phone, attempts: attemptsOf(row as IntakeLead) });
+  }, [intake.data, welcome.data]);
+
   /** Email → Welcome Call item, so a Calendly welcome-call booking can link to
-   *  the patient's chart on the strip. Read from the column's own fetch. */
+   *  the patient's chart on the strip. Read from the column's own fetch —
+   *  the RAW read, not `welcomeRows`: the strip is the day's schedule, not a
+   *  view of the column (the `scheduleCalls` rule above), and a just-advanced
+   *  patient's booking block keeping its link is not a claim about the queue. */
   const welcomeItems = useMemo(
-    () => welcomeRows.map((w) => ({ id: w.id, email: w.email })),
-    [welcomeRows],
+    () => (welcome.data ?? []).map((w) => ({ id: w.id, email: w.email })),
+    [welcome.data],
   );
 
   /**
@@ -482,6 +520,7 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
           welcomeItems={welcomeItems}
           nowMinutes={nowMinutes}
           onOpen={openFromGrid}
+          onLogAttempt={logFromBooking}
           remindersOn={access.type === "processor" && access.profile.roles.includes("scheduledCalls")}
         />
 

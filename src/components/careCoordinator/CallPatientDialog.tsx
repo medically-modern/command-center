@@ -44,6 +44,14 @@ export interface CallTarget extends CallAttemptTarget {
   phone: string;
   /** Deep link into the stage page that WORKS this patient — the card's own. */
   openHref: string;
+  /**
+   * False opens the dialog as the attempt form ALONE — no dial. The post-call
+   * path (Josh, 2026-09-25: *"make sure log call attempt here is wired up to
+   * work post and during call"*): before this, the only way back to the form
+   * after closing it was the Call button, and that placed a whole new call.
+   * Absent means dial, which is every Call button's existing contract.
+   */
+  dial?: boolean;
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -70,14 +78,23 @@ export function CallPatientDialog({ target, onClose, onLogged }: {
   // in the caller, so the effect keys on the ITEM — without that this redials
   // on every re-render of the page, which on a dashboard that polls is a call
   // placed every minute.
+  // ⚠️ Two dials it must NOT place (Josh, 2026-09-25):
+  //   · `dial: false` is the log-only opening — the post-call "Log attempt"
+  //     buttons — and dialing there rings a patient who was just spoken to;
+  //   · a call to this number ALREADY live means the coordinator closed the
+  //     form mid-call and pressed Call to get it back — dialing again would
+  //     place a second call on top of the one still going.
   const itemId = target?.itemId ?? "";
   useEffect(() => {
-    if (!target) return;
+    if (!target || target.dial === false) return;
+    const digits = target.phone.replace(/\D/g, "").slice(-10);
+    if (digits && phone.call && phone.call.phone.replace(/\D/g, "").endsWith(digits)) return;
     // Who dialed — the call log can't say (§5.13b). The Communications inbox
     // reads it for "We called · <name>"; a no-op while that module is off.
     reportDial(target.phone);
     phone.dial(target.phone);
-    // `phone.dial` is a stable store method; re-running on it would redial.
+    // `phone.dial` is a stable store method; re-running on it would redial,
+    // and `phone.call` is only the mount-time guard, not a retrigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemId]);
 
@@ -124,7 +141,7 @@ export function CallPatientDialog({ target, onClose, onLogged }: {
             {target.name || "Calling"}
           </DialogTitle>
           <DialogDescription>
-            {formatPhoneNice(target.phone)}
+            {formatPhoneNice(target.phone) || "No phone on file"}
             {status ? ` · ${status}` : ""}
           </DialogDescription>
         </DialogHeader>
