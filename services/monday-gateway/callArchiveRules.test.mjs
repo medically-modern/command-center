@@ -15,6 +15,7 @@ import {
   counterpartyNumber,
   extensionFor,
   fallbackFilename,
+  isUnfinished,
   last4,
   nextAudioState,
   objectKey,
@@ -132,6 +133,22 @@ describe("toCallRow", () => {
   // ⚠️ The call log carries FAXES. The Communications inbox reads this table
   // as a list of phone calls, and a failed received fax read as a missed call
   // until the type rode on the row (2026-09-23 review).
+  // ⚠️⚠️ The call log serves a call WHILE IT IS GOING and rewrites it when it
+  // ends. A row written from the mid-flight read is how the Fidelis 8:26 AM
+  // call (inbound, final record says so) read "We called · no answer" (§5.53).
+  it("refuses a call RingCentral has not finished writing up", () => {
+    expect(isUnfinished(call({ finished: false }))).toBe(true);
+    expect(isUnfinished(call({ result: "In Progress" }))).toBe(true);
+    expect(toCallRow(call({ finished: false }))).toBeNull();
+    expect(toCallRow(call({ result: "In Progress", finished: undefined }))).toBeNull();
+  });
+
+  it("keeps a finished call, and one whose record does not say", () => {
+    expect(toCallRow(call({ finished: true, result: "Voicemail" }))).toMatchObject({ direction: "Inbound", result: "Voicemail" });
+    expect(isUnfinished(call())).toBe(false);
+    expect(toCallRow(call())).not.toBeNull();
+  });
+
   it("carries RingCentral's call type, so a fax can be told from a phone call", () => {
     expect(toCallRow(call({ type: "Voice" })).callType).toBe("Voice");
     expect(toCallRow(call({ type: "Fax" })).callType).toBe("Fax");
@@ -451,6 +468,16 @@ describe("callArchive.mjs invariants", () => {
     const rows = src.slice(src.indexOf("async function upsertRows"), src.indexOf("export async function archiveCallRecords"));
     expect(rows).toMatch(/r\.callType \?\? null,\s*\);/);
     expect(src).toMatch(/ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS call_type TEXT;/);
+  });
+
+  // ⚠️⚠️ A row's direction used to be whatever the FIRST read said, so a call
+  // first read mid-flight kept the wrong one for good. Every read that reaches
+  // the upsert is a finished one now (toCallRow), and the deep pass re-reads
+  // 95 days — which is what repairs the rows already written wrong.
+  it("takes the direction from every read, so a later read corrects it", () => {
+    const sql = src.slice(src.indexOf("function upsertSql"), src.indexOf("async function upsertRows"));
+    const update = sql.slice(sql.indexOf("DO UPDATE SET"));
+    expect(update).toMatch(/direction\s*=\s*EXCLUDED\.direction,/);
   });
 
   it("lets the scan move only `none` → `pending`, never anything else", () => {

@@ -229,12 +229,20 @@ function upsertSql(count) {
   // `none` → `pending` must be allowed, because RingCentral takes a little
   // while to produce a recording: a call scanned seconds after it ends has no
   // recording yet, and the next pass is what picks it up.
+  //
+  // ⚠️⚠️ `direction` is taken from EVERY read, not just the first. A row first
+  // written from a call still in progress kept that read's direction for good —
+  // "We called" on a call the patient made, whose final record says Inbound
+  // (callArchiveRules.isUnfinished). toCallRow now refuses unfinished records,
+  // so every read that reaches here is a final one, and the deep pass repairs
+  // the rows written wrong before the fix.
   return (
     `INSERT INTO call_archive
        (rc_call_id, rc_session_id, rc_recording_id, direction, result, leg_results,
         phone_hmac, last4, duration_sec, started_at, audio_state, content_uri, attempts, first_seen_at, call_type)
      VALUES ${tuples.join(",")}
      ON CONFLICT (rc_call_id) DO UPDATE SET
+       direction       = EXCLUDED.direction,
        rc_session_id   = COALESCE(EXCLUDED.rc_session_id,   call_archive.rc_session_id),
        call_type       = COALESCE(EXCLUDED.call_type,       call_archive.call_type),
        rc_recording_id = COALESCE(EXCLUDED.rc_recording_id, call_archive.rc_recording_id),

@@ -305,7 +305,34 @@ export function fallbackFilename({ startedAt, direction, last4: l4, ext = "mp3" 
 }
 
 /**
- * One call-log record → the row we keep, or null if it is not a call we can key.
+ * A call RingCentral has not finished writing up.
+ *
+ * ⚠️⚠️ THE ROOT OF "WE CALLED" ON A CALL THE PATIENT MADE (2026-09-27, the
+ * Fidelis 8:26 AM call §5.53 records). The call log serves a call WHILE IT IS
+ * STILL GOING — `finished: false`, `result: "In Progress"` (both are in
+ * RingCentral's own CallLogRecord schema) — and rewrites it when it ends, under
+ * the same id as far as §5.53's timeline shows (the phantom stood where the
+ * 8:26 inbound row belongs, with no inbound row beside it). The 60-second inbox
+ * tick reads the last two hours, so it can catch a call mid-flight, and the
+ * upsert never updated `direction` after the first write. MEASURED: the final record for that call is Inbound
+ * (same session, voicemail message on its leg), and Friday's whole log, read
+ * back on 2026-09-27, has no Outbound record from an outside caller and none
+ * that is "Accepted" or "Voicemail" — while the timeline showed one. NOT
+ * observed (it has since been rewritten): the mid-flight record itself. A
+ * record with no `direction` also became Outbound here (`toCallRow`'s
+ * `=== "Inbound"` test), so either shape ends the same way.
+ * So: an unfinished record is not archived at all (the next tick, a minute
+ * later, reads the finished one), and the upsert takes `direction` from every
+ * read (callArchive.mjs), which is how the deep pass repairs rows already
+ * frozen wrong.
+ */
+export function isUnfinished(record) {
+  return record?.finished === false || String(record?.result ?? "").trim() === "In Progress";
+}
+
+/**
+ * One call-log record → the row we keep, or null if it is not a call we can key
+ * (or not over yet — `isUnfinished`).
  *
  * ⚠️ EVERY call is kept, not just the recorded ones. Josh, 2026-09-21: *"having
  * other services view the information like the phone number that called and the
@@ -319,6 +346,7 @@ export function toCallRow(record) {
   const rcCallId = String(record?.id ?? "").trim();
   const startedAt = String(record?.startTime ?? "").trim();
   if (!rcCallId || !startedAt || Number.isNaN(new Date(startedAt).getTime())) return null;
+  if (isUnfinished(record)) return null;
 
   const rec = recordingOf(record);
   const phone = counterpartyNumber(record);
