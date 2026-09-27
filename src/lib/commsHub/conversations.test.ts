@@ -6,6 +6,7 @@ import {
   overrideStillApplies,
   pruneMessageReadOverrides,
   pruneReadOverrides,
+  resolvedTextIds,
   totalUnread,
   type RcConversationRecord,
 } from "./conversations";
@@ -217,5 +218,51 @@ describe("fax read overrides", () => {
     const m = new Map([[1, true]]);
     expect(pruneMessageReadOverrides(faxes, m)).toBe(m);
     expect(pruneMessageReadOverrides(faxes, new Map())).toEqual(new Map());
+  });
+});
+
+/* A Comms resolve marks the item's texts read (Josh, 2026-09-27), the same ids
+ * opening the conversation in the Text tab writes. */
+describe("resolvedTextIds", () => {
+  const COVER = Date.parse("2026-09-25T12:30:00Z");
+  const unread = (id: number, at: string, who = P1, type = "SMS") =>
+    msg({ dir: "Inbound", at, who, id, type, readStatus: "Unread" });
+
+  it("every unread inbound text on the item's numbers — not only the newest", () => {
+    const ids = resolvedTextIds(
+      [unread(1, "2026-09-25T12:00:00Z"), unread(2, "2026-09-25T12:10:00Z"), msg({ dir: "Inbound", at: "2026-09-25T12:05:00Z", id: 3 })],
+      [P1],
+      COVER,
+    );
+    expect(ids.sort()).toEqual([1, 2]);
+  });
+
+  it("covers both of a patient's numbers, and no one else's", () => {
+    const ids = resolvedTextIds(
+      [unread(1, "2026-09-25T12:00:00Z", P1), unread(2, "2026-09-25T12:00:00Z", P2), unread(3, "2026-09-25T12:00:00Z", "+12125550000")],
+      [P1, "(609) 555-0199"],
+      COVER,
+    );
+    expect(ids.sort()).toEqual([1, 2]);
+  });
+
+  // ⚠️⚠️ A text after what the rep was shown stays OPEN in the Inbox — so unread.
+  it("⚠️ never a text newer than what the resolve covered", () => {
+    const ids = resolvedTextIds([unread(1, "2026-09-25T12:29:59Z"), unread(2, "2026-09-25T12:30:01Z")], [P1], COVER);
+    expect(ids).toEqual([1]);
+  });
+
+  it("an MMS is a text; a voicemail or a fax on the same number is not", () => {
+    const ids = resolvedTextIds(
+      [unread(1, "2026-09-25T12:00:00Z", P1, "MMS"), unread(2, "2026-09-25T12:00:00Z", P1, "VoiceMail"), unread(3, "2026-09-25T12:00:00Z", P1, "Fax")],
+      [P1],
+      COVER,
+    );
+    expect(ids).toEqual([1]);
+  });
+
+  it("nothing without a usable number or cover", () => {
+    expect(resolvedTextIds([unread(1, "2026-09-25T12:00:00Z")], [""], COVER)).toEqual([]);
+    expect(resolvedTextIds([unread(1, "2026-09-25T12:00:00Z")], [P1], NaN)).toEqual([]);
   });
 });

@@ -26,8 +26,14 @@ const { api, toast } = vi.hoisted(() => {
     toast: { error: vi.fn(), success: vi.fn() },
   };
 });
+const rc = vi.hoisted(() => ({
+  markTextsRead: vi.fn(async (_n: string[], _c: number) => 0),
+  reloadTextsIfLoaded: vi.fn(),
+}));
 vi.mock("@/lib/commsInbox/api", () => api);
 vi.mock("sonner", () => ({ toast }));
+vi.mock("@/lib/fax/ringcentralApi", () => ({ markTextsRead: rc.markTextsRead }));
+vi.mock("@/hooks/commsHub/useHubData", () => ({ reloadTextsIfLoaded: rc.reloadTextsIfLoaded }));
 
 import ResolveBar, { type StickyResolution } from "./ResolveBar";
 import type { ItemState } from "@/lib/commsInbox/rules";
@@ -35,6 +41,7 @@ import type { ItemState } from "@/lib/commsInbox/rules";
 const T = Date.parse("2026-09-23T18:10:00Z");
 const KEY = "p:18410804557:900";
 const SEEN = T + 5_000;
+const NUMS = ["+15550001111", "+15550002222"];
 
 const open = (over: Partial<ItemState> = {}): ItemState => ({
   open: true,
@@ -71,6 +78,7 @@ function renderBar(state: ItemState, sticky: StickyResolution | null = null) {
   render(
     <ResolveBar
       itemKey={KEY}
+      textNumbers={NUMS}
       state={state}
       seenThrough={SEEN}
       sticky={sticky}
@@ -82,7 +90,10 @@ function renderBar(state: ItemState, sticky: StickyResolution | null = null) {
   return { onResolved, onUndone, onChanged };
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  rc.markTextsRead.mockResolvedValue(0);
+});
 
 describe("open", () => {
   it("shows the counted wait and the three ways, labelled Mark resolved", () => {
@@ -120,6 +131,7 @@ describe("open", () => {
     render(
       <ResolveBar
         itemKey={KEY}
+        textNumbers={NUMS}
         state={open()}
         seenThrough={SEEN}
         sticky={null}
@@ -219,6 +231,7 @@ describe("resolved", () => {
     const { container } = render(
       <ResolveBar
         itemKey={KEY}
+        textNumbers={NUMS}
         state={open({ open: false })}
         seenThrough={null}
         sticky={null}
@@ -228,5 +241,72 @@ describe("resolved", () => {
       />,
     );
     expect(container.textContent).toBe("");
+  });
+});
+
+/* Josh, 2026-09-27: "if anything in comms is marked as resolved mark the most
+ * recent text as read, the same way we do in the texts part of comms". */
+describe("a resolve marks the item's texts read", () => {
+  it.each(["texted", "no_action"] as const)("%s marks the covered texts on the item's numbers read", async (how) => {
+    api.resolveItem.mockResolvedValueOnce(result(how));
+    const { onResolved } = renderBar(open());
+    fireEvent.click(screen.getByRole("button", { name: how === "texted" ? /^Texted/ : /^No action needed/ }));
+    await waitFor(() => expect(onResolved).toHaveBeenCalled());
+    await waitFor(() => expect(rc.markTextsRead).toHaveBeenCalledWith(NUMS, SEEN));
+  });
+
+  it("Called marks them read too, once the note resolves it", async () => {
+    api.resolveItem.mockResolvedValueOnce(result("called"));
+    renderBar(open());
+    fireEvent.click(screen.getByRole("button", { name: /^Called/ }));
+    fireEvent.change(screen.getByLabelText("Call note, required"), { target: { value: "ships Friday" } });
+    fireEvent.click(screen.getByRole("button", { name: "Resolve" }));
+    await waitFor(() => expect(rc.markTextsRead).toHaveBeenCalledWith(NUMS, SEEN));
+  });
+
+  // ⚠️ An attempt resolves nothing — the item stays open, so its texts stay unread.
+  it("⚠️ Left voicemail marks nothing", async () => {
+    api.resolveItem.mockResolvedValueOnce(result("left_vm"));
+    const { onChanged } = renderBar(open());
+    fireEvent.click(screen.getByRole("button", { name: /Left voicemail/ }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(rc.markTextsRead).not.toHaveBeenCalled();
+  });
+
+  it("⚠️ a refused resolve (409) marks nothing", async () => {
+    api.resolveItem.mockRejectedValueOnce(new api.InboxConflict("taken", null, null));
+    const { onChanged } = renderBar(open());
+    fireEvent.click(screen.getByRole("button", { name: /^Texted/ }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(rc.markTextsRead).not.toHaveBeenCalled();
+  });
+
+  it("pulls the Text list forward when something was marked, and not when nothing was", async () => {
+    rc.markTextsRead.mockResolvedValueOnce(2);
+    api.resolveItem.mockResolvedValueOnce(result("texted"));
+    renderBar(open());
+    fireEvent.click(screen.getByRole("button", { name: /^Texted/ }));
+    await waitFor(() => expect(rc.reloadTextsIfLoaded).toHaveBeenCalledTimes(1));
+
+    rc.reloadTextsIfLoaded.mockClear();
+    rc.markTextsRead.mockResolvedValueOnce(0);
+    api.resolveItem.mockResolvedValueOnce(result("texted"));
+    renderBar(open());
+    fireEvent.click(screen.getAllByRole("button", { name: /^Texted/ })[1]);
+    await waitFor(() => expect(rc.markTextsRead).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(rc.reloadTextsIfLoaded).not.toHaveBeenCalled();
+  });
+
+  // The resolve has LANDED — a RingCentral failure must say so, not undo it.
+  it("a failed RingCentral write is reported, and the resolve stands", async () => {
+    rc.markTextsRead.mockRejectedValueOnce(new Error("RingCentral unread-text read failed (503)"));
+    api.resolveItem.mockResolvedValueOnce(result("texted"));
+    const { onResolved } = renderBar(open());
+    fireEvent.click(screen.getByRole("button", { name: /^Texted/ }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(String(toast.error.mock.calls[0][0])).toMatch(/^Resolved — but couldn't mark the text read/);
+    expect(onResolved).toHaveBeenCalled();
+    expect(api.undoResolution).not.toHaveBeenCalled();
   });
 });

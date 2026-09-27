@@ -134,6 +134,7 @@ export function PatientResolveBar({
         seenThrough={state.newestOpenAt}
         sticky={sticky && sticky.key === data.key ? sticky : null}
         noteTarget={noteTarget}
+        textNumbers={numbers}
         onResolved={onResolved}
         onUndone={() => {
           setSticky(null);

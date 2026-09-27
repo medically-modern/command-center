@@ -260,6 +260,7 @@ function TimelineShell({
             seenThrough={seenThrough}
             sticky={sticky && sticky.key === item.key ? sticky : null}
             noteTarget={noteTarget}
+            textNumbers={reachable.map((n) => n.e164 as string)}
             onResolved={onResolved}
             onUndone={onUndone}
             onChanged={onChanged}

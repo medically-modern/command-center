@@ -15,6 +15,7 @@ const m = vi.hoisted(() => ({
   resolve: vi.fn(),
   flush: vi.fn(async () => {}),
   invalidate: vi.fn(),
+  markRead: vi.fn(async (_n: string[], _c: number) => 0),
 }));
 
 vi.mock("@/hooks/commsInbox/useInbox", () => ({
@@ -31,6 +32,8 @@ vi.mock("@/lib/commsInbox/api", async (orig) => {
   };
 });
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/fax/ringcentralApi", () => ({ markTextsRead: (n: string[], c: number) => m.markRead(n, c) }));
+vi.mock("@/hooks/commsHub/useHubData", () => ({ reloadTextsIfLoaded: vi.fn() }));
 
 import { PatientResolveBar } from "./PatientResolveBar";
 
@@ -131,6 +134,8 @@ describe("PatientResolveBar", () => {
     // seenThrough is the state's own newest open event.
     expect(m.resolve).toHaveBeenCalledWith(expect.objectContaining({ key: KEY, how: "no_action", seenThrough: T }));
     expect(m.flush).not.toHaveBeenCalled();
+    // The patient's own numbers' texts go read, as far as the resolve covered.
+    await waitFor(() => expect(m.markRead).toHaveBeenCalledWith(["+15550001111"], T));
     unmount();
     expect(m.flush).toHaveBeenCalledTimes(1);
   });

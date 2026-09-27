@@ -103,5 +103,8 @@ export function createRcStore<T>(load: () => Promise<T>, ttlMs: number) {
     return useMemo(() => ({ ...state, reload }), [state, reload]);
   }
 
-  return { useStore, refresh, reset: () => emit(EMPTY) };
+  /** Whether this store has ever been read in this browser tab. */
+  const loaded = () => snapshot.fetchedAt > 0;
+
+  return { useStore, refresh, loaded, reset: () => emit(EMPTY) };
 }

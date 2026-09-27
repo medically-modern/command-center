@@ -16,12 +16,13 @@ import {
 } from "@/lib/fax/ringcentralApi";
 import type { RcCallLogRecord } from "@/lib/callHistory/callHistory";
 import type { RcFaxRecord } from "@/lib/fax/faxOutcome";
-import { buildConversations, type Conversation, type RcConversationRecord } from "@/lib/commsHub/conversations";
+import {
+  TEXT_WINDOW_DAYS,
+  buildConversations,
+  type Conversation,
+  type RcConversationRecord,
+} from "@/lib/commsHub/conversations";
 import { createRcStore } from "./rcStore";
-
-/** A month of texts. Long enough that a rep scrolling back finds the thread
- *  they half-remember, short enough to stay inside the page cap. */
-const TEXT_WINDOW_DAYS = 30;
 /** Two weeks of calls — the phone tab is about what happened recently. */
 const CALL_WINDOW_DAYS = 14;
 
@@ -77,6 +78,15 @@ export const useOutboundFaxes = outboundFaxStore.useStore;
  *  waiting out the TTL. */
 export function reloadTexts(): void {
   void textStore.refresh(true);
+}
+/**
+ * After a write made somewhere OTHER than the Text tab (a Comms resolve marking
+ * texts read), pull the list forward only if this browser tab has one. A forced
+ * read here would load a month of texts for a page that never opened the Text
+ * list — the patient screen resolves too, and only the OPEN tab polls (§5.28).
+ */
+export function reloadTextsIfLoaded(): void {
+  if (textStore.loaded()) void textStore.refresh(true);
 }
 export function reloadVoicemails(): void {
   void voicemailStore.refresh(true);

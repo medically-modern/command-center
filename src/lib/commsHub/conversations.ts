@@ -168,6 +168,42 @@ export function buildConversations(
   return [...byKey.values()].sort((a, b) => b.lastMs - a.lastMs).map((a) => a.row);
 }
 
+/** A month of texts — the Text tab's window (`useHubData`), and the one a
+ *  resolve marks read inside (`markTextsRead`). One constant, so the two cannot
+ *  disagree about which texts "the conversation" is. Long enough that a rep
+ *  scrolling back finds the thread they half-remember, short enough to stay
+ *  inside the page cap. */
+export const TEXT_WINDOW_DAYS = 30;
+
+/**
+ * The unread texts a Comms resolve marks read: exactly the `unreadIds` opening
+ * the conversation in the Text tab would write, for the item's numbers — the
+ * same `buildConversations` pass, not a second reading of RingCentral's fields
+ * (Josh, 2026-09-27: *"if anything in comms is marked as resolved mark the most
+ * recent text as read, the same way we do in the texts part of comms"*).
+ *
+ * ⚠️ ALL of the conversation's unread inbound texts, not only the newest: a
+ * conversation is unread while ANY of them is (`unread` counts them), so the
+ * newest alone would leave the row badged in the Text tab.
+ *
+ * ⚠️⚠️ Only texts the resolve COVERED (`coversThrough`, the gateway's own cut).
+ * A text that landed after what the rep was shown stays OPEN in the Inbox
+ * (plan §4.4), so it must stay unread here too — marking it read would hide it
+ * from the Unread filter as well as leave it unanswered.
+ */
+export function resolvedTextIds(
+  records: RcConversationRecord[],
+  phones: string[],
+  coversThrough: number,
+): number[] {
+  const want = new Set(phones.map((p) => contactKey(p)).filter((k) => k.length === 10));
+  if (!want.size || !Number.isFinite(coversThrough)) return [];
+  const covered = records.filter((r) => ms(r.creationTime) <= coversThrough);
+  return buildConversations(covered)
+    .filter((c) => want.has(c.key))
+    .flatMap((c) => c.unreadIds);
+}
+
 /** Total unread across the inbox — the badge on the Text tab. */
 export function totalUnread(conversations: Conversation[]): number {
   return conversations.reduce((n, c) => n + c.unread, 0);

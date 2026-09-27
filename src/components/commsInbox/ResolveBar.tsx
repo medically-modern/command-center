@@ -22,6 +22,13 @@
  * ⚠️ `seenThrough` is the newest inbound event the rep was SHOWN. Anything that
  * arrived after it stays open — that is what stops a text landing while the rep
  * types being swallowed by the resolve (plan §4.4).
+ *
+ * ⚠️ **A resolve marks the item's texts READ in RingCentral** (Josh,
+ * 2026-09-27), exactly as opening the conversation in the Text tab does — the
+ * texts the resolve covered, on `textNumbers` (`markTextsRead`). Called, Texted
+ * and No action needed; never Left voicemail, which resolves nothing. The
+ * resolve has already landed when it runs, so a failure only says so.
+ * `textNumbers` is REQUIRED so a new caller cannot forget it.
  */
 import { useState } from "react";
 import { Check, Loader2, Voicemail } from "lucide-react";
@@ -34,6 +41,8 @@ import {
   type ResolveResult,
   type NoteTarget,
 } from "@/lib/commsInbox/api";
+import { markTextsRead } from "@/lib/fax/ringcentralApi";
+import { reloadTextsIfLoaded } from "@/hooks/commsHub/useHubData";
 import {
   HOW_LABEL,
   KIND_LABEL,
@@ -65,8 +74,12 @@ export default function ResolveBar({
   onChanged,
   compact = false,
   noteTarget = null,
+  textNumbers,
 }: {
   itemKey: string;
+  /** The item's full numbers (E.164). A resolve marks the texts it covered on
+   *  these Read in RingCentral; an empty list marks nothing. */
+  textNumbers: string[];
   state: ItemState;
   seenThrough: number | null;
   /** Where the note is copied when that is NOT the item's own patient — the
@@ -108,6 +121,7 @@ export default function ResolveBar({
         onChanged();
       } else {
         onResolved(r, text.trim());
+        markResolvedTextsRead(r.coversThrough);
       }
     } catch (e) {
       if (e instanceof InboxConflict) conflictToast(e);
@@ -115,6 +129,16 @@ export default function ResolveBar({
     } finally {
       setBusy(null);
     }
+  };
+
+  const markResolvedTextsRead = (coversThrough: number) => {
+    void markTextsRead(textNumbers, coversThrough)
+      .then((n) => {
+        if (n) reloadTextsIfLoaded();
+      })
+      .catch((e: unknown) => {
+        toast.error(`Resolved — but couldn't mark the text read in RingCentral: ${e instanceof Error ? e.message : String(e)}`);
+      });
   };
 
   const undo = async (resolutionId: string, attempt = false) => {

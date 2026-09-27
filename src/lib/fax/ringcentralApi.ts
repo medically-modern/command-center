@@ -17,6 +17,7 @@ import {
   type PatientCall,
   type RcCallLogRecord,
 } from "../callHistory/callHistory";
+import { TEXT_WINDOW_DAYS, resolvedTextIds, type RcConversationRecord } from "../commsHub/conversations";
 
 const GATEWAY =
   (import.meta.env.VITE_MONDAY_GATEWAY_URL as string | undefined)?.replace(/\/+$/, "") || "";
@@ -790,6 +791,42 @@ export function setMessageRead(id: number, read: boolean): Promise<void> {
     if (readWrites.get(id) === next) readWrites.delete(id);
   });
   return next;
+}
+
+/**
+ * Mark a resolved Comms item's texts Read in RingCentral — what opening the
+ * conversation in the Text tab does (Josh, 2026-09-27: *"if anything in comms is
+ * marked as resolved mark the most recent text as read, the same way we do in
+ * the texts part of comms"*). Which ids is `resolvedTextIds`' rule: every unread
+ * inbound text on these numbers the resolve covered, inside the Text tab's
+ * window. Returns how many were marked.
+ *
+ * ⚠️ One message-store read per number, on the rep's click — never on render or
+ * a timer (INCIDENT_2026-08-20). It lives here, in the browser, because the
+ * gateway's resolve route may not touch RingCentral at all (§5.49).
+ * ⚠️ The writes go through `setMessageRead`, so a Text-tab click on the same
+ * message still lands in order.
+ */
+export async function markTextsRead(phones: string[], coversThrough: number): Promise<number> {
+  const nums = [...new Set(phones.map((p) => toE164(p)).filter(Boolean))];
+  if (!nums.length || !Number.isFinite(coversThrough)) return 0;
+  const dateFrom = new Date(Date.now() - TEXT_WINDOW_DAYS * 24 * 60 * 60_000).toISOString();
+  const records: RcConversationRecord[] = [];
+  for (const num of nums) {
+    // No messageType: an MMS is a text too, and `resolvedTextIds` keeps only
+    // the text types — the same filter the Text tab's list applies.
+    const path =
+      `/restapi/v1.0/account/~/extension/~/message-store` +
+      `?direction=Inbound&readStatus=Unread&phoneNumber=${encodeURIComponent(num)}` +
+      `&dateFrom=${encodeURIComponent(dateFrom)}&perPage=250`;
+    const res = await rcFetch(path);
+    if (!res.ok) throw new Error(`RingCentral unread-text read failed (${res.status})`);
+    const json = (await res.json()) as { records?: RcConversationRecord[] };
+    records.push(...(json.records ?? []));
+  }
+  const ids = resolvedTextIds(records, nums, coversThrough);
+  await Promise.all(ids.map((id) => setMessageRead(id, true)));
+  return ids.length;
 }
 
 export interface VoicemailRecord {
