@@ -83,6 +83,14 @@
   window this exists to close. Same rule and same reasoning as the patient directory's
   `isOrphanRow` (§5.29): act on positive evidence, let absence mean nothing. The one cost is a
   nicety: a patient a manager returns to the queue inside the TTL stays hidden until it lapses.
+  ⚠️ **A claim is scoped to the queue the patient LEFT** (2026-09-28, Cursor's launch-bugs item 1).
+  Keyed by item id alone, the claim that took a patient out of Evaluate also hid them from Send
+  Request, where they had just arrived — same board, same item id — for the whole TTL; likewise
+  Benefits → Submit Auth, Welcome Call → Final Confirm and Info Collection → Clean-Up. Claims are
+  now stored under `(scope, id)`: `groupScope(<group>)` for the group queues, `stageScope(...)` for
+  Medical Evaluation's sub-stage tabs. A queue marks, checks deep links and filters in its OWN
+  scope; the Care Coordinator columns use `columnScopes`, which hides a card only while it still
+  reports the group it left (or a group outside the column), so an in-column move shows as a move.
   ⚠️ **Hide at the POINT OF COMMIT** (`setPatients(applyPendingAdvances(...))`), not where the list
   is built — same review. Everything in between is an await (the deep-link `fetchItemById`, above
   all) during which a send can resolve, and a list filtered earlier commits an array assembled

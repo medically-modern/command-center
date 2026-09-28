@@ -78,6 +78,44 @@ describe("useMondayPatients — optimistic advance", () => {
     expect(ids(result.current.patients)).toEqual(["2"]);
   });
 
+  it("an Evaluate advance does NOT hide the patient from Send Request (2026-09-28)", async () => {
+    // Cursor's launch-bugs item 1. Evaluate and Send Request are one group and
+    // one item id; the unscoped claim meant "leave Evaluate" also meant "don't
+    // arrive in Send Request" for fifteen minutes.
+    fetchGroupItems.mockResolvedValue([row("1", "Joseph Bowser", "Evaluate MN")]);
+    const evaluate = renderHook(() => useMondayPatients("evaluate"));
+    await waitFor(() => expect(ids(evaluate.result.current.patients)).toEqual(["1"]));
+    act(() => evaluate.result.current.markAdvanced("1"));
+    evaluate.unmount();
+
+    // Monday now reports the new sub-stage; the Send Request page opens.
+    fetchGroupItems.mockResolvedValue([row("1", "Joseph Bowser", "Send Request")]);
+    const sendRequest = renderHook(() => useMondayPatients("sendRequest"));
+    await waitFor(() => expect(ids(sendRequest.result.current.patients)).toEqual(["1"]));
+
+    // …and Evaluate, reading a lagging index that still says "Evaluate MN",
+    // keeps them hidden — the claim still holds where it was made.
+    fetchGroupItems.mockResolvedValue([row("1", "Joseph Bowser", "Evaluate MN")]);
+    const back = renderHook(() => useMondayPatients("evaluate"));
+    await act(async () => { await back.result.current.refetch(true); });
+    expect(ids(back.result.current.patients)).toEqual([]);
+  });
+
+  it("a deep link into Send Request is injected even though Evaluate just advanced them", async () => {
+    fetchGroupItems.mockResolvedValue([row("1", "Joseph Bowser", "Evaluate MN")]);
+    const evaluate = renderHook(() => useMondayPatients("evaluate"));
+    await waitFor(() => expect(ids(evaluate.result.current.patients)).toEqual(["1"]));
+    act(() => evaluate.result.current.markAdvanced("1"));
+    evaluate.unmount();
+
+    // A lagging read: the group returns nobody in Send Request yet, so the
+    // page falls back to fetching the deep-linked item by id.
+    fetchGroupItems.mockResolvedValue([]);
+    fetchItemById.mockResolvedValue(row("1", "Joseph Bowser", "Send Request"));
+    const sendRequest = renderHook(() => useMondayPatients("sendRequest", "1"));
+    await waitFor(() => expect(ids(sendRequest.result.current.patients)).toEqual(["1"]));
+  });
+
   it("keeps them hidden while Monday still reports the OLD stage", async () => {
     // The ordinary case: the advance landed but hasn't been indexed yet, so the
     // very next poll still says "Evaluate MN". Bouncing the patient back here

@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { COL, fetchGroupItems, fetchItemById, hasToken, writeDate } from "@/lib/welcomeCall/mondayApi";
+import { COL, fetchGroupItems, fetchItemById, GROUPS, hasToken, writeDate } from "@/lib/welcomeCall/mondayApi";
 import { mondayItemToPatient } from "@/lib/welcomeCall/mondayMapping";
-import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
+import {
+  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, sharedPendingAdvances,
+} from "@/lib/shared/pendingAdvance";
 import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
 
 const POLL_MS = 30_000;
+
+/** The population this queue's claims are about (lib/shared/pendingAdvance).
+ *  ⚠️ Scoped (2026-09-28): Final Confirm is the same board and item id, so an
+ *  unscoped claim made here hid the patient from Final Confirm too. */
+const WELCOME_CALL_SCOPE = groupScope(GROUPS.welcomeCall);
 const LS_KEY = "wc-overlays";
 const LS_CACHE_KEY = "wc-patients-cache";
 
@@ -156,7 +163,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       // back the live Send button the hide exists to take away.
       if (
         injectedPatientId &&
-        !pendingAdvanceRef.current.has(injectedPatientId) &&
+        !hasPendingAdvance(pendingAdvanceRef.current, WELCOME_CALL_SCOPE, injectedPatientId) &&
         !merged.some((p) => p.id === injectedPatientId)
       ) {
         try {
@@ -174,7 +181,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       // in between is an await during which a send can resolve, and a list
       // filtered earlier would put that patient — Send button and all — back on
       // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current, WELCOME_CALL_SCOPE);
       setPatients(visible);
       persistPatientCache(visible);
     } catch (e) {
@@ -261,7 +268,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
    *  next poll AND the Monday automation that moves the item. Display only: the
    *  board still decides, and the poll brings them back if nothing moved. */
   const markAdvanced = useCallback((id: string) => {
-    pendingAdvanceRef.current.set(id, Date.now());
+    markPendingAdvance(pendingAdvanceRef.current, WELCOME_CALL_SCOPE, id);
     setPatients((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
