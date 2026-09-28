@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/finalConfirm/workflow";
-import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/finalConfirm/mondayApi";
+import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/finalConfirm/mondayApi";
 import { mondayItemToPatient } from "@/lib/finalConfirm/mondayMapping";
-import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
+import {
+  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, sharedPendingAdvances,
+} from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 30_000;
+
+/** The population this queue's claims are about (lib/shared/pendingAdvance). */
+const FINAL_CONFIRM_SCOPE = groupScope(GROUPS.finalProfileConfirmation);
 const LS_KEY = "fc-overlays";
 const LS_CACHE_KEY = "fc-patients-cache";
 
@@ -118,7 +123,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       // back carrying Monday's copy in place of the rep's edits.
       if (
         injectedPatientId &&
-        !pendingAdvanceRef.current.has(injectedPatientId) &&
+        !hasPendingAdvance(pendingAdvanceRef.current, FINAL_CONFIRM_SCOPE, injectedPatientId) &&
         !merged.some((p) => p.id === injectedPatientId)
       ) {
         try {
@@ -139,7 +144,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       // in between is an await during which a send can resolve, and a list
       // filtered earlier would put that patient — Send button and all — back on
       // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current, FINAL_CONFIRM_SCOPE);
       setPatients(visible);
       persistPatientCache(visible);
     } catch (e) {
@@ -246,7 +251,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
    *  next poll AND the Monday automation that moves the item. Display only: the
    *  board still decides, and the poll brings them back if nothing moved. */
   const markAdvanced = useCallback((id: string) => {
-    pendingAdvanceRef.current.set(id, Date.now());
+    markPendingAdvance(pendingAdvanceRef.current, FINAL_CONFIRM_SCOPE, id);
     setPatients((prev) => prev.filter((p) => p.id !== id));
   }, []);
 

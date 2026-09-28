@@ -53,7 +53,7 @@ import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
 import type { BookingKind } from "@/lib/scheduledCalls/bookingLink";
 import { etToday } from "@/lib/masheke/etDate";
-import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
+import { applyPendingAdvances, columnScopes, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
 import { nowMinutesEt, type ScheduledCall } from "@/lib/scheduledCalls/workflow";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +62,8 @@ import { useCalendlyBookings } from "@/hooks/careCoordinator/useCalendlyBookings
 import { CallPatientDialog, type CallTarget } from "@/components/careCoordinator/CallPatientDialog";
 import { InsuranceCardDialog, type InsuranceCardTarget } from "@/components/careCoordinator/InsuranceCardDialog";
 import {
-  fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUPS, INTAKE_FORM_GROUP_IDS, NOTES_COLUMN,
+  fetchIntakeLeads, fetchWelcomeCallItems, INTAKE_FORM_GROUPS, INTAKE_FORM_GROUP_IDS, INTAKE_GROUP_IDS, NOTES_COLUMN,
+  WELCOME_GROUP_IDS,
 } from "@/lib/careCoordinator/mondayApi";
 import {
   bucketedLeads, intakeBuckets, nextUp, summarize, toScheduledCall, welcomeCallBuckets,
@@ -146,9 +147,11 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
      Patient Intake one does below (2026-09-25 — Keith Dye): the claims in
      `sharedPendingAdvances` are written by the role pages' sends, and the
      COLUMN's lists (the Calendly emails, the buckets) start from this
-     filtered read. The day strip stays on the raw read — see `welcomeItems`. */
+     filtered read. The day strip stays on the raw read — see `welcomeItems`.
+     ⚠️ Scoped (2026-09-28): only a claim made FROM the Welcome Call group
+     hides a row here — `columnScopes` (lib/shared/pendingAdvance). */
   const welcomeRows = useMemo(
-    () => applyPendingAdvances(welcome.data ?? [], sharedPendingAdvances),
+    () => applyPendingAdvances(welcome.data ?? [], sharedPendingAdvances, (w) => columnScopes(w.groupId, WELCOME_GROUP_IDS)),
     [welcome.data],
   );
   const welcomeEmails = useMemo(() => welcomeRows.map((w) => w.email), [welcomeRows]);
@@ -193,8 +196,12 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
        page's own send, so the card leaves this board the moment the rep is
        back on it — Monday's group-filtered reads can keep returning the row
        long after the automation moved it (see the TTL's comment). Re-applied
-       on every poll commit; a lapsed claim simply stops filtering. */
-    const rows = applyPendingAdvances(intake.data ?? [], sharedPendingAdvances);
+       on every poll commit; a lapsed claim simply stops filtering.
+       ⚠️ Scoped (2026-09-28): Info Collection → Profile Clean-Up is a move
+       WITHIN this column, so a claim hides a card only while the card still
+       reports the group it left (or a group outside the column) —
+       `columnScopes`. The card moves; it no longer vanishes for 15 minutes. */
+    const rows = applyPendingAdvances(intake.data ?? [], sharedPendingAdvances, (l) => columnScopes(l.groupId, INTAKE_GROUP_IDS));
     if (!Object.keys(carrierEdits).length) return rows;
     return rows.map((l) => (carrierEdits[l.id] ? { ...l, generalInsurance: carrierEdits[l.id] } : l));
   }, [intake.data, carrierEdits]);

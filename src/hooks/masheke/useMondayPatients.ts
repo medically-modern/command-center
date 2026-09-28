@@ -5,7 +5,9 @@ import { fetchGroupItems, fetchItemById, writeDate, writeStatusIndex, COL, GROUP
 import { mondayItemToPatient, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { hasStaleEvaluateEscalation } from "@/lib/masheke/evaluateReentry";
 import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
-import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
+import {
+  applyPendingAdvances, hasPendingAdvance, markPendingAdvance, sharedPendingAdvances, stageScope,
+} from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 30_000;
 const LS_KEY = "mash-overlays";
@@ -125,6 +127,10 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   // this page unmounts. See `sharedPendingAdvances`' comment for the Keith
   // Dye measurement that forced it.
   const pendingAdvanceRef = useRef(sharedPendingAdvances);
+  // ⚠️ Scoped to THIS tab (2026-09-28): every live Medical Evaluation
+  // sub-stage shares one group and one item id, so an unscoped claim made on
+  // Evaluate hid the patient from Send Request, where they had just arrived.
+  const advanceScope = stageScope("medicalEvaluation", activeTab);
 
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
@@ -267,7 +273,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       // take away, and the marker is short-lived and self-correcting anyway.
       if (
         injectedPatientId &&
-        !pendingAdvanceRef.current.has(injectedPatientId) &&
+        !hasPendingAdvance(pendingAdvanceRef.current, advanceScope, injectedPatientId) &&
         !merged.some((p) => p.id === injectedPatientId)
       ) {
         try {
@@ -285,7 +291,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       // in between is an await during which a send can resolve, and a list
       // filtered earlier would put that patient — Send button and all — back on
       // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current, advanceScope);
       setPatients(visible);
       setChaseViewerPatients(chase);
       setScheduledApptPatients(scheduledAppt);
@@ -301,7 +307,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
         setInitialLoading(false);
       }
     }
-  }, [activeTab, injectedPatientId]);
+  }, [activeTab, injectedPatientId, advanceScope]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -337,9 +343,9 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
    *  decision: the board still decides whether they stay gone, and the poll
    *  brings them back if the advance never landed. */
   const markAdvanced = useCallback((id: string) => {
-    pendingAdvanceRef.current.set(id, Date.now());
+    markPendingAdvance(pendingAdvanceRef.current, advanceScope, id);
     setPatients((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+  }, [advanceScope]);
 
   const clearOverlay = useCallback((id: string) => {
     overlayRef.current.delete(id);
