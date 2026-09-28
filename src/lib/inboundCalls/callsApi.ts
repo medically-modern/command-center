@@ -95,3 +95,76 @@ export async function claimCall(callId: string): Promise<{ ringingAt: string }> 
   return json<{ ok: boolean; ringingAt: string }>(res, "Taking the call");
 }
 
+
+/* ── is everyone's browser actually on the line? (§5.13b) ─────────────────── */
+
+/**
+ * ⚠️ **The gateway cannot see this for itself.** The SIP socket goes browser →
+ * RingCentral directly, and a healthy browser asks for credentials about once
+ * a week, so nothing server-side can tell "registered and ringing" from
+ * "silently unable to register since Tuesday". Each leader tab reports its own
+ * state; these two calls are that report and its readout.
+ */
+export interface PhoneStateReport {
+  registration: string;
+  detail: string | null;
+  leader: boolean;
+  instanceId: string;
+  userAgent: string;
+}
+
+/** One browser's verdict, as the gateway's phonePresenceRules decided it. */
+export interface PhoneBrowser {
+  email: string;
+  instanceId: string;
+  registration: string;
+  detail: string | null;
+  leader: boolean;
+  userAgent: string | null;
+  since: number;
+  at: number;
+  state: "connected" | "waiting" | "trouble" | "gone";
+  label: string;
+  heldFor: number;
+}
+
+export interface PhoneHealth {
+  configured: boolean;
+  now: number;
+  browsers: PhoneBrowser[];
+  assigned: number;
+  connected: number;
+  unassigned: number;
+  people: {
+    email: string;
+    connected: boolean;
+    state: PhoneBrowser["state"];
+    label: string;
+    heldFor: number;
+    browsers: PhoneBrowser[];
+  }[];
+  faults: string[];
+}
+
+/**
+ * Tell the gateway how this browser's registration is going.
+ *
+ * ⚠️ Never throws into the phone. A monitoring write that could break calling
+ * would be worse than the blind spot it closes, so the caller ignores the
+ * result and this swallows everything.
+ */
+export async function reportPhoneState(report: PhoneStateReport): Promise<void> {
+  if (!GATEWAY) return;
+  try {
+    await call("/calls/phone-state", { method: "POST", body: JSON.stringify(report) });
+  } catch {
+    /* monitoring is never worth a failed call */
+  }
+}
+
+/** Every browser's registration state, rolled up per assigned answerer. */
+export async function fetchPhoneHealth(answerers: string[]): Promise<PhoneHealth> {
+  const q = answerers.length ? `?answerers=${encodeURIComponent(answerers.join(","))}` : "";
+  const res = await call(`/calls/phone-health${q}`);
+  return json<PhoneHealth>(res, "Reading the phone line's health");
+}

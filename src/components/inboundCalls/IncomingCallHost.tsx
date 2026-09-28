@@ -33,6 +33,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Phone, PhoneForwarded, PhoneIncoming, PhoneOff, X } from "lucide-react";
 import { toast } from "sonner";
 import { useInboundCalls } from "@/hooks/inboundCalls/useInboundCalls";
+import { usePhoneStateReport } from "@/hooks/inboundCalls/usePhoneStateReport";
 import { useElapsedSeconds, useSoftphone } from "@/hooks/softphone/useSoftphone";
 import { digitsKey, mergeRings, type UnifiedRing } from "@/lib/softphone/ringMerge";
 import { ringingCards } from "@/lib/softphone/ringRules";
@@ -326,6 +327,10 @@ export default function IncomingCallHost() {
   useEffect(() => {
     setCardRings(ringingCards(calls));
   }, [calls, setCardRings]);
+  // Tell the gateway whether this browser is actually on the line — the one
+  // thing it cannot see for itself (§5.13b). Leader tab only, one beat a
+  // minute; the readout is on /access.
+  usePhoneStateReport(phone, phone.instanceId, enabled);
   // Carried here rather than on the texting page so "add your number" is
   // fixable from wherever the call found you.
   const [settingsOpen, setSettingsOpen] = useState(false);

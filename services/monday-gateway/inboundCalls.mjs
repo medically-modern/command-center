@@ -61,6 +61,7 @@ import {
 } from "./callRules.mjs";
 import { buildHistoryQuery } from "./callHistoryQuery.mjs";
 import { RETRY_STEPS_MS, retryAfterMs, retryDelayMs } from "./reconcileBackoff.mjs";
+import { normalizeReport, presenceFaults, summarize, verdictFor } from "./phonePresenceRules.mjs";
 
 const { ASSIGNMENTS_DATABASE_URL } = process.env;
 
@@ -176,6 +177,38 @@ CREATE TABLE IF NOT EXISTS call_events (
 CREATE INDEX IF NOT EXISTS call_events_at_idx      ON call_events (at DESC);
 CREATE INDEX IF NOT EXISTS call_events_session_idx ON call_events (session_id);
 CREATE INDEX IF NOT EXISTS call_events_phone_idx   ON call_events (phone_hmac);
+
+-- Whether each BROWSER is actually registered on the shared extension.
+--
+-- ⚠️ WHY IT IS REPORTED RATHER THAN MEASURED (2026-09-28). The SIP socket goes
+-- browser → RingCentral DIRECTLY; this gateway is not on that path, and the
+-- sipInfo cache means a healthy browser asks it for credentials about once a
+-- week. So nothing here could tell "five browsers registered and ringing" from
+-- "nobody has been able to register since Tuesday" — which is exactly what
+-- happened: a rep sat on "Can't reach RingCentral's phone server. Retrying…"
+-- for an afternoon and the gateway had no record of it at all. Each leader tab
+-- now reports its own state once a minute.
+--
+-- One row per BROWSER (the softphone's stable per-browser instanceId, §5.13b),
+-- not per person and not per tab: a person with Chrome and Edge open is two
+-- registrations against RingCentral's five, and that is the thing worth seeing.
+--
+-- ⚠️ "since" is when the registration VALUE last changed, not when we last
+-- heard: "error for 40 minutes" is the alertable fact, and an upsert that
+-- refreshed it on every heartbeat would make everything look one minute old.
+-- No PHI: employee emails and a status, the same class call_claims holds.
+CREATE TABLE IF NOT EXISTS phone_presence (
+  email        TEXT NOT NULL,
+  instance_id  TEXT NOT NULL,
+  registration TEXT NOT NULL,
+  detail       TEXT,
+  leader       BOOLEAN,
+  user_agent   TEXT,
+  since        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (email, instance_id)
+);
+CREATE INDEX IF NOT EXISTS phone_presence_at_idx ON phone_presence (at DESC);
 `;
 
 async function ensureSchema() {
@@ -1105,6 +1138,111 @@ export function registerInboundCalls({ app }) {
    * monitor has no identity to present), so it stays counts-only; who is
    * connected is nobody's business at a public URL.
    */
+  /**
+   * A browser reporting whether it is registered on the shared extension.
+   *
+   * ⚠️ The ONLY way this gateway can know. The SIP socket does not come
+   * through here (see phone_presence in SCHEMA), so without this the whole
+   * class of "assigned, at their desk, and silently unable to ring" is
+   * invisible server-side — which is how it went unnoticed until a rep said
+   * so out loud (2026-09-28).
+   *
+   * ⚠️ The email is the VERIFIED identity, never the body: a browser that
+   * could name itself could report somebody else as healthy, and this table's
+   * whole job is to catch the person who is not.
+   *
+   * ⚠️ `since` moves only when the registration VALUE changes. "error for 40
+   * minutes" is the fact worth alerting on, and a heartbeat that refreshed it
+   * would make a permanent failure look a minute old, for ever.
+   */
+  app.post("/calls/phone-state", async (req, res) => {
+    const who = await requireCaller(req, res);
+    if (!who) return;
+    if (!pool) return res.json({ ok: false, stored: false, reason: "no database" });
+    const r = normalizeReport(who, req.body);
+    try {
+      await pool.query(
+        `INSERT INTO phone_presence (email, instance_id, registration, detail, leader, user_agent, since, at)
+              VALUES ($1,$2,$3,$4,$5,$6, now(), now())
+         ON CONFLICT (email, instance_id) DO UPDATE
+            SET registration = EXCLUDED.registration,
+                detail       = EXCLUDED.detail,
+                leader       = EXCLUDED.leader,
+                user_agent   = EXCLUDED.user_agent,
+                at           = now(),
+                since        = CASE WHEN phone_presence.registration IS DISTINCT FROM EXCLUDED.registration
+                                    THEN now() ELSE phone_presence.since END`,
+        [r.email, r.instanceId, r.registration, r.detail, r.leader, r.userAgent],
+      );
+      res.json({ ok: true, stored: true });
+    } catch (e) {
+      // Never fail the browser's phone over a monitoring write.
+      console.error("phone-state failed:", e.message);
+      res.json({ ok: false, stored: false });
+    }
+  });
+
+  /**
+   * Every browser's registration state — the readout behind "is RingCentral
+   * connecting for everyone?".
+   *
+   * ⚠️ AUTHENTICATED, unlike /calls/health beside it: this names employees.
+   * Same boundary /calls/history draws.
+   *
+   * ⚠️ The verdict AND the per-person rollup are computed HERE, in
+   * phonePresenceRules.mjs, never in the page. Two implementations of "is this
+   * one healthy" is how a readout ends up disagreeing with the alert that
+   * wakes somebody — the failure this whole table exists to prevent.
+   *
+   * WHO is assigned lives in access.json, which the SPA holds and this gateway
+   * does not, so the caller passes the list in `?answerers=`. It is display
+   * input only: `faults` is assignment-free and reports a browser that is
+   * open, reporting, and unable to ring, whoever it belongs to.
+   */
+  app.get("/calls/phone-health", async (req, res) => {
+    const who = await requireCaller(req, res);
+    if (!who) return;
+    if (!pool) return res.json({ configured: false, browsers: [], faults: [] });
+    try {
+      // A fortnight is plenty: anything older is a machine nobody uses any
+      // more, and keeping it would make the page a list of ghosts.
+      const { rows } = await pool.query(
+        `SELECT email, instance_id, registration, detail, leader, user_agent,
+                EXTRACT(EPOCH FROM since) * 1000 AS since,
+                EXTRACT(EPOCH FROM at)    * 1000 AS at
+           FROM phone_presence
+          WHERE at > now() - INTERVAL '14 days'
+          ORDER BY email, at DESC`,
+      );
+      const now = Date.now();
+      const browsers = rows.map((r) => ({
+        email: r.email,
+        instanceId: r.instance_id,
+        registration: r.registration,
+        detail: r.detail,
+        leader: r.leader,
+        userAgent: r.user_agent,
+        since: Number(r.since),
+        at: Number(r.at),
+        ...verdictFor({ ...r, since: Number(r.since), at: Number(r.at) }, now),
+      }));
+      const answerers = String(req.query?.answerers || "")
+        .split(",")
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, 50);
+      res.json({
+        configured: true,
+        now,
+        browsers,
+        ...summarize(answerers, browsers, now),
+        faults: presenceFaults(browsers, now),
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/calls/health", async (_req, res) => {
     const live = await liveSubscriptionStatus();
     const now = Date.now();

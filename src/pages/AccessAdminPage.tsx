@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAccessContext } from "@/components/AccessProvider";
 import { ROLES } from "@/lib/config";
 import { MAX_CALL_ANSWERERS, type RoleFilter } from "@/lib/accessStore";
+import PhoneLineHealth from "@/components/inboundCalls/PhoneLineHealth";
 import { AbilitiesEditor } from "@/components/shell/AbilitiesEditor";
 import { HOME_VIEW_TAB, homeViewsOf } from "@/lib/shell/abilities";
 import { CROSS_SELL_FILTER_ROLES, roleFilterFor, roleOrderNumber } from "@/lib/roleView";
@@ -187,7 +188,13 @@ export default function AccessAdminPage() {
         {/* ⚠️ The "Answer calls in the browser" section is GONE (Josh,
             2026-09-23): it was a second control onto `callAnswerers[]`, the
             same list the "Answers calls" chip on each person's Abilities row
-            writes. That chip is now the only one, and the count lives on it. */}
+            writes. That chip is now the only one, and the count lives on it.
+
+            What sits here instead is a READOUT, not a control (2026-09-28):
+            assigning somebody is not the same as their browser actually being
+            registered, and until now nothing anywhere showed the difference —
+            not the page, not the gateway (§5.13b). */}
+        <PhoneLineHealth answerers={answerers} />
 
         {allEmails.length === 0 ? (
           <p className="small muted">No one added yet. Add a person above.</p>

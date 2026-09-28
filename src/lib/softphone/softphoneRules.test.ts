@@ -180,3 +180,50 @@ describe("one call overlay, mounted app-wide", () => {
     expect((app.match(/<IncomingCallHost \/>/g) || []).length).toBe(1);
   });
 });
+
+/**
+ * ⚠️ Whether a browser is registered is invisible everywhere except the
+ * browser itself: the SIP socket goes browser → RingCentral directly, and the
+ * sipInfo cache means a healthy browser asks the gateway for credentials about
+ * once a week (§5.13b). Drop the report and the whole class of "assigned, at
+ * their desk, silently unable to ring" goes back to being something only a rep
+ * can tell you about — which is how it stayed hidden until 2026-09-28.
+ */
+describe("every browser reports whether it is actually on the line", () => {
+  it("the host reports this browser's registration, gated on the assignment", () => {
+    const host = codeOnly(read("src/components/inboundCalls/IncomingCallHost.tsx"));
+    expect(host).toMatch(/usePhoneStateReport\(phone, phone\.instanceId, enabled\)/);
+  });
+
+  it("only the LEADER tab reports, and on one timer — never one per tab or per render", () => {
+    const hook = codeOnly(read("src/hooks/inboundCalls/usePhoneStateReport.ts"));
+    expect(hook).toMatch(/if \(!enabled \|\| !leader\) return;/);
+    expect((hook.match(/setInterval/g) || []).length).toBe(1);
+  });
+
+  it("a failed report can never break the phone", () => {
+    // Monitoring that could stop a call being answered is worse than the blind
+    // spot it closes.
+    const api = codeOnly(read("src/lib/inboundCalls/callsApi.ts"));
+    expect(api).toMatch(/export async function reportPhoneState[\s\S]{0,600}catch \{/);
+  });
+
+  it("the readout is mounted on /access and reads the gateway's verdicts, not its own", () => {
+    const page = codeOnly(read("src/pages/AccessAdminPage.tsx"));
+    expect(page).toMatch(/<PhoneLineHealth answerers=\{answerers\}/);
+    const panel = codeOnly(read("src/components/inboundCalls/PhoneLineHealth.tsx"));
+    // It renders `state`/`label` as given. A second opinion on "healthy" is
+    // how a board ends up disagreeing with the alert that wakes somebody.
+    expect(panel).not.toMatch(/registration === "registered"/);
+    expect(panel).toMatch(/fetchPhoneHealth\(/);
+  });
+
+  it("⚠️ colours the dots with hsl(var(--token)), never a bare var() — §5.40", () => {
+    // The shadcn tokens are HSL COMPONENTS, so `var(--muted-foreground)` is an
+    // invalid background that computes to transparent, and the var() fallback
+    // never fires because the variable IS defined. Measured: the dot vanished.
+    const panel = codeOnly(read("src/components/inboundCalls/PhoneLineHealth.tsx"));
+    expect(panel).not.toMatch(/background:\s*"var\(--/);
+    expect(panel).not.toMatch(/"var\(--[a-z-]+,/);
+  });
+});

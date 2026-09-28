@@ -27,6 +27,7 @@ export function useSoftphone() {
     toggleMute: softphone.toggleMute,
     setEnabled: softphone.setEnabled,
     setCardRings: softphone.setCardRings,
+    instanceId: softphone.instanceId,
     setRingMuted: softphone.setRingMuted,
     takeOver: softphone.takeOver,
     dismissError: softphone.dismissError,

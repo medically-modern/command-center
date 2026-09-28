@@ -306,7 +306,11 @@ class Softphone {
   private readonly tabCardRings = new Map<string, RingLike[]>();
   /** Re-checks the ring when its oldest entry ages out of the audible window. */
   private ringExpiryTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly instanceId = instanceIdFor(storage() ?? NO_STORAGE, mintUuid);
+  /** ⚠️ Public: the gateway's phone-presence rows are keyed on it, so a
+   *  browser's report lines up with the same browser's next one (§5.13b).
+   *  Stable per browser and never rotated — a new id is a new device to
+   *  RingCentral. */
+  readonly instanceId = instanceIdFor(storage() ?? NO_STORAGE, mintUuid);
 
   constructor() {
     this.snapshot = followerView(null, false, this.ringMuted);
