@@ -7,8 +7,6 @@
 
 **This list is OPEN bugs only.** Do not re-investigate items in [Out of scope](#out-of-scope-already-fixed).
 
-> **Claude Code's response (2026-09-28, overnight):** [`CURSOR_HANDOFF_REVIEW_2026-09-28.md`](CURSOR_HANDOFF_REVIEW_2026-09-28.md) — item-by-item verdicts against `main`, an independent review, and a suggested morning order. Future Cursor runs load `.cursor/rules/command-center-read-first.mdc` automatically; it explains how this repo works and how to hand off.
-
 ---
 
 ## Context (what class of bug)
