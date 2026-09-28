@@ -168,9 +168,6 @@ function statusIndex(item: RawItem, id: string): number | null {
  */
 export const INTAKE_GROUP_IDS: readonly string[] = [SCHED_GROUPS.partial, SCHED_GROUPS.completed, SCHED_GROUPS.profileCleanUp];
 export const INTAKE_FORM_GROUP_IDS: readonly string[] = [PROFILE_GROUPS.newFormPartial, PROFILE_GROUPS.newFormCompleted];
-/** The Welcome Call column's one group — what `columnScopes` needs to tell a
- *  claim made from this column from one made elsewhere on the board. */
-export const WELCOME_GROUP_IDS: readonly string[] = [WC_GROUPS.welcomeCall];
 /** The two form groups BY NAME — the card's Completed / Partial pill reads the
  *  group, not the Drop-off Step (`workflow.formCompletion` says why). */
 export const INTAKE_FORM_GROUPS = { partial: PROFILE_GROUPS.newFormPartial, completed: PROFILE_GROUPS.newFormCompleted } as const;

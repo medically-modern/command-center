@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/profile/workflow";
-import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/profile/mondayApi";
+import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/profile/mondayApi";
 import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
-import {
-  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, sharedPendingAdvances,
-} from "@/lib/shared/pendingAdvance";
+import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 15_000;
 const LS_CACHE_KEY_BASE = "prof-patients-cache";
@@ -33,16 +31,6 @@ type GroupSelector = string | string[];
 function groupKeyOf(groupId?: GroupSelector): string {
   if (!groupId) return "";
   return Array.isArray(groupId) ? groupId.join(",") : groupId;
-}
-/**
- * The population this queue's claims are about (lib/shared/pendingAdvance) —
- * the GROUP(S) it reads, defaulting like `fetchGroupItems` to 1. Intake.
- * ⚠️ Scoped (2026-09-28): Info Collection and Profile Clean-Up are one board
- * and one item id, so an unscoped claim made on Info Collection hid the
- * patient from Clean-Up, and from the Care Coordinator column, for 15 minutes.
- */
-function advanceScopeOf(groupId?: GroupSelector): string {
-  return groupScope(groupKeyOf(groupId) || GROUPS.intake);
 }
 const LS_OVERLAY_KEY = "prof-overlays";
 
@@ -287,7 +275,7 @@ export function useMondayPatients(
       const injectedId = injectedIdRef.current;
       if (
         injectedId &&
-        !hasPendingAdvance(pendingAdvanceRef.current, advanceScopeOf(groupIdRef.current), injectedId) &&
+        !pendingAdvanceRef.current.has(injectedId) &&
         !merged.some((p) => p.id === injectedId)
       ) {
         try {
@@ -314,7 +302,7 @@ export function useMondayPatients(
       // in between is an await during which a send can resolve, and a list
       // filtered earlier would put that patient — Send button and all — back on
       // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current, advanceScopeOf(groupIdRef.current));
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
       setPatients(visible);
       persistPatientCache(visible, groupIdRef.current);
 
@@ -435,8 +423,7 @@ export function useMondayPatients(
    *  group move behind it. Display only: the board still decides, and the poll
    *  brings them back if nothing moved. */
   const markAdvanced = useCallback((id: string) => {
-    // The group the patient is leaving is the one this page is reading NOW.
-    markPendingAdvance(pendingAdvanceRef.current, advanceScopeOf(groupIdRef.current), id);
+    pendingAdvanceRef.current.set(id, Date.now());
     setPatients((prev) => prev.filter((p) => p.id !== id));
   }, []);
 

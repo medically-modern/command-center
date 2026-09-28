@@ -2,9 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient, ProductCodeId, ProductCodeState } from "@/lib/samantha/workflow";
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/samantha/mondayApi";
 import { mondayItemToPatient } from "@/lib/samantha/mondayMapping";
-import {
-  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, sharedPendingAdvances,
-} from "@/lib/shared/pendingAdvance";
+import { applyPendingAdvances, sharedPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 /**
  * Apply the local-edit overlay on top of a freshly-fetched patient.
@@ -132,10 +130,6 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
   // this page unmounts. See `sharedPendingAdvances`' comment for the Keith
   // Dye measurement that forced it.
   const pendingAdvanceRef = useRef(sharedPendingAdvances);
-  // ⚠️ Scoped to THIS group (2026-09-28): Benefits, Submit Auth and Auth
-  // Outstanding are one board and one item id, so an unscoped claim made on
-  // Benefits hid the patient from Submit Auth, where they had just arrived.
-  const advanceScope = groupScope(GROUPS[activeGroup]);
 
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
@@ -173,7 +167,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       // rep back the live Send button the hide exists to take away.
       if (
         injectedPatientId &&
-        !hasPendingAdvance(pendingAdvanceRef.current, advanceScope, injectedPatientId) &&
+        !pendingAdvanceRef.current.has(injectedPatientId) &&
         !merged.some((p) => p.id === injectedPatientId)
       ) {
         try {
@@ -196,7 +190,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       // in between is an await during which a send can resolve, and a list
       // filtered earlier would put that patient — Send button and all — back on
       // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current, advanceScope);
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
       setPatients(visible);
       persistPatientCache(activeGroup, visible);
     } catch (e) {
@@ -210,7 +204,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
         setInitialLoading(false);
       }
     }
-  }, [activeGroup, injectedPatientId, advanceScope]);
+  }, [activeGroup, injectedPatientId]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -288,9 +282,9 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
    *  in lib/samantha/stageQueue owns that question, because a send here can
    *  legitimately write no stage at all. */
   const markAdvanced = useCallback((id: string) => {
-    markPendingAdvance(pendingAdvanceRef.current, advanceScope, id);
+    pendingAdvanceRef.current.set(id, Date.now());
     setPatients((prev) => prev.filter((p) => p.id !== id));
-  }, [advanceScope]);
+  }, []);
 
   return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay };
 }

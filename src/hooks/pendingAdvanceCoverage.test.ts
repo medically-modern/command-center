@@ -42,16 +42,7 @@ describe.each(HOOKS)("%s", (path) => {
   });
 
   it("does not re-inject a deep-linked patient it just hid", () => {
-    expect(src).toMatch(/!hasPendingAdvance\(pendingAdvanceRef\.current,/);
-  });
-
-  it("scopes its claims to its own queue (2026-09-28)", () => {
-    // An unscoped claim hid the patient from the NEXT stage on the same board
-    // (same item id) for fifteen minutes. Marking, the deep-link check and the
-    // commit filter must all name this queue's scope.
-    expect(src).toMatch(/markPendingAdvance\(pendingAdvanceRef\.current, \w+/);
-    expect(src).toMatch(/applyPendingAdvances\(merged, pendingAdvanceRef\.current, \w+/);
-    expect(src).not.toMatch(/pendingAdvanceRef\.current\.(set|has)\(/);
+    expect(src).toMatch(/!pendingAdvanceRef\.current\.has\(/);
   });
 
   it("exposes markAdvanced so a page can call it on a confirmed advance", () => {
@@ -97,11 +88,11 @@ describe("the Care Coordinator dashboard consults the same claims", () => {
   const src = readFileSync("src/pages/CareCoordinatorPage.tsx", "utf8");
 
   it("filters the Patient Intake column through the shared map", () => {
-    expect(src).toMatch(/applyPendingAdvances\(intake\.data \?\? \[\], sharedPendingAdvances, \(l\) => columnScopes\(l\.groupId, INTAKE_GROUP_IDS\)\)/);
+    expect(src).toMatch(/applyPendingAdvances\(intake\.data \?\? \[\], sharedPendingAdvances\)/);
   });
 
   it("filters the Welcome Call column through the shared map", () => {
-    expect(src).toMatch(/applyPendingAdvances\(welcome\.data \?\? \[\], sharedPendingAdvances, \(w\) => columnScopes\(w\.groupId, WELCOME_GROUP_IDS\)\)/);
+    expect(src).toMatch(/applyPendingAdvances\(welcome\.data \?\? \[\], sharedPendingAdvances\)/);
     // …and every welcome-side list derives from the filtered rows, not the
     // raw poll — the buckets, the Calendly emails, the ids the grid gets.
     expect(src).toMatch(/welcomeCallBuckets\(welcomeRows,/);
