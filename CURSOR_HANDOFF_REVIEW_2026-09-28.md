@@ -306,7 +306,41 @@ hang-up 8 s. And a redial inside a missed card's 6-second linger can be fused in
 card and `orders` do. Final Confirm, Subscription and the Comms Hub have no cash-pay logic. Not a bug,
 just an overstatement to fix when someone is in there.
 
-<!-- RECENT-COMMITS -->
+### From the recent-commits sweep (every non-automated commit since 2026-09-23, diffs read in full)
+
+**R. The Phone tab labels real voicemails "Missed their call" until its voicemail list has loaded, and
+for any call older than that list's single page** · Confirmed · Medium · regression in `396c44e`.
+The new rule lets a `false` from the voicemail match override RingCentral's own result
+(`PhonePanel.tsx:127` `if (hasMessage ?? r.voicemail)`); only `null` falls back. But
+`AssignedPatientsPage.tsx:837` passes `voicemails.data ?? []`, turning the store's not-loaded `null`
+(`rcStore.ts:40`) into an empty array, so `vmMatched` (`PhonePanel.tsx:270`) is an empty Set rather than
+`null` and every voicemail row reads "Missed their call" in the rose missed styling until the fetch lands.
+And `fetchVoicemails` (`ringcentralApi.ts:869–875`) is one page of 50 with no cursor over a 30-day
+window; at §5.47b's measured ~2.6 voicemails a day that covers ~19 days on average, less in a busy week,
+so older calls in the 14-day Calls window can read wrong permanently. A side effect: an outbound call that
+reached the patient's voicemail can never match (the list is inbound only), so outbound "Left voicemail"
+now reads "We called". Same code as item I; fix them together. *Fix:* pass the nullable list through so
+the `null` branch fires, page the voicemail fetch the way the fax store was paged (§5.28), and let `false`
+downgrade a row only when the loaded list demonstrably covers the call's time.
+
+**S. The patient screen's swap card never refreshes after a send; `/orders` does** · Confirmed · Low.
+`PatientOrderCard.tsx:370` mounts `SubstitutionCard` with no `onSent`; `OrdersPage.tsx:317` passes
+`refetch`. After a send the card keeps saying "none picked" / "Send swap request" until another order is
+opened. The write path re-reads the board and clears before a re-send, so this is stale display, not a
+duplicate email to Cardinal. The §5.30 "one screen, not its sibling" shape.
+
+*One caveat from the sweep, not a finding:* `6a58088`'s upsert now takes `direction` from every later
+read, and `toCallRow` turns a missing direction into Outbound, so a RingCentral record ever served without
+`direction` would flip a correct row on the 95-day pass. Nobody has seen RingCentral omit it; a
+`direction IS NOT NULL` guard on the upsert would make the question moot.
+
+*Commits read and found sound in this bug class:* 6a58088, 3bb7c22, 3d563dd, 208a1a3, f7d2a42, 628aeff,
+32de3c0, 3cea4f3, 91612b2, 396c44e (its softphone and gateway halves), 676fd01, 32c9387, e7bbf07, 3d30f16,
+3221909, and the docs-only commits. The 13 test files those commits cite pass (388 tests). One design
+consequence of 208a1a3 / f7d2a42 to know about rather than fix: a coordinator holding only
+`scheduledCalls` no longer gets the Welcome Call or intake doors on the patient screen; the dashboard still
+deep-links her there.
+
 
 ### Checked and found sound (so nobody re-reviews it in the morning)
 
@@ -354,9 +388,9 @@ Cursor's numbers are its items; letters are §3's.
    generators together. The headline is wrong today; the missing button matters the day the ordering flag
    flips.
 7. **#14, #7, H, E** — small and self-contained.
-8. **#6, #8, #9, #11, #5b, F, G, I, J, K** — small; as time allows. F and #5b/G share a fix each.
+8. **#6, #8, #9, #11, #5b, F, G, I + R, J, K** — small; as time allows. #5b/G share a fix, and I + R are one edit in `PhonePanel`.
 9. **#13** — after launch, with each board's label text read back from `settings_str`.
-10. **#10, L–Q** — leave documented; none moves a patient.
+10. **#10, L–Q, S** — leave documented; none moves a patient.
 
 ---
 
