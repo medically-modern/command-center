@@ -94,25 +94,29 @@ Josh’s bar: situations like *“inbound call showed as We called”* — the a
 
 ---
 
-### 5. Browser pickup / some surfaces still say “We called”
+### 5. ~~Browser pickup counts still “We called”~~ — dropped from open list
 
-**Situation:** Patient rings in; rep answers in Command Center softphone. Later: Care Coord “We called · They called” counts, or Communications **fallback** Calls list (when Inbox is off / unavailable).
+**Status:** Rejected on re-verify (2026-09-28). Finished SIP/browser pickups land **Inbound** in `call_archive`; `contact-totals` reads that direction. The old wrong “We called” reading was the mid-call archive freeze fixed in `6a580883` / §5.53 item 3b — not a remaining contact-totals bug. Keep `markBrowserPickups` as inbox net only; do not rebuild pickup rewrite on counts unless a **finished** RC row is still Outbound after a deep archive pass.
 
-**What’s wrong:** Inbox timeline was fixed (`markBrowserPickups` / inversion). **contact-totals** and **CallHistoryList** (live RC via `toPatientCall`) still treat the pickup as outbound. Docs call this intentional-unfinished (`docs/claude/5.49`, `5.53`).
-
-**Where:**
-- Fixed path: `services/monday-gateway/commsInboxRules.mjs` — `markBrowserPickups` / `markInvertedInbound`
-- Still wrong: `services/monday-gateway/contactTotals.mjs`, `src/components/shared/CallHistoryList.tsx`, `src/lib/callHistory/callHistory.ts` (`toPatientCall`)
-
-**Related:** Live CallHistoryList also has **no** `isUnfinished` guard (archive does in `callArchiveRules.isUnfinished`). Opening fallback Calls mid-call can flash wrong direction — same family as the 2026-09-27 archive freeze, different surface.
-
-**Fix direction:** Drive counts/labels from archive + pickup/inversion rules where possible; or document as known until redesign. At minimum don’t trust mid-call RC rows in the fallback UI.
-
-**Verify:** Answer inbound in-browser → compare Inbox timeline vs Care Coord counts vs Comms fallback Calls.
+**Still open (related, Medium):** live `CallHistoryList` / `toPatientCalls` has **no** `isUnfinished` guard — see #5b below.
 
 ---
 
 ## Medium
+
+### 5b. Comms fallback Calls list can show in-progress RingCentral rows
+
+**Situation:** Communications Inbox unavailable → fallback `CallHistoryList` opens while a call is still ringing/connected.
+
+**What’s wrong:** Live RC fetch keeps rows with `finished: false` / result `"In Progress"`. Archive path refuses those (`callArchiveRules.isUnfinished`). Mid-call direction/result can look wrong until the call finishes — same family as the archive freeze, different surface.
+
+**Where:** `src/lib/fax/ringcentralApi.ts` `fetchPatientCallHistory` → `toPatientCalls`; `src/lib/callHistory/callHistory.ts` `toPatientCall` (no unfinished filter); `src/components/shared/CallHistoryList.tsx`. Contrast: `services/monday-gateway/callArchiveRules.mjs` `isUnfinished` / `toCallRow`.
+
+**Fix direction:** Drop unfinished records in `toPatientCalls` the same way the archive does.
+
+**Verify:** Open fallback Calls mid-inbound; refresh after hangup.
+
+---
 
 ### 6. Numberless “Log attempt” shows Hang up for an unrelated live call
 
@@ -228,15 +232,15 @@ Josh’s bar: situations like *“inbound call showed as We called”* — the a
 2. **#2** Cash Pay → correct General back to real payer  
 3. **#3** Open Send Request on a Completed ME item  
 4. **#4** Dial while inbound ringing  
-5. **#5** Browser pickup: Inbox vs Care Coord counts vs Comms fallback Calls  
-6. Cash Pay happy path still → Welcome Call  
-7. **#6–#10** as time allows  
+5. Cash Pay happy path still → Welcome Call  
+6. **#5b** fallback Calls mid-call (optional)  
+7. **#6–#14** as time allows  
 
 ---
 
 ## Out of scope (already fixed — do not re-litigate)
 
-- Call archive freezing mid-call / never updating `direction` (`isUnfinished` + upsert `direction = EXCLUDED.direction`) — **archive path fixed**; residual is other surfaces (#5).  
+- Call archive freezing mid-call / never updating `direction` (`isUnfinished` + upsert `direction = EXCLUDED.direction`) — **archive + contact-totals fixed** for finished pickups (re-verified 2026-09-28; do not rebuild pickup rewrite on counts). Residual open is live CallHistoryList unfinished rows only (#5b).  
 - Subscription send flipping Email/Dashboard → Fax (`faxParachute.ts`).  
 - Subscription patient-screen send using stale module cache (`readFresh`).  
 - Reset writing blanks into overlay (`discardEdits`).  
