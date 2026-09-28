@@ -7,13 +7,27 @@
  * already pops a notification that knows a phone number, and this one knows
  * WHO is calling, what stage they are at, and lets you take the call in a click.
  *
- * ── Two ways to take a call (§5.13b) ───────────────────────────────────────
+ * ── One way to take a call (§5.13b, since 2026-09-28) ──────────────────────
  * Every card is the join of two signals about ONE ring (lib/softphone/
  * ringMerge.ts): the gateway's webhook, which every tab sees and which knows
  * the patient, and this browser's own SIP registration, which only the five
  * registered browsers have. When the SIP leg is here the card leads with
- * **Answer** — audio in the page. Otherwise, or by choice, **Take it** forwards
- * the ringing call to the rep's own phone exactly as before.
+ * **Answer** — audio in the page. When it is not, the card SAYS WHY instead.
+ *
+ * ⚠️⚠️ **"TAKE IT" (forward to my phone) IS GONE** (Josh, 2026-09-28, after a
+ * test call rang his cell: *"it sent to my phone??? which it should never
+ * fucking do"* — the forward was us, /calls/claim at 15:34:25Z, pressed on the
+ * one big green button a card offers when the browser holds no SIP leg). The
+ * policy was already stated on 2026-09-25 (*"we dont do call forwarding
+ * anymore everyone answers in the browser"*) when the number EDITOR went; the
+ * button survived for people with saved numbers, which meant the product
+ * offered the banned thing precisely when the allowed thing was broken. Now:
+ * no Answer ⇒ the card explains the registration state (line full, connecting,
+ * the error) — the same reading the badge gives — and the fix is fixing the
+ * registration, never routing a patient to a personal phone. The gateway's
+ * /calls/claim route and saved numbers stay untouched (the §5.13 precedent);
+ * only the UI into them is removed. An old-build browser that still claims a
+ * call renders here as "<name> took this call", unchanged.
  *
  * ⚠️ The X on a card is LOCAL. It never declines the call — a decline from one
  * device can shorten the window in which a colleague, or Take it, can still
@@ -30,15 +44,15 @@
  * because an answered inbound call needs it on every page.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Phone, PhoneForwarded, PhoneIncoming, PhoneOff, X } from "lucide-react";
+import { Phone, PhoneIncoming, PhoneOff, X } from "lucide-react";
 import { toast } from "sonner";
 import { useInboundCalls } from "@/hooks/inboundCalls/useInboundCalls";
 import { usePhoneStateReport } from "@/hooks/inboundCalls/usePhoneStateReport";
 import { useElapsedSeconds, useSoftphone } from "@/hooks/softphone/useSoftphone";
 import { digitsKey, mergeRings, type UnifiedRing } from "@/lib/softphone/ringMerge";
+import type { RegistrationStatus } from "@/lib/softphone/types";
 import { ringingCards } from "@/lib/softphone/ringRules";
 import { findPatientByPhone, type PatientRef } from "@/lib/assignedPatients/patientLookup";
-import RingPreferencesDialog from "@/components/inboundCalls/RingPreferencesDialog";
 import CallStreamStatus from "@/components/inboundCalls/CallStreamStatus";
 import SoftphoneStatus from "@/components/inboundCalls/SoftphoneStatus";
 import CallOverlay from "@/components/assignedPatients/CallOverlay";
@@ -48,8 +62,9 @@ import { useAccessContext } from "@/components/AccessProvider";
 import { canAnswerCalls } from "@/lib/accessStore";
 import { cn } from "@/lib/utils";
 
-/** Is this claim the signed-in user's own? `claim()` marks it "you" optimistically
- *  before the server echoes the real email back, so both have to count. */
+/** Is this claim the signed-in user's own? Claims can only come from another
+ *  browser still on a build with Take it (the gateway keeps the route), and
+ *  its optimistic "you" never reaches this tab — but the server echo does. */
 function mine(claimedBy: string): boolean {
   if (claimedBy === "you") return true;
   const email = (getUser()?.email || "").toLowerCase();
@@ -102,21 +117,19 @@ function CallCard({
   patient,
   busy,
   onAnswer,
-  onClaim,
+  noAnswerReason,
   onDismiss,
-  onNeedsNumber,
 }: {
   ring: UnifiedRing;
   patient: PatientRef | null;
   /** Already on a call — Answer would stack a second one. */
   busy: boolean;
   onAnswer: (() => void) | null;
-  onClaim: (() => Promise<string>) | null;
+  /** Why Answer is missing, when it is — the registration state, in the same
+   *  words the badge uses. The card must never be a dead end with no story. */
+  noAnswerReason: string;
   onDismiss: () => void;
-  onNeedsNumber: () => void;
 }) {
-  const [claiming, setClaiming] = useState(false);
-  const [ringingAt, setRingingAt] = useState("");
   const ringing = ring.state === "ringing";
   const seconds = useElapsed(ring.startedAt, ringing);
   useBackgroundNotification(ring, patient);
@@ -128,54 +141,14 @@ function CallCard({
     // Compared against the signed-in email, not a local flag: the optimistic
     // "you" is overwritten the moment the server's own update arrives, and
     // "Janelle took this call" on your own screen reads as losing the race.
-    if (ring.claimedBy && mine(ring.claimedBy)) {
-      return ringingAt ? `Ringing you at ${fmtPhone(ringingAt)}` : "Ringing your phone…";
-    }
+    if (ring.claimedBy && mine(ring.claimedBy)) return "Ringing your phone…";
     if (ring.claimedBy) return `${senderName(ring.claimedBy)} took this call`;
     if (ring.state === "answered") return "Answered";
     if (ring.state === "missed") return "Missed";
     if (patient) return `${patient.boardName} · ${fmtPhone(ring.from)}`;
     // A caller on no board is normal — you can still take the call.
     return ring.callerName || "Not a patient on any board";
-  }, [ring, patient, ringingAt]);
-
-  const take = async () => {
-    if (!onClaim) return;
-    setClaiming(true);
-    try {
-      const at = await onClaim();
-      setRingingAt(at);
-      toast.success(`Picking up — your phone is ringing at ${fmtPhone(at)}`);
-    } catch (e) {
-      const err = e as Error & { status?: number; needsForwardNumber?: boolean };
-      // The ordinary race, in all three shapes it arrives in: the caller hung
-      // up, or a colleague was quicker. A ring is often only a few seconds
-      // long and the terminal webhook can land between the render and the
-      // click, so this is the COMMON outcome of a slow click — not a fault.
-      //
-      // ⚠️ 404 and 409 belong here too (2026-08-21). Only 410 was handled, so
-      // the gateway's own "That call is no longer ringing." (404) and "…has
-      // already ended." (409) — the same event, caught one layer earlier —
-      // came out as a red error toast AND left the dead card on screen to be
-      // clicked again. 410 is the same verdict reached via RingCentral; which
-      // layer noticed first is not something a rep should be able to tell.
-      if (err.status === 410 || err.status === 409 || err.status === 404) {
-        toast.info(err.message);
-        onDismiss();
-      } else if (err.needsForwardNumber) {
-        // Open the settings right here. The card is app-wide but the dialog
-        // used to live only on the texting page, which left a rep on any other
-        // page told to add a number with no way to add it — during a call with
-        // seconds left on it.
-        toast.error(err.message);
-        onNeedsNumber();
-      } else {
-        toast.error(err.message || "Couldn't take that call.");
-      }
-    } finally {
-      setClaiming(false);
-    }
-  };
+  }, [ring, patient]);
 
   const canAnswer = ringing && !!onAnswer;
   return (
@@ -232,45 +205,29 @@ function CallCard({
           </div>
           <div className="flex items-center gap-2 p-3">
             {canAnswer ? (
-              <>
-                <button
-                  onClick={onAnswer!}
-                  disabled={busy}
-                  title={busy ? "Finish your current call first" : "Answer in this browser"}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  <Phone className="h-4 w-4" />
-                  Answer
-                </button>
-                {onClaim && (
-                  <button
-                    onClick={() => void take()}
-                    disabled={claiming}
-                    title="Ring my phone instead"
-                    className="h-9 w-9 rounded-lg border border-border flex items-center justify-center hover:bg-muted disabled:opacity-50"
-                  >
-                    {claiming ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <PhoneForwarded className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </button>
-                )}
-              </>
-            ) : (
               <button
-                onClick={() => void take()}
-                disabled={claiming || !onClaim}
+                onClick={onAnswer!}
+                disabled={busy}
+                title={busy ? "Finish your current call first" : "Answer in this browser"}
                 className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                {claiming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
-                Take it
+                <Phone className="h-4 w-4" />
+                Answer
               </button>
+            ) : (
+              /* ⚠️ No SIP leg ⇒ no button AT ALL — never a forward (the header
+                 explains; Josh, 2026-09-28). The card's job here is the WHY:
+                 the same reading the badge gives, beside the call it is
+                 costing. The call keeps ringing every registered device and
+                 the RingCentral app regardless. */
+              <p className="flex-1 text-[11px] leading-snug text-muted-foreground">
+                {noAnswerReason}
+              </p>
             )}
             <button
               onClick={onDismiss}
               title="Not for me"
-              className="h-9 w-9 rounded-lg border border-border flex items-center justify-center hover:bg-muted"
+              className="h-9 w-9 rounded-lg border border-border flex items-center justify-center hover:bg-muted shrink-0"
             >
               <PhoneOff className="h-4 w-4 text-muted-foreground" />
             </button>
@@ -279,6 +236,28 @@ function CallCard({
       )}
     </div>
   );
+}
+
+/**
+ * Why a ringing card has no Answer button, in the badge's own voice (§5.13b).
+ * The registration state is the whole story: Answer exists exactly when this
+ * browser holds the call's SIP leg, and it holds legs exactly when registered.
+ */
+function reasonForNoAnswer(registration: RegistrationStatus, error: string | null): string {
+  switch (registration) {
+    case "full":
+      return "The line is full, so this browser can't answer — quit RingCentral apps or spare Command Center tabs to free a slot. It retries every minute.";
+    case "registering":
+      return "Connecting this browser to the line — Answer appears when it's registered.";
+    case "registered":
+      // Registered, and still no leg for THIS call: RingCentral delivered it
+      // to a more recently registered device (§5.13b's instanceId rule).
+      return "This call is ringing on another registered device, not this browser.";
+    case "error":
+      return error || "This browser can't register with RingCentral right now.";
+    default:
+      return "Browser answering is off in this browser.";
+  }
 }
 
 /**
@@ -307,7 +286,7 @@ export default function IncomingCallHost() {
   // With Google sign-in off (a dev build) everyone is a manager and, by the
   // same token, an answerer — otherwise nothing could be tried locally.
   const enabled = !authRequired() || canAnswerCalls(email, config);
-  const { calls, claim, dismiss, connected, error } = useInboundCalls(enabled);
+  const { calls, dismiss, connected, error } = useInboundCalls(enabled);
   const phone = useSoftphone();
   // The store registers (or lets go) within a poll of the assignment changing.
   // `setEnabled` is the store's own bound function, so its identity is stable.
@@ -331,9 +310,6 @@ export default function IncomingCallHost() {
   // thing it cannot see for itself (§5.13b). Leader tab only, one beat a
   // minute; the readout is on /access.
   usePhoneStateReport(phone, phone.instanceId, enabled);
-  // Carried here rather than on the texting page so "add your number" is
-  // fixable from wherever the call found you.
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const merged = useMemo(() => mergeRings(calls, phone.rings), [calls, phone.rings]);
   const unnamed = useMemo(
@@ -398,7 +374,7 @@ export default function IncomingCallHost() {
             patient={u.patient ?? names.get(digitsKey(u.from)) ?? null}
             busy={!!phone.call}
             onAnswer={u.sip ? () => phone.answer(u.sip!.id) : null}
-            onClaim={u.sse ? () => claim(u.sse!.id) : null}
+            noAnswerReason={reasonForNoAnswer(phone.registration, phone.registrationError)}
             onDismiss={() => {
               // ⚠️ `dismiss` drops the card from THIS tab's list; `ignore` is
               // what reaches the tab making the sound. The card half needs
@@ -411,7 +387,6 @@ export default function IncomingCallHost() {
               }
               if (u.sip) phone.ignore(u.sip.id);
             }}
-            onNeedsNumber={() => setSettingsOpen(true)}
           />
         ))}
       </div>
@@ -423,7 +398,6 @@ export default function IncomingCallHost() {
           onToggleMute={phone.toggleMute}
         />
       )}
-      <RingPreferencesDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
   );
 }

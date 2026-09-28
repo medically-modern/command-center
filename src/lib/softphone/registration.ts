@@ -172,7 +172,7 @@ export function retryDelayMs(kind: RegistrationFailure, attempt: number): number
 export function describeRegistrationFailure(kind: RegistrationFailure, raw: unknown): string {
   switch (kind) {
     case "full":
-      return "The line already has five devices registered, so this browser can't ring right now. It retries every minute — or use Take it to ring your phone.";
+      return "The line already has five devices registered, so this browser can't ring right now. It retries every minute — quitting a RingCentral app or a spare Command Center browser frees a slot.";
     case "auth":
       return "RingCentral rejected this browser's phone credentials. Fetching fresh ones…";
     case "gateway":

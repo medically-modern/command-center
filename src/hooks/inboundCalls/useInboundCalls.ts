@@ -14,7 +14,6 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  claimCall,
   inboundCallsConfigured,
   streamUrl,
   type InboundCall,
@@ -203,15 +202,10 @@ export function useInboundCalls(enabled = true) {
     };
   }, [authed, enabled, scheduleClear]);
 
-  /**
-   * Take a call. Resolves to the number RingCentral is ringing, so the UI can
-   * say where to pick up rather than leaving the rep staring at a dead card.
-   */
-  const claim = useCallback(async (id: string): Promise<string> => {
-    const { ringingAt } = await claimCall(id);
-    setCalls((cur) => cur.map((c) => (c.id === id ? { ...c, claimedBy: "you" } : c)));
-    return ringingAt;
-  }, []);
-
-  return { calls, prefs, setPrefs, connected, error, claim, dismiss };
+  // ⚠️ No `claim` any more (2026-09-28): "Take it" — forwarding the ringing
+  // call to a personal phone — left the UI entirely, on the policy stated
+  // 2026-09-25 ("we dont do call forwarding anymore everyone answers in the
+  // browser"). The gateway's /calls/claim route survives untouched; `claimedBy`
+  // on a card still renders when an old-build browser uses it.
+  return { calls, prefs, setPrefs, connected, error, dismiss };
 }

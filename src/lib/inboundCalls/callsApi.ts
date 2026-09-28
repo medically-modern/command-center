@@ -64,11 +64,8 @@ async function json<T>(res: Response, what: string): Promise<T> {
     } catch {
       /* keep default */
     }
-    const err = new Error(msg) as Error & { status?: number; needsForwardNumber?: boolean };
+    const err = new Error(msg) as Error & { status?: number };
     err.status = res.status;
-    // The one failure a rep can fix themselves, mid-call. Flagged rather than
-    // string-matched so the UI can open the settings dialog for them.
-    if (res.status === 400 && /ring you on/i.test(msg)) err.needsForwardNumber = true;
     throw err;
   }
   return (await res.json()) as T;
@@ -82,18 +79,10 @@ export function streamUrl(): string {
   return `${GATEWAY}/calls/stream${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 }
 
-/**
- * Take a ringing call — the gateway forwards it to this user's own number and
- * their phone rings.
- *
- * Throws with `status` set so the UI can tell the two ordinary failures apart:
- * 410 (the caller hung up, or somebody else got there first) is not an error
- * worth alarming anyone about; 400 means they haven't said where to ring them.
- */
-export async function claimCall(callId: string): Promise<{ ringingAt: string }> {
-  const res = await call("/calls/claim", { method: "POST", body: JSON.stringify({ callId }) });
-  return json<{ ok: boolean; ringingAt: string }>(res, "Taking the call");
-}
+/* ⚠️ `claimCall` ("Take it") left this file on 2026-09-28 with the button —
+ * calls are answered in the browser, never forwarded to a personal phone. The
+ * gateway keeps POST /calls/claim (the §5.13 precedent: routes stay, UI goes),
+ * so a rollback is a client change only. */
 
 
 /* ── is everyone's browser actually on the line? (§5.13b) ─────────────────── */

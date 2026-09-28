@@ -227,3 +227,41 @@ describe("every browser reports whether it is actually on the line", () => {
     expect(panel).not.toMatch(/"var\(--[a-z-]+,/);
   });
 });
+
+/**
+ * ⚠️ "Take it" — forwarding the ringing call to a personal phone — is GONE
+ * (Josh, 2026-09-28, after a test call rang his cell: "it sent to my phone???
+ * which it should never fucking do"; policy first stated 2026-09-25). The
+ * gateway keeps /calls/claim so a rollback is client-only, but no UI may grow
+ * back into it: with no SIP leg the card explains the registration state
+ * instead of offering the one thing the policy bans.
+ */
+describe("a ringing call is never forwarded to a personal phone", () => {
+  it("no client code calls the claim route or renders a Take it button", () => {
+    const offenders: string[] = [];
+    for (const file of walk(join(ROOT, "src"))) {
+      const code = codeOnly(readFileSync(file, "utf8"));
+      if (/claimCall|\/calls\/claim|"Take it"|>Take it</.test(code)) offenders.push(file.replace(ROOT + "/", ""));
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("a card with no SIP leg explains WHY it can't be answered", () => {
+    const host = codeOnly(read("src/components/inboundCalls/IncomingCallHost.tsx"));
+    expect(host).toMatch(/reasonForNoAnswer\(phone\.registration, phone\.registrationError\)/);
+    // Every registration state has a sentence — a silent dead-end card is the
+    // failure this replaced.
+    for (const state of ['case "full"', 'case "registering"', 'case "registered"', 'case "error"']) {
+      expect(host).toContain(state);
+    }
+  });
+
+  it("no user-facing sentence points at Take it any more", () => {
+    // The full-line message used to end "or use Take it to ring your phone" —
+    // pointing at the banned path exactly when the allowed one is broken.
+    const reg = codeOnly(read("src/lib/softphone/registration.ts"));
+    expect(reg).not.toMatch(/Take it/);
+    const status = codeOnly(read("src/components/inboundCalls/SoftphoneStatus.tsx"));
+    expect(status).not.toMatch(/Take it/);
+  });
+});

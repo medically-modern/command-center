@@ -87,10 +87,14 @@ describe("retryDelayMs", () => {
 });
 
 describe("describeRegistrationFailure", () => {
-  it("tells a rep the line is full AND that Take it still works", () => {
+  it("tells a rep the line is full AND what frees a slot — never to forward the call", () => {
+    // "or use Take it to ring your phone" went with the button (2026-09-28):
+    // pointing at the banned path exactly when the allowed one is broken is
+    // how a patient call ends up on a personal phone.
     const s = describeRegistrationFailure("full", null);
     expect(s).toMatch(/five devices/i);
-    expect(s).toMatch(/Take it/);
+    expect(s).toMatch(/frees a slot/i);
+    expect(s).not.toMatch(/Take it/);
   });
   it("carries the raw reason for an unknown failure", () => {
     expect(describeRegistrationFailure("unknown", new Error("VoipCalling scope missing"))).toContain("VoipCalling scope missing");

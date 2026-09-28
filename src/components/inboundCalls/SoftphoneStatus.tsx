@@ -59,7 +59,7 @@ export default function SoftphoneStatus({ enabled, registration, error }: Props)
       <span>
         {full ? "The line is full — this browser can't ring" : dead ? "Browser answering is off" : "Connecting this browser to the line…"}
         <span className="block text-[11px] opacity-80">
-          {error || "Calls still show here, and Take it rings your phone."}
+          {error || "Calls still show here while this browser reconnects."}
         </span>
       </span>
     </div>

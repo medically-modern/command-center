@@ -12,7 +12,7 @@
  *
  * ⚠️ The gateway's `/calls/prefs` routes and the stored forward numbers are
  * deliberately LEFT ALONE (the `call_ring_allow` precedent — never dropped):
- * the "Take it" button still forwards to whatever number a person saved while
+ * nothing in the UI forwards any more; the numbers people saved while
  * the editor existed. What is gone is the way to set a new one.
  *
  * Who answers calls in the BROWSER (§5.13b) is not a setting here at all: a
