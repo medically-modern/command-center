@@ -47,6 +47,7 @@ import { registerSend } from "./send.mjs";
 import { registerRingCentral } from "./ringcentral.mjs";
 import { registerMessaging } from "./messaging.mjs";
 import { registerInboundCalls } from "./inboundCalls.mjs";
+import { logRcSetup, registerRcSetup } from "./rcSetup.mjs";
 import { registerCalendlyDay } from "./calendlyDay.mjs";
 import { registerCalendlyPatient } from "./calendlyPatient.mjs";
 import { registerStageActor } from "./stageActor.mjs";
@@ -790,6 +791,12 @@ registerMessaging({ app });
 // the messaging Postgres (and its phone-HMAC discipline) — see inboundCalls.mjs
 // for why the browser can't be the thing that learns about an incoming call.
 registerInboundCalls({ app });
+// The RingCentral account's SHAPE — a dated record in every deploy log, and
+// /calls/rc-setup?key= on demand. Added for the Route-A account restructure
+// (per-person lines + a phone tree); see rcSetup.mjs for why the `numbers`
+// section is the one that catches a broken cutover before patients notice.
+registerRcSetup({ app });
+logRcSetup();
 
 // One Eastern day's Calendly bookings, for the Care Coordinator's schedule
 // grid. Welcome-call bookings have no monday mirror — Calendly is their only
