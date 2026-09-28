@@ -3,6 +3,7 @@
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
+import { pinnedDeepLinkId } from "@/lib/shared/managerOrigin";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import type { Patient } from "@/lib/masheke/workflow";
 import { SendRequestPanel } from "@/components/masheke/SendRequestPanel";
@@ -33,7 +34,7 @@ const SendRequestPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("sendRequest", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("sendRequest", searchParams.get("patientId"), pinnedDeepLinkId(searchParams));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );

@@ -49,7 +49,7 @@ import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { viewFilterFromParams } from "@/lib/roleView";
-import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams, pinnedDeepLinkId } from "@/lib/shared/managerOrigin";
 import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
@@ -60,7 +60,7 @@ const AuthOutstandingPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("authOutstanding", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("authOutstanding", searchParams.get("patientId"), pinnedDeepLinkId(searchParams));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );

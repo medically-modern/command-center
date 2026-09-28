@@ -14,6 +14,7 @@ import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
+import { pinnedDeepLinkId } from "@/lib/shared/managerOrigin";
 import { useDtcFormLeads } from "@/hooks/profile/useDtcFormLeads";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import {
@@ -195,7 +196,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   const {
     patients: allProfilePatients, loading, initialLoading, error, refetch,
     updateLocal, markAdvanced, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
-  } = useMondayPatients(searchParams.get("patientId"), VARIANT_GROUPS[variant]);
+  } = useMondayPatients(searchParams.get("patientId"), VARIANT_GROUPS[variant], { pinnedId: pinnedDeepLinkId(searchParams) });
 
   // Role split (three-way, mutually exclusive): inSystem = Already In System
   // "Yes"; unverified = Referral Type "Patient" OR Referral Source

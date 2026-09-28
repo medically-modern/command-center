@@ -116,7 +116,7 @@ import type { Patient } from "@/lib/profile/workflow";
 // The oversight columns deep-link with ?mv= — read it through the shared
 // helper rather than a hand-rolled param name, which is how this page ended
 // up looking for a "?origin=" nothing ever wrote.
-import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, pinnedDeepLinkId } from "@/lib/shared/managerOrigin";
 // §5.2: a value the board holds but the picker doesn't offer must still be
 // visible, or the select renders blank and the field looks empty when it isn't.
 import { optionsWithCurrent } from "@/lib/profile/selectOptions";
@@ -809,6 +809,11 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const sourceParam = searchParams.get("source");
   const source: Source = sourceParam === "partial" ? "partial" : "completed";
 
+  /* A deep link from Pipeline Oversight or Search is PINNED (`?pin=1`): shown
+     whatever this browser hid (lib/shared/managerOrigin). Memoised on the id so
+     the options object only changes when the pin does. */
+  const pinnedId = pinnedDeepLinkId(searchParams);
+  const hookOptions = useMemo(() => ({ ...LIST_FETCH_OPTIONS, pinnedId }), [pinnedId]);
   const {
     patients, loading, initialLoading, error, refetch, updateLocal, markAdvanced, hasOverlay, getReceived,
     saveOverlay, clearOverlay,
@@ -829,7 +834,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     // exhausted the account's Monday complexity budget (Aug 2026), which 429'd
     // every other role's counts. Rows are stamped `partial` — they must never
     // reach a write. See LIST_COLUMN_IDS.
-    LIST_FETCH_OPTIONS,
+    hookOptions,
   );
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));

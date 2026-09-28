@@ -3,7 +3,8 @@ import type { Patient, ProductCodeId, ProductCodeState } from "@/lib/samantha/wo
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/samantha/mondayApi";
 import { mondayItemToPatient } from "@/lib/samantha/mondayMapping";
 import {
-  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, sharedPendingAdvances,
+  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, scopeExceptPinned,
+  sharedPendingAdvances,
 } from "@/lib/shared/pendingAdvance";
 
 /**
@@ -99,7 +100,12 @@ function removeOverlay(id: string): void {
 
 export type SidebarGroup = "benefits" | "submitAuth" | "authOutstanding";
 
-export function useMondayPatients(activeGroup: SidebarGroup = "benefits", injectedPatientId?: string | null) {
+export function useMondayPatients(
+  activeGroup: SidebarGroup = "benefits",
+  injectedPatientId?: string | null,
+  /** The deep-linked id when the link is PINNED (`pinnedDeepLinkId`), else null. */
+  pinnedId?: string | null,
+) {
   // Lazy initializer — useRef would re-parse the whole cached list from
   // localStorage on every render just to throw it away.
   const [initialCache] = useState(() => loadCachedPatients(activeGroup));
@@ -136,6 +142,11 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
   // Outstanding are one board and one item id, so an unscoped claim made on
   // Benefits hid the patient from Submit Auth, where they had just arrived.
   const advanceScope = groupScope(GROUPS[activeGroup]);
+  // ⚠️ A PINNED deep link (`?pin=1` — opened from Pipeline Oversight or Search,
+  // lib/shared/managerOrigin) is shown whatever this browser hid: injected,
+  // kept at commit, never dropped by markAdvanced (Mary Mathis, 2026-09-28).
+  const pinnedRef = useRef(pinnedId ?? null);
+  useEffect(() => { pinnedRef.current = pinnedId ?? null; }, [pinnedId]);
 
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
@@ -173,7 +184,8 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       // rep back the live Send button the hide exists to take away.
       if (
         injectedPatientId &&
-        !hasPendingAdvance(pendingAdvanceRef.current, advanceScope, injectedPatientId) &&
+        (pinnedRef.current === injectedPatientId ||
+          !hasPendingAdvance(pendingAdvanceRef.current, advanceScope, injectedPatientId)) &&
         !merged.some((p) => p.id === injectedPatientId)
       ) {
         try {
@@ -196,7 +208,9 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       // in between is an await during which a send can resolve, and a list
       // filtered earlier would put that patient — Send button and all — back on
       // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current, advanceScope);
+      const visible = applyPendingAdvances(
+        merged, pendingAdvanceRef.current, scopeExceptPinned(advanceScope, pinnedRef.current),
+      );
       setPatients(visible);
       persistPatientCache(activeGroup, visible);
     } catch (e) {
@@ -289,7 +303,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
    *  legitimately write no stage at all. */
   const markAdvanced = useCallback((id: string) => {
     markPendingAdvance(pendingAdvanceRef.current, advanceScope, id);
-    setPatients((prev) => prev.filter((p) => p.id !== id));
+    if (id !== pinnedRef.current) setPatients((prev) => prev.filter((p) => p.id !== id));
   }, [advanceScope]);
 
   return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay };

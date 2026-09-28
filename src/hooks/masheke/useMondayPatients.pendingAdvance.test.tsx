@@ -116,6 +116,26 @@ describe("useMondayPatients — optimistic advance", () => {
     await waitFor(() => expect(ids(sendRequest.result.current.patients)).toEqual(["1"]));
   });
 
+  it("a PINNED deep link (Oversight / Search) shows the patient past this browser's hide (2026-09-28)", async () => {
+    // Mary Mathis, on the Welcome Call board: the manager acted, then clicked
+    // the same patient in Oversight, and the page refused her for 15 minutes.
+    fetchGroupItems.mockResolvedValue([row("1", "Joseph Bowser", "Evaluate MN"), row("2", "Robert Bianco", "Evaluate MN")]);
+    const rep = renderHook(() => useMondayPatients("evaluate"));
+    await waitFor(() => expect(ids(rep.result.current.patients)).toEqual(["1", "2"]));
+    act(() => rep.result.current.markAdvanced("1"));
+    rep.unmount();
+
+    const pinned = renderHook(() => useMondayPatients("evaluate", "1", "1"));
+    await waitFor(() => expect(pinned.result.current.initialLoading).toBe(false));
+    expect(ids(pinned.result.current.patients)).toContain("1");
+    pinned.unmount();
+
+    // An unpinned deep link still honours it — the rep's re-press guard.
+    const unpinned = renderHook(() => useMondayPatients("evaluate", "1", null));
+    await waitFor(() => expect(unpinned.result.current.initialLoading).toBe(false));
+    expect(ids(unpinned.result.current.patients)).toEqual(["2"]);
+  });
+
   it("keeps them hidden while Monday still reports the OLD stage", async () => {
     // The ordinary case: the advance landed but hasn't been indexed yet, so the
     // very next poll still says "Evaluate MN". Bouncing the patient back here

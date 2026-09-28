@@ -3,7 +3,8 @@ import type { Patient } from "@/lib/welcomeCall/workflow";
 import { COL, fetchGroupItems, fetchItemById, GROUPS, hasToken, writeDate } from "@/lib/welcomeCall/mondayApi";
 import { mondayItemToPatient } from "@/lib/welcomeCall/mondayMapping";
 import {
-  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, sharedPendingAdvances,
+  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, scopeExceptPinned,
+  sharedPendingAdvances,
 } from "@/lib/shared/pendingAdvance";
 import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
 
@@ -61,7 +62,11 @@ function removeOverlay(id: string): void {
   }
 }
 
-export function useMondayPatients(injectedPatientId?: string | null) {
+export function useMondayPatients(
+  injectedPatientId?: string | null,
+  /** The deep-linked id when the link is PINNED (`pinnedDeepLinkId`), else null. */
+  pinnedId?: string | null,
+) {
   const cachedRef = useRef(loadCachedPatients());
   const [patients, setPatients] = useState<Patient[]>(cachedRef.current);
   const [loading, setLoading] = useState(cachedRef.current.length === 0);
@@ -97,6 +102,11 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   // this page unmounts. See `sharedPendingAdvances`' comment for the Keith
   // Dye measurement that forced it.
   const pendingAdvanceRef = useRef(sharedPendingAdvances);
+  // ⚠️ A PINNED deep link (`?pin=1` — opened from Pipeline Oversight or Search,
+  // lib/shared/managerOrigin) is shown whatever this browser hid: injected,
+  // kept at commit, never dropped by markAdvanced (Mary Mathis, 2026-09-28).
+  const pinnedRef = useRef(pinnedId ?? null);
+  useEffect(() => { pinnedRef.current = pinnedId ?? null; }, [pinnedId]);
 
   // Patients we've already stamped with an arrival Follow Up Date this session
   // (see the backfill in refetch) — stops us re-writing the same one each poll.
@@ -163,7 +173,8 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       // back the live Send button the hide exists to take away.
       if (
         injectedPatientId &&
-        !hasPendingAdvance(pendingAdvanceRef.current, WELCOME_CALL_SCOPE, injectedPatientId) &&
+        (pinnedRef.current === injectedPatientId ||
+          !hasPendingAdvance(pendingAdvanceRef.current, WELCOME_CALL_SCOPE, injectedPatientId)) &&
         !merged.some((p) => p.id === injectedPatientId)
       ) {
         try {
@@ -181,7 +192,9 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       // in between is an await during which a send can resolve, and a list
       // filtered earlier would put that patient — Send button and all — back on
       // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current, WELCOME_CALL_SCOPE);
+      const visible = applyPendingAdvances(
+        merged, pendingAdvanceRef.current, scopeExceptPinned(WELCOME_CALL_SCOPE, pinnedRef.current),
+      );
       setPatients(visible);
       persistPatientCache(visible);
     } catch (e) {
@@ -269,7 +282,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
    *  board still decides, and the poll brings them back if nothing moved. */
   const markAdvanced = useCallback((id: string) => {
     markPendingAdvance(pendingAdvanceRef.current, WELCOME_CALL_SCOPE, id);
-    setPatients((prev) => prev.filter((p) => p.id !== id));
+    if (id !== pinnedRef.current) setPatients((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
   return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay };

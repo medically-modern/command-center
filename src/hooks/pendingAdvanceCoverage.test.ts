@@ -50,8 +50,17 @@ describe.each(HOOKS)("%s", (path) => {
     // (same item id) for fifteen minutes. Marking, the deep-link check and the
     // commit filter must all name this queue's scope.
     expect(src).toMatch(/markPendingAdvance\(pendingAdvanceRef\.current, \w+/);
-    expect(src).toMatch(/applyPendingAdvances\(merged, pendingAdvanceRef\.current, \w+/);
+    expect(src).toMatch(/applyPendingAdvances\(\s*merged, pendingAdvanceRef\.current,\s*scopeExceptPinned\(/);
     expect(src).not.toMatch(/pendingAdvanceRef\.current\.(set|has)\(/);
+  });
+
+  it("a PINNED deep link (Oversight / Search) is shown whatever this browser hid (2026-09-28)", () => {
+    // Mary Mathis: Josh proposed her stuck, then clicked her in Oversight and
+    // the page refused her for fifteen minutes. The pinned patient must be
+    // injected past the claim, kept at commit, and never dropped by markAdvanced.
+    expect(src).toMatch(/pinnedRef\.current === injected\w* \|\|/);
+    expect(src).toMatch(/scopeExceptPinned\([\s\S]{0,80}?pinnedRef\.current\)/);
+    expect(src).toMatch(/if \(id !== pinnedRef\.current\) setPatients/);
   });
 
   it("exposes markAdvanced so a page can call it on a confirmed advance", () => {
@@ -122,4 +131,65 @@ describe("the Insurance pages gate the hide on what the send actually wrote", ()
     const src = readFileSync(path, "utf8");
     expect(src).toContain(`stageLeavesQueue(sent.stageIndex, "${queue}")`);
   });
+});
+
+/**
+ * Pipeline Oversight and Search PIN their patient links, and every page that
+ * feeds a deep link into one of the five queue hooks passes the pin through
+ * (Mary Mathis, 2026-09-28). A page that forgets it silently goes back to
+ * refusing a manager's click for fifteen minutes after that manager acted.
+ */
+const PIN_PAGES = [
+  "src/pages/EvaluatePage.tsx",
+  "src/pages/SendRequestPage.tsx",
+  "src/pages/ConfirmReceiptPage.tsx",
+  "src/pages/ChaseClinicalsPage.tsx",
+  "src/pages/DoctorAppointmentsPage.tsx",
+  "src/pages/ChaseBenefitsPage.tsx",
+  "src/pages/SubmitAuthPage.tsx",
+  "src/pages/AuthOutstandingPage.tsx",
+  "src/pages/WelcomeCallPage.tsx",
+  "src/pages/FinalConfirmPage.tsx",
+  "src/pages/ProfilePage.tsx",
+  "src/pages/UnverifiedReferralsPage.tsx",
+];
+
+describe.each(PIN_PAGES)("%s passes a pinned deep link to its queue hook", (path) => {
+  it("reads the pin from the URL", () => {
+    expect(readFileSync(path, "utf8")).toContain("pinnedDeepLinkId(searchParams)");
+  });
+});
+
+describe("the manager's doors set the pin", () => {
+  it("Pipeline Oversight pins every patient click", () => {
+    const src = readFileSync("src/components/oversight/OversightTab.tsx", "utf8");
+    expect(src).toMatch(/params\.set\(PIN_DEEP_LINK_PARAM, "1"\)/);
+  });
+
+  it("⚠️ the Communications Hub and the Fax panel do NOT — reps work patients from them", () => {
+    for (const path of [
+      "src/lib/commsHub/dossier.ts",
+      "src/components/commsHub/PatientDossierPanel.tsx",
+      "src/components/commsHub/FaxPanel.tsx",
+    ]) {
+      expect(readFileSync(path, "utf8"), path).not.toContain("PIN_DEEP_LINK_PARAM");
+    }
+  });
+});
+
+describe("Send back to pipeline does not hide the patient (2026-09-28)", () => {
+  it("the ladder bar tells the page which action ran", () => {
+    const src = readFileSync("src/components/shared/StageActionBar.tsx", "utf8");
+    expect(src).toMatch(/onDone: \(action: StageAction\) => void;/);
+    expect(src).toContain("onDone(action);");
+    expect(src.match(/onDone\("proposeStuck"\)/g)?.length).toBe(2);
+  });
+
+  it.each(["src/pages/WelcomeCallPage.tsx", "src/pages/FinalConfirmPage.tsx"])(
+    "%s hides on a proposal or an approval, never on a return",
+    (path) => {
+      const src = readFileSync(path, "utf8");
+      expect(src).toMatch(/if \(selected && action !== "returnToQueue"\) markAdvanced\(selected\.id\);/);
+    },
+  );
 });

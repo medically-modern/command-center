@@ -68,7 +68,7 @@ import {
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
 import { returnAttemptReset } from "@/lib/masheke/attemptRollup";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
-import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM, MANAGER_BUCKET_PARAM } from "@/lib/shared/managerOrigin";
+import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM, MANAGER_BUCKET_PARAM, PIN_DEEP_LINK_PARAM } from "@/lib/shared/managerOrigin";
 import { getUser } from "@/lib/shared/auth";
 import { useAccessContext } from "@/components/AccessProvider";
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag, RefreshCw, User } from "lucide-react";
@@ -2200,6 +2200,10 @@ export default function OversightTab() {
       }
       const params = new URLSearchParams({ patientId });
       params.set("from", "system-mgmt");
+      // ⚠️ Pinned (2026-09-28, Mary Mathis): a patient opened from Oversight is
+      // SHOWN on the page even if this browser hid them after an earlier action
+      // — lib/shared/managerOrigin `PIN_DEEP_LINK_PARAM`.
+      params.set(PIN_DEEP_LINK_PARAM, "1");
       // Tell the destination page WHICH manager column this click came from, so
       // it can resolve its own action bar (lib/shared/stageActions). Derived
       // from the section layout rather than the chart id, so adding a chart to a

@@ -9,6 +9,27 @@ const base: OpenableRow = {
 const params = (url: string | null) => new URLSearchParams(url!.split("?")[1]);
 
 describe("searchOpenUrl", () => {
+  it("every PATIENT link is pinned — it opens whatever this browser hid (Mary Mathis, 2026-09-28)", () => {
+    // Josh proposed her stuck on Welcome Call, then could not open her from a
+    // manager screen: the page's 15-minute hide refused the deep link.
+    for (const row of [
+      base,
+      { ...base, escalated: true, escalationLevel: "manager" as const },
+      { ...base, isCompleted: true },
+    ]) {
+      const url = searchOpenUrl(row as OpenableRow);
+      if (url) expect(params(url).get("pin"), url).toBe("1");
+    }
+  });
+
+  it("an ORDER link is not pinned — the Orders page has no hide to override", () => {
+    const url = searchOpenUrl({
+      ...base, id: "9001", boardId: 18405457690, boardName: "New Order Board",
+      groupId: "group_mm20m7gz", roleRoute: "/orders", stageAdvancerText: "Process Claim",
+    });
+    expect(params(url).get("pin")).toBeNull();
+  });
+
   it("ordinary live work opens its stage page, plain", () => {
     const url = searchOpenUrl(base);
     expect(url!.startsWith("/benefits?")).toBe(true);

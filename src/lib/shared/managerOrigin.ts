@@ -80,3 +80,31 @@ export function managerChartFromParams(params: URLSearchParams): string | null {
 export function managerBucketFromParams(params: URLSearchParams): string | null {
   return params.get(MANAGER_BUCKET_PARAM) || null;
 }
+
+/**
+ * `?pin=1` — the patient named in `?patientId=` must be SHOWN, whatever this
+ * browser has hidden.
+ *
+ * ⚠️⚠️ **SET ONLY BY PIPELINE OVERSIGHT AND SYSTEM MANAGEMENT SEARCH** (Josh,
+ * 2026-09-28: *"should deeplink to patients profile no matter what if i can see
+ * management pipeline oversight"*). Mary Mathis: Josh proposed her stuck on the
+ * Welcome Call page, which set the 15-minute pending-advance hide in his
+ * browser (lib/shared/pendingAdvance). The page's manager views read the same
+ * group, so when he clicked her in Oversight's Manager Intervention column the
+ * page refused the deep link and rendered the other escalated patients with an
+ * empty panel. A pinned deep link is exempt from that hide on the page it
+ * opens: injected, kept at commit, and never dropped from the list by
+ * `markAdvanced`.
+ *
+ * ⚠️ Deliberately NOT `?from=system-mgmt`, which the Communications Hub and the
+ * Fax panel send too — reps work patients from those, and for a rep the hide
+ * is what stops a second press on a patient who already went through (§9).
+ * Oversight and Search are the manager's doors.
+ */
+export const PIN_DEEP_LINK_PARAM = "pin";
+
+/** The deep-linked patient id when the link is pinned, else null. */
+export function pinnedDeepLinkId(params: URLSearchParams): string | null {
+  if (params.get(PIN_DEEP_LINK_PARAM) !== "1") return null;
+  return params.get("patientId") || null;
+}

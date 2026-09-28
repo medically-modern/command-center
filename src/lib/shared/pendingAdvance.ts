@@ -189,6 +189,27 @@ export function pendingAdvanceVerdict(
 }
 
 /**
+ * The commit-time scope for a queue whose page may carry a PINNED deep link —
+ * a patient opened from Pipeline Oversight or System Management Search
+ * (`?pin=1`, lib/shared/managerOrigin). The pinned patient answers to NO scope,
+ * so no claim hides them; everybody else answers to the queue's own.
+ *
+ * ⚠️ Why a manager's door wins over a claim (Josh, 2026-09-28 — Mary Mathis):
+ * a claim is this browser's memory of its own action, and the pages' manager
+ * views read the same group as the rep queue. Josh proposed Mary stuck on
+ * Welcome Call, then clicked her in Oversight's Manager Intervention column —
+ * and the page refused her for fifteen minutes. Everybody else on the page is
+ * still filtered exactly as before, so a rep's queue keeps its re-press guard.
+ */
+export function scopeExceptPinned<T extends { id: string }>(
+  scope: string,
+  pinnedId: string | null | undefined,
+): string | ((row: T) => string | readonly string[]) {
+  if (!pinnedId) return scope;
+  return (row: T) => (row.id === pinnedId ? [] : scope);
+}
+
+/**
  * Drop lapsed markers, then hide whoever is still marked IN THIS SCOPE.
  *
  * ⚠️ Call this AT THE POINT OF COMMIT — `setPatients(applyPendingAdvances(...))`

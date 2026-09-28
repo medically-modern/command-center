@@ -15,6 +15,8 @@
  *    "date completed" column, so the answer only exists in Monday's activity log.
  */
 
+import { PIN_DEEP_LINK_PARAM } from "@/lib/shared/managerOrigin";
+
 /** One finished board in a patient's history — what a completion badge links to. */
 export interface CompletedStage {
   /** Badge text, e.g. "MN" (board-level, since a badge means the whole board). */
@@ -76,6 +78,9 @@ export function completedStageUrl(
     patientId: stage.itemId,
     completedStage: String(stage.boardId),
     from: "system-mgmt",
+    // Search's completion badges — a manager's door, so the record opens even
+    // if this browser hid the patient after an earlier action (managerOrigin).
+    [PIN_DEEP_LINK_PARAM]: "1",
   });
   return `${stage.route}?${params.toString()}`;
 }

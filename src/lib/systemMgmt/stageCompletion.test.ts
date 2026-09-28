@@ -133,7 +133,12 @@ describe("completedStageUrl", () => {
         boardId: MASHEKE,
         route: "/evaluate",
       }),
-    ).toBe("/evaluate?patientId=111&completedStage=18406060017&from=system-mgmt");
+    ).toBe("/evaluate?patientId=111&completedStage=18406060017&from=system-mgmt&pin=1");
+  });
+
+  it("is PINNED — the record opens even if this browser hid the patient (2026-09-28)", () => {
+    const url = completedStageUrl({ itemId: "111", boardId: MASHEKE, route: "/evaluate" });
+    expect(new URLSearchParams(url.split("?")[1]).get("pin")).toBe("1");
   });
 });
 

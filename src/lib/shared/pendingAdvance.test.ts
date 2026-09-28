@@ -7,6 +7,7 @@ import {
   hasPendingAdvance,
   markPendingAdvance,
   pendingAdvanceIds,
+  scopeExceptPinned,
   stageScope,
   PENDING_ADVANCE_TTL_MS,
   sharedPendingAdvances,
@@ -140,6 +141,33 @@ describe("claims are scoped to the queue the patient LEFT (2026-09-28)", () => {
   it("groupScope keys several groups as one population", () => {
     expect(groupScope(["a", "b"])).toBe(groupScope(["a", "b"]));
     expect(groupScope(["a", "b"])).not.toBe(groupScope("a"));
+  });
+});
+
+describe("scopeExceptPinned — a manager's pinned deep link wins (Mary Mathis, 2026-09-28)", () => {
+  const q = (...ids: string[]) => ids.map((id) => ({ id }));
+  const WC = groupScope("welcome-call");
+
+  it("the pinned patient is shown although this browser holds a claim on them", () => {
+    // Josh proposed her stuck on this page (the claim), then clicked her in
+    // Oversight's Manager Intervention column (the pin).
+    const pending = new Map<string, number>();
+    markPendingAdvance(pending, WC, "12707050564", T);
+    markPendingAdvance(pending, WC, "2", T);
+    const out = applyPendingAdvances(q("12707050564", "2", "3"), pending, scopeExceptPinned(WC, "12707050564"), T + 1);
+    expect(out.map((p) => p.id)).toEqual(["12707050564", "3"]);
+  });
+
+  it("with nothing pinned it is the plain scope — every claim applies", () => {
+    expect(scopeExceptPinned(WC, null)).toBe(WC);
+    expect(scopeExceptPinned(WC, "")).toBe(WC);
+  });
+
+  it("the claim itself survives — only this page's view of the pinned patient is exempt", () => {
+    const pending = new Map<string, number>();
+    markPendingAdvance(pending, WC, "1", T);
+    applyPendingAdvances(q("1"), pending, scopeExceptPinned(WC, "1"), T + 1);
+    expect(hasPendingAdvance(pending, WC, "1", T + 1)).toBe(true);
   });
 });
 

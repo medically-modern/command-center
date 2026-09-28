@@ -91,6 +91,17 @@
   Medical Evaluation's sub-stage tabs. A queue marks, checks deep links and filters in its OWN
   scope; the Care Coordinator columns use `columnScopes`, which hides a card only while it still
   reports the group it left (or a group outside the column), so an in-column move shows as a move.
+  ⚠️ **A deep link from Pipeline Oversight or Search is PINNED and always shows its patient**
+  (2026-09-28, Mary Mathis). Josh proposed her stuck on Welcome Call, which set the hide in his
+  browser; the page's manager views read the same group, so clicking her in Oversight's Manager
+  Intervention column rendered the other escalated patients and an empty panel for 15 minutes.
+  Oversight and Search now add `?pin=1` (`managerOrigin.PIN_DEEP_LINK_PARAM`); every queue hook
+  takes `pinnedDeepLinkId(searchParams)` and exempts that one patient (`scopeExceptPinned`, the
+  deep-link check, and `markAdvanced`'s instant drop). Everyone else on the page is filtered as
+  before. ⚠️ The Hub, the Fax panel and the dashboard also send `from=system-mgmt` but do NOT pin:
+  reps work patients from them, and for a rep the hide is the re-press guard.
+  ⚠️ **Send back to pipeline never hides** — `StageActionBar.onDone(action)` names the action, and
+  Welcome Call / Final Confirm mark only a proposal or an approval (same carve-out as intake).
   ⚠️ **Hide at the POINT OF COMMIT** (`setPatients(applyPendingAdvances(...))`), not where the list
   is built — same review. Everything in between is an await (the deep-link `fetchItemById`, above
   all) during which a send can resolve, and a list filtered earlier commits an array assembled

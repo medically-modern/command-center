@@ -131,8 +131,11 @@ interface Props {
    *  Propose Stuck raises to Manager Intervention or promotes to Final
    *  Decisions (`proposeStuckLevel`). Insurance board only. */
   escalationLabel?: string;
-  /** Refetch the page's patient list after a write. */
-  onDone: () => void;
+  /** Refetch the page's patient list after a write. Told WHICH action ran,
+   *  because only the ones that take a patient OUT of this page's lists may
+   *  hide them: Send back to pipeline puts the patient back INTO the queue
+   *  (2026-09-28). A handler that ignores the argument keeps working. */
+  onDone: (action: StageAction) => void;
   /** Runs BEFORE the propose-stuck write — the intake page passes its
    *  save-to-Monday here so a proposal carries the rep's unsaved form edits
    *  instead of losing them with the patient (Josh, 2026-08-18). Also flips
@@ -251,7 +254,7 @@ export function StageActionBar({
       setReturnNote("");
       setDownOpen(false);
       setDownNote("");
-      onDone();
+      onDone(action);
       // The patient just left this stage's queue — go back to the drill-down.
       goBack();
     } catch (e) {
@@ -282,7 +285,7 @@ export function StageActionBar({
           // promotes to Final Decisions (lib/shared/stageActions).
           <ProposeStuckButton
             patientId={patientId}
-            onDone={onDone}
+            onDone={() => onDone("proposeStuck")}
             escalateTo={proposeStuckLevel(stage, origin, escalationLabel)}
           />
         ) : (
@@ -301,7 +304,7 @@ export function StageActionBar({
               onOpenChange={setProposeOpen}
               patientId={patientId}
               patientName={patientName}
-              onSuccess={onDone}
+              onSuccess={() => onDone("proposeStuck")}
               destination={
                 board === "profile" || board === "welcomeCall"
                   ? proposeStuckLevel(stage, origin, escalationLabel)

@@ -6,7 +6,8 @@ import { mondayItemToPatient, ESCALATION_INDEX } from "@/lib/masheke/mondayMappi
 import { hasStaleEvaluateEscalation } from "@/lib/masheke/evaluateReentry";
 import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
 import {
-  applyPendingAdvances, hasPendingAdvance, markPendingAdvance, sharedPendingAdvances, stageScope,
+  applyPendingAdvances, hasPendingAdvance, markPendingAdvance, scopeExceptPinned, sharedPendingAdvances,
+  stageScope,
 } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 30_000;
@@ -86,7 +87,12 @@ function matchesTab(stageAdvancer: string | undefined, tab: TabKey): boolean {
   return stageAdvancer === SUB_STAGE_FILTER[tab];
 }
 
-export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatientId?: string | null) {
+export function useMondayPatients(
+  activeTab: TabKey = "evaluate",
+  injectedPatientId?: string | null,
+  /** The deep-linked id when the link is PINNED (`pinnedDeepLinkId`), else null. */
+  pinnedId?: string | null,
+) {
   // Lazy initializer — useRef would re-parse the whole cached list from
   // localStorage on every render just to throw it away.
   const [initialCache] = useState(() => loadCachedPatients(activeTab));
@@ -131,6 +137,11 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   // sub-stage shares one group and one item id, so an unscoped claim made on
   // Evaluate hid the patient from Send Request, where they had just arrived.
   const advanceScope = stageScope("medicalEvaluation", activeTab);
+  // ⚠️ A PINNED deep link (`?pin=1` — opened from Pipeline Oversight or Search,
+  // lib/shared/managerOrigin) is shown whatever this browser hid: injected,
+  // kept at commit, never dropped by markAdvanced (Mary Mathis, 2026-09-28).
+  const pinnedRef = useRef(pinnedId ?? null);
+  useEffect(() => { pinnedRef.current = pinnedId ?? null; }, [pinnedId]);
 
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
@@ -273,7 +284,8 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       // take away, and the marker is short-lived and self-correcting anyway.
       if (
         injectedPatientId &&
-        !hasPendingAdvance(pendingAdvanceRef.current, advanceScope, injectedPatientId) &&
+        (pinnedRef.current === injectedPatientId ||
+          !hasPendingAdvance(pendingAdvanceRef.current, advanceScope, injectedPatientId)) &&
         !merged.some((p) => p.id === injectedPatientId)
       ) {
         try {
@@ -291,7 +303,9 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       // in between is an await during which a send can resolve, and a list
       // filtered earlier would put that patient — Send button and all — back on
       // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current, advanceScope);
+      const visible = applyPendingAdvances(
+        merged, pendingAdvanceRef.current, scopeExceptPinned(advanceScope, pinnedRef.current),
+      );
       setPatients(visible);
       setChaseViewerPatients(chase);
       setScheduledApptPatients(scheduledAppt);
@@ -344,7 +358,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
    *  brings them back if the advance never landed. */
   const markAdvanced = useCallback((id: string) => {
     markPendingAdvance(pendingAdvanceRef.current, advanceScope, id);
-    setPatients((prev) => prev.filter((p) => p.id !== id));
+    if (id !== pinnedRef.current) setPatients((prev) => prev.filter((p) => p.id !== id));
   }, [advanceScope]);
 
   const clearOverlay = useCallback((id: string) => {

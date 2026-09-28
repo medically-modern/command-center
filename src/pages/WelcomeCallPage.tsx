@@ -36,7 +36,8 @@ import { BOARD_ID, COL } from "@/lib/welcomeCall/mondayApi";
    ladder replaced them — the same one Medical Evaluation and Insurance run —
    rendered by `StageActionBar`. */
 import { StageActionBar } from "@/components/shared/StageActionBar";
-import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import type { StageAction } from "@/lib/shared/stageActions";
+import { managerOriginFromParams, pinnedDeepLinkId } from "@/lib/shared/managerOrigin";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
@@ -63,7 +64,7 @@ const WelcomeCallPage = () => {
    *  action bar (lib/shared/stageActions) and — from Final Decisions — makes
    *  the sidebar list the proposed-stuck cohort that column counts. */
   const managerOrigin = managerOriginFromParams(searchParams);
-  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"), pinnedDeepLinkId(searchParams));
   const [followUpOpen, setFollowUpOpen] = useState(false);
   /* The Propose Stuck dialog is owned HERE because it has TWO triggers — the
      header's action bar and the End of Call button (Josh, 2026-09-14: "both
@@ -177,12 +178,16 @@ const WelcomeCallPage = () => {
     update(selected.id, { callIntake: next });
   };
 
-  /** After a ladder write (a proposal, an approval, a return): the patient has
-   *  left THIS view's list, so hide them now rather than leaving a live Send
-   *  button until the poll catches up (§9's re-send window), then reconcile. The
-   *  hide is a claim with an expiry, never a verdict — `lib/shared/pendingAdvance`. */
-  const handleLadderDone = () => {
-    if (selected) markAdvanced(selected.id);
+  /** After a ladder write: a proposal or an approval takes the patient OUT of
+   *  this view's list, so hide them now rather than leaving a live Send button
+   *  until the poll catches up (§9's re-send window), then reconcile. The hide
+   *  is a claim with an expiry, never a verdict — `lib/shared/pendingAdvance`.
+   *  ⚠️ NOT on Send back to pipeline (2026-09-28): that puts the patient back
+   *  INTO the queue, and hiding them kept a returned patient off this queue
+   *  and the Care Coordinator column for fifteen minutes in the manager's
+   *  browser — §9's carve-out, which the intake page already honours. */
+  const handleLadderDone = (action?: StageAction) => {
+    if (selected && action !== "returnToQueue") markAdvanced(selected.id);
     refetch();
   };
 

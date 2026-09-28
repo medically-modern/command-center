@@ -3,6 +3,7 @@
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
+import { pinnedDeepLinkId } from "@/lib/shared/managerOrigin";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import type { Patient } from "@/lib/masheke/workflow";
 import { ConfirmReceiptPanel } from "@/components/masheke/ConfirmReceiptPanel";
@@ -34,7 +35,7 @@ const ConfirmReceiptPage = () => {
   // Manager view (?manager=1): sidebar lists ONLY escalated patients and
   // the panel tucks "Review the Request" behind a collapsed dropdown.
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("confirmReceipt", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("confirmReceipt", searchParams.get("patientId"), pinnedDeepLinkId(searchParams));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );

@@ -53,7 +53,7 @@ import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { viewFilterFromParams } from "@/lib/roleView";
-import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams, pinnedDeepLinkId } from "@/lib/shared/managerOrigin";
 import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 import { cn } from "@/lib/utils";
@@ -68,7 +68,7 @@ const SubmitAuthPage = () => {
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
   const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, discardEdits, saveOverlay, hasOverlay } =
-    useMondayPatients("submitAuth", searchParams.get("patientId"));
+    useMondayPatients("submitAuth", searchParams.get("patientId"), pinnedDeepLinkId(searchParams));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );

@@ -3,7 +3,8 @@ import type { Patient } from "@/lib/profile/workflow";
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/profile/mondayApi";
 import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
 import {
-  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, sharedPendingAdvances,
+  applyPendingAdvances, groupScope, hasPendingAdvance, markPendingAdvance, scopeExceptPinned,
+  sharedPendingAdvances,
 } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 15_000;
@@ -99,6 +100,13 @@ export interface UseMondayPatientsOptions {
    * simply mirrors nothing (the caller keeps deriving `selected` from the list).
    */
   listColumns?: string[];
+  /**
+   * The deep-linked id when the link is PINNED (`pinnedDeepLinkId` — opened from
+   * Pipeline Oversight or Search), else null. That patient is shown whatever
+   * this browser hid: injected, kept at commit, never dropped by markAdvanced
+   * (Mary Mathis, 2026-09-28).
+   */
+  pinnedId?: string | null;
 }
 
 export function useMondayPatients(
@@ -124,6 +132,8 @@ export function useMondayPatients(
   // `refetch`, restart the poll and re-raise the blocking overlay endlessly.
   const listColumnsRef = useRef(options?.listColumns);
   useEffect(() => { listColumnsRef.current = options?.listColumns; }, [options?.listColumns]);
+  const pinnedRef = useRef(options?.pinnedId ?? null);
+  useEffect(() => { pinnedRef.current = options?.pinnedId ?? null; }, [options?.pinnedId]);
   const cachedRef = useRef(loadCachedPatients(groupId));
   // Held in a ref so switching groups doesn't rebuild `refetch` (which the
   // poll interval depends on) — the effect below drives the re-fetch instead.
@@ -287,7 +297,8 @@ export function useMondayPatients(
       const injectedId = injectedIdRef.current;
       if (
         injectedId &&
-        !hasPendingAdvance(pendingAdvanceRef.current, advanceScopeOf(groupIdRef.current), injectedId) &&
+        (pinnedRef.current === injectedId ||
+          !hasPendingAdvance(pendingAdvanceRef.current, advanceScopeOf(groupIdRef.current), injectedId)) &&
         !merged.some((p) => p.id === injectedId)
       ) {
         try {
@@ -314,7 +325,10 @@ export function useMondayPatients(
       // in between is an await during which a send can resolve, and a list
       // filtered earlier would put that patient — Send button and all — back on
       // screen (Greptile, PR #54).
-      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current, advanceScopeOf(groupIdRef.current));
+      const visible = applyPendingAdvances(
+        merged, pendingAdvanceRef.current,
+        scopeExceptPinned(advanceScopeOf(groupIdRef.current), pinnedRef.current),
+      );
       setPatients(visible);
       persistPatientCache(visible, groupIdRef.current);
 
@@ -437,7 +451,7 @@ export function useMondayPatients(
   const markAdvanced = useCallback((id: string) => {
     // The group the patient is leaving is the one this page is reading NOW.
     markPendingAdvance(pendingAdvanceRef.current, advanceScopeOf(groupIdRef.current), id);
-    setPatients((prev) => prev.filter((p) => p.id !== id));
+    if (id !== pinnedRef.current) setPatients((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
   return {

@@ -34,7 +34,7 @@ import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { isEscalatedIndex } from "@/lib/masheke/mondayMapping";
-import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, pinnedDeepLinkId } from "@/lib/shared/managerOrigin";
 
 const DoctorAppointmentsPage = () => {
   const { goBack } = useBackNavigation();
@@ -62,7 +62,7 @@ const DoctorAppointmentsPage = () => {
     update,
     discardEdits,
     scheduledApptPatients,
-  } = useMondayPatients("doctorAppointments", deepLinkedId);
+  } = useMondayPatients("doctorAppointments", deepLinkedId, pinnedDeepLinkId(searchParams));
 
   // A manager sees the WHOLE queue — escalated and not — sorted into the same
   // sections by Next Action Date. What makes this the manager view is the extra

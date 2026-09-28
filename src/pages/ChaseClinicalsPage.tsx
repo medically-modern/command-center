@@ -10,6 +10,7 @@
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
+import { pinnedDeepLinkId } from "@/lib/shared/managerOrigin";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import type { Patient } from "@/lib/masheke/workflow";
 import { isParachuteRoleMethod } from "@/lib/masheke/chaseMethods";
@@ -50,7 +51,7 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
   // Manager view (?manager=1): sidebar lists ONLY escalated patients and
   // the panel tucks "Review the Request" behind a collapsed dropdown.
   const isManager = searchParams.get("manager") === "1";
-  const { patients: allChasePatients, loading, initialLoading, error, refetch, update, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("chase", searchParams.get("patientId"));
+  const { patients: allChasePatients, loading, initialLoading, error, refetch, update, discardEdits, saveOverlay, hasOverlay } = useMondayPatients("chase", searchParams.get("patientId"), pinnedDeepLinkId(searchParams));
   // Role split: parachute role = Clinicals Method "Parachute" OR "Email"
   // (Email rides with Parachute for queueing/cadence but still SENDS by email);
   // fax role = everything else (Fax, blank) so nobody falls through the cracks.
