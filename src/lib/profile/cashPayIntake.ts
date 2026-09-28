@@ -37,20 +37,39 @@ export { CASH_PAY_LABEL, isCashPayPatient };
  * and everything downstream, and it's what the Order board can key on later"
  * (Brandon).
  *
- * Returns the value Primary Insurance should carry, or `null` when this edit
- * should not touch it. Deliberately narrow: it fires only on the General
- * Insurance column BECOMING Cash Pay, so a rep who deliberately sets some other
- * Primary Insurance afterwards is not overruled on the next keystroke, and a
- * patient who is corrected AWAY from Cash Pay keeps whatever the rep then
- * chooses rather than being silently blanked.
+ * Returns the value Primary Insurance should carry, `""` to CLEAR it, or `null`
+ * when this edit should not touch it:
+ *   · General BECOMES Cash Pay → Primary becomes Cash Pay (unless it already is).
+ *   · General is corrected AWAY from Cash Pay to a real payer while Primary
+ *     still says Cash Pay → Primary is cleared (2026-09-28, Josh's option 1).
+ *   · anything else → untouched.
+ *
+ * ⚠️⚠️ **THE CLEAR IS WHAT MAKES A MISTAKE CORRECTABLE.** The mirror used to run
+ * one way only. A rep who picked Cash Pay by mistake and changed General to
+ * Aetna left Primary on Cash Pay, and because `isCashPayPatient` reads EITHER
+ * column the patient stayed cash pay: section 1 (the only place Primary can be
+ * changed) stayed hidden, Stedi stayed off, and Advance wrote "Advance to
+ * Welcome Call" — an insured patient skipping Medical Necessity and Insurance,
+ * carrying Primary = Cash Pay to the Order board's cash-pay card (Cursor's
+ * launch-bugs item 2). Clearing brings section 1 back EMPTY, so the readiness
+ * checklist demands a real Primary before Advance can run.
+ *
+ * ⚠️ Still deliberately narrow. Only a Primary that says Cash Pay is cleared — a
+ * Primary the rep chose is never blanked. A General cleared to blank is
+ * unknown, not a payer (§9), so it leaves Primary alone. And clearing is local:
+ * a Primary with no label writes nothing (`buildVerifiedInsuranceTasks` skips
+ * it), so the board keeps its value until the rep picks a real one.
  */
 export function primaryInsuranceForGeneral(
   nextGeneral: string,
   currentPrimary: string | null | undefined,
 ): string | null {
-  if (!isCashPay(nextGeneral)) return null;
-  if (isCashPay(currentPrimary)) return null; // already right — no needless write
-  return CASH_PAY_LABEL;
+  if (isCashPay(nextGeneral)) {
+    if (isCashPay(currentPrimary)) return null; // already right — no needless write
+    return CASH_PAY_LABEL;
+  }
+  if ((nextGeneral ?? "").trim() && isCashPay(currentPrimary)) return "";
+  return null;
 }
 
 /**
@@ -64,7 +83,9 @@ export function primaryInsuranceForGeneral(
  * second picker — mirrors too, and no second call site can be forgotten.
  *
  * Returns the patch unchanged when the mirror does not fire, so a caller can
- * pass every patch through it unconditionally.
+ * pass every patch through it unconditionally. When it clears, the patch
+ * carries `primaryInsurance: ""` — callers must test `!== undefined`, never
+ * truthiness, or the clear is dropped.
  */
 export function cashPayMirrorEdit(
   patch: Partial<Patient>,

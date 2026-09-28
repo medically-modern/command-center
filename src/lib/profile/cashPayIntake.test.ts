@@ -96,6 +96,55 @@ describe("picking Cash Pay mirrors it into Primary Insurance", () => {
   });
 });
 
+describe("correcting a mistaken Cash Pay clears the mirrored Primary (2026-09-28)", () => {
+  /* Cursor's launch-bugs item 2, Josh's option 1. The mirror ran one way, so a
+     rep who picked Cash Pay by mistake and changed General to Aetna left
+     Primary on Cash Pay — and the patient stayed cash pay: section 1 hidden,
+     Stedi off, Advance to Welcome Call. */
+  it("clears Primary when General moves from Cash Pay to a real payer", () => {
+    expect(primaryInsuranceForGeneral("Aetna", "Cash Pay")).toBe("");
+    expect(primaryInsuranceForGeneral("Medicaid", " cash pay ")).toBe("");
+  });
+
+  it("⚠️ never clears a Primary the rep chose", () => {
+    expect(primaryInsuranceForGeneral("Aetna", "Aetna Commercial")).toBeNull();
+    expect(primaryInsuranceForGeneral("Aetna", "")).toBeNull();
+  });
+
+  it("⚠️ a General cleared to blank is unknown, not a payer — Primary stays", () => {
+    expect(primaryInsuranceForGeneral("", "Cash Pay")).toBeNull();
+    expect(primaryInsuranceForGeneral("   ", "Cash Pay")).toBeNull();
+  });
+
+  it("the patch carries the clear, and the patient is no longer cash pay", () => {
+    const patch = cashPayMirrorEdit({ generalInsurance: "Aetna" }, "Cash Pay");
+    expect(patch).toEqual({ generalInsurance: "Aetna", primaryInsurance: "" });
+    const corrected = pt({ ...debbie, ...patch });
+    expect(benefitCheckApplies(corrected)).toBe(true);
+    expect(verifiedInsuranceStepApplies(corrected)).toBe(true);
+    expect(advanceLabelFor(corrected)).toBe(ADVANCE_TO_MN);
+    // …and the checklist demands a real Primary before Advance can run.
+    const rows = applyCashPayReadiness([{ label: "Primary Insurance" }, { label: "Serving" }], corrected);
+    expect(rows.map((r) => r.label)).toEqual(["Primary Insurance", "Serving"]);
+  });
+
+  it("round trip: Cash Pay, then Aetna, then Cash Pay again mirrors back", () => {
+    let p = pt({});
+    p = pt({ ...p, ...cashPayMirrorEdit({ generalInsurance: "Cash Pay" }, p.primaryInsurance) });
+    expect(p.primaryInsurance).toBe("Cash Pay");
+    p = pt({ ...p, ...cashPayMirrorEdit({ generalInsurance: "Aetna" }, p.primaryInsurance) });
+    expect(p.primaryInsurance).toBe("");
+    p = pt({ ...p, ...cashPayMirrorEdit({ generalInsurance: "Cash Pay" }, p.primaryInsurance) });
+    expect(p.primaryInsurance).toBe("Cash Pay");
+    expect(advanceLabelFor(p)).toBe(ADVANCE_TO_WELCOME_CALL);
+  });
+
+  it("a genuine cash pay patient is unaffected", () => {
+    expect(advanceLabelFor(debbie)).toBe(ADVANCE_TO_WELCOME_CALL);
+    expect(verifiedInsuranceStepApplies(debbie)).toBe(false);
+  });
+});
+
 describe("the mirror as the pages apply it", () => {
   it("adds Primary to the patch that set General Insurance", () => {
     expect(cashPayMirrorEdit({ generalInsurance: "Cash Pay" }, ""))

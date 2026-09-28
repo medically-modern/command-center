@@ -75,6 +75,11 @@ describe("both intake routes mirror Cash Pay into Primary Insurance", () => {
     expect(handler).toContain("cashPayMirrorEdit");
     expect(handler).toContain("setVerified");
     expect(handler).toContain("primaryInsurance");
+    // ⚠️ `!== undefined`, never truthiness: correcting a mistaken Cash Pay
+    // CLEARS Primary (`primaryInsurance: ""`, 2026-09-28), and a truthiness
+    // test would drop the clear — leaving `verified` on Cash Pay, which is
+    // exactly what Advance writes.
+    expect(handler).toMatch(/next\.primaryInsurance !== undefined/);
   });
 });
 
