@@ -927,7 +927,12 @@ export function registerInboundCalls({ app }) {
         // can act on. Sending the protocol text to the browser is what turned an
         // ordinary "the caller hung up" into ticket MM-1090's "error code".
         const refusal = claimRefusal(up.status, raw);
-        void logClaim(call, who, false, refusal.detail || `RingCentral ${up.status}`);
+        // ⚠️ The HTTP status rides WITH the text (2026-09-28). During the
+        // "Operation is not allowed" incident the row held only RingCentral's
+        // sentence, so nobody could tell a 403 (permission) from a 400 (party
+        // no longer forwardable) after the fact — the one fact that decides
+        // what to do about it was the one fact not kept.
+        void logClaim(call, who, false, `RC ${up.status}` + (refusal.detail ? `: ${refusal.detail}` : ""));
         return res.status(refusal.status).json({ error: refusal.error });
       }
       call.claimedBy = who;
@@ -1187,7 +1192,9 @@ export function registerInboundCalls({ app }) {
    * connecting for everyone?".
    *
    * ⚠️ AUTHENTICATED, unlike /calls/health beside it: this names employees.
-   * Same boundary /calls/history draws.
+   * Same boundary /calls/history draws — either a verified Google identity or
+   * the AUDIT_KEY, for the monitor, which has neither an identity nor a way to
+   * get one.
    *
    * ⚠️ The verdict AND the per-person rollup are computed HERE, in
    * phonePresenceRules.mjs, never in the page. Two implementations of "is this
@@ -1200,7 +1207,16 @@ export function registerInboundCalls({ app }) {
    * open, reporting, and unable to ring, whoever it belongs to.
    */
   app.get("/calls/phone-health", async (req, res) => {
-    const who = await requireCaller(req, res);
+    // ⚠️ TWO doors, because there are two legitimate readers and only one of
+    // them is a person. A manager on /access presents a verified Google
+    // identity; `services/calls-monitor` is a Railway cron with no identity to
+    // present at all (§5.13 makes the same point about /calls/health). The key
+    // is AUDIT_KEY — the gate the /audit family already uses for exactly this
+    // property, "the response names actors". ⚠️ `key &&` matters: an
+    // unconfigured AUDIT_KEY must never turn into an open door.
+    const auditKey = process.env.AUDIT_KEY || "";
+    const viaKey = !!auditKey && req.query?.key === auditKey;
+    const who = viaKey ? "monitor" : await requireCaller(req, res);
     if (!who) return;
     if (!pool) return res.json({ configured: false, browsers: [], faults: [] });
     try {
