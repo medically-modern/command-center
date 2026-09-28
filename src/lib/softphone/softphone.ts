@@ -55,6 +55,8 @@ import { getIdToken, getUser, isAuthed, onAuthChange } from "@/lib/shared/auth";
 import { mmPhoneNumber } from "@/lib/fax/ringcentralApi";
 import {
   MUTE_KEY,
+  PROVISION_TIMEOUT_MESSAGE,
+  START_TIMEOUT_MESSAGE,
   classifyRegistrationError,
   clearCachedSipInfo,
   describeRegistrationFailure,
@@ -62,6 +64,7 @@ import {
   readCachedSipInfo,
   readMuted,
   retryDelayMs,
+  shouldRefreshCredentials,
   writeCachedSipInfo,
   writeMuted,
 } from "./registration";
@@ -103,9 +106,11 @@ export const START_DEADLINE_MS = 20_000;
 /** The same bound for the gateway's sip-provision request, which is a plain
  *  `fetch` with no timeout of its own. */
 export const PROVISION_DEADLINE_MS = 15_000;
-/** Says "timed out" so `classifyRegistrationError` files it as a network
- *  failure — the exponential 2s → 60s ladder, and a sentence a rep can read. */
-const START_TIMEOUT_MESSAGE = "RingCentral's phone server timed out before this browser was registered";
+/* ⚠️ Both deadline messages now live in registration.ts, beside the classifier
+ * that has to tell them apart: they BOTH say "timed out", and filing the
+ * gateway's silence as "Can't reach RingCentral" sent everyone to look at the
+ * wrong half (2026-09-28). Imported above; re-declaring one here is how they
+ * drift back into one bucket. */
 
 /**
  * How long a dialled call may sit with NO SIP progress before it is given up.
@@ -636,7 +641,7 @@ class Softphone {
         return (await res.json()) as { sipInfo?: SipInfo[] | SipInfo };
       })(),
       PROVISION_DEADLINE_MS,
-      "Setting up calling timed out — the gateway didn't answer",
+      PROVISION_TIMEOUT_MESSAGE,
     ).finally(() => ctrl.abort());
     const sipInfo = Array.isArray(provisioned.sipInfo) ? provisioned.sipInfo[0] : provisioned.sipInfo;
     if (!sipInfo) throw new Error("RingCentral returned no SIP credentials for this extension.");
@@ -685,7 +690,31 @@ class Softphone {
 
   private onRegistrationFailure(err: unknown): void {
     const kind = classifyRegistrationError(err);
-    if (kind === "auth") clearCachedSipInfo(storage() ?? NO_STORAGE);
+    // ⚠️ NOT `kind === "auth"` any more. The SDK cannot be relied on to give us
+    // an auth failure at all — a REFUSED REGISTER hangs exactly like an
+    // unanswered one (§5.13b), so it reaches us as our own deadline, whose
+    // message classifies as `network`. Keeping the credentials for every
+    // non-auth failure is what let a browser retry dead sipInfo every 60s for
+    // the seven days of the cache, saying only "Retrying…" (Katie, prod,
+    // 2026-09-28). `shouldRefreshCredentials` drops them after three failures
+    // in a row and then sparingly, because a provision mints a RingCentral
+    // device record and the gateway floors the route (§5.53).
+    if (shouldRefreshCredentials(kind, this.attempt)) {
+      clearCachedSipInfo(storage() ?? NO_STORAGE);
+      // ⚠️ Clearing the CACHE is not enough on its own: a retry that finds a
+      // WebPhone still here calls `recover()`, which re-`start()`s that same
+      // phone — and its sipInfo was baked in when it was constructed, so the
+      // fresh provision would never be read. That is the second shape of the
+      // same forever-loop: a browser that registered once, lost the socket,
+      // and can never pick up new credentials. Dropping the phone sends the
+      // next attempt back through `ensureRegistered()` → `provision()`.
+      // ⚠️ Never mid-call — the phone carries the audio.
+      if (this.wp && !this.active) {
+        abandon(this.wp);
+        this.wp = null;
+        this.detachSocket?.();
+      }
+    }
     this.setRegistration(kind === "full" ? "full" : "error", describeRegistrationFailure(kind, err));
     this.scheduleRetry(retryDelayMs(kind, this.attempt++));
   }

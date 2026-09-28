@@ -45,7 +45,64 @@ export const SIP_INFO_TTL_MS = 7 * 24 * 60 * 60_000;
  *  slot is freed by the SIP server within ~2 minutes (SDK README). */
 export const FULL_RETRY_MS = 60_000;
 
-export type RegistrationFailure = "full" | "auth" | "network" | "unknown";
+export type RegistrationFailure = "full" | "auth" | "gateway" | "network" | "unknown";
+
+/**
+ * The two deadline messages softphone.ts raises, kept HERE so the classifier
+ * can recognise them by identity instead of by wording.
+ *
+ * ⚠️ Both used to be classified `network` and shown as "Can't reach
+ * RingCentral's phone server" — because both contain the words "timed out"
+ * (2026-09-28). One of them is not about RingCentral at all: it is OUR gateway
+ * failing to answer `/messaging/sip-provision`. A rep reporting the RingCentral
+ * sentence could therefore be reporting any of three different faults, and the
+ * one thing everybody would do about it — look at RingCentral — was wrong for
+ * one of them.
+ */
+export const PROVISION_TIMEOUT_MESSAGE = "Setting up calling timed out — the gateway didn't answer";
+export const START_TIMEOUT_MESSAGE = "RingCentral's phone server timed out before this browser was registered";
+
+/**
+ * How many failures in a row before the cached credentials are thrown away and
+ * re-provisioned, for a failure kind that is not itself about credentials.
+ *
+ * ⚠️⚠️ **THIS IS THE FIX FOR A REGISTRATION THAT RETRIES FOR EVER** (Katie on
+ * prod, 2026-09-28: *"cant connct ring centerals phone server retrying and it
+ * never resolves"*). `auth` was the ONLY kind that dropped the cached sipInfo,
+ * and the SDK does not reliably give us an `auth`: per §5.13b, the web-phone
+ * SDK's `register()` awaits a promise with **no rejection path**, so a REGISTER
+ * that RingCentral REFUSES can hang exactly like one it never answered. Our own
+ * 20s deadline then fires, its message says "timed out", that classifies as
+ * `network` — and `network` keeps the credentials. So a browser holding a
+ * sipInfo RingCentral no longer accepts re-tried the same dead credentials
+ * every 60s, for the seven days of the cache TTL, with nothing on screen but
+ * "Retrying…".
+ *
+ * Three is the count because the ladder's first rungs (2s · 4s · 8s) are where
+ * a genuinely transient network blip recovers; anything still failing after
+ * those is worth the cost of a fresh provision.
+ */
+export const REFRESH_CREDENTIALS_AFTER = 3;
+/** And then only once every this many attempts — a provision mints a NEW
+ *  RingCentral device record (§5.13b) and the gateway floors the route at 8s
+ *  (§5.53), so a refresh on EVERY retry is the 2026-09-25 metronome again. At
+ *  the top of the 60s ladder this is one provision every five minutes. */
+export const REFRESH_CREDENTIALS_EVERY = 5;
+
+/**
+ * Should this attempt throw away the cached sipInfo and provision fresh ones?
+ *
+ * `full` never does: the line having five devices says nothing about whether
+ * this browser's credentials are good, and re-provisioning while waiting for a
+ * slot would mint device records that take up more of them.
+ */
+export function shouldRefreshCredentials(kind: RegistrationFailure, attempt: number): boolean {
+  if (kind === "full") return false;
+  if (kind === "auth") return true;
+  const n = Math.max(0, Math.floor(attempt));
+  if (n < REFRESH_CREDENTIALS_AFTER) return false;
+  return (n - REFRESH_CREDENTIALS_AFTER) % REFRESH_CREDENTIALS_EVERY === 0;
+}
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -67,6 +124,10 @@ export function classifyRegistrationError(err: unknown): RegistrationFailure {
   const text = messageOf(err);
   if (/\b603\b/.test(text) || /too many contacts/i.test(text)) return "full";
   if (/\b(401|403|407)\b/.test(text) || /unauthori[sz]ed|forbidden/i.test(text)) return "auth";
+  // ⚠️ Before the generic "timed out" rule below, which would otherwise call
+  // OUR gateway's silence a RingCentral outage. Matched on identity, not on
+  // the sentence, so re-wording the message cannot silently re-bucket it.
+  if (text === PROVISION_TIMEOUT_MESSAGE || /gateway didn't answer/i.test(text)) return "gateway";
   if (typeof Event !== "undefined" && err instanceof Event) return "network";
   if (/websocket|network|failed to fetch|load failed|ECONN|timed? ?out/i.test(text)) return "network";
   return "unknown";
@@ -101,7 +162,9 @@ function messageOf(err: unknown): string {
 export function retryDelayMs(kind: RegistrationFailure, attempt: number): number {
   if (kind === "full") return FULL_RETRY_MS;
   const n = Math.max(0, Math.floor(attempt));
-  if (kind === "auth") return Math.min(60_000, 10_000 * 2 ** n);
+  // `gateway` rides the auth ladder, not the network one: like auth, its retry
+  // re-fetches provision, so it must stay above the gateway's own 8s floor.
+  if (kind === "auth" || kind === "gateway") return Math.min(60_000, 10_000 * 2 ** n);
   return Math.min(60_000, 2_000 * 2 ** n);
 }
 
@@ -112,6 +175,10 @@ export function describeRegistrationFailure(kind: RegistrationFailure, raw: unkn
       return "The line already has five devices registered, so this browser can't ring right now. It retries every minute — or use Take it to ring your phone.";
     case "auth":
       return "RingCentral rejected this browser's phone credentials. Fetching fresh ones…";
+    case "gateway":
+      // Names the half that is actually down. "Can't reach RingCentral" sent
+      // everyone to look at RingCentral for a gateway that wasn't answering.
+      return "The Command Center's calling service didn't answer. Retrying…";
     case "network":
       return "Can't reach RingCentral's phone server. Retrying…";
     default: {

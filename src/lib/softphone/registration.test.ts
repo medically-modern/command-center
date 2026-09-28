@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   FULL_RETRY_MS,
   INSTANCE_ID_KEY,
+  PROVISION_TIMEOUT_MESSAGE,
   SIP_INFO_TTL_MS,
+  START_TIMEOUT_MESSAGE,
   classifyRegistrationError,
   clearCachedSipInfo,
   describeRegistrationFailure,
@@ -10,9 +12,10 @@ import {
   readCachedSipInfo,
   readMuted,
   retryDelayMs,
+  shouldRefreshCredentials,
+  type StorageLike,
   writeCachedSipInfo,
   writeMuted,
-  type StorageLike,
 } from "./registration";
 
 function memStorage(): StorageLike & { map: Map<string, string> } {
@@ -175,5 +178,72 @@ describe("ringtone mute", () => {
     };
     expect(readMuted(broken)).toBe(false);
     expect(() => writeMuted(broken, true)).not.toThrow();
+  });
+});
+
+/**
+ * ⚠️ The forever-loop (Katie, prod, 2026-09-28: "cant connct ring centerals
+ * phone server retrying and it never resolves").
+ *
+ * `auth` was the only kind that dropped the cached sipInfo — and the SDK
+ * cannot be relied on to produce an `auth` at all: a REGISTER RingCentral
+ * REFUSES hangs exactly like one it never answered (§5.13b, `register()` has
+ * no rejection path), so it reaches us as our own 20s deadline, whose message
+ * says "timed out" and therefore classified as `network`. Dead credentials
+ * were then retried every 60s for the seven days of the cache TTL.
+ */
+describe("shouldRefreshCredentials — a registration that can never recover", () => {
+  it("drops the credentials on auth immediately: that IS the credential failure", () => {
+    expect(shouldRefreshCredentials("auth", 0)).toBe(true);
+  });
+
+  it("⚠️ eventually drops them for a network failure too — the SDK hides refusals behind our timeout", () => {
+    // The first rungs (2s · 4s · 8s) are where a real blip recovers.
+    expect(shouldRefreshCredentials("network", 0)).toBe(false);
+    expect(shouldRefreshCredentials("network", 2)).toBe(false);
+    expect(shouldRefreshCredentials("network", 3)).toBe(true);
+  });
+
+  it("then only sparingly — a provision mints an RC device record and the gateway floors the route", () => {
+    // §5.53's metronome: a refresh on EVERY retry is that incident again.
+    const refreshed = [];
+    for (let n = 3; n <= 20; n++) if (shouldRefreshCredentials("network", n)) refreshed.push(n);
+    expect(refreshed).toEqual([3, 8, 13, 18]);
+  });
+
+  it("NEVER while the line is full — five devices says nothing about these credentials", () => {
+    // And a fresh provision would mint a device record competing for the slots.
+    for (let n = 0; n < 30; n++) expect(shouldRefreshCredentials("full", n)).toBe(false);
+  });
+
+  it("covers the unknown bucket as well, on the same ladder", () => {
+    expect(shouldRefreshCredentials("unknown", 2)).toBe(false);
+    expect(shouldRefreshCredentials("unknown", 3)).toBe(true);
+  });
+});
+
+/**
+ * ⚠️ Both deadline messages say "timed out", and only one of them is about
+ * RingCentral. A rep reporting "Can't reach RingCentral's phone server" was
+ * reporting any of three faults, one of which is our own gateway.
+ */
+describe("the gateway's silence is not RingCentral's", () => {
+  it("files a provision timeout as `gateway`, and says so on screen", () => {
+    const kind = classifyRegistrationError(new Error(PROVISION_TIMEOUT_MESSAGE));
+    expect(kind).toBe("gateway");
+    expect(describeRegistrationFailure(kind, null)).toMatch(/Command Center's calling service/);
+  });
+
+  it("still files the REGISTER deadline as `network` — that one really is RingCentral", () => {
+    const kind = classifyRegistrationError(new Error(START_TIMEOUT_MESSAGE));
+    expect(kind).toBe("network");
+    expect(describeRegistrationFailure(kind, null)).toMatch(/RingCentral's phone server/);
+  });
+
+  it("puts `gateway` on the auth ladder, so its retry stays above the gateway's own 8s floor", () => {
+    // §5.53: a gateway retry re-fetches provision, and SIP_PROVISION_FLOOR_MS
+    // (8s) refuses anything faster. 2s would eat a 429 on the first retry.
+    expect(retryDelayMs("gateway", 0)).toBe(10_000);
+    expect(retryDelayMs("network", 0)).toBe(2_000);
   });
 });
