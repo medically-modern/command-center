@@ -6,6 +6,7 @@ import { lazyWithReload } from "./lib/shared/chunkReload";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
 import IncomingCallHost from "./components/inboundCalls/IncomingCallHost";
+import NewVersionBanner from "./components/shared/NewVersionBanner";
 import ScheduledCallHost from "./components/scheduledCalls/ScheduledCallHost";
 import { AppShell } from "./components/shell/AppShell";
 import { HomeViewHost } from "./components/shell/HomeViewHost";
@@ -123,6 +124,10 @@ const App = () => (
     {/* App-wide on purpose: a call arrives wherever you happen to be working,
         so this cannot live on the texting page. See IncomingCallHost.tsx. */}
     <IncomingCallHost />
+    {/* A deploy never reaches an open tab; this asks the deployment whether a
+        newer build is live and offers the reload (§5.54). App-wide, outside
+        the router: it is about the document, not a page. */}
+    <NewVersionBanner />
     <BrowserRouter basename={basename}>
       {/* The ten-minute warning before a booked intake call. App-wide for the
           same reason as IncomingCallHost — the rep is working elsewhere when it
