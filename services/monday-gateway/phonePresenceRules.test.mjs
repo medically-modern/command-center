@@ -144,8 +144,18 @@ describe("presenceFaults — one way only", () => {
   it("reports a browser that is open, reporting, and has not been able to ring", () => {
     const f = presenceFaults([row({ registration: "error", detail: "Can't reach RingCentral's phone server. Retrying…", since: NOW - 40 * 60_000 })], NOW);
     expect(f).toHaveLength(1);
-    expect(f[0]).toMatch(/katie@medicallymodern\.com/);
-    expect(f[0]).toMatch(/40 min/);
+    expect(f[0].email).toBe("katie@medicallymodern.com");
+    expect(f[0].minutes).toBe(40);
+    expect(f[0].heldFor).toBe(40 * 60_000);
+    expect(f[0].text).toMatch(/40 min/);
+  });
+
+  it("⚠️ carries heldFor as a NUMBER — the monitor paces its pages off it", () => {
+    // A bare sentence would leave calls-monitor parsing minutes back out of
+    // prose to decide whether to wake somebody, which is how a check ends up
+    // paging every ten minutes for eleven hours.
+    const f = presenceFaults([row({ registration: "error", since: NOW - 7 * 60_000 })], NOW);
+    expect(typeof f[0].heldFor).toBe("number");
   });
 
   it("⚠️ stays quiet when their OTHER browser is registered — they are being rung fine", () => {

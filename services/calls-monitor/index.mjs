@@ -27,12 +27,21 @@
  *                COMMS_INBOX_HEALTH_URL   also watch the Communications inbox
  *                SMS_ARCHIVE_HEALTH_URL   also watch the SMS text archive
  *                DIRECTORY_HEALTH_URL     also watch the patient name directory
+ *                PHONE_HEALTH_URL         also watch whether each assigned
+ *                                         answerer's BROWSER is registered
+ *                                         (…/calls/phone-health?key=AUDIT_KEY)
+ *                PHONE_ALERT_HOURS        the window that check may page in,
+ *                                         local to PHONE_ALERT_TZ ("8-19")
+ *                PHONE_ALERT_TZ           default America/New_York
  *                DRY_RUN=1                print, don't notify
  */
 
 const {
   CALLS_HEALTH_URL,
   CALLS_WEBHOOK_URL,
+  PHONE_HEALTH_URL,
+  PHONE_ALERT_HOURS,
+  PHONE_ALERT_TZ,
   CALL_ARCHIVE_HEALTH_URL,
   VOICEMAIL_ARCHIVE_HEALTH_URL,
   MMS_ARCHIVE_HEALTH_URL,
@@ -324,6 +333,89 @@ export function reconcileFaults(health, labels = {}) {
   return [];
 }
 
+/* ── browser answering: is RingCentral connecting for everyone? ──────────── */
+
+/**
+ * How often this cron runs. Used to fire each escalation step EXACTLY once —
+ * a threshold counts as crossed when it falls inside the last cycle.
+ * ⚠️ Keep in agreement with the Railway cron schedule (every 10 minutes).
+ */
+export const CYCLE_MS = 10 * 60_000;
+
+/**
+ * When a still-broken browser is worth waking somebody about AGAIN.
+ *
+ * ⚠️⚠️ **THE POINT IS THAT IT ESCALATES RATHER THAN REPEATS.** This cron is
+ * stateless, so the obvious build — "page whenever there is a fault" — pages
+ * every ten minutes for as long as the fault lasts: sixty-six times over a
+ * working day, which is how everybody learns to swipe these away, and then the
+ * real one goes unread too. Pacing off the fault's own `heldFor` needs no state
+ * at all: at most four pushes per incident, spread the way attention should be.
+ */
+export const PAGE_AT_MS = [5 * 60_000, 30 * 60_000, 2 * 60 * 60_000, 8 * 60 * 60_000];
+
+/** Has one of the escalation thresholds been crossed within the last cycle? */
+export function pagesAt(heldFor, cycleMs = CYCLE_MS) {
+  return PAGE_AT_MS.some((t) => heldFor >= t && heldFor - cycleMs < t);
+}
+
+/**
+ * Is it a time of day when a person would want to be woken for this?
+ *
+ * ⚠️⚠️ **§5.13 ASKED FOR THIS BY NAME.** The "no Command Center browser is
+ * connected" check was removed on 2026-08-17 for paging every evening, and the
+ * note it left says: *"Don't re-add this check without also re-adding some form
+ * of the business-hours gate, or it'll page overnight again."* This check is a
+ * narrower one — a browser that is OPEN and cannot ring, never merely absent —
+ * but the overnight shape is the same: a tab left open on a failing
+ * registration at 6pm is still failing at 3am, and nobody can do anything about
+ * it until morning.
+ *
+ * ⚠️ Eastern by default and by `Intl`, not by the container's clock: Railway
+ * runs UTC, and an hour read off `getHours()` there would put the window in the
+ * middle of the night (the same trap CLAUDE.md records for Monday dates).
+ */
+export function inAlertWindow(now, { tz = "America/New_York", hours = "8-19" } = {}) {
+  const [fromRaw, toRaw] = String(hours).split("-");
+  const from = Number(fromRaw);
+  const to = Number(toRaw);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return true;
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      hour: "numeric",
+      hour12: false,
+    }).formatToParts(new Date(now));
+  } catch {
+    // An unknown time zone must not silence the alert entirely.
+    return true;
+  }
+  const weekday = parts.find((p) => p.type === "weekday")?.value || "";
+  const hour = Number(parts.find((p) => p.type === "hour")?.value);
+  if (weekday === "Sat" || weekday === "Sun") return false;
+  return hour >= from && hour < to;
+}
+
+/**
+ * Which browser faults to push right now.
+ *
+ * ⚠️ The faults themselves are the GATEWAY's verdict (phonePresenceRules.mjs),
+ * read from the payload and never re-derived here — the board on /access and
+ * this alert have to agree about who is broken, and a second opinion is how
+ * they stop agreeing. All this decides is WHEN to wake somebody.
+ *
+ * ⚠️ An unreachable payload is NOT reported here: the gateway being down is
+ * already `faults()`'s job above, and two pushes for one outage is the same
+ * noise problem in a different coat.
+ */
+export function phoneFaults(health, { now = Date.now(), tz, hours, cycleMs = CYCLE_MS } = {}) {
+  if (!health || health.configured === false) return [];
+  if (!inAlertWindow(now, { tz, hours })) return [];
+  return (health.faults || []).filter((f) => pagesAt(Number(f?.heldFor) || 0, cycleMs)).map((f) => f.text);
+}
+
 /**
  * Ask one reconcile job how it is, and push if it says it is not ok.
  * Same shape as `watchArchive` below; only the fault rule and the OK line
@@ -457,6 +549,43 @@ async function main() {
     labels: { noun: "patient-directory", broken: "The patient name directory is not refreshing" },
     priority: "default",
   });
+
+  // Browser answering: is RingCentral actually connecting for the people
+  // assigned to answer? ⚠️ Nothing else can see this — the SIP socket goes
+  // browser → RingCentral directly, so the gateway only knows what each
+  // browser reports (§5.13b). A closed browser is NORMAL and never appears
+  // here; what does is a browser that is open, still reporting, and unable to
+  // ring. Its own push, because its remedy is its own: look at /access, and
+  // usually close the RingCentral desktop app or a stale tab.
+  if (PHONE_HEALTH_URL) {
+    let phones = null;
+    try {
+      const res = await get(PHONE_HEALTH_URL);
+      if (res.ok) phones = await res.json();
+      // 401 here means AUDIT_KEY is wrong or missing from the URL — worth
+      // saying out loud, because the check would otherwise look healthy for
+      // ever while watching nothing at all.
+      else console.error(`Phone-presence health returned ${res.status}` + (res.status === 401 ? " — is ?key=AUDIT_KEY on PHONE_HEALTH_URL?" : ""));
+    } catch (e) {
+      console.error("Phone-presence health unreachable:", e.message);
+    }
+    const phoneProblems = phoneFaults(phones, { tz: PHONE_ALERT_TZ, hours: PHONE_ALERT_HOURS });
+    if (phoneProblems.length) {
+      console.error("BROWSER ANSWERING PROBLEMS:\n" + phoneProblems.map((p) => ` - ${p}`).join("\n"));
+      await notify(
+        "Command Center: browser answering",
+        phoneProblems.join("\n") + "\n\nWho is connected: open /access in the Command Center.",
+      );
+    } else if (phones?.configured) {
+      // Logged even when quiet: "2 of 4" every ten minutes is how you notice
+      // the day it reads 0 of 4 outside the alert window.
+      const open = (phones.browsers || []).filter((b) => b.state !== "gone").length;
+      console.log(
+        `Browser answering OK — ${phones.connected ?? "?"} of ${phones.assigned ?? "?"} assigned connected, ` +
+          `${open} browser(s) open, ${(phones.faults || []).length} in trouble`,
+      );
+    }
+  }
 
   // The Communications inbox: its own push, for the same reason each archive
   // has one — "the inbox stopped seeing new messages" has its own remedy.

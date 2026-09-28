@@ -194,8 +194,18 @@ export function presenceFaults(rows, now) {
     if (verdicts.some((v) => v.state === "connected")) continue;
     const worst = verdicts.filter((v) => v.state === "trouble").sort((a, b) => b.heldFor - a.heldFor)[0];
     if (!worst) continue;
-    const mins = Math.round(worst.heldFor / 60_000);
-    out.push(`${email} has a Command Center browser open but has not been able to ring for ${mins} min — ${worst.label}`);
+    const minutes = Math.round(worst.heldFor / 60_000);
+    out.push({
+      email,
+      heldFor: worst.heldFor,
+      minutes,
+      label: worst.label,
+      // ⚠️ Objects, not bare sentences: the monitor decides WHEN to wake
+      // somebody from `heldFor` (calls-monitor's `pagesAt`), and a string it
+      // had to parse a number back out of would be one regex away from
+      // paging every ten minutes all day.
+      text: `${email} has a Command Center browser open but has not been able to ring for ${minutes} min — ${worst.label}`,
+    });
   }
-  return out.sort();
+  return out.sort((a, b) => a.email.localeCompare(b.email));
 }

@@ -9,10 +9,16 @@ let faults;
 let archiveFaults;
 let inboxFaults;
 let reconcileFaults;
+let phoneFaults;
+let inAlertWindow;
+let pagesAt;
+let PAGE_AT_MS;
+let CYCLE_MS;
 beforeAll(async () => {
   // Stops index.mjs from running a live check on import.
   process.env.CALLS_MONITOR_TEST = "1";
-  ({ faults, archiveFaults, inboxFaults, reconcileFaults } = await import("./index.mjs"));
+  ({ faults, archiveFaults, inboxFaults, reconcileFaults, phoneFaults, inAlertWindow, pagesAt, PAGE_AT_MS, CYCLE_MS } =
+    await import("./index.mjs"));
 });
 
 const healthy = {
@@ -413,5 +419,98 @@ describe("inboxFaults — the Communications inbox", () => {
 
   it("a not-ok with no reason says so rather than inventing one", () => {
     expect(inboxFaults({ ...ok, ok: false, reason: null })[0]).toMatch(/reason not reported/);
+  });
+});
+
+
+/**
+ * Browser answering (§5.13b). Everything here defends one property: this check
+ * must not become the thing people swipe away. §5.13 records the last attempt
+ * — "no Command Center browser is connected" paged every evening until it was
+ * removed on 2026-08-17 — and the note it left asked, by name, for a
+ * business-hours gate on whatever replaced it.
+ */
+describe("phoneFaults — escalates, and only during the day", () => {
+  // A Wednesday, 10:00 and 03:00 New York.
+  const DAY = Date.parse("2026-09-30T14:00:00Z");
+  const NIGHT = Date.parse("2026-09-30T07:00:00Z");
+  const SAT = Date.parse("2026-10-03T14:00:00Z");
+  const fault = (heldFor) => ({ email: "katie@medicallymodern.com", heldFor, minutes: Math.round(heldFor / 60_000), label: "x", text: `katie broken ${Math.round(heldFor / 60_000)} min` });
+  const health = (...f) => ({ configured: true, faults: f });
+
+  it("pages when a fault first crosses the five-minute mark", () => {
+    expect(phoneFaults(health(fault(PAGE_AT_MS[0])), { now: DAY })).toHaveLength(1);
+  });
+
+  it("⚠️ does NOT page again on the next cycle — it escalates, it does not repeat", () => {
+    // The stateless-cron trap: "page whenever there is a fault" is 66 pushes
+    // across a working day, and then nobody reads the real one either.
+    expect(phoneFaults(health(fault(PAGE_AT_MS[0] + CYCLE_MS)), { now: DAY })).toEqual([]);
+    // 25 min: past the 5-minute step and not yet at the 30-minute one.
+    expect(phoneFaults(health(fault(PAGE_AT_MS[0] + 2 * CYCLE_MS)), { now: DAY })).toEqual([]);
+  });
+
+  it("pages again at each later step, so a long outage is not forgotten", () => {
+    for (const t of PAGE_AT_MS) {
+      expect(phoneFaults(health(fault(t)), { now: DAY })).toHaveLength(1);
+    }
+  });
+
+  it("fires each step exactly once across a run of cycles", () => {
+    let pushes = 0;
+    for (let held = 0; held <= 9 * 60 * 60_000; held += CYCLE_MS) {
+      pushes += phoneFaults(health(fault(held)), { now: DAY }).length;
+    }
+    expect(pushes).toBe(PAGE_AT_MS.length);
+  });
+
+  it("⚠️ stays silent overnight and at the weekend — §5.13 asked for this by name", () => {
+    expect(phoneFaults(health(fault(PAGE_AT_MS[0])), { now: NIGHT })).toEqual([]);
+    expect(phoneFaults(health(fault(PAGE_AT_MS[0])), { now: SAT })).toEqual([]);
+  });
+
+  it("says nothing when there are no faults, or when the check is not configured", () => {
+    expect(phoneFaults(health(), { now: DAY })).toEqual([]);
+    expect(phoneFaults({ configured: false, faults: [fault(PAGE_AT_MS[1])] }, { now: DAY })).toEqual([]);
+  });
+
+  it("⚠️ never reports an unreachable payload — the gateway being down is faults()' job", () => {
+    // Two pushes for one outage is the same noise problem in a different coat.
+    expect(phoneFaults(null, { now: DAY })).toEqual([]);
+  });
+
+  it("reports the gateway's own sentence, never one it made up", () => {
+    // The board on /access and this alert must name the same people for the
+    // same reason; a second opinion here is how they stop agreeing.
+    expect(phoneFaults(health(fault(PAGE_AT_MS[1])), { now: DAY })[0]).toBe("katie broken 30 min");
+  });
+});
+
+describe("inAlertWindow — Eastern, by Intl, never the container's clock", () => {
+  it("reads the hour in the configured zone, not UTC", () => {
+    // Railway runs UTC: 14:00Z is 10am in New York (in DST) and inside the
+    // window; 07:00Z is 3am there and outside it. getHours() on the container
+    // would get both backwards.
+    expect(inAlertWindow(Date.parse("2026-09-30T14:00:00Z"), {})).toBe(true);
+    expect(inAlertWindow(Date.parse("2026-09-30T07:00:00Z"), {})).toBe(false);
+  });
+
+  it("honours a custom window", () => {
+    expect(inAlertWindow(Date.parse("2026-09-30T12:00:00Z"), { hours: "9-17" })).toBe(false); // 8am ET
+    expect(inAlertWindow(Date.parse("2026-09-30T14:00:00Z"), { hours: "9-17" })).toBe(true);
+  });
+
+  it("⚠️ falls OPEN on a window or zone it cannot read — a typo must not silence the alert", () => {
+    expect(inAlertWindow(Date.parse("2026-09-30T07:00:00Z"), { hours: "nonsense" })).toBe(true);
+    expect(inAlertWindow(Date.parse("2026-09-30T07:00:00Z"), { tz: "Mars/Olympus" })).toBe(true);
+  });
+});
+
+describe("pagesAt", () => {
+  it("counts a threshold as crossed only within the cycle that crossed it", () => {
+    expect(pagesAt(PAGE_AT_MS[0] - 1)).toBe(false);
+    expect(pagesAt(PAGE_AT_MS[0])).toBe(true);
+    expect(pagesAt(PAGE_AT_MS[0] + CYCLE_MS - 1)).toBe(true);
+    expect(pagesAt(PAGE_AT_MS[0] + CYCLE_MS)).toBe(false);
   });
 });
