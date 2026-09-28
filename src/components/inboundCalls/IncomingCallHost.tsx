@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import { useInboundCalls } from "@/hooks/inboundCalls/useInboundCalls";
 import { useElapsedSeconds, useSoftphone } from "@/hooks/softphone/useSoftphone";
 import { digitsKey, mergeRings, type UnifiedRing } from "@/lib/softphone/ringMerge";
+import { ringingCards } from "@/lib/softphone/ringRules";
 import { findPatientByPhone, type PatientRef } from "@/lib/assignedPatients/patientLookup";
 import RingPreferencesDialog from "@/components/inboundCalls/RingPreferencesDialog";
 import CallStreamStatus from "@/components/inboundCalls/CallStreamStatus";
@@ -309,10 +310,22 @@ export default function IncomingCallHost() {
   const phone = useSoftphone();
   // The store registers (or lets go) within a poll of the assignment changing.
   // `setEnabled` is the store's own bound function, so its identity is stable.
-  const { setEnabled } = phone;
+  const { setCardRings, setEnabled } = phone;
   useEffect(() => {
     setEnabled(enabled);
   }, [enabled, setEnabled]);
+  // ⚠️ **The ringtone is keyed on the CARDS, not on this browser's SIP legs**
+  // (§5.13b, 2026-09-28 — Josh: "sometimes the notif pops up and it doesnt"
+  // ring). A card arrives for every assigned answerer; the SIP leg only
+  // arrives if this browser holds one of RingCentral's five registrations and
+  // was the most recent of them, which is exactly what is not true while the
+  // line is full, a retry is in flight, or the RingCentral desktop app has the
+  // newest registration. The store de-duplicates against its own legs and
+  // decides which tab makes the sound (ringRules.ts), so this only has to say
+  // what this tab can see.
+  useEffect(() => {
+    setCardRings(ringingCards(calls));
+  }, [calls, setCardRings]);
   // Carried here rather than on the texting page so "add your number" is
   // fixable from wherever the call found you.
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -382,7 +395,15 @@ export default function IncomingCallHost() {
             onAnswer={u.sip ? () => phone.answer(u.sip!.id) : null}
             onClaim={u.sse ? () => claim(u.sse!.id) : null}
             onDismiss={() => {
-              if (u.sse) dismiss(u.sse.id);
+              // ⚠️ `dismiss` drops the card from THIS tab's list; `ignore` is
+              // what reaches the tab making the sound. The card half needs
+              // both now that the ringtone follows the card — without the
+              // second call, X would clear the card here and leave the leader
+              // tab chiming at a call this browser has already waved off.
+              if (u.sse) {
+                dismiss(u.sse.id);
+                phone.ignore(u.sse.id);
+              }
               if (u.sip) phone.ignore(u.sip.id);
             }}
             onNeedsNumber={() => setSettingsOpen(true)}

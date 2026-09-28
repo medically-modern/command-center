@@ -22,6 +22,7 @@
  * This file is the pure part: message shapes, guards, and the follower's view
  * of the leader's snapshot. The transport lives in softphone.ts.
  */
+import type { RingLike } from "./ringRules";
 import type { PhoneSnapshot } from "./types";
 
 export const CHANNEL_NAME = "mm-softphone";
@@ -34,7 +35,23 @@ export type TabCommand =
   | { type: "cmd"; cmd: "hangup" }
   | { type: "cmd"; cmd: "mute"; muted: boolean }
   | { type: "cmd"; cmd: "dial"; phone: string }
-  | { type: "cmd"; cmd: "dismissError" };
+  | { type: "cmd"; cmd: "dismissError" }
+  /**
+   * The gateway cards THIS tab can see ringing (ringRules.ts). Every tab holds
+   * its own SSE stream, so a follower usually knows about the call at the same
+   * moment the leader does — but it is the leader that owns the speaker, and a
+   * leader whose stream has dropped (§5.13's CallStreamStatus) would otherwise
+   * sit silent while the tab next to it shows the card. Whoever hears about
+   * the call makes the browser ring.
+   *
+   * ⚠️ Carries `from` because the leader keeps one set per tab: a tab re-posts
+   * its whole set on every change, and without the tab id a second tab's view
+   * would overwrite the first's. A CLOSED tab's set is not withdrawn (there is
+   * no follower `bye`), which is why every forwarded ring carries `startedAt`
+   * and ages out — `ringRules.RING_AUDIBLE_MS` bounds a stale one to less than
+   * one ring.
+   */
+  | { type: "cmd"; cmd: "cards"; from: string; rings: RingLike[] };
 
 export type TabMessage =
   /** Leader → everyone: the whole snapshot, on every change. */
@@ -46,7 +63,7 @@ export type TabMessage =
   | { type: "bye"; from: string }
   | TabCommand;
 
-const COMMANDS = new Set(["answer", "ignore", "hangup", "mute", "dial", "dismissError"]);
+const COMMANDS = new Set(["answer", "ignore", "hangup", "mute", "dial", "dismissError", "cards"]);
 
 /** Runtime guard — BroadcastChannel delivers whatever another tab posted, and a
  *  version skew between tabs after a deploy is the ordinary case, not a rarity. */
@@ -60,7 +77,12 @@ export function isTabMessage(x: unknown): x is TabMessage {
     case "bye":
       return typeof m.from === "string";
     case "cmd":
-      return typeof m.cmd === "string" && COMMANDS.has(m.cmd);
+      if (typeof m.cmd !== "string" || !COMMANDS.has(m.cmd)) return false;
+      // `cards` is the one command carrying a payload another build could
+      // shape differently, and the leader iterates it — so it is checked here
+      // rather than trusted downstream.
+      if (m.cmd === "cards") return typeof m.from === "string" && Array.isArray(m.rings);
+      return true;
     default:
       return false;
   }

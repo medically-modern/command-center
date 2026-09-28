@@ -66,6 +66,7 @@ import {
   writeMuted,
 } from "./registration";
 import { CHANNEL_NAME, LOCK_NAME, followerView, isTabMessage, type TabCommand, type TabMessage } from "./tabProtocol";
+import { audibleRings, nextExpiryMs, sameRings, type RingLike } from "./ringRules";
 import { Ringtone } from "./ringtone";
 import type { ActiveCall, PhoneSnapshot, RegistrationStatus, SipRing } from "./types";
 
@@ -259,6 +260,9 @@ class Softphone {
   // Leadership
   private isLeader = false;
   private leaderState: PhoneSnapshot | null = null;
+  /** Which tab we are mirroring — a change means a new leader that has never
+   *  been told this tab's cards (see `handleMessage`). */
+  private leaderTabId: string | null = null;
   private channel: BroadcastChannel | null = null;
   /** This person is an assigned call answerer (set by the host from access.json). */
   private enabled = false;
@@ -287,6 +291,16 @@ class Softphone {
   private active: { session: Session | null; call: ActiveCall } | null = null;
   private dialToken: symbol | null = null;
   private readonly ringtone = new Ringtone();
+  /** The gateway cards THIS tab sees ringing (IncomingCallHost → setCardRings).
+   *  Kept in every tab, leader or not, so a tab handed the phone rings at once
+   *  instead of waiting for the next SSE update to tell it there is a call. */
+  private cardRings: RingLike[] = [];
+  /** Leader only: the same, as forwarded by the browser's OTHER tabs. See
+   *  tabProtocol's `cards` command for why it is keyed by tab and why every
+   *  entry carries a start time. */
+  private readonly tabCardRings = new Map<string, RingLike[]>();
+  /** Re-checks the ring when its oldest entry ages out of the audible window. */
+  private ringExpiryTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly instanceId = instanceIdFor(storage() ?? NO_STORAGE, mintUuid);
 
   constructor() {
@@ -318,6 +332,16 @@ class Softphone {
     });
     window.addEventListener("online", () => this.onOnline());
     window.addEventListener("pagehide", () => this.shutdown());
+    // ⚠️ Get the audio path open on the first click or keypress, not when the
+    // call arrives. A browser keeps an AudioContext suspended until the page
+    // has seen a user gesture and `resume()` is asynchronous, so a ringtone
+    // that creates its context at ring time spends the opening of a 20-second
+    // window asking permission — and in a tab nobody has clicked in, never
+    // gets it. `prime()` is a no-op once the context runs, and creates nothing
+    // for somebody who is not an assigned answerer.
+    for (const ev of ["pointerdown", "keydown", "touchstart"] as const) {
+      window.addEventListener(ev, () => this.primeRingtone(), { passive: true });
+    }
     onAuthChange(() => this.reconcile());
 
     this.elect();
@@ -336,6 +360,29 @@ class Softphone {
     this.enabled = on;
     this.publish();
     if (this.isLeader) this.reconcile();
+  };
+
+  /**
+   * The gateway cards this tab can see ringing (`ringRules.ringingCards`), fed
+   * by IncomingCallHost on every SSE update.
+   *
+   * ⚠️ **This is what makes the browser ring at all in the ordinary case**
+   * (§5.13b, 2026-09-28). The chime used to be keyed on the SIP leg, so a card
+   * that arrived while this browser was not registered — the line full, a
+   * retry in flight, the RingCentral desktop app holding the newest
+   * registration — popped in silence. The card is the signal every assigned
+   * answerer gets; the leg only decides whether **Answer** works.
+   *
+   * A follower forwards its set to the leader, which owns the speaker. Posted
+   * only when the set really changed: this runs on every SSE update and every
+   * patient-name resolution, and a BroadcastChannel message per render is the
+   * shape INCIDENT_2026-08-20 was made of.
+   */
+  setCardRings = (rings: RingLike[]): void => {
+    if (sameRings(this.cardRings, rings)) return;
+    this.cardRings = rings;
+    if (this.isLeader) this.syncRingtone();
+    else this.post({ type: "cmd", cmd: "cards", from: this.tabId, rings });
   };
 
   /**
@@ -436,13 +483,18 @@ class Softphone {
   private becomeLeader(): void {
     this.isLeader = true;
     this.leaderState = null;
+    this.leaderTabId = null;
     this.reconcile();
+    // This tab may have been watching a card ring the whole time it was a
+    // follower; now that it owns the speaker, that card has to be audible.
+    this.syncRingtone();
     this.publish();
   }
 
   private demote(): void {
     if (!this.isLeader) return;
     this.isLeader = false;
+    this.leaderTabId = null;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
     if (this.releaseTimer) clearTimeout(this.releaseTimer);
@@ -470,6 +522,14 @@ class Softphone {
     switch (raw.type) {
       case "state":
         if (this.isLeader || raw.from === this.tabId) return;
+        // A NEW leader (this tab was demoted, or the old leader's tab closed)
+        // has never heard this tab's cards, and a follower only posts them
+        // when they change — so a call already ringing would be silent in the
+        // browser until the next SSE update happened to alter the set.
+        if (raw.from !== this.leaderTabId) {
+          this.leaderTabId = raw.from;
+          if (this.cardRings.length) this.post({ type: "cmd", cmd: "cards", from: this.tabId, rings: this.cardRings });
+        }
         this.leaderState = raw.state;
         this.publish();
         return;
@@ -479,6 +539,7 @@ class Softphone {
       case "bye":
         if (!this.isLeader) {
           this.leaderState = null;
+          this.leaderTabId = null;
           this.publish();
         }
         return;
@@ -503,6 +564,9 @@ class Softphone {
         return void this.doDial(c.phone);
       case "dismissError":
         return this.dismissError();
+      case "cards":
+        this.tabCardRings.set(c.from, c.rings);
+        return this.syncRingtone();
     }
   }
 
@@ -747,6 +811,11 @@ class Softphone {
     this.detachSocket?.();
     this.rings.clear();
     this.ignored.clear();
+    // Another tab's forwarded cards are that tab's view of the gateway, not
+    // this one's to keep once this tab is out of the speaker's chair.
+    this.tabCardRings.clear();
+    if (this.ringExpiryTimer) clearTimeout(this.ringExpiryTimer);
+    this.ringExpiryTimer = null;
     this.ringtone.stop();
     if (wp) void wp.dispose().catch(() => {});
     this.setRegistration("off", null);
@@ -823,6 +892,11 @@ class Softphone {
     };
     this.rings.delete(callId);
     this.ignored.delete(callId);
+    // ⚠️ The GATEWAY's card for this call can still read "ringing" for a beat
+    // after we answer it, and the ringtone now follows the card — so without
+    // this, hanging up a short call could be followed by a chime at the call
+    // that just ended. The id is the telephony session, the gateway's own key.
+    if (ring.sessionId) this.ignored.add(ring.sessionId);
     this.publish();
     session.once("answered", () => this.patchCall({ status: "connected", connectedAt: Date.now() }));
     try {
@@ -1006,10 +1080,49 @@ class Softphone {
     this.reconcile();
   }
 
+  /** Called from the first user gesture in the page — see `start()`. */
+  private primeRingtone(): void {
+    if (!this.enabled) return;
+    this.ringtone.prime();
+  }
+
+  /**
+   * Is anything ringing that should be audible, and is this the tab that makes
+   * the sound?
+   *
+   * ⚠️ **The ring follows the CARD, not only the SIP leg** (ringRules.ts).
+   * Three sources are joined and de-duplicated by id: this browser's SIP legs,
+   * this tab's gateway cards, and the cards every other tab forwarded. Whoever
+   * heard about the call makes the browser ring; the leader is the only tab
+   * that plays it, because one browser makes one sound.
+   */
   private syncRingtone(): void {
-    const ringing = [...this.rings.keys()].some((id) => !this.ignored.has(id));
-    if (ringing && !this.active && !this.ringMuted) this.ringtone.start();
-    else this.ringtone.stop();
+    if (this.ringExpiryTimer) clearTimeout(this.ringExpiryTimer);
+    this.ringExpiryTimer = null;
+    // A tab that has just been demoted still has a chime in the air.
+    if (!this.isLeader) return this.ringtone.stop();
+    const now = Date.now();
+    const all: RingLike[] = [
+      ...[...this.rings.values()].map((r) => r.ring),
+      ...this.cardRings,
+      ...[...this.tabCardRings.values()].flat(),
+    ];
+    // A dismissed SIP leg clears its own entry when the session is disposed; a
+    // dismissed CARD has nothing to clean it, so `ignored` would grow for the
+    // life of the tab. Anything nobody is still reporting has nothing left to
+    // silence — and a card re-pushed later (the gateway re-sends a stranded
+    // ring to every new stream, §5.13) is already past the audible window.
+    for (const id of this.ignored) if (!all.some((r) => r.id === id)) this.ignored.delete(id);
+    const audible = audibleRings(all, this.ignored, now);
+    if (audible.length && !this.active && !this.ringMuted) {
+      this.ringtone.start();
+      // One timer for the whole list, re-armed on every change, so a ring that
+      // ages out of the window goes quiet without anything polling for it.
+      const left = nextExpiryMs(audible, now);
+      if (left !== null) this.ringExpiryTimer = setTimeout(() => this.syncRingtone(), left + 250);
+    } else {
+      this.ringtone.stop();
+    }
   }
 
   /* ── snapshot ─────────────────────────────────────────────────────────── */

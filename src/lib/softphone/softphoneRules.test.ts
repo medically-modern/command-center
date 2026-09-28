@@ -111,9 +111,47 @@ describe("only assigned answerers are rung — and a tab can take the phone over
 
   it("the ringtone honours the per-browser mute, and the badge exposes it", () => {
     const runtime = codeOnly(read("src/lib/softphone/softphone.ts"));
-    expect(runtime).toMatch(/ringing && !this\.active && !this\.ringMuted\) this\.ringtone\.start\(\)/);
+    expect(runtime).toMatch(/audible\.length && !this\.active && !this\.ringMuted\) \{\s*this\.ringtone\.start\(\)/);
     const badge = codeOnly(read("src/components/inboundCalls/CallConnectionBadge.tsx"));
     expect(badge).toMatch(/phone\.setRingMuted\(!phone\.ringMuted\)/);
+  });
+
+  /**
+   * ⚠️ The ring follows the CARD (§5.13b, 2026-09-28). Keyed on the SIP leg
+   * again, every one of these is a card that pops in silence: the line full,
+   * a registration retry in flight, or the RingCentral desktop app holding the
+   * newest registration for the shared extension. Nothing on screen says the
+   * sound was skipped, so the build is the only place it can fail.
+   */
+  it("the sound is keyed on the gateway's cards, not only on this browser's SIP legs", () => {
+    const runtime = codeOnly(read("src/lib/softphone/softphone.ts"));
+    // The union the ringtone is decided from must still carry the cards.
+    expect(runtime).toMatch(/this\.cardRings/);
+    expect(runtime).toMatch(/this\.tabCardRings/);
+    expect(runtime).toMatch(/audibleRings\(/);
+    const host = codeOnly(read("src/components/inboundCalls/IncomingCallHost.tsx"));
+    expect(host).toMatch(/setCardRings\(ringingCards\(calls\)\)/);
+    // X has to reach the tab making the sound, not just this tab's list.
+    expect(host).toMatch(/dismiss\(u\.sse\.id\);\s*phone\.ignore\(u\.sse\.id\);/);
+  });
+
+  /**
+   * ⚠️ The tab that makes the sound is the LEADER tab, which is whichever tab
+   * took the Web Lock first — very often not the one the rep is looking at.
+   * Chrome throttles a hidden tab's timers to once a second, and to once a
+   * minute after a few minutes ("intensive throttling"), so a chime repeated
+   * on a timer can be a single blip. Web Audio scheduled on the context's own
+   * clock is not throttled.
+   */
+  it("the ringtone schedules the whole ring on the audio clock, with no repeating timer", () => {
+    const tone = codeOnly(read("src/lib/softphone/ringtone.ts"));
+    expect(tone).not.toMatch(/setInterval|setTimeout/);
+    expect(tone).toMatch(/ctx\.currentTime/);
+    // And the context is opened on a user gesture, not at ring time: a tab
+    // nobody has clicked in cannot resume one, and resume() is asynchronous.
+    const runtime = codeOnly(read("src/lib/softphone/softphone.ts"));
+    expect(runtime).toMatch(/pointerdown/);
+    expect(runtime).toMatch(/this\.ringtone\.prime\(\)/);
   });
 
   it("both home pages carry the connection badge", () => {
