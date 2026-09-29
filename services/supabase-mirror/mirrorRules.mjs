@@ -265,6 +265,34 @@ export function takeCreatedSince(items, sinceIso) {
   });
 }
 
+/**
+ * A safe, loggable description of the Postgres URL — host, database, user and
+ * the SHAPE of the password (length + problems), never the password itself.
+ * Exists because "password authentication failed" cannot say whether the
+ * template's [brackets] were left in or a character broke the URL.
+ * (Measured on Node 22: the URL parser percent-encodes [ ] itself, and an
+ * unencoded # or @ in the password makes the whole URL unparseable.)
+ */
+export function describeDbUrl(dbUrl) {
+  let u;
+  try {
+    u = new URL(dbUrl);
+  } catch {
+    return "⚠️ SUPABASE_DB_URL is not a parseable URL — an unencoded #, @, / or ? in the password does this; percent-encode it (# is %23, @ is %40)";
+  }
+  let pw = u.password ?? "";
+  const notes = [];
+  try {
+    pw = decodeURIComponent(pw);
+  } catch {
+    notes.push("the password has a stray % — a lone % must be written %25");
+  }
+  if (!pw) notes.push("the URL has NO password");
+  if (/[[\]]/.test(pw)) notes.push("the template's [ ] brackets are still around the password — remove them");
+  if (!/supabase\.(com|co)$/.test(u.hostname)) notes.push(`host reads as "${u.hostname}", not a supabase pooler`);
+  return `db target: ${u.hostname}:${u.port || "5432"}${u.pathname} as ${decodeURIComponent(u.username)} (password: ${pw.length} chars${notes.length ? "; ⚠️ " + notes.join("; ") : ""})`;
+}
+
 export function chunk(arr, n) {
   const out = [];
   for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));

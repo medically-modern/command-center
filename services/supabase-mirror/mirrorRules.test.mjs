@@ -16,6 +16,7 @@ import {
   parseSettings,
   reconcileDue,
   reconcilePlan,
+  describeDbUrl,
   shapeQuery,
   takeCreatedSince,
   takeUpdatedSince,
@@ -180,6 +181,19 @@ describe("pacing", () => {
     expect(src).toContain("takeCreatedSince(rawItems, CONFIG.createdSince)");
     expect(src).toContain("takeCreatedSince(scanned, CONFIG.createdSince)");
     expect(src).toMatch(/startRun\(pool, boardId, "full", CONFIG.createdSince\)/);
+  });
+
+  it("describeDbUrl names the problem without ever printing the password", () => {
+    expect(describeDbUrl("postgresql://postgres.ref:GoodPass99@aws-0-us-west-2.pooler.supabase.com:5432/postgres"))
+      .toBe("db target: aws-0-us-west-2.pooler.supabase.com:5432/postgres as postgres.ref (password: 10 chars)");
+    expect(describeDbUrl("postgresql://postgres.ref:[YOUR-PASSWORD]@h.pooler.supabase.com:5432/postgres")).toContain("brackets are still around the password");
+    expect(describeDbUrl("postgresql://postgres.ref:pa%23ss@h.pooler.supabase.com:5432/postgres")).toContain("password: 5 chars"); // %23 decodes to one char
+    expect(describeDbUrl("postgresql://postgres.ref:pa#ss@h.pooler.supabase.com:5432/postgres")).toContain("not a parseable URL"); // raw # breaks the URL
+    expect(describeDbUrl("postgresql://postgres.ref:@h.pooler.supabase.com:5432/postgres")).toContain("NO password");
+    expect(describeDbUrl("postgresql://postgres.ref:100%pass@h.pooler.supabase.com:5432/postgres")).toContain("stray %");
+    expect(describeDbUrl("not a url at all")).toContain("not a parseable URL");
+    expect(describeDbUrl("postgresql://u:secret@evil.example.com:5432/db")).toContain("not a supabase pooler");
+    for (const c of ["GoodPass99", "YOUR-PASSWORD", "secret"]) expect(describeDbUrl(`postgresql://u:${c}@h.pooler.supabase.com/db`)).not.toContain(c);
   });
 
   it("reconcile is due when never run or a day old", () => {

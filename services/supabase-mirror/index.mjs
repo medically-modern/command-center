@@ -62,6 +62,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import {
   chunk,
+  describeDbUrl,
   diffItems,
   idsPageQuery,
   incrementalSince,
@@ -412,6 +413,7 @@ async function main() {
     throw new Error(`MIRROR_CREATED_SINCE is not a readable instant: ${CONFIG.createdSince}`);
   }
   if (CONFIG.createdSince) log(`scope: only items created at/after ${CONFIG.createdSince} are mirrored (start-empty mode)`);
+  if (CONFIG.dbUrl) log(describeDbUrl(CONFIG.dbUrl));
 
   const pool = CONFIG.dbUrl ? new pg.Pool({ connectionString: CONFIG.dbUrl, max: 3, ssl: sslFor(CONFIG.dbUrl) }) : null;
   if (pool) {
