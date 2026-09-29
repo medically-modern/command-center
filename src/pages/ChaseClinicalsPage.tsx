@@ -197,7 +197,7 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
                   <SendRequestHeaderCard
                     patient={selected}
                     onDoctorEdit={(patch) => update(selected.id, patch)}
-                    editHint="Edits are saved to Monday when you complete the chase (or via the Save button above)."
+                    editHint="Save provider writes these to Monday now. Anything unsaved is written when you save the chase attempt."
                     fullDetails
                     showClinicalsMethod={
                       method === "parachute" && isParachuteRoleMethod(selected.clinicalsMethod)

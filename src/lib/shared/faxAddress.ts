@@ -31,6 +31,22 @@ export function toFaxAddress(raw: string): string {
 }
 
 /**
+ * What an EDIT BOX's fax entry should be written to the column as.
+ *
+ * `writeEmail` SKIPS a value that isn't an address, silently, so a rep who
+ * corrects a doctor's fax by typing `(215) 555-0100` saves nothing: the old
+ * number stays on the board and every later send goes to it (Medical
+ * Evaluation, 2026-09-29). A value with a digit in it goes through
+ * `toFaxAddress`. A value WITHOUT one is returned as typed and never through
+ * `toFaxAddress`, which would turn it into "" — and "" CLEARS the column, so a
+ * stray "n/a" would delete the fax it was typed over.
+ */
+export function faxEditToColumnValue(raw: string): string {
+  const v = (raw || "").trim();
+  return /\d/.test(v) ? toFaxAddress(v) : v;
+}
+
+/**
  * Is this value a fax destination RingCentral can actually deliver, i.e.
  * `<digits>@rcfax.com`? This is the "required" half of the Doctor Fax rule
  * (`lib/profile/doctorFaxRequired.ts`) and it lives HERE, beside the two

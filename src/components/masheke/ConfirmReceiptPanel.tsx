@@ -385,6 +385,17 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false, on
   const method = patient.clinicalsMethod ?? "—";
   const isEmail = method === "Email";
   const recipient = isEmail ? patient.doctorEmail : patient.doctorFax;
+  // ⚠️ A NEW NUMBER IS A NEW SEND. "Re-sent" locked the Not Confirmed box's
+  // button for the rest of the attempt, so a rep who re-sent, learned the fax
+  // was wrong, and typed the right one could not send to it (2026-09-29). The
+  // re-send the lock remembered went to a number that is no longer on screen.
+  const recipientRef = useRef(recipient);
+  useEffect(() => {
+    if (recipientRef.current === recipient) return;
+    recipientRef.current = recipient;
+    setFaxResent(false);
+    setResentNow(false);
+  }, [recipient]);
   // const mnLetterPresent = mondayFiles.mnRequestLetter.length > 0; // (unused while fax re-send is paused)
 
   // The message that will be sent — the rep's edit, else the saved column

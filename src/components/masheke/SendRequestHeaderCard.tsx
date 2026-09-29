@@ -8,11 +8,22 @@
  * Layout unchanged from the mockups — the Edit toggle reveals the
  * doctor edit grid below the rows, and a Doctor Notes cell (Doctor
  * Database, by NPI) sits at the bottom.
+ *
+ * ⚠️ Provider edits (2026-09-29). Two reps in one morning could not update a
+ * provider: the editor sat behind "Show details" AND a small Edit toggle, and
+ * what they typed only reached Monday when the stage advanced — never, on
+ * Doctor Appointments — so a script regenerated in between still carried the
+ * old provider (DocExport reads the board). "Edit provider" now sits beside
+ * "Show details", and Save provider writes the touched fields right away.
  */
-import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronRight, Pencil } from "lucide-react";
+import { toast } from "sonner";
 import type { Patient } from "@/lib/masheke/workflow";
 import { DoctorEditGrid, EditToggle, DaysInStagePill, PatientContact } from "@/components/masheke/mmKit";
+import { saveDoctorEdits } from "@/lib/masheke/mondayApi";
+import { isDoctorEditField, unsavableDoctorFields, type DoctorDraft } from "@/lib/masheke/doctorEdits";
+import { faxEditToColumnValue } from "@/lib/shared/faxAddress";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { MashekeProfileStatus } from "@/components/shared/PatientProfileStatus";
 import { FaxStatusBadge } from "@/components/shared/FaxStatusBadge";
@@ -51,14 +62,16 @@ function Field({ label, value, span2 }: { label: string; value?: string; span2?:
 export function SendRequestHeaderCard({
   patient,
   onDoctorEdit,
-  editHint = "Edits are saved to Monday when you Mark as Complete (or via the Save button above).",
+  editHint = "Save provider writes these to Monday now — do it before regenerating a script, which reads the provider from Monday. Anything unsaved is written when you press Request Sent.",
   fullDetails = false,
   showClinicalsMethod = false,
 }: {
   patient: Patient;
   onDoctorEdit?: (patch: Partial<Patient>) => void;
   /** Footnote under the doctor edit grid describing when edits persist.
-   *  Confirm Receipt passes its own ("Save Attempt") wording. */
+   *  Confirm Receipt passes its own ("Save Attempt") wording. ⚠️ The page's
+   *  Save button keeps edits in THIS browser only (`saveOverlay`); a hint
+   *  that says it saves to Monday is how a correction gets lost. */
   editHint?: string;
   /** Always render the comprehensive detail rows (gender, member id, coverage
    *  paths, OOW, malfunction, patient address, clinic) regardless of method.
@@ -76,6 +89,69 @@ export function SendRequestHeaderCard({
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
+  // What the rep changed and hasn't saved, KEYED by the patient it was typed
+  // on. The pages don't key this card, so a bare draft would ride along to the
+  // next patient and Save would write it onto them (§9).
+  const [drafts, setDrafts] = useState<Record<string, DoctorDraft>>({});
+  const draft = drafts[patient.id] ?? {};
+  const dirty = Object.keys(draft).length > 0;
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const saving = savingId === patient.id;
+  // The patient on screen NOW — a save outlives a patient switch, and must not
+  // touch the overlay of whoever is open when it lands.
+  const current = useRef(patient);
+  current.current = patient;
+
+  const editProvider = (patch: Partial<Patient>) => {
+    onDoctorEdit?.(patch);
+    const touched: DoctorDraft = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (isDoctorEditField(k)) touched[k] = String(v ?? "");
+    }
+    setDrafts((d) => ({ ...d, [patient.id]: { ...d[patient.id], ...touched } }));
+  };
+
+  const saveProvider = async () => {
+    const id = patient.id;
+    const pending = draft;
+    if (!Object.keys(pending).length) return;
+    const bad = unsavableDoctorFields(pending);
+    if (bad.length) {
+      toast.error("Fix these before saving", { description: bad.join(" · ") });
+      return;
+    }
+    setSavingId(id);
+    try {
+      await saveDoctorEdits(id, pending);
+      // Drop only what was saved AS SAVED — a field typed into during the save
+      // stays pending.
+      setDrafts((d) => {
+        const left: DoctorDraft = { ...d[id] };
+        for (const [k, v] of Object.entries(pending)) {
+          if (isDoctorEditField(k) && left[k] === v) delete left[k];
+        }
+        return { ...d, [id]: left };
+      });
+      // Show the fax the way the board now holds it (<digits>@rcfax.com), but
+      // only on the same patient and only if the box hasn't changed since.
+      if (
+        pending.doctorFax !== undefined &&
+        current.current.id === id &&
+        current.current.doctorFax === pending.doctorFax
+      ) {
+        const stored = faxEditToColumnValue(pending.doctorFax);
+        if (stored !== pending.doctorFax) onDoctorEdit?.({ doctorFax: stored });
+      }
+      toast.success("Provider details saved to Monday");
+    } catch (e) {
+      toast.error("Couldn't save provider details", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSavingId((s) => (s === id ? null : s));
+    }
+  };
+
   return (
     <section
       className="rounded-2xl bg-card border p-6 shadow-sm border-t-4"
@@ -83,15 +159,32 @@ export function SendRequestHeaderCard({
     >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Patient</p>
-        <button
-          type="button"
-          onClick={() => setExpanded((e) => !e)}
-          aria-expanded={expanded}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronRight className={`h-4 w-4 transition-transform ${expanded ? "rotate-90" : ""}`} />
-          {expanded ? "Hide details" : "Show details"}
-        </button>
+        <div className="flex items-center gap-4">
+          {/* The provider editor used to be two clicks deep (Show details, then
+              a small Edit toggle) and reps could not find it. This opens both. */}
+          {onDoctorEdit && !(expanded && editing) && (
+            <button
+              type="button"
+              onClick={() => {
+                setExpanded(true);
+                setEditing(true);
+              }}
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[color:var(--mm-teal)] hover:underline"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit provider
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            aria-expanded={expanded}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronRight className={`h-4 w-4 transition-transform ${expanded ? "rotate-90" : ""}`} />
+            {expanded ? "Hide details" : "Show details"}
+          </button>
+        </div>
       </div>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 flex-wrap min-w-0">
@@ -217,8 +310,11 @@ export function SendRequestHeaderCard({
       {onDoctorEdit && editing && (
         <DoctorEditGrid
           patient={patient}
-          onDoctorEdit={onDoctorEdit}
+          onDoctorEdit={editProvider}
           editHint={editHint}
+          onSave={() => void saveProvider()}
+          saving={saving}
+          dirty={dirty}
         />
       )}
         </>

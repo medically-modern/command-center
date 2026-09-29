@@ -3,6 +3,8 @@
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
+import { faxEditToColumnValue } from "../shared/faxAddress";
+import { DOCTOR_EDIT_FIELDS, DOCTOR_FIELD_LABEL, type DoctorDraft, type DoctorEditField } from "./doctorEdits";
 const MONDAY_API_VERSION = "2024-10";
 export const BOARD_ID = "18406060017";
 
@@ -785,22 +787,51 @@ export async function writeEmail(itemId: string, columnId: string, email: string
  * Collects into a { label, run } task array for batching with other writes.
  */
 export function buildDoctorWriteTasks(
-  patient: { id: string; doctorName?: string; doctorNpi?: string; doctorPhone?: string; doctorEmail?: string; doctorFax?: string; clinicName?: string },
+  patient: { id: string } & DoctorDraft,
 ): { label: string; run: () => Promise<void> }[] {
   const tasks: { label: string; run: () => Promise<void> }[] = [];
-  if (patient.doctorName != null)
-    tasks.push({ label: "Doctor Name", run: () => writeText(patient.id, COL.doctorName, patient.doctorName ?? "") });
-  if (patient.doctorNpi != null)
-    tasks.push({ label: "Doctor NPI", run: () => writeText(patient.id, COL.doctorNpi, patient.doctorNpi ?? "") });
-  if (patient.doctorPhone != null)
-    tasks.push({ label: "Doctor Phone", run: () => writePhone(patient.id, COL.doctorPhone, patient.doctorPhone ?? "") });
-  if (patient.doctorEmail != null)
-    tasks.push({ label: "Doctor Email", run: () => writeEmail(patient.id, COL.doctorEmail, patient.doctorEmail ?? "") });
-  if (patient.doctorFax != null)
-    tasks.push({ label: "Doctor Fax", run: () => writeEmail(patient.id, COL.doctorFax, patient.doctorFax ?? "") });
-  if (patient.clinicName != null)
-    tasks.push({ label: "Clinic Name", run: () => writeDropdownLabels(patient.id, COL.clinicName, [patient.clinicName ?? ""]) });
+  for (const field of DOCTOR_EDIT_FIELDS) {
+    const value = patient[field];
+    if (value == null) continue;
+    tasks.push({ label: DOCTOR_FIELD_LABEL[field], run: () => DOCTOR_FIELD_WRITERS[field](patient.id, value) });
+  }
   return tasks;
+}
+
+/** One writer per provider field — shared by the stage advances above and the
+ *  header card's Save provider button, so the two cannot write a field two
+ *  different ways. */
+const DOCTOR_FIELD_WRITERS: Record<DoctorEditField, (itemId: string, value: string) => Promise<void>> = {
+  doctorName: (id, v) => writeText(id, COL.doctorName, v),
+  doctorNpi: (id, v) => writeText(id, COL.doctorNpi, v),
+  doctorPhone: (id, v) => writePhone(id, COL.doctorPhone, v),
+  // ⚠️ An EMAIL column holding `<digits>@rcfax.com`. A fax typed as a number
+  // used to go to writeEmail bare, which SKIPS a non-address — so a corrected
+  // fax never reached the board (faxEditToColumnValue).
+  doctorFax: (id, v) => writeEmail(id, COL.doctorFax, faxEditToColumnValue(v)),
+  doctorEmail: (id, v) => writeEmail(id, COL.doctorEmail, v),
+  clinicName: (id, v) => writeDropdownLabels(id, COL.clinicName, [v]),
+};
+
+/**
+ * Write the provider fields a rep changed, now — the header card's Save
+ * provider button. Check `unsavableDoctorFields` first: the phone and email
+ * writers skip what they can't parse rather than throw.
+ *
+ * Sequential, not parallel: several columns on one item, and a burst is how a
+ * partial save happens with no error to show for it (the DVS page's rule). No
+ * stage advancer is touched, so this is not a verified send (§5.2).
+ */
+export async function saveDoctorEdits(itemId: string, draft: DoctorDraft): Promise<void> {
+  for (const field of DOCTOR_EDIT_FIELDS) {
+    const value = draft[field];
+    if (value === undefined) continue;
+    try {
+      await DOCTOR_FIELD_WRITERS[field](itemId, value);
+    } catch (e) {
+      throw new Error(`${DOCTOR_FIELD_LABEL[field]}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 }
 
 // ---- Updates (referral email / item updates) ----

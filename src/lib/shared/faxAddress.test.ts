@@ -5,7 +5,37 @@
  * address, and splitFaxAddress is what lets the rep still type just the number.
  */
 import { describe, it, expect } from "vitest";
-import { toFaxAddress, splitFaxAddress } from "./faxAddress";
+import { toFaxAddress, splitFaxAddress, faxEditToColumnValue } from "./faxAddress";
+import { planEmailWrite } from "./emailCell";
+
+describe("faxEditToColumnValue", () => {
+  it("turns a typed number into the stored <digits>@rcfax.com shape", () => {
+    expect(faxEditToColumnValue("(215) 555-0100")).toBe("2155550100@rcfax.com");
+  });
+
+  it("gives writeEmail something it WRITES — the bare number used to be skipped", () => {
+    expect(planEmailWrite("2155550100").action).toBe("skip");
+    expect(planEmailWrite(faxEditToColumnValue("2155550100"))).toEqual({
+      action: "write",
+      email: "2155550100@rcfax.com",
+    });
+  });
+
+  it("leaves a stored rcfax value alone", () => {
+    expect(faxEditToColumnValue("2155550100@rcfax.com")).toBe("2155550100@rcfax.com");
+  });
+
+  it("never turns digit-less junk into a CLEAR", () => {
+    // toFaxAddress("n/a") is "", and "" clears the column.
+    expect(faxEditToColumnValue("n/a")).toBe("n/a");
+    expect(planEmailWrite(faxEditToColumnValue("n/a")).action).toBe("skip");
+  });
+
+  it("still clears on a deliberate blank", () => {
+    expect(faxEditToColumnValue("   ")).toBe("");
+    expect(planEmailWrite(faxEditToColumnValue("")).action).toBe("clear");
+  });
+});
 
 describe("toFaxAddress", () => {
   it("turns a bare number into <digits>@rcfax.com", () => {

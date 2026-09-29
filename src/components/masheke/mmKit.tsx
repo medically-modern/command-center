@@ -6,6 +6,7 @@
 import { useState, useEffect } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   AlertTriangle,
   Check,
@@ -218,20 +219,30 @@ function HeroField({
 // =====================================================================
 // Doctor edit grid — the six doctor inputs revealed by the header
 // card's Edit toggle. Display rows stay untouched; this strip appears
-// below them while editing. Same persistence model as the profile
-// card: edits go to the local overlay via onDoctorEdit and are written
-// to Monday by the page's existing save action.
+// below them while editing. Edits go to the local overlay via
+// onDoctorEdit; `onSave` (the header card's Save provider) writes them
+// to Monday now, and the stage's own advance still writes whatever is
+// left unsaved.
 // =====================================================================
 
 export function DoctorEditGrid({
   patient,
   onDoctorEdit,
   editHint,
+  onSave,
+  saving = false,
+  dirty = false,
 }: {
   patient: Patient;
   onDoctorEdit: (patch: Partial<Patient>) => void;
   /** Describes when edits persist to Monday. */
   editHint?: string;
+  /** Writes the changed fields to Monday now (the header card's Save
+   *  provider). Absent → no button, the grid is overlay-only as before. */
+  onSave?: () => void;
+  saving?: boolean;
+  /** Something was changed and not yet saved. */
+  dirty?: boolean;
 }) {
   return (
     <div
@@ -244,8 +255,22 @@ export function DoctorEditGrid({
       <HeroField label="Doctor Fax" value={patient.doctorFax} onChange={(v) => onDoctorEdit({ doctorFax: v })} />
       <HeroField label="Doctor Email" value={patient.doctorEmail} onChange={(v) => onDoctorEdit({ doctorEmail: v })} />
       <HeroField label="Clinic Name" value={patient.clinicName} onChange={(v) => onDoctorEdit({ clinicName: v })} />
-      {editHint && (
-        <p className="sm:col-span-2 lg:col-span-3 text-xs text-muted-foreground">{editHint}</p>
+      {(editHint || onSave) && (
+        <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-3 flex-wrap">
+          {editHint && <p className="text-xs text-muted-foreground flex-1 min-w-[200px]">{editHint}</p>}
+          {onSave && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onSave}
+              disabled={saving || !dirty}
+              className="ml-auto gap-1.5 text-white bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              {saving ? "Saving…" : "Save provider to Monday"}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

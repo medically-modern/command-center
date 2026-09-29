@@ -202,6 +202,10 @@ const DoctorAppointmentsPage = () => {
                   <SendRequestHeaderCard
                     patient={selected}
                     onDoctorEdit={(patch) => update(selected.id, patch)}
+                    // Nothing on this page writes provider edits except the
+                    // card's own Save provider — the default hint names Send
+                    // Request's Request Sent, which is not here.
+                    editHint="Save provider writes these to Monday. Edits you don't save stay in this browser only."
                     fullDetails
                   />
                   <DoctorAppointmentsPanel

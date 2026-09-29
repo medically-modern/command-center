@@ -157,7 +157,7 @@ const ConfirmReceiptPage = () => {
                   <SendRequestHeaderCard
                     patient={selected}
                     onDoctorEdit={(patch) => update(selected.id, patch)}
-                    editHint="Edits are saved to Monday when you Save Attempt (or via the Save button above)."
+                    editHint="Save provider writes these to Monday now. Anything unsaved is written when you Save Attempt."
                     fullDetails
                   />
                   <ConfirmReceiptPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} managerMode={isManager} onAdvanced={() => markAdvanced(selected.id)} />

@@ -74,6 +74,7 @@ import { buildRequestTemplate, titleCase } from "@/lib/masheke/requestTemplate";
 import { generateMnRequestPdf } from "@/lib/masheke/mnRequestPdf";
 import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { isPortalMethod } from "@/lib/masheke/requestDelivery";
+import { followDoctorContact } from "@/lib/masheke/doctorEdits";
 import { DISTRICT_ENDOCRINE_DASHBOARD_URL } from "@/lib/shared/partnerDashboard";
 import { toast } from "sonner";
 import {
@@ -1085,6 +1086,25 @@ function SendRequestComposer({
   const chanValue =
     method === "Email" ? patient.doctorEmail : method === "Fax" ? patient.doctorFax : patient.doctorPhone;
   const [recipients, setRecipients] = useState<string[]>(chanValue ? [chanValue] : []);
+  // ⚠️ Seeded at mount, the To box used to keep the old fax however the header
+  // card's Edit grid changed it — so the re-send went back to the bad number.
+  // It follows the doctor's contact now (`followDoctorContact`).
+  const prefillRef = useRef(chanValue ?? "");
+  // False once the rep removes the prefilled entry by hand: from then on the
+  // To box is theirs.
+  const followsDoctorRef = useRef(true);
+  useEffect(() => {
+    const prev = prefillRef.current;
+    const next = chanValue ?? "";
+    if (prev === next) return;
+    prefillRef.current = next;
+    if (!followsDoctorRef.current) return;
+    const followed = followDoctorContact(recipients, prev, next);
+    if (followed === null) followsDoctorRef.current = false;
+    else if (followed !== recipients) setRecipients(followed);
+    // Runs on the DOCTOR'S value only; `recipients` is read, not watched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chanValue]);
   const [recipInput, setRecipInput] = useState("");
   const [cc, setCc] = useState<string[]>([]);
   const [ccInput, setCcInput] = useState("");
