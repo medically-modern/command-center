@@ -4,7 +4,9 @@ import {
   cooldownFor,
   createCoalescer,
   createRcGuard,
+  rcShape,
   retryAfterMs,
+  shedWaitMs,
 } from "./rcLimiter.mjs";
 
 /**
@@ -222,5 +224,141 @@ describe("coalescing", () => {
     await expect(co.run("k", boom)).rejects.toThrow("429");
     await expect(co.run("k", boom)).rejects.toThrow("429");
     expect(calls).toBe(2);
+  });
+});
+
+/**
+ * 2026-09-28, 19:30–23:00 ET: a 15-minute job elsewhere burst ~20 call-log
+ * reads through the /rc proxy and took a HEAVY-group 429 every run. The
+ * breaker was one switch, so each 429 also refused reps' LIGHT message-store
+ * reads for the next minute. These pin the per-group breaker that replaced it.
+ */
+describe("the breaker is per RingCentral group", () => {
+  const CALL_LOG = rcShape("GET", "/restapi/v1.0/account/~/extension/~/call-log?view=Detailed");
+  const RECORDING = rcShape("GET", "https://media.ringcentral.com/restapi/v1.0/account/1/recording/2/content");
+  const THREAD = rcShape("GET", "/restapi/v1.0/account/~/extension/~/message-store?messageType=SMS");
+
+  it("a heavy-group throttle leaves light reads alone", () => {
+    const k = clock();
+    const g = createRcGuard(cfg, k.now);
+    g.note({ status: 200, shape: THREAD, group: "light" });
+    g.note({ status: 429, shape: CALL_LOG, group: "heavy", retryAfter: 20 * 60_000 });
+    const held = g.check({ tier: "background", caller: "comms-inbox", shape: CALL_LOG });
+    expect(held.ok).toBe(false);
+    expect(held.reason).toBe("breaker");
+    expect(held.breaker).toBe("group:heavy");
+    expect(g.check({ tier: "interactive", caller: "rep", shape: THREAD }).ok).toBe(true);
+  });
+
+  it("holds every shape RingCentral puts in the throttled group", () => {
+    const k = clock();
+    const g = createRcGuard(cfg, k.now);
+    g.note({ status: 200, shape: RECORDING, group: "heavy" });
+    g.note({ status: 429, shape: CALL_LOG, group: "heavy" });
+    expect(g.check({ tier: "background", caller: "call-archive", shape: RECORDING }).ok).toBe(false);
+  });
+
+  // The old breaker closed on ANY success, so a light read getting through
+  // re-opened the door on a group RingCentral was still refusing.
+  it("is not closed by a success in another group", () => {
+    const k = clock();
+    const g = createRcGuard(cfg, k.now);
+    g.note({ status: 429, shape: CALL_LOG, group: "heavy", retryAfter: 20 * 60_000 });
+    g.note({ status: 200, shape: THREAD, group: "light" });
+    expect(g.check({ tier: "background", caller: "p", shape: CALL_LOG }).ok).toBe(false);
+    expect(Object.keys(g.snapshot().breakers)).toEqual(["group:heavy"]);
+  });
+
+  it("is closed by a success in its own group", () => {
+    const k = clock();
+    const g = createRcGuard(cfg, k.now);
+    g.note({ status: 429, shape: CALL_LOG, group: "heavy" });
+    g.note({ status: 200, shape: RECORDING, group: "heavy" });     // e.g. a critical call got through
+    expect(g.check({ tier: "background", caller: "p", shape: CALL_LOG }).ok).toBe(true);
+    expect(g.snapshot().breakerOpen).toBe(false);
+  });
+
+  // No X-Rate-Limit-Group on the 429 (or the first call after a boot): the
+  // shape holds itself, so it knocks once, and nothing else is shed with it.
+  it("holds an unknown-group shape by itself", () => {
+    const k = clock();
+    const g = createRcGuard(cfg, k.now);
+    g.note({ status: 429, shape: CALL_LOG });
+    const held = g.check({ tier: "background", caller: "p", shape: CALL_LOG });
+    expect(held.ok).toBe(false);
+    expect(held.breaker).toBe(`shape:${CALL_LOG}`);
+    expect(g.check({ tier: "background", caller: "p", shape: THREAD }).ok).toBe(true);
+  });
+
+  it("still lets a ringing call through a throttled group", () => {
+    const k = clock();
+    const g = createRcGuard(cfg, k.now);
+    g.note({ status: 429, shape: CALL_LOG, group: "heavy" });
+    expect(g.check({ tier: "critical", caller: "rep", shape: CALL_LOG }).ok).toBe(true);
+  });
+
+  it("reports which group is open, keeping the old any-group fields", () => {
+    const k = clock();
+    const g = createRcGuard(cfg, k.now);
+    g.note({ status: 429, shape: CALL_LOG, group: "heavy", retryAfter: 90_000 });
+    const snap = g.snapshot();
+    expect(snap.breakerOpen).toBe(true);
+    expect(snap.breakerOpenForMs).toBe(90_000);
+    expect(snap.consecutive429s).toBe(1);
+    expect(snap.breakers["group:heavy"]).toEqual({ openForMs: 90_000, consecutive429s: 1 });
+  });
+});
+
+describe("honouring RingCentral's Retry-After", () => {
+  // The old 15-minute cap cut short any longer Retry-After.
+  it("waits the whole time RingCentral asks for, past the old 15-minute cap", () => {
+    const k = clock();
+    const g = createRcGuard(DEFAULTS, k.now);
+    const shape = rcShape("GET", "/restapi/v1.0/account/~/extension/~/call-log");
+    expect(g.note({ status: 429, shape, group: "heavy", retryAfter: 40 * 60_000 }).waitMs).toBe(40 * 60_000);
+    k.advance(39 * 60_000);
+    expect(g.check({ tier: "background", caller: "p", shape }).ok).toBe(false);
+    k.advance(60_000 + 1);
+    expect(g.check({ tier: "background", caller: "p", shape }).ok).toBe(true);
+  });
+
+  it("keeps a ceiling, for a malformed header", () => {
+    expect(DEFAULTS.maxCooldownMs).toBe(60 * 60_000);
+    expect(cooldownFor(1, 6 * 60 * 60_000)).toBe(60 * 60_000);
+  });
+});
+
+describe("rcShape", () => {
+  it("drops the query and every id, keeps the words", () => {
+    expect(rcShape("get", "/restapi/v1.0/account/~/extension/~/call-log/Z8IwUePkQ0TAkA?view=Detailed"))
+      .toBe("GET /restapi/v1.0/account/~/extension/~/call-log/:id");
+    expect(rcShape("GET", "/restapi/v1.0/account/~/extension/~/message-store/12345/content/67890"))
+      .toBe("GET /restapi/v1.0/account/~/extension/~/message-store/:id/content/:id");
+    expect(rcShape("DELETE", "/restapi/v1.0/subscription/5a2c5bec-d207-402d-aaac-cb278d67bc61"))
+      .toBe("DELETE /restapi/v1.0/subscription/:id");
+    expect(rcShape("GET", "/restapi/v1.0/client-info/sip-provision"))
+      .toBe("GET /restapi/v1.0/client-info/sip-provision");
+  });
+
+  it("keys an absolute media URL on its path, and keeps methods apart", () => {
+    expect(rcShape("GET", "https://media.ringcentral.com/restapi/v1.0/account/2160844013/recording/98765/content"))
+      .toBe("GET /restapi/v1.0/account/:id/recording/:id/content");
+    expect(rcShape("POST", "/restapi/v1.0/account/~/extension/~/sms"))
+      .not.toBe(rcShape("GET", "/restapi/v1.0/account/~/extension/~/sms"));
+  });
+});
+
+describe("shedWaitMs", () => {
+  it("rides out a budget shed", () => {
+    expect(shedWaitMs("45", 30_000)).toBe(45_000);
+    expect(shedWaitMs(null, 30_000)).toBe(30_000);
+  });
+
+  // A breaker refusal can now last an hour. The archive scans used to sleep
+  // through whatever they were told, five times a page, holding their lock.
+  it("gives up on a long breaker instead of sleeping through it", () => {
+    expect(shedWaitMs("1800", 30_000)).toBeNull();
+    expect(shedWaitMs(String(DEFAULTS.maxShedWaitMs / 1000), 30_000)).toBe(DEFAULTS.maxShedWaitMs);
+    expect(shedWaitMs("600", 30_000, 15 * 60_000)).toBe(600_000);
   });
 });

@@ -58,7 +58,7 @@
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { rcConfigured, rcMediaFetch, rcApiFetch } from "./ringcentral.mjs";
-import { retryAfterMs } from "./rcLimiter.mjs";
+import { shedWaitMs } from "./rcLimiter.mjs";
 import { authEnforced } from "./auth.mjs";
 import { phoneHmac } from "./phoneHash.mjs";
 import {
@@ -360,7 +360,13 @@ async function scanCallLog({ pool, days, now, stats }) {
       // Honour whoever refused us. rcLimiter's own refusal carries a
       // Retry-After, and so does a real RingCentral 429 — reading it is the
       // difference between waiting the right amount and guessing.
-      await sleep(retryAfterMs(res.headers.get("retry-after")) || SHED_PAUSE_MS);
+      // ⚠️ But not for long: a breaker refusal lasts as long as RingCentral
+      // asks (up to an hour), and sleeping through it here holds `running`
+      // and starves the next run. Past `shedWaitMs`'s ceiling the scan stops
+      // and the next run re-reads the window.
+      const wait = shedWaitMs(res.headers.get("retry-after"), SHED_PAUSE_MS);
+      if (wait === null) break;
+      await sleep(wait);
     }
     if (!up) {
       // Out of retries. NOT an error: the window is simply not fully read this

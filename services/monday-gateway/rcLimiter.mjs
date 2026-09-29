@@ -31,9 +31,33 @@
  * 2. BUDGET     a hard ceiling on RingCentral calls per window, globally and
  *               per caller. Coalescing handles duplicates; this handles volume
  *               that isn't duplicated.
- * 3. BREAKER    when RingCentral says 429, STOP CALLING IT. Knocking while
- *               throttled is what turns a 60-second window into an afternoon.
- *               Honours RingCentral's own Retry-After when it sends one.
+ * 3. BREAKER    when RingCentral says 429, STOP CALLING THAT GROUP. Knocking
+ *               while throttled is what turns a 60-second window into an
+ *               afternoon. Honours RingCentral's own Retry-After when it sends
+ *               one — up to `maxCooldownMs`, which is a guard against a
+ *               malformed header, not an override of RingCentral.
+ *
+ * ── ⚠️ The breaker is per RingCentral API GROUP (2026-09-29) ─────────────────
+ * RingCentral meters by group — `light`, `medium`, `heavy` — and says which one
+ * a request is in on every response (`X-Rate-Limit-Group`). The call log and
+ * recordings are `heavy`; message-store reads are `light` or `medium`.
+ *
+ * On 2026-09-28 a job outside this repo (stedi-monday-integration's reorder
+ * contact stamping: every 15 minutes, 8am–11pm ET) sent up to 20 call-log
+ * reads through the /rc proxy in about ten seconds — twice the heavy group's
+ * ~10 a minute. Every run from 19:30 to 23:00 ET ended in a 429, and each one
+ * opened the ONE breaker for the whole gateway: for the next minute or so
+ * every non-critical RingCentral read was refused, reps' message-store
+ * (light) reads and the calls monitor's subscription probe included, while
+ * fax-intake's message-store reads on the same account — outside the gateway
+ * — succeeded throughout. A heavy-group throttle is now a heavy-group pause.
+ *
+ * So each request is keyed by its SHAPE (`rcShape`: method + path, ids
+ * stripped), the guard learns shape → group from RingCentral's own header, and
+ * a 429 opens the breaker for that group only. A success closes that group
+ * only — a light read getting through says nothing about the heavy group. A
+ * shape whose group is not known yet (first call after a boot, or a 429 with
+ * no group header) is held by its own shape, so it knocks at most once.
  *
  * ── ⚠️ Tiers: what must never be shed ───────────────────────────────────────
  * A limiter that blocks everything equally would make a bad afternoon worse.
@@ -64,8 +88,17 @@ export const DEFAULTS = {
   maxPerCallerPerWindow: 40,
   /** Breaker cooldowns while RingCentral keeps saying 429, in order. */
   cooldownsMs: [30_000, 120_000, 300_000],
-  /** Never sit out longer than this, even if RingCentral asks for more. */
-  maxCooldownMs: 15 * 60_000,
+  /** Never sit out longer than this, even if RingCentral asks for more.
+   *  ⚠️ This used to be 15 minutes, which cut short any longer Retry-After.
+   *  With the breaker per group, honouring RingCentral in full costs only the
+   *  throttled group, so this is now a guard against a malformed header, not
+   *  a way to second-guess a real one. RC_MAX_COOLDOWN_MIN overrides it
+   *  (ringcentral.mjs). */
+  maxCooldownMs: 60 * 60_000,
+  /** The longest a background SCAN should sleep on a refused page before it
+   *  stops paging and leaves the rest to its next run (`shedWaitMs`). Rides
+   *  out a budget shed (the 60s window) and the breaker's first two steps. */
+  maxShedWaitMs: 2 * 60_000,
   /** Fraction of the budget above which BACKGROUND polling is refused, leaving
    *  the rest for work a human is waiting on. */
   backgroundFloor: 0.7,
@@ -80,6 +113,42 @@ export function retryAfterMs(headerValue) {
   const seconds = Number(String(headerValue).trim());
   if (!Number.isFinite(seconds) || seconds <= 0) return 0;
   return Math.round(seconds * 1000);
+}
+
+/**
+ * The key a RingCentral request is budgeted and broken under: its method and
+ * path, with the query string and every id-shaped segment removed, so one
+ * call-log record and the next are the same shape. Absolute media URLs
+ * (media.ringcentral.com) key on their path.
+ *
+ * An id is a segment of digits, or an 8+ character token containing a digit
+ * (UUIDs, RingCentral's base64-ish record ids). `v1.0`, `~` and every word
+ * segment are kept.
+ */
+export function rcShape(method = "GET", pathOrUrl = "") {
+  let p = String(pathOrUrl || "");
+  const abs = /^[a-z][a-z0-9+.-]*:\/\/[^/]+(\/[^?#]*)?/i.exec(p);
+  if (abs) p = abs[1] || "/";
+  p = p.split(/[?#]/)[0];
+  const segs = p.split("/").map((seg) =>
+    /^\d+$/.test(seg) || (seg.length >= 8 && /\d/.test(seg) && /^[\w.-]+$/.test(seg)) ? ":id" : seg,
+  );
+  return `${String(method || "GET").toUpperCase()} ${segs.join("/")}`;
+}
+
+/**
+ * How long a background scan should wait before retrying a refused page, or
+ * `null` to stop paging now.
+ *
+ * The archive scans retry a refused page to ride out a BUDGET shed, which
+ * clears inside the 60s window. A BREAKER refusal now lasts as long as
+ * RingCentral asks, and sleeping through that inside a run would hold the
+ * run's lock for hours and starve the next scheduled run. Anything longer
+ * than `maxWaitMs` ends the scan; the next run re-reads the same window.
+ */
+export function shedWaitMs(retryAfterHeader, fallbackMs, maxWaitMs = DEFAULTS.maxShedWaitMs) {
+  const wait = retryAfterMs(retryAfterHeader) || fallbackMs;
+  return wait > maxWaitMs ? null : wait;
 }
 
 /**
@@ -103,10 +172,14 @@ export function cooldownFor(consecutive429s, retryAfter = 0, cfg = DEFAULTS) {
  * The guard itself. `now()` is injectable so the tests don't sleep.
  *
  * Usage at the call site:
- *   const verdict = guard.check({ tier, caller });
+ *   const shape = rcShape(method, path);
+ *   const verdict = guard.check({ tier, caller, shape });
  *   if (!verdict.ok) → refuse, with verdict.retryAfterMs
  *   ... make the RingCentral call ...
- *   guard.note({ status, retryAfter });
+ *   guard.note({ status, retryAfter, shape, group: <X-Rate-Limit-Group> });
+ *
+ * Called without a shape (the tests, and nothing in production) everything
+ * shares one breaker — the pre-2026-09-29 behaviour.
  */
 export function createRcGuard(cfg = {}, now = () => Date.now()) {
   const c = { ...DEFAULTS, ...cfg };
@@ -114,9 +187,31 @@ export function createRcGuard(cfg = {}, now = () => Date.now()) {
   let calls = [];
   /** caller → timestamps. */
   const byCaller = new Map();
-  let openUntil = 0;
-  let consecutive429s = 0;
+  /** shape → RingCentral rate-limit group, learned from X-Rate-Limit-Group. */
+  const groupOf = new Map();
+  /** breaker key (`group:heavy`, `shape:GET …`, or ALL) → { openUntil, consecutive429s } */
+  const breakers = new Map();
   let shed = 0;
+
+  const ALL = "all";
+  const MAX_SHAPES = 500;          // shapes are finite once ids are stripped; this is a backstop
+  const learn = (shape, group) => {
+    if (!shape || !group) return;
+    if (!groupOf.has(shape) && groupOf.size >= MAX_SHAPES) groupOf.delete(groupOf.keys().next().value);
+    groupOf.set(shape, String(group).toLowerCase());
+  };
+  /** Every breaker that can hold this shape back: its group's, and its own. */
+  const keysFor = (shape) => {
+    if (!shape) return [ALL];
+    const g = groupOf.get(shape);
+    return g ? [`group:${g}`, `shape:${shape}`] : [`shape:${shape}`];
+  };
+  /** The one breaker a response for this shape opens or closes. */
+  const keyFor = (shape, group) => {
+    const g = (group && String(group).toLowerCase()) || (shape ? groupOf.get(shape) : null);
+    if (g) return `group:${g}`;
+    return shape ? `shape:${shape}` : ALL;
+  };
 
   const prune = (t) => {
     const floor = t - c.windowMs;
@@ -136,7 +231,7 @@ export function createRcGuard(cfg = {}, now = () => Date.now()) {
      * still RECORDED, so the budget reflects real load and a flood of critical
      * work is visible in the snapshot rather than invisible.
      */
-    check({ tier = "background", caller = "anon" } = {}) {
+    check({ tier = "background", caller = "anon", shape = "" } = {}) {
       const t = now();
       prune(t);
 
@@ -145,14 +240,18 @@ export function createRcGuard(cfg = {}, now = () => Date.now()) {
         return { ok: true, tier };
       }
 
-      if (t < openUntil) {
-        shed += 1;
-        return {
-          ok: false,
-          reason: "breaker",
-          retryAfterMs: openUntil - t,
-          message: "RingCentral is rate-limiting this account; pausing calls to let it recover.",
-        };
+      for (const key of keysFor(shape)) {
+        const b = breakers.get(key);
+        if (b && t < b.openUntil) {
+          shed += 1;
+          return {
+            ok: false,
+            reason: "breaker",
+            breaker: key,
+            retryAfterMs: b.openUntil - t,
+            message: "RingCentral is rate-limiting this kind of request; pausing it to let it recover.",
+          };
+        }
       }
 
       if (calls.length >= c.maxPerWindow) {
@@ -195,35 +294,59 @@ export function createRcGuard(cfg = {}, now = () => Date.now()) {
     },
 
     /**
-     * Record what RingCentral said. A 429 opens the breaker; any success closes
-     * it, because the throttle is over the moment a call gets through.
+     * Record what RingCentral said. A 429 opens the breaker for that request's
+     * GROUP; a success closes that group's breaker, because its throttle is
+     * over the moment one of its calls gets through. A success in ANOTHER
+     * group closes nothing — it says nothing about this one.
      */
-    note({ status, retryAfter = 0 } = {}) {
+    note({ status, retryAfter = 0, shape = "", group = "" } = {}) {
       const t = now();
+      learn(shape, group);
+      const key = keyFor(shape, group);
       if (status === 429) {
-        consecutive429s += 1;
-        const wait = cooldownFor(consecutive429s, retryAfter, c);
-        openUntil = Math.max(openUntil, t + wait);
-        return { open: true, until: openUntil, waitMs: wait, consecutive429s };
+        const b = breakers.get(key) || { openUntil: 0, consecutive429s: 0 };
+        b.consecutive429s += 1;
+        const wait = cooldownFor(b.consecutive429s, retryAfter, c);
+        b.openUntil = Math.max(b.openUntil, t + wait);
+        breakers.set(key, b);
+        return { open: true, until: b.openUntil, waitMs: wait, consecutive429s: b.consecutive429s, key };
       }
       if (typeof status === "number" && status < 500) {
-        consecutive429s = 0;
-        openUntil = 0;
+        breakers.delete(key);
+        if (shape) breakers.delete(`shape:${shape}`);
       }
-      return { open: t < openUntil, until: openUntil, consecutive429s };
+      const b = breakers.get(key);
+      return {
+        open: !!b && t < b.openUntil,
+        until: b ? b.openUntil : 0,
+        consecutive429s: b ? b.consecutive429s : 0,
+        key,
+      };
     },
 
-    /** For /calls/health and the humans reading it. Counts only, no identities. */
+    /** For /calls/health and the humans reading it. Counts only, no identities.
+     *  The top-level breaker fields read "any group" so older readers keep
+     *  working; `breakers` names which ones are open. */
     snapshot() {
       const t = now();
       prune(t);
+      const open = {};
+      let openForMs = 0;
+      let worst = 0;
+      for (const [key, b] of breakers) {
+        const left = Math.max(0, b.openUntil - t);
+        worst = Math.max(worst, b.consecutive429s);
+        openForMs = Math.max(openForMs, left);
+        if (left > 0) open[key] = { openForMs: left, consecutive429s: b.consecutive429s };
+      }
       return {
         callsInWindow: calls.length,
         maxPerWindow: c.maxPerWindow,
         callers: byCaller.size,
-        breakerOpen: t < openUntil,
-        breakerOpenForMs: Math.max(0, openUntil - t),
-        consecutive429s,
+        breakerOpen: openForMs > 0,
+        breakerOpenForMs: openForMs,
+        consecutive429s: worst,
+        breakers: open,
         shed,
       };
     },
@@ -232,8 +355,8 @@ export function createRcGuard(cfg = {}, now = () => Date.now()) {
     reset() {
       calls = [];
       byCaller.clear();
-      openUntil = 0;
-      consecutive429s = 0;
+      groupOf.clear();
+      breakers.clear();
       shed = 0;
     },
   };

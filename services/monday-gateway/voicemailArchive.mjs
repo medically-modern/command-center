@@ -65,7 +65,7 @@
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { rcConfigured, rcMediaFetch, rcApiFetch } from "./ringcentral.mjs";
-import { retryAfterMs } from "./rcLimiter.mjs";
+import { shedWaitMs } from "./rcLimiter.mjs";
 import { authEnforced } from "./auth.mjs";
 import { phoneHmac } from "./phoneHash.mjs";
 import {
@@ -348,8 +348,12 @@ export async function scanMessageStore({ pool, now, stats }) {
       stats.shedHits++;
       if (attempt === SHED_RETRIES) break;
       // Honour whoever refused us — rcLimiter's own refusal carries a
-      // Retry-After, and so does a real RingCentral 429.
-      await sleep(retryAfterMs(res.headers.get("retry-after")) || SHED_PAUSE_MS);
+      // Retry-After, and so does a real RingCentral 429. ⚠️ Not for long: a
+      // breaker refusal can last an hour, and sleeping through it here holds
+      // `running` (see callArchive's scan for the same guard).
+      const wait = shedWaitMs(res.headers.get("retry-after"), SHED_PAUSE_MS);
+      if (wait === null) break;
+      await sleep(wait);
     }
     if (!up) {
       // ⚠️⚠️ Out of retries, and NOT an error. `background` is the tier

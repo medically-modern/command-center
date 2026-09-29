@@ -148,6 +148,18 @@
   reach RingCentral again, but the SPA still has no client-side guard. Full write-up:
   [`INCIDENT_2026-08-20_RINGCENTRAL.md`](../../INCIDENT_2026-08-20_RINGCENTRAL.md) — read rule 2
   there before putting a hook's return value in a dependency array.
+  ⚠️ **The limiter's breaker is per RingCentral API group since 2026-09-29.** On 2026-09-28,
+  19:30–23:00 ET, stedi-monday-integration's reorder contact stamping (every 15 min, 8am–11pm
+  ET) sent ~20 call-log reads through `/rc` in ten seconds — twice the `heavy` group's ~10/min —
+  and took a 429 every run. The breaker was one switch, so each 429 also refused reps' `light`
+  message-store reads (texts, fax count) for the next minute, and the calls monitor's
+  subscription probe with them. Now a 429 pauses only the group RingCentral names in
+  `X-Rate-Limit-Group`, for as long as its `Retry-After` asks (up to `maxCooldownMs`, 60 min,
+  `RC_MAX_COOLDOWN_MIN`; it was 15). `/calls/health` → `rcGuard.breakers` names the paused
+  group, and each 429 logs its group, Retry-After and limit. ⚠️ `/rc` takes non-browser
+  callers (CORS stops only browsers) and the per-caller budget (40/min) is four times the heavy
+  group's allowance, so a server-side caller can still exhaust the call log for everyone; the
+  gateway HTTP log's `srcIp` / `clientUa` is how to find it.
 - **A completed patient can still be re-advanced from Patient Intake — KNOWN, deliberately left**
   (Josh, 2026-09-01: detection only for now). `UnverifiedReferralsPage` is the only intake-family
   page with no `useCompletedStageReview` / `reviewMode` gate, and `useMondayPatients` injects a

@@ -616,7 +616,12 @@ describe("callArchive.mjs invariants", () => {
     const scan = src.slice(src.indexOf("async function scanCallLog"), src.indexOf("async function drainAudioQueue"));
     expect(scan).toMatch(/status !== 429/);
     expect(scan).toMatch(/SHED_RETRIES/);
-    expect(scan).toMatch(/retryAfterMs\(res\.headers\.get\("retry-after"\)\)/);
+    // Honours whoever refused it (rcLimiter or RingCentral) — through
+    // shedWaitMs since 2026-09-29, which also ENDS the page when the refusal is
+    // a long breaker: sleeping through an hour-long pause five times a page
+    // would hold `running` and starve the next run.
+    expect(scan).toMatch(/shedWaitMs\(res\.headers\.get\("retry-after"\), SHED_PAUSE_MS\)/);
+    expect(scan).toMatch(/if \(wait === null\) break;/);
     expect(scan).toMatch(/stats\.shed = true;\s*\n\s*return;/);
     // Any OTHER bad status must still be loud — a 403 is a missing permission.
     expect(scan).toMatch(/if \(!up\.ok\) throw new Error/);

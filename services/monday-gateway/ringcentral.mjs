@@ -17,7 +17,7 @@
  */
 import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 import { pathAllowed, fetchUrlAllowed } from "./rcAllowlist.mjs";
-import { createCoalescer, createRcGuard, retryAfterMs } from "./rcLimiter.mjs";
+import { createCoalescer, createRcGuard, rcShape, retryAfterMs } from "./rcLimiter.mjs";
 
 const RC_SERVER = (process.env.RC_SERVER || "https://platform.ringcentral.com").replace(/\/+$/, "");
 const { RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT } = process.env;
@@ -47,13 +47,17 @@ export const SIP_PROVISION_PATH = "/restapi/v1.0/client-info/sip-provision";
  * inbound-call subscription along with it. See rcLimiter.mjs for the full rules.
  *
  * Env overrides exist so this can be tuned without a code change during an
- * incident: RC_MAX_PER_MIN, RC_MAX_PER_CALLER_PER_MIN, RC_COALESCE_MS.
+ * incident: RC_MAX_PER_MIN, RC_MAX_PER_CALLER_PER_MIN, RC_COALESCE_MS, and
+ * RC_MAX_COOLDOWN_MIN (the ceiling on honouring RingCentral's Retry-After,
+ * default 60 — see rcLimiter.mjs for why it is no longer 15).
  */
+const maxCooldownMin = Number(process.env.RC_MAX_COOLDOWN_MIN);
 const rcGuard = createRcGuard({
   ...(process.env.RC_MAX_PER_MIN ? { maxPerWindow: Number(process.env.RC_MAX_PER_MIN) } : {}),
   ...(process.env.RC_MAX_PER_CALLER_PER_MIN
     ? { maxPerCallerPerWindow: Number(process.env.RC_MAX_PER_CALLER_PER_MIN) }
     : {}),
+  ...(Number.isFinite(maxCooldownMin) && maxCooldownMin > 0 ? { maxCooldownMs: maxCooldownMin * 60_000 } : {}),
 });
 const rcCoalescer = createCoalescer(Number(process.env.RC_COALESCE_MS) || undefined);
 
@@ -75,7 +79,12 @@ class RcRefused extends Error {
 function refusalResponse(verdict) {
   const seconds = Math.max(1, Math.ceil((verdict.retryAfterMs || 0) / 1000));
   return new Response(
-    JSON.stringify({ error: verdict.message, reason: verdict.reason, retryAfterMs: verdict.retryAfterMs }),
+    JSON.stringify({
+      error: verdict.message,
+      reason: verdict.reason,
+      ...(verdict.breaker ? { breaker: verdict.breaker } : {}),
+      retryAfterMs: verdict.retryAfterMs,
+    }),
     { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(seconds) } },
   );
 }
@@ -125,9 +134,10 @@ export async function rcApiFetch(path, init = {}, opts = {}) {
   // becomes exempt from the budget, and nothing existing gets shed first.
   const tier = opts.tier || "interactive";
   const caller = opts.caller || "gateway";
+  const shape = rcShape(method, path);
 
   const callUpstream = async () => {
-    const verdict = rcGuard.check({ tier, caller });
+    const verdict = rcGuard.check({ tier, caller, shape });
     if (!verdict.ok) throw new RcRefused(verdict);
 
     const go = (token) =>
@@ -141,14 +151,7 @@ export async function rcApiFetch(path, init = {}, opts = {}) {
       token = await rcAccessToken(true);
       res = await go(token);
     }
-    rcGuard.note({ status: res.status, retryAfter: retryAfterMs(res.headers.get("retry-after")) });
-    // Which budget this path is actually in, from RingCentral's own header.
-    // Their docs tell you to read it rather than trust the published tables,
-    // and it is the only way to size a paced job against the real ceiling.
-    noteRateLimitGroup(path.split("?")[0], res.headers.get("x-rate-limit-group"));
-    if (res.status === 429) {
-      console.warn(`RingCentral 429 on ${path.split("?")[0]} — pausing non-critical calls`);
-    }
+    noteUpstream(path.split("?")[0], shape, res);
     return res;
   };
 
@@ -216,7 +219,8 @@ export async function rcMediaFetch(rawUrl, opts = {}) {
   }
   if (!fetchUrlAllowed(u)) throw new Error("RingCentral media url not allowed");
 
-  const verdict = rcGuard.check({ tier: opts.tier || "interactive", caller: opts.caller || "gateway" });
+  const shape = rcShape("GET", u.pathname);
+  const verdict = rcGuard.check({ tier: opts.tier || "interactive", caller: opts.caller || "gateway", shape });
   if (!verdict.ok) return refusalResponse(verdict);
 
   const pull = (token) => fetch(u.toString(), { headers: { Authorization: `Bearer ${token}` } });
@@ -226,13 +230,42 @@ export async function rcMediaFetch(rawUrl, opts = {}) {
     token = await rcAccessToken(true);
     up = await pull(token);
   }
-  rcGuard.note({ status: up.status, retryAfter: retryAfterMs(up.headers.get("retry-after")) });
-  // ⚠️ The rate-limit GROUP is logged once per distinct value. RingCentral's own
-  // recordings guide says to read this header rather than trust a doc page, and
-  // it is the only authoritative statement of which budget this endpoint is in
-  // — which is what settles callArchiveRules' RECORDING_GAP_MS with a fact.
-  noteRateLimitGroup(u.pathname, up.headers.get("x-rate-limit-group"));
+  // ⚠️ The rate-limit GROUP is logged once per distinct value (noteUpstream).
+  // RingCentral's own recordings guide says to read this header rather than
+  // trust a doc page, and it is the only authoritative statement of which
+  // budget this endpoint is in — which is what settles callArchiveRules'
+  // RECORDING_GAP_MS with a fact.
+  noteUpstream(u.pathname, shape, up);
   return up;
+}
+
+/**
+ * Tell the guard what RingCentral said, in its own words: the status, its
+ * Retry-After, and the rate-limit GROUP the request was metered in — which is
+ * what scopes the breaker to the throttled group (rcLimiter.mjs).
+ *
+ * ⚠️ A 429 logs everything RingCentral said about it. On 2026-09-28 the only
+ * trace of an evening of throttling was "429 on …/call-log" every 15 minutes:
+ * nothing said which group, what RingCentral's limit was or how long it asked
+ * us to wait, and the rhythm was first misread as this gateway's own 15-minute
+ * retry cap. It was a caller's schedule (rcLimiter.mjs). This line is one per
+ * breaker opening, not one per refused request.
+ */
+function noteUpstream(pathname, shape, res) {
+  const group = res.headers.get("x-rate-limit-group");
+  const retryAfter = retryAfterMs(res.headers.get("retry-after"));
+  const n = rcGuard.note({ status: res.status, retryAfter, shape, group });
+  noteRateLimitGroup(pathname, group);
+  if (res.status === 429) {
+    const limit = res.headers.get("x-rate-limit-limit");
+    const windowS = res.headers.get("x-rate-limit-window");
+    console.warn(
+      `RingCentral 429 on ${pathname} — group ${group || "unknown"}, ` +
+        `Retry-After ${retryAfter ? `${Math.round(retryAfter / 1000)}s` : "none"}` +
+        (limit ? `, limit ${limit} per ${windowS || "?"}s` : "") +
+        ` — pausing ${n.key} for ${Math.round(n.waitMs / 1000)}s (#${n.consecutive429s} in a row)`,
+    );
+  }
 }
 
 /** Log each (path shape, rate-limit group) pair once. Once, because this runs
