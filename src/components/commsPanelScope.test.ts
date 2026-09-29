@@ -65,6 +65,15 @@ describe("the Communications side panel is the Care Coordinator card's alone", (
     expect(button).toContain("onInteractOutside={(e) => e.preventDefault()}");
   });
 
+  it("⚠️ a Welcome Call card docks the panel LEFT, over Patient Intake — never over its own column (Brandon, 2026-09-29)", () => {
+    const card = code(join(SRC, "components/careCoordinator/PatientCard.tsx"));
+    expect(card).toContain('commsPanelSide={variant === "welcome" ? "left" : "right"}');
+    expect(read("components/masheke/mmKit.tsx")).toContain("panelSide={commsPanelSide}");
+    const button = read("components/comms/CommunicationsButton.tsx");
+    expect(button).toContain('panelSide = "right"');
+    expect(button).toMatch(/panelSide === "left"\s*\?\s*"inset-y-0 left-0/);
+  });
+
   it("stacks the fallback's texts and calls in the narrow panel", () => {
     // `lg:grid-cols-2` is a VIEWPORT breakpoint: in a ~760px panel on a wide
     // screen it would squeeze each half to ~380px.

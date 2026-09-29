@@ -16,7 +16,7 @@
  * ⚠️ Callers KEY this on the number, so a draft can never follow the rep onto a
  * different thread.
  */
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Loader2, Send, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
 import { mmPhoneNumber } from "@/lib/fax/ringcentralApi";
@@ -68,7 +68,19 @@ interface Props {
   variant?: "box" | "line";
   /** The line look's placeholder — "Write a text…" unless the caller names the number. */
   placeholder?: string;
+  /**
+   * The box GROWS with what is in it, up to about half the screen, then
+   * scrolls (Brandon, 2026-09-29: *"Expand text box in insurance follow-up so
+   * easier to send long texts"* — Start Insurance Follow-Up seeds a
+   * paragraph and an upload link into a two-line box). ⚠️ OPT-IN: the
+   * Communications popup passes it; every other box is the two lines it
+   * always was (§9: change the screen that asked).
+   */
+  grow?: boolean;
 }
+
+/** The tallest a growing box gets, as a share of the window. */
+const GROW_MAX_VH = 0.45;
 
 export default function Composer({
   conversation,
@@ -78,6 +90,7 @@ export default function Composer({
   onDraftChange,
   variant = "box",
   placeholder,
+  grow = false,
 }: Props) {
   const { consent, loading, error } = conversation;
   const [ownDraft, setOwnDraft] = useState("");
@@ -85,6 +98,18 @@ export default function Composer({
   const draft = held ? heldDraft : ownDraft;
   const setDraft: (text: string) => void = held && onDraftChange ? onDraftChange : setOwnDraft;
   const [sending, setSending] = useState(false);
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+
+  // Fit the box to its text on every change — a seeded template included.
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!grow || !el) return;
+    el.style.height = "auto";
+    const max = Math.round(window.innerHeight * GROW_MAX_VH);
+    const want = el.scrollHeight + 2;
+    el.style.height = `${Math.min(want, max)}px`;
+    el.style.overflowY = want > max ? "auto" : "hidden";
+  }, [grow, draft]);
 
   /** ⚠️ Explicit No only — see the prop's note. */
   const textingOff = canText === "no";
@@ -192,6 +217,7 @@ export default function Composer({
         <div className="shrink-0 border-t border-border bg-card p-3">
           <div className="flex items-end gap-2">
             <textarea
+              ref={boxRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -200,7 +226,7 @@ export default function Composer({
                   void send();
                 }
               }}
-              rows={2}
+              rows={grow ? 3 : 2}
               placeholder={`Text from ${fmtPhone(mmPhoneNumber())}…`}
               className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
             />

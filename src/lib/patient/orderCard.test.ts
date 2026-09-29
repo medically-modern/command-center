@@ -15,6 +15,7 @@ import {
   orderNumberLabel,
   orderPill,
   orderShipments,
+  orderShipmentsFromLines,
   selectedOrderSentence,
 } from "./orderCard";
 
@@ -252,5 +253,65 @@ describe("complete, the sentence, the number", () => {
     );
     expect(orderNumberLabel({ cahOrderNumber: "", poNumber: "MM-1-20260901", id: "9" })).toBe("MM-1-20260901");
     expect(orderNumberLabel({ cahOrderNumber: "", poNumber: "", id: "1234567890" })).toBe("#7890");
+  });
+});
+
+describe("orderShipmentsFromLines — each parcel WITH its items (Brandon, 2026-09-29)", () => {
+  /* The shape of the order Brandon pointed at: the cartridges went in one
+     parcel and arrived, the infusion sets are backordered. Tracking made up. */
+  const PARTIAL = [
+    "ORDER STATUS 9/29/2026, 11:00:48 ET",
+    "L2 TN1002817I x3 BX @71.94 -> Backordered (BO: 3)",
+    "L1 TN1013310I x3 BX @30.95 -> SHIPPED",
+    "   SHIP FedEx 100000000001 qty 3 on 2026-09-15 from NEW JERSEY WAREHOUSE",
+  ].join("\n");
+  const partial = (over: Partial<Order> = {}) =>
+    placed({
+      apiStatus: "Partially Shipped",
+      carrier: "FedEx",
+      tracking: ["100000000001"],
+      shipDate: "2026-09-15",
+      deliveryDate: "2026-09-16",
+      backordered: 'AutoSoft 90 6mm 23" infusion sets',
+      lineItemDetail: PARTIAL,
+      ...over,
+    });
+
+  it("⚠️ the not-yet-shipped part is never numbered as a shipment", () => {
+    const v = orderShipmentsFromLines(partial())!;
+    expect(v.parcels.map((p) => [p.n, p.of, p.track])).toEqual([[1, 1, "100000000001"]]);
+    expect(v.parcels[0].items).toEqual([{ sku: "TN1013310I", qty: 3, substitute: false }]);
+    expect(v.pending).toMatchObject({ tone: "red", label: "Backordered" });
+    expect(v.pending!.items).toEqual([{ sku: "TN1002817I", qty: 3, status: "Backordered", dropped: false }]);
+  });
+
+  it("the one parcel of a partial order that ARRIVED says delivered, not in transit", () => {
+    expect(orderShipmentsFromLines(partial())!.parcels[0].pill).toEqual({
+      tone: "active",
+      icon: "check",
+      text: "Delivered 9/16/2026",
+    });
+    expect(orderShipmentsFromLines(partial({ deliveryDate: "" }))!.parcels[0].pill.text).toBe(
+      "In transit · shipped 9/15/2026",
+    );
+  });
+
+  it("a delivered order has nothing still to come", () => {
+    const v = orderShipmentsFromLines(partial({ apiStatus: "Delivered", groupId: GROUPS.shippedDelivered }))!;
+    expect(v.pending).toBeNull();
+  });
+
+  it("no line list, or a pre-tracking order → null (the card draws what it always drew)", () => {
+    expect(orderShipmentsFromLines(partial({ lineItemDetail: "" }))).toBeNull();
+    expect(
+      orderShipmentsFromLines(
+        placed({ apiStatus: "", groupId: GROUPS.shippedDelivered, cahOrderNumber: "", lineItemDetail: PARTIAL }),
+      ),
+    ).toBeNull();
+  });
+
+  it("⚠️ Cardinal says partial but the (older) list says nothing is left → the old view, never a hidden block", () => {
+    const allShipped = "L1 TN1013310I x3 BX @30.95 -> SHIPPED\n   SHIP FedEx 100000000001 qty 3 on 2026-09-15 from NJ";
+    expect(orderShipmentsFromLines(partial({ lineItemDetail: allShipped }))).toBeNull();
   });
 });

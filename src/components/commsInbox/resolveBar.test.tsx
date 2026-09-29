@@ -167,11 +167,18 @@ describe("open", () => {
 
   it("a suggestion highlights its button with the time and asks to Confirm", () => {
     renderBar(open({ suggestion: { how: "called", at: T + 30 * 60_000, by: "" } }));
-    expect(screen.getByText("Confirm")).toBeTruthy();
-    const b = screen.getByRole("button", { name: /^Called/ });
+    expect(screen.getByText("Suggested — press to confirm")).toBeTruthy();
+    const b = screen.getByRole("button", { name: /^Called\?/ });
     // The time today, the date on another day — `formatShort` reads the ET day.
     expect(b.textContent).toMatch(/2:40 PM|Sep 23/);
     expect(b.getAttribute("title")).toMatch(/confirm to resolve/);
+  });
+
+  it("⚠️ a suggestion is never GREEN — green is what resolved looks like (Brandon, 2026-09-29)", () => {
+    renderBar(open({ suggestion: { how: "texted", at: T + 30 * 60_000, by: "" } }));
+    const b = screen.getByRole("button", { name: /^Texted\?/ });
+    expect(b.className).toMatch(/border-dashed/);
+    expect(b.className).not.toMatch(/mm-green/);
   });
 
   it("⚠️ a 409 names who resolved it, and re-reads — it never writes a second resolution", async () => {

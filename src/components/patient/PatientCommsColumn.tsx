@@ -71,7 +71,13 @@ export function PatientCommsColumn({
   onSide,
   contacts,
   noteTarget = null,
+  paneRef,
+  resizer = null,
 }: {
+  /** The column itself — measured by the width handle (`resizer`). */
+  paneRef?: React.Ref<HTMLElement>;
+  /** The drag handle on the column's left edge (`PaneResizer`), drawn inside it. */
+  resizer?: React.ReactNode;
   phone: string;
   patient: PatientRef | null;
   side: PatientSide;
@@ -126,7 +132,8 @@ export function PatientCommsColumn({
   const callTotals = patientCallTotals(totals.byNumber, phone, alt, messagingConfigured());
 
   return (
-    <aside className="pt-side">
+    <aside className="pt-side" ref={paneRef}>
+      {resizer}
       {/* The Inbox's resolve bar, compact (COMMS_INBOX_PLAN.md §1.2): the
           patient's open item, or their last resolution. It renders nothing when
           the Inbox is switched off or there is neither — so this column is

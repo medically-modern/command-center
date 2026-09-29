@@ -652,7 +652,7 @@ export function DaysInStagePill({ value }: { value?: string }) {
 export function PatientContact({
   phone, altPhone, patientName, mondayItemId, canText,
   textPrefill, textOpen, onTextOpenChange, onTextSent,
-  commsTone, commsPresentation, showCopy, onCall, callLabel,
+  commsTone, commsPresentation, commsPanelSide, showCopy, onCall, callLabel,
 }: {
   phone?: string;
   /**
@@ -666,6 +666,10 @@ export function PatientContact({
    * if another caller picks it up.
    */
   commsPresentation?: "popup" | "panel";
+  /** With the panel, which edge it docks to (default right). The Care
+   *  Coordinator's Welcome Call cards dock it LEFT, over Patient Intake, so
+   *  it never covers the column the rep is working in. */
+  commsPanelSide?: "left" | "right";
   /**
    * The Call button's text when the number is ALREADY on screen beside it —
    * the Insurance header shows it in its DOB line, with the edit pencil — so
@@ -749,6 +753,7 @@ export function PatientContact({
         onTextSent={onTextSent}
         tone={commsTone}
         presentation={commsPresentation}
+        panelSide={commsPanelSide}
       />
       {showCopy && <CopyPhoneButton display={display} />}
       {/* Mounted only while open: it subscribes to the softphone, and a page of

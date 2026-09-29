@@ -87,6 +87,8 @@
   scroll-padding-bottom: 96px;
 }
 .cc-pt .pt-side {
+  /* relative: the width handle (PaneResizer) sits on its left edge. */
+  position: relative;
   border-left: 1px solid var(--bd); background: var(--cd);
   display: flex; flex-direction: column; min-height: 0; overflow: hidden;
 }

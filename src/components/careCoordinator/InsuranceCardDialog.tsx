@@ -35,7 +35,7 @@
  * coordinator who has them another way.
  */
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ExternalLink, Loader2, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertTriangle, ExternalLink, Loader2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,6 +80,10 @@ export function InsuranceCardDialog({ target, onClose, onSaved }: {
   const [readError, setReadError] = useState("");
   const [imgFailed, setImgFailed] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  /** Degrees clockwise — a card photographed upside down or sideways
+   *  (Brandon, 2026-09-29: "sometimes cards come in backwards"). View only:
+   *  nothing is written, the file on the row is untouched. */
+  const [rotation, setRotation] = useState(0);
   const [loading, setLoading] = useState(false);
   const [carrier, setCarrier] = useState("");
   const [memberId, setMemberId] = useState("");
@@ -110,7 +114,7 @@ export function InsuranceCardDialog({ target, onClose, onSaved }: {
    */
   const want = useRef("");
   useEffect(() => {
-    setPhoto(null); setReadError(""); setImgFailed(false); setZoomed(false);
+    setPhoto(null); setReadError(""); setImgFailed(false); setZoomed(false); setRotation(0);
     setMemberId(""); setBoardMemberId(""); memberTouched.current = false;
     if (!itemId) return;
     want.current = itemId;
@@ -213,7 +217,17 @@ export function InsuranceCardDialog({ target, onClose, onSaved }: {
                 That insurance card is no longer on the patient's row.
               </p>
             )}
-            {!loading && photo && !imgFailed && (
+            {!loading && photo && !imgFailed && rotation !== 0 && (
+              <RotatedCard
+                src={photo.url}
+                alt={`Insurance card for ${target.name}`}
+                rotation={rotation}
+                zoomed={zoomed}
+                onToggleZoom={() => setZoomed((z) => !z)}
+                onError={() => setImgFailed(true)}
+              />
+            )}
+            {!loading && photo && !imgFailed && rotation === 0 && (
               // ⚠️ A click ZOOMS in place — the fields stay beside it, which is
               // the point of this being one dialog. Zoomed, the image keeps its
               // natural size and the frame scrolls.
@@ -244,6 +258,24 @@ export function InsuranceCardDialog({ target, onClose, onSaved }: {
                       ? <><ZoomOut className="mr-1.5 h-3.5 w-3.5" />Fit</>
                       : <><ZoomIn className="mr-1.5 h-3.5 w-3.5" />Zoom in</>}
                   </Button>
+                )}
+                {!imgFailed && (
+                  <>
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      onClick={() => setRotation((r) => (r + 270) % 360)}
+                      title="Rotate left" aria-label="Rotate left"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      onClick={() => setRotation((r) => (r + 90) % 360)}
+                      title="Rotate right" aria-label="Rotate right"
+                    >
+                      <RotateCw className="mr-1.5 h-3.5 w-3.5" />Rotate
+                    </Button>
+                  </>
                 )}
                 <Button
                   type="button" variant="outline" size="sm"
@@ -311,5 +343,76 @@ export function InsuranceCardDialog({ target, onClose, onSaved }: {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The card photo turned by `rotation` (90, 180 or 270), sized from the image's
+ * OWN dimensions so a sideways card fits the frame exactly as an upright one
+ * does. ⚠️ A bare CSS `rotate()` turns the picture but not its layout box, so
+ * a portrait-shot card turned 90° spilled over the fields beside it. Fit: as
+ * large as the frame's width and 64vh allow. Zoomed: natural size, the frame
+ * scrolls — the same two sizes the upright photo has.
+ */
+function RotatedCard({ src, alt, rotation, zoomed, onToggleZoom, onError }: {
+  src: string;
+  alt: string;
+  rotation: number;
+  zoomed: boolean;
+  onToggleZoom: () => void;
+  onError: () => void;
+}) {
+  const frame = useRef<HTMLDivElement>(null);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const [frameW, setFrameW] = useState(0);
+
+  useEffect(() => {
+    const el = frame.current;
+    if (!el) return;
+    setFrameW(el.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setFrameW(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const sideways = rotation === 90 || rotation === 270;
+  const box = natural
+    ? (() => {
+        const vw = sideways ? natural.h : natural.w;
+        const vh = sideways ? natural.w : natural.h;
+        const maxH = (typeof window !== "undefined" ? window.innerHeight : 800) * 0.64;
+        const scale = zoomed ? 1 : Math.max(0.05, Math.min(frameW > 0 ? frameW / vw : 1, maxH / vh));
+        return { w: vw * scale, h: vh * scale, imgW: natural.w * scale, imgH: natural.h * scale };
+      })()
+    : null;
+
+  return (
+    <div
+      ref={frame}
+      className={cn("flex-1", zoomed ? "max-h-[68vh] overflow-auto" : "flex items-center justify-center")}
+      data-card-rotation={rotation}
+    >
+      <div
+        className="relative mx-auto shrink-0"
+        style={box ? { width: box.w, height: box.h } : { width: 1, height: 1 }}
+      >
+        <img
+          src={src}
+          alt={alt}
+          onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+          onError={onError}
+          onClick={onToggleZoom}
+          title={zoomed ? "Click to fit" : "Click to zoom in"}
+          className={cn("absolute left-1/2 top-1/2 max-w-none rounded", zoomed ? "cursor-zoom-out" : "cursor-zoom-in")}
+          style={{
+            width: box?.imgW,
+            height: box?.imgH,
+            transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+            visibility: box ? "visible" : "hidden",
+          }}
+        />
+      </div>
+    </div>
   );
 }

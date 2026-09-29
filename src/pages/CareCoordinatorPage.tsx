@@ -414,8 +414,12 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
    *  the RAW read, not `welcomeRows`: the strip is the day's schedule, not a
    *  view of the column (the `scheduleCalls` rule above), and a just-advanced
    *  patient's booking block keeping its link is not a claim about the queue. */
+  /* ⚠️ The PHONE rides along (found 2026-09-29): with only `{id, email}` a
+     booking that DID match said "Patient phone: Not on file" and could not be
+     dialled from its popup. The name feeds the popup's possible-match hint
+     for a booking that matched nobody (`ScheduleEntry.suggested`). */
   const welcomeItems = useMemo(
-    () => (welcome.data ?? []).map((w) => ({ id: w.id, email: w.email })),
+    () => (welcome.data ?? []).map((w) => ({ id: w.id, email: w.email, name: w.name, phone: w.phone, groupId: w.groupId })),
     [welcome.data],
   );
 

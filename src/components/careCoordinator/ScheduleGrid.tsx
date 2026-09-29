@@ -43,8 +43,8 @@ import {
   type ScheduledCall,
 } from "@/lib/scheduledCalls/workflow";
 import {
-  bookingLinker, calendlyEntry, emailIndex, eventUriIndex, intakeEntry, mergeSchedule,
-  type ScheduleEntry,
+  bookingLinker, calendlyEntry, emailIndex, eventUriIndex, intakeEntry, mergeSchedule, nameIndex,
+  welcomeNameSuggester, type ScheduleEntry,
 } from "@/lib/careCoordinator/scheduleEntries";
 import { useCalendlyDay } from "@/hooks/careCoordinator/useCalendlyDay";
 import { etToday, addCalendarDaysIso } from "@/lib/masheke/etDate";
@@ -133,7 +133,7 @@ export function ScheduleGrid({
    * different address simply doesn't link, and the block renders without an
    * Open.
    */
-  welcomeItems: { id: string; email: string }[];
+  welcomeItems: { id: string; email: string; name?: string; phone?: string; groupId?: string }[];
   /** Minutes past ET midnight — the page owns the one ticker. */
   nowMinutes: number;
   /** Given a route. Blocks we can't identify a patient for don't call this. */
@@ -163,9 +163,16 @@ export function ScheduleGrid({
     welcomeByEmail: emailIndex(welcomeItems),
   }), [calls, welcomeItems]);
 
+  /** An unmatched welcome booking's "possible match" by name — a hint in the
+   *  popup, never a link (`ScheduleEntry.suggested`). */
+  const suggester = useMemo(
+    () => welcomeNameSuggester(nameIndex(welcomeItems.map((w) => ({ ...w, name: w.name ?? "" })))),
+    [welcomeItems],
+  );
+
   const fromCalendly = useMemo(
-    () => day.bookings.map((b) => calendlyEntry(b, linker)),
-    [day.bookings, linker],
+    () => day.bookings.map((b) => calendlyEntry(b, linker, suggester)),
+    [day.bookings, linker, suggester],
   );
   const fromMirror = useMemo(() => calls.map(intakeEntry), [calls]);
 

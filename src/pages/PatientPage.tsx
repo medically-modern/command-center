@@ -44,13 +44,14 @@
  * caller has it — a search hit, a Comms Hub match — so requiring it costs
  * nothing and guessing would mean a board scan per open.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, RotateCw } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { useShellLayout } from "@/hooks/shell/useShellLayout";
 import { PatientBody } from "@/components/patient/PatientBody";
 import { PatientCommsColumn } from "@/components/patient/PatientCommsColumn";
+import { PaneResizer, paneWidthCss, usePaneWidth } from "@/components/shared/PaneResizer";
 import { usePatientRecord } from "@/hooks/patient/usePatientRecord";
 import { clearDossierCaches, type DossierPick } from "@/lib/commsHub/dossierApi";
 import { BOARD_PARAM, SIDE_PARAM, parseSide, type PatientSide } from "@/lib/patient/patientScreen";
@@ -58,12 +59,18 @@ import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { contactsFor } from "@/lib/patient/contacts";
 import "./patient/redesign.css";
 
+/** What a dragged comms column always leaves for the patient's own column. */
+const PATIENT_MAIN_RESERVE_PX = 520;
+
 export default function PatientPage() {
   const { itemId = "" } = useParams<{ itemId: string }>();
   const [params, setParams] = useSearchParams();
 
   const boardId = Number(params.get(BOARD_PARAM) || 0);
   const side = parseSide(params.get(SIDE_PARAM));
+  /** The comms column's dragged width, remembered in this browser (null = 380px). */
+  const commsWidth = usePaneWidth("cc.pane.patientComms");
+  const commsPaneRef = useRef<HTMLElement>(null);
 
   /** ⚠️ Rebuilt each render, which is why `usePatientRecord` depends on a KEY
    *  string rather than on this object — incident rule 2. */
@@ -194,7 +201,14 @@ export default function PatientPage() {
           </div>
         </div>
       ) : (
-        <div className="pt-screen">
+        <div
+          className="pt-screen"
+          style={
+            commsWidth.width !== null
+              ? { gridTemplateColumns: `minmax(0, 1fr) ${paneWidthCss(commsWidth.width, PATIENT_MAIN_RESERVE_PX)}` }
+              : undefined
+          }
+        >
           <div className="pt-main">
             {/* The main column is its own component so the Communications
                 hub's right pane can render the same thing (COMMS_INBOX_PLAN.md
@@ -220,6 +234,20 @@ export default function PatientPage() {
             onSide={(s: PatientSide) => setParam({ [SIDE_PARAM]: s })}
             contacts={contacts}
             noteTarget={noteTarget}
+            paneRef={commsPaneRef}
+            resizer={
+              /* Brandon, 2026-09-29: a slider between the profile and the
+                 comms. The column's own 380px until somebody drags it. */
+              <PaneResizer
+                pane={commsPaneRef}
+                width={commsWidth.width}
+                onDrag={commsWidth.set}
+                onCommit={commsWidth.commit}
+                onReset={commsWidth.reset}
+                reservePx={PATIENT_MAIN_RESERVE_PX}
+                label="Resize the texts and calls column"
+              />
+            }
           />
         </div>
       )}

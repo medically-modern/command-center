@@ -13,8 +13,10 @@
  *    and its 24-hour clock running, and never resolves anything — which is why
  *    it sits apart from the three.
  *  · **The suggestion** — a connected callback or a text somebody sent here
- *    since the item opened — highlights its button with the time and turns the
- *    label into *Confirm*. It never resolves anything on its own.
+ *    since the item opened — marks its button as a QUESTION (dashed amber,
+ *    "Texted? 2:40 PM") and turns the label into *Suggested — press to
+ *    confirm*. It never resolves anything on its own, and it is never green:
+ *    green is what resolved looks like (Brandon, 2026-09-29).
  *
  * ⚠️ Keyed on the item by the caller, so a half-typed Called note can never
  * follow the rep onto a different patient (§9's notes-box rule).
@@ -287,7 +289,11 @@ export default function ResolveBar({
           internally — when the row is tight, the whole group drops below
           "Waiting" as one line instead of orphaning Left voicemail. */}
       <span className={cn("ml-auto flex items-center", compact ? "flex-nowrap gap-1" : "flex-wrap gap-1.5")}>
-        {!compact && <span className="mr-0.5 whitespace-nowrap text-[11px] text-muted-foreground">{sug ? "Confirm" : "Mark resolved"}</span>}
+        {!compact && (
+          <span className="mr-0.5 whitespace-nowrap text-[11px] text-muted-foreground">
+            {sug ? "Suggested — press to confirm" : "Mark resolved"}
+          </span>
+        )}
         {RESOLVING.map((how) => {
           const suggested = sug?.how === how;
           return (
@@ -299,14 +305,25 @@ export default function ResolveBar({
               className={cn(
                 "inline-flex items-center gap-1 whitespace-nowrap rounded-full border font-semibold transition-colors disabled:opacity-50",
                 compact ? "px-2 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
+                // ⚠️ A suggestion is a QUESTION, never a green fill (Brandon,
+                // 2026-09-29: *"Texted suggestion color is confusing - looks
+                // marked already"*). Green is what RESOLVED looks like (the
+                // check row above), so the suggested button is dashed amber
+                // with a "?" until somebody presses it.
                 suggested
-                  ? "border-[color:var(--mm-green)] bg-[color:var(--mm-green-12)] text-foreground ring-2 ring-[color:var(--mm-green-12)]"
+                  ? "border-dashed border-amber-500 bg-card text-foreground hover:bg-amber-50 dark:border-amber-400 dark:hover:bg-amber-500/10"
                   : "border-border bg-card text-foreground hover:border-[color:var(--mm-green)]",
               )}
             >
               {busy === how && <Loader2 className="h-3 w-3 animate-spin" />}
               {HOW_LABEL[how]}
-              {suggested && <em className="ml-0.5 font-medium not-italic opacity-80">{formatShort(sug.at)}</em>}
+              {suggested && "?"}
+              {/* ⚠️ Compact keeps the time in the hover only: inline, it pushed
+                  Left voicemail out of the 380px column (measured 2026-09-29 —
+                  it overflowed before the "?" too). */}
+              {suggested && !compact && (
+                <em className="ml-0.5 font-medium not-italic text-amber-700 dark:text-amber-300">{formatShort(sug.at)}</em>
+              )}
             </button>
           );
         })}

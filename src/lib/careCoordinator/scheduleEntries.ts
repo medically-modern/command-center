@@ -106,6 +106,16 @@ export interface ScheduleEntry extends BookedSlot {
    * to write against without parsing its own deep link back apart.
    */
   itemId: string | null;
+  /**
+   * A Welcome Call row whose NAME matches an unmatched booking — shown in the
+   * popup as a possibility to check, never as the match (Brandon, 2026-09-29,
+   * on a booking that matched nobody: *"i think she booked with completely
+   * different info than we have"*). ⚠️ It never feeds `href`, `phone` or
+   * `itemId`: a name is not identity, and the rule above — linking the wrong
+   * chart on a live call is worse than not linking — still holds. Null when
+   * the booking matched, or no single row has the name.
+   */
+  suggested?: { name: string; href: string } | null;
 }
 
 const FROM = "from=care-coordinator";
@@ -199,6 +209,7 @@ export interface LinkedPatient {
 export function calendlyEntry(
   b: CalendlyBooking,
   patientFor: (b: CalendlyBooking) => LinkedPatient | null,
+  suggestFor?: (b: CalendlyBooking) => NamedPatient | null,
 ): ScheduleEntry {
   const { date, time } = etPartsOf(b.startTime);
   const kind: ScheduleKind = b.kind === "intake" ? "intake" : "welcome";
@@ -218,7 +229,53 @@ export function calendlyEntry(
     phone: linked?.phone ?? "",
     href: linked ? hrefFor(kind, linked.id, linked.groupId) : null,
     itemId: linked?.id ?? null,
+    suggested: (() => {
+      if (linked || !suggestFor) return null;
+      const s = suggestFor(b);
+      return s ? { name: s.name, href: hrefFor(kind, s.id, s.groupId) } : null;
+    })(),
   };
+}
+
+export interface NamedPatient extends LinkedPatient {
+  name: string;
+}
+
+/**
+ * A name reduced to what two spellings of one person share: lower case, no
+ * accents or punctuation, single letters (middle initials) dropped, FIRST and
+ * LAST word kept. "José M. Test-Person" → "jose person".
+ */
+export function nameKey(name: string): string {
+  const words = (name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((w) => w.length > 1);
+  if (words.length < 2) return "";
+  return `${words[0]} ${words[words.length - 1]}`;
+}
+
+/**
+ * Name → Welcome Call row, for the popup's "possible match". The same
+ * POSITIVE-EVIDENCE rule as `indexBy`: a name two rows share matches nothing.
+ */
+export function nameIndex(items: { id: string; name: string; phone?: string; groupId?: string }[]): Map<string, NamedPatient | null> {
+  const seen = new Map<string, NamedPatient | null>();
+  for (const i of items) {
+    const key = nameKey(i.name);
+    if (!key) continue;
+    seen.set(key, seen.has(key) ? null : { id: i.id, name: i.name, phone: i.phone ?? "", groupId: i.groupId });
+  }
+  return seen;
+}
+
+/** Welcome bookings only — an intake booking has the event-URI join. */
+export function welcomeNameSuggester(index: Map<string, NamedPatient | null>): (b: CalendlyBooking) => NamedPatient | null {
+  return (b) => (b.kind === "intake" ? null : index.get(nameKey(b.name)) ?? null);
 }
 
 /**

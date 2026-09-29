@@ -158,6 +158,8 @@ import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
 import { isAlreadyInSystemResult } from "@/lib/profile/dupCheckFlag";
 import { referralDoctorInfo } from "@/lib/profile/referralDoctorInfo";
 import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
+import { InSystemTooltip } from "@/components/shared/InSystemTooltip";
+import { dupCheckSummary } from "@/lib/profile/dupCheckSummary";
 
 /** This queue is the DTC form's two groups and nothing else. "Referrals"
  *  (the 1. Intake group) was a third option here and is gone: that group is
@@ -2386,12 +2388,22 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                         somebody we may already be serving, and that changes the
                         call before it starts. */}
                     {isAlreadyInSystemResult(selected.dupCheckResult) && (
-                      <span
-                        className="inline-flex items-center gap-1.5 rounded-full border-2 border-rose-300 bg-rose-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-rose-800"
-                        title={`Duplicate check: ${selected.dupCheckResult}. They already exist on a downstream board — check before working this lead.`}
+                      /* Hover: the duplicate check's conclusion in one
+                         sentence (Brandon, 2026-09-29) — or, for a partial
+                         lead (flagged, never written up), what the verdict
+                         means. */
+                      <InSystemTooltip
+                        notes={selected.notes}
+                        verdict={selected.dupCheckResult}
+                        pending={`Duplicate check: ${selected.dupCheckResult}. They already exist on a downstream board — check before working this lead.`}
                       >
-                        <AlertTriangle className="h-3.5 w-3.5" /> Already In System
-                      </span>
+                        <span
+                          tabIndex={0}
+                          className="inline-flex cursor-help items-center gap-1.5 rounded-full border-2 border-rose-300 bg-rose-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-rose-800 outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5" /> Already In System
+                        </span>
+                      </InSystemTooltip>
                     )}
                     {/* "Call Attempts: 2 | Auto. Texts: 1" — beside the status
                         badge, which is where Josh asked for it (2026-08-21:
@@ -4259,8 +4271,21 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
               </div>
 
               {(selected.alreadyInSystem ?? "").toLowerCase() === "yes" && (
-                <div className="mt-4 flex items-center gap-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm font-semibold text-red-800">
-                  <AlertTriangle className="h-4 w-4" /> Already In System
+                <div className="mt-4 flex items-start gap-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm font-semibold text-red-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    Already In System
+                    {/* The duplicate check's conclusion, inline — the banner
+                        has the room a pill does not (Brandon, 2026-09-29). */}
+                    {(() => {
+                      const s = dupCheckSummary(selected.notes);
+                      return s?.sentence ? (
+                        <p className="mt-0.5 text-xs font-normal leading-snug text-red-900/90">
+                          <span className="font-semibold">{s.label}:</span> {s.sentence}
+                        </p>
+                      ) : null;
+                    })()}
+                  </div>
                 </div>
               )}
               </div>

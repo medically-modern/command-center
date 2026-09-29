@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   ASSUMED_DURATION_MIN, bookingLinker, calendlyEntry, durationOf, emailIndex,
-  etPartsOf, eventUriIndex, intakeEntry, mergeSchedule,
+  etPartsOf, eventUriIndex, intakeEntry, mergeSchedule, nameIndex, nameKey, welcomeNameSuggester,
   type LinkedPatient, type ScheduleEntry,
 } from "./scheduleEntries";
 import type { CalendlyBooking } from "./calendlyDay";
@@ -250,5 +250,53 @@ describe("eventUriIndex", () => {
       { id: "b", calendlyEventUri: "https://api.calendly.com/scheduled_events/z1" },
     ]);
     expect(ix.get("https://api.calendly.com/scheduled_events/z1")).toBeNull();
+  });
+});
+
+describe("a welcome booking that matched nobody — the name is a HINT, never the link (2026-09-29)", () => {
+  const rows = [
+    { id: "w1", name: "Welcome Patient", email: "", phone: "3475550199", groupId: "g" },
+    { id: "w2", name: "Pat Twin", email: "", phone: "", groupId: "g" },
+    { id: "w3", name: "Pat Twin", email: "", phone: "", groupId: "g" },
+  ];
+  const linker = bookingLinker({ intakeByUri: new Map(), intakeByEmail: new Map(), welcomeByEmail: emailIndex(rows) });
+  const suggest = welcomeNameSuggester(nameIndex(rows));
+
+  it("nameKey keeps first and last, drops initials, accents and punctuation", () => {
+    expect(nameKey("José M. Test-Person")).toBe("jose person");
+    expect(nameKey("  welcome   PATIENT ")).toBe("welcome patient");
+    expect(nameKey("Cher")).toBe("");
+  });
+
+  it("⚠️ a name match suggests — and links, dials and logs NOTHING", () => {
+    const e = calendlyEntry(booking({ email: "someone.else@example.com" }), linker, suggest);
+    expect(e.href).toBeNull();
+    expect(e.itemId).toBeNull();
+    expect(e.phone).toBe("");
+    expect(e.suggested).toEqual({ name: "Welcome Patient", href: "/welcome-call?patientId=w1&from=care-coordinator" });
+  });
+
+  it("a name two rows share suggests nobody", () => {
+    expect(calendlyEntry(booking({ name: "Pat Twin", email: "x@example.com" }), linker, suggest).suggested).toBeNull();
+  });
+
+  it("a booking that DID match carries no suggestion", () => {
+    const withEmail = [{ ...rows[0], email: "wc1@example.com" }];
+    const l = bookingLinker({ intakeByUri: new Map(), intakeByEmail: new Map(), welcomeByEmail: emailIndex(withEmail) });
+    const e = calendlyEntry(booking(), l, welcomeNameSuggester(nameIndex(withEmail)));
+    expect(e.itemId).toBe("w1");
+    expect(e.suggested).toBeNull();
+  });
+
+  it("⚠️ a matched welcome booking carries the row's PHONE (it used to say 'Not on file')", () => {
+    const withEmail = [{ ...rows[0], email: "wc1@example.com" }];
+    const l = bookingLinker({ intakeByUri: new Map(), intakeByEmail: new Map(), welcomeByEmail: emailIndex(withEmail) });
+    expect(calendlyEntry(booking(), l).phone).toBe("3475550199");
+  });
+
+  it("the page hands the strip the phone and the name, not just the email", async () => {
+    const { readFileSync } = await import("node:fs");
+    const page = readFileSync("src/pages/CareCoordinatorPage.tsx", "utf8");
+    expect(page).toContain("({ id: w.id, email: w.email, name: w.name, phone: w.phone, groupId: w.groupId })");
   });
 });

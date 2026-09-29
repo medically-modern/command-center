@@ -246,6 +246,7 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       pills={intakePills(lead, false)}
       pillActions={insurancePillAction(lead, extras)}
       inSystem={inSystem(lead)}
+      inSystemVerdict={lead.dupCheckResult}
       contact={extras.contact}
       phone={lead.phone}
       notes={extras.notes}
@@ -278,6 +279,7 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       pills={intakePills(lead, true)}
       pillActions={insurancePillAction(lead, extras)}
       inSystem={inSystem(lead)}
+      inSystemVerdict={lead.dupCheckResult}
       contact={extras.contact}
       phone={lead.phone}
       notes={extras.notes}
@@ -381,6 +383,7 @@ export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
       pills={intakePills(lead, true)}
       pillActions={insurancePillAction(lead, extras)}
       inSystem={inSystem(lead)}
+      inSystemVerdict={lead.dupCheckResult}
       blocker={entry.blocker}
       contact={extras.contact}
       phone={lead.phone}

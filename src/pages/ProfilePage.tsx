@@ -88,6 +88,7 @@ import "./profile/redesign.css";
 import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
 import { optionsWithCurrent, displayFor } from "@/lib/profile/selectOptions";
 import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
+import { InSystemTooltip } from "@/components/shared/InSystemTooltip";
 
 // Every label the board has. These used to run through a `noNotServing`
 // filter, which meant a rep could read "Not Serving" on a patient but never
@@ -787,10 +788,17 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                     <p className="text-sm opacity-80 mt-0.5 flex items-center gap-2 flex-wrap">
                       {selected.name}
                       <IntakeProfileStatus patient={selected} size="sm" hideActive />
+                      {/* Hover: the duplicate check's conclusion in one
+                          sentence (Brandon, 2026-09-29). */}
                       {selected.alreadyInSystem?.toLowerCase() === "yes" && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-white text-red-700 text-sm font-extrabold uppercase tracking-wide px-3 py-1 shadow">
-                          <AlertTriangle className="h-4 w-4" /> Already In System
-                        </span>
+                        <InSystemTooltip notes={selected.notes} verdict={selected.dupCheckResult}>
+                          <span
+                            tabIndex={0}
+                            className="inline-flex cursor-help items-center gap-1.5 rounded-full bg-white text-red-700 text-sm font-extrabold uppercase tracking-wide px-3 py-1 shadow outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                          >
+                            <AlertTriangle className="h-4 w-4" /> Already In System
+                          </span>
+                        </InSystemTooltip>
                       )}
                       {dtcMatches.length > 0 && (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-white text-blue-800 text-sm font-extrabold uppercase tracking-wide px-3 py-1 shadow">

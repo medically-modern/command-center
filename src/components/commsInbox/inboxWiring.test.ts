@@ -368,6 +368,11 @@ describe("the hub's grid is Brandon's once the Inbox is on (Josh, 2026-09-23)", 
     expect(PAGE).toContain('<section className="flex min-w-0 flex-1 flex-col border-r border-border">');
   });
 
+  it("…until a rep DRAGS the edge: the remembered width replaces both (Brandon, 2026-09-29)", () => {
+    expect(PAGE).toContain("profileWidth.width === null &&");
+    expect(PAGE).toContain("paneWidthCss(profileWidth.width, HUB_PANE_RESERVE_PX, HUB_PANE_MIN_PX)");
+  });
+
   it("the list is 400px, 340 at ≤1300 and 320 at ≤1100 — on every rail, and only while the Inbox is on", () => {
     expect(PAGE).toContain('"flex w-80 shrink-0 flex-col border-r border-border bg-card"');
     expect(PAGE).toContain('inboxOn && "min-[1101px]:w-[340px] min-[1301px]:w-[25rem]"');

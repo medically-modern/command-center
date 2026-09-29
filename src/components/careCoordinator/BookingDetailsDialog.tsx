@@ -154,10 +154,33 @@ export function BookingDetailsDialog({
                 Log call attempt
               </button>
             )}
+            {/* ⚠️ A NAME match is offered to CHECK, never taken as the match:
+                no phone, no Log call attempt, and it says why (Brandon,
+                2026-09-29 — a patient who booked "with completely different
+                info than we have"). */}
+            {!entry.href && entry.suggested && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                <p className="leading-snug">
+                  <b>Possible match by name: {entry.suggested.name}</b> on the Welcome Call queue. Their
+                  record doesn&apos;t have this booking&apos;s email, so confirm it&apos;s the same person
+                  (date of birth, phone) before you call.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onOpenProfile(entry.suggested!.href)}
+                  className="mt-1.5 inline-flex items-center gap-1.5 font-semibold underline hover:no-underline"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden /> Check {entry.suggested.name}&apos;s profile
+                </button>
+              </div>
+            )}
             {!entry.href && (
               <p className="text-center text-[11px] leading-snug text-muted-foreground">
-                This booking isn&apos;t matched to a patient on the board — usually because it was
-                made under an email address we don&apos;t hold for them.
+                {entry.suggested
+                  ? "Not linked: the booking's email isn't on any Welcome Call record."
+                  : entry.kind === "welcome"
+                    ? "No one on the Welcome Call queue has this booking's email or name — they may have booked with details we don't hold (a caregiver's email, a different name). Search for them by name."
+                    : "This booking isn't matched to a patient on the board — usually because it was made under an email address we don't hold for them."}
               </p>
             )}
             {dialing && (

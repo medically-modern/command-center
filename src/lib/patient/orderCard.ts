@@ -17,6 +17,14 @@
  * still with Cardinal, and a date or a signature is put on a box only when the
  * order has one box. Guessing would be a confident, wrong answer on the one
  * call where a patient asks what arrived.
+ *
+ * ⚠️⚠️ **Superseded where Cardinal's Line Item Detail says** (2026-09-29): that
+ * column DOES name the SKUs in each tracking number (`lib/orders/lineItems.ts`),
+ * so `orderShipmentsFromLines` draws each parcel WITH its items and the
+ * not-yet-shipped lines in one block that is never numbered as a shipment
+ * (Brandon: *"shipment 1 of 2 and 2 of 2 are confusing people"*). The
+ * guess-free rule above still stands for every order that column says nothing
+ * about — `orderShipments` is what those draw.
  */
 import { backorderedEntries } from "@/lib/orders/substitution";
 import {
@@ -28,6 +36,7 @@ import {
   type Order,
 } from "@/lib/orders/workflow";
 import { orderHeadline } from "@/lib/orders/headline";
+import { lineItemView, type BoxItem, type PendingItem } from "@/lib/orders/lineItems";
 
 export type PillTone = "active" | "lightgreen" | "blue" | "red" | "amber" | "grey";
 export type PillIcon = "check" | "truck" | "alert" | "clock" | null;
@@ -288,4 +297,94 @@ export function selectedOrderSentence(o: ShipInput, opts: { canSwap: boolean }):
       : "Part of it is still with Cardinal.";
   }
   return `Still in progress · ${orderHeadline(o).text}`;
+}
+
+export interface ParcelView {
+  /** 1-based among PARCELS only — the not-yet-shipped block is never counted. */
+  n: number;
+  of: number;
+  track: string;
+  url: string | null;
+  carrier: string;
+  pill: OrderPill;
+  signedBy: string;
+  /** What Cardinal lists in this parcel; null when its line list does not
+   *  mention this tracking number yet (the list is older than the column). */
+  items: BoxItem[] | null;
+}
+
+export interface LinesShipmentView {
+  parcels: ParcelView[];
+  /** Still to ship, by Cardinal's line list — null on a finished order. */
+  pending: { tone: "red" | "amber"; label: string; eta: string; items: PendingItem[] } | null;
+  /** Cardinal calls these shipped without naming a parcel. */
+  unboxed: BoxItem[];
+  /** Cardinal's stamp, shown when a parcel is not in its list yet. */
+  stamp: string;
+  /** The SKU a substitution replaced, when there is exactly one. */
+  replaced: string;
+}
+
+/**
+ * The shipments drawn from Cardinal's Line Item Detail — each parcel with its
+ * own items (Brandon, 2026-09-29). Null when the column
+ * says nothing usable, when the order shipped before Cardinal records began,
+ * or when Cardinal's verdict says something is still to come and the line list
+ * does not — the card then draws `orderShipments` exactly as before, so a
+ * pending block Cardinal asserts is never hidden by an older list.
+ */
+export function orderShipmentsFromLines(o: ShipInput & Pick<Order, "lineItemDetail">): LinesShipmentView | null {
+  if (isPreTracking(o)) return null;
+  const li = lineItemView(o.lineItemDetail ?? "", (o.tracking ?? []).map((t) => (t ?? "").trim()).filter(Boolean));
+  if (!li) return null;
+  const stage = orderStage(o);
+  const cs = cardinalStatus(o.apiStatus, o.holdReason, o.apiMessage);
+  const complete = orderIsComplete(o);
+  if (!complete && !li.pending.length && orderShipments(o).pending) return null;
+
+  const tracks = [...li.boxes.map((b) => b.track), ...li.unlisted];
+  const of = tracks.length;
+  const single = of === 1;
+  const delivered = stage === "delivered" || cs.kind === "delivered";
+  const pillFor = (date: string): OrderPill => {
+    if (delivered) {
+      return { tone: "active", icon: "check", text: single && o.deliveryDate ? `Delivered ${fmtDate(o.deliveryDate)}` : "Delivered" };
+    }
+    /* A partially shipped order whose ONE parcel has arrived: the order's
+       Delivery Date can only be that parcel's. Saying "in transit" over a
+       box that came two weeks ago is the confusion this view exists to end. */
+    if (single && o.deliveryDate) return { tone: "active", icon: "check", text: `Delivered ${fmtDate(o.deliveryDate)}` };
+    const shipped = date || (single ? o.shipDate : "");
+    const moving = stage === "shipped" && (cs.kind === "shipped" || cs.kind === "partial");
+    if (moving) return { tone: "blue", icon: "truck", text: shipped ? `In transit · shipped ${fmtDate(shipped)}` : "In transit" };
+    return { tone: "blue", icon: "truck", text: shipped ? `Shipped ${fmtDate(shipped)}` : "Shipped" };
+  };
+
+  const parcels: ParcelView[] = tracks.map((track, i) => {
+    const box = li.boxes.find((b) => b.track === track) ?? null;
+    return {
+      n: i + 1,
+      of,
+      track,
+      url: trackingUrl(track, box?.carrier || o.carrier),
+      carrier: (box?.carrier || o.carrier || "").trim(),
+      pill: pillFor(box?.date ?? ""),
+      signedBy: single && delivered ? (o.signedBy ?? "").trim() : "",
+      items: box ? box.items : null,
+    };
+  });
+
+  let pending: LinesShipmentView["pending"] = null;
+  if (!complete && li.pending.length) {
+    const named = li.pending.some((p) => p.dropped || /^backordered$/i.test(p.status));
+    const look =
+      cs.kind === "substitution"
+        ? { tone: (/ordered/i.test(cs.label) ? "amber" : "red") as "red" | "amber", label: cs.label }
+        : named
+          ? { tone: "red" as const, label: "Backordered" }
+          : { tone: "amber" as const, label: "Waiting on Cardinal" };
+    pending = { ...look, eta: o.estimatedShipDate ? fmtDate(o.estimatedShipDate) : "", items: li.pending };
+  }
+
+  return { parcels, pending, unboxed: li.unboxed, stamp: li.stamp, replaced: li.replaced };
 }

@@ -121,6 +121,14 @@ export interface CommunicationsButtonProps {
    * pop-up every other header uses (§5.50).
    */
   presentation?: "popup" | "panel";
+  /**
+   * Which edge the panel docks to — "right" unless the caller says otherwise.
+   * The Care Coordinator's Welcome Call cards pass "left" (Brandon,
+   * 2026-09-29: *"If click communications log for a welcome call patient,
+   * can't hide the welcome call column - hide intake column"*): docked right,
+   * the panel covered the very column the rep was working in.
+   */
+  panelSide?: "left" | "right";
   label?: string;
   className?: string;
 }
@@ -137,6 +145,7 @@ export function CommunicationsButton({
   onTextSent,
   tone,
   presentation = "popup",
+  panelSide = "right",
   label = "Communications",
   className,
 }: CommunicationsButtonProps) {
@@ -237,13 +246,16 @@ export function CommunicationsButton({
           aria-describedby={undefined}
           onInteractOutside={(e) => e.preventDefault()}
           data-comms-presentation={presentation}
+          data-comms-panel-side={panel ? panelSide : undefined}
           className={cn(
             "fixed z-50 flex flex-col overflow-hidden bg-background outline-none data-[state=open]:animate-in data-[state=closed]:animate-out",
             panel
-              ? /* Docked right, full height, the dashboard beside it. `100vw`
-                   is the cap on a narrow window, where the panel simply
-                   becomes the whole width rather than overflowing it. */
-                "inset-y-0 right-0 w-[min(760px,100vw)] border-l border-border shadow-2xl data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+              ? /* Docked to one edge, full height, the dashboard beside it.
+                   `100vw` is the cap on a narrow window, where the panel
+                   simply becomes the whole width rather than overflowing it. */
+                panelSide === "left"
+                ? "inset-y-0 left-0 w-[min(760px,100vw)] border-r border-border shadow-2xl data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
+                : "inset-y-0 right-0 w-[min(760px,100vw)] border-l border-border shadow-2xl data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
               : "inset-2 rounded-xl border border-border shadow-2xl sm:inset-4 data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           )}
         >

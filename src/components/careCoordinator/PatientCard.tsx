@@ -63,6 +63,7 @@ import type { NetworkPill as NetworkPillFacts, NetworkPillTone } from "@/lib/car
 import { stateLabel } from "@/lib/shared/usState";
 import type { CardWarning } from "@/lib/profile/intakeWarnings";
 import { cn } from "@/lib/utils";
+import { InSystemTooltip } from "@/components/shared/InSystemTooltip";
 
 const PILL_TONE: Record<PillTone, string> = {
   neutral: "border-border bg-background text-foreground",
@@ -356,7 +357,7 @@ function NetworkPill({ pill }: { pill: NetworkPillFacts }) {
 export function PatientCard({
   name, attempted, nextUp = false, state, doctor, clinic, networkPill, when, pills, pillActions, variant, contact,
   phone, notes, notesLabel, openHref, openLabel, onBookingLink, onCall, onLogAttempt, reached, blocker,
-  inSystem = false, warnings,
+  inSystem = false, inSystemVerdict = "", warnings,
 }: {
   name: string;
   /** Has anybody rung them yet? Green edge when true, gray when false. */
@@ -440,6 +441,8 @@ export function PatientCard({
    * group, where the check does write it.
    */
   inSystem?: boolean;
+  /** Dup Check Result — what the hover says when there is no written conclusion. */
+  inSystemVerdict?: string;
   /**
    * Have we actually got through to this patient?
    *
@@ -504,13 +507,22 @@ export function PatientCard({
               means "something is wrong and blocks the advance", and this is
               neither — it is a routing fact, and the patient is still
               workable. */}
+          {/* Hover: the duplicate check's conclusion in one sentence, out of
+              the Profile Send Off notes this card already reads (Brandon,
+              2026-09-29). Until they land, the old line. */}
           {inSystem && (
-            <span
-              title="The duplicate check matched this person to a patient we already have"
-              className="shrink-0 rounded-full border border-orange-400 bg-orange-100 px-2 py-[2px] text-[10.5px] font-semibold uppercase leading-tight tracking-wide text-orange-950 dark:border-orange-500/50 dark:bg-orange-950/50 dark:text-orange-100"
+            <InSystemTooltip
+              notes={notes}
+              verdict={inSystemVerdict}
+              pending="The duplicate check matched this person to a patient we already have"
             >
-              Already in System
-            </span>
+              <span
+                tabIndex={0}
+                className="shrink-0 cursor-help rounded-full border border-orange-400 bg-orange-100 px-2 py-[2px] text-[10.5px] font-semibold uppercase leading-tight tracking-wide text-orange-950 outline-none focus-visible:ring-2 focus-visible:ring-orange-400 dark:border-orange-500/50 dark:bg-orange-950/50 dark:text-orange-100"
+              >
+                Already in System
+              </span>
+            </InSystemTooltip>
           )}
         </div>
         {when}
@@ -623,6 +635,10 @@ export function PatientCard({
             commsTone="green"
             onCall={onCall}
             commsPresentation="panel"
+            /* The panel covers the OTHER column (Brandon, 2026-09-29): a
+               Welcome Call card docks it left over Patient Intake, an intake
+               card right over Welcome Call. */
+            commsPanelSide={variant === "welcome" ? "left" : "right"}
           />
           {onLogAttempt && (
             <button

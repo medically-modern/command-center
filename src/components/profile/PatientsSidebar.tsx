@@ -26,6 +26,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
+import { InSystemTooltip } from "@/components/shared/InSystemTooltip";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -212,12 +213,27 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                                     (`profile/dupCheckFlag`). It is a routing
                                     fact, not a blocker. */}
                                 {isAlreadyInSystemResult(p.dupCheckResult) && (
-                                  <span
-                                    className="shrink-0 rounded-full border border-orange-300 bg-orange-100 px-1.5 py-[1px] text-[9px] font-semibold uppercase leading-tight tracking-wide text-orange-800 dark:border-orange-500/40 dark:bg-orange-500/15 dark:text-orange-200"
-                                    title="The duplicate check matched this person to a patient we already serve"
+                                  /* ⚠️ `notes={undefined}`: the LIST read does
+                                     not carry the notes column, and must not
+                                     (a write-up runs to thousands of
+                                     characters on every row of the poll —
+                                     `listColumns.test.ts`). So the row says
+                                     the verdict and where the sentence is;
+                                     the header pill, on the full record,
+                                     says the sentence. No tabIndex: the row
+                                     is a button, and a focusable inside a
+                                     button is invalid. */
+                                  <InSystemTooltip
+                                    notes={undefined}
+                                    verdict={p.dupCheckResult}
+                                    pending={`Duplicate check: ${p.dupCheckResult}. Open the patient — the pill at the top says what the check concluded.`}
                                   >
-                                    In system
-                                  </span>
+                                    <span
+                                      className="shrink-0 cursor-help rounded-full border border-orange-300 bg-orange-100 px-1.5 py-[1px] text-[9px] font-semibold uppercase leading-tight tracking-wide text-orange-800 dark:border-orange-500/40 dark:bg-orange-500/15 dark:text-orange-200"
+                                    >
+                                      In system
+                                    </span>
+                                  </InSystemTooltip>
                                 )}
                               </div>
                               {/* The count the list is ORDERED by, on the row

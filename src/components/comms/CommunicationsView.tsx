@@ -495,6 +495,7 @@ function FallbackTexts({
         draft={draft}
         onDraftChange={onDraftChange}
         onSent={(body) => onTextSent?.(body)}
+        grow
       />
     </section>
   );

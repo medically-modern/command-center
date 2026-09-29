@@ -238,7 +238,7 @@ function TimelineShell({
           <Composer conversation={live} canText={canText} onSent={(body) => {
             onChanged();
             onTextSent?.(body);
-          }} draft={draft} onDraftChange={onDraftChange} />
+          }} draft={draft} onDraftChange={onDraftChange} grow={view} />
         ) : (
           <p className="border-b border-border px-4 py-3 text-xs text-muted-foreground">
             The full number for this item couldn&apos;t be read yet, so texting and calling are off here. It

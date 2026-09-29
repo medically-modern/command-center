@@ -61,6 +61,7 @@ import { voicemailForCall, type PickedCall } from "@/lib/commsHub/callVoicemail"
 import PatientDossierPanel from "@/components/commsHub/PatientDossierPanel";
 import HubPatientPane, { HubPatientPaneHeader } from "@/components/commsHub/HubPatientPane";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
+import { PaneResizer, paneWidthCss, usePaneWidth } from "@/components/shared/PaneResizer";
 import { searchPatientsByName, type PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import {
@@ -141,6 +142,12 @@ const isLogTab = (t: HubTab) => t === "text" || t === "calls" || t === "vms";
 
 const INBOX_SEARCH_DEBOUNCE_MS = 300;
 
+/** What a dragged profile pane always leaves for the rail (56px), the list
+ *  (≤400px) and a thread of ~300px. */
+const HUB_PANE_RESERVE_PX = 760;
+/** The narrowest a dragged pane goes — today's own floor, 23.5rem. */
+const HUB_PANE_MIN_PX = 376;
+
 /**
  * @param embedded  Rendered INSIDE another page's chrome — System Management's
  *   Communications tab. It stops claiming the viewport height, since the host
@@ -184,6 +191,9 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   }, []);
   const [dialInput, setDialInput] = useState("");
   const [ringSettings, setRingSettings] = useState(false);
+  /** The profile pane's dragged width, remembered in this browser (null = the layout's own). */
+  const profileWidth = usePaneWidth("cc.pane.commsHubProfile");
+  const profilePaneRef = useRef<HTMLElement>(null);
 
   // Per-tab list state, kept separate so switching tabs doesn't clear what the
   // rep had typed or selected in the other two.
@@ -1534,13 +1544,34 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
             ≤1100px; this keeps it from 1024 (lg) as before, because the pane
             carries the notes box, the household switcher and the
             unknown-number flow (plan §7), which the thread cannot. */}
+        {/* ⚠️ A rep can DRAG the pane's left edge (Brandon, 2026-09-29:
+            "a slider … to control width of comms vs patient profile"). Once
+            dragged, the remembered width replaces both layouts above; a
+            double-click on the handle puts them back. */}
         <aside
+          ref={profilePaneRef}
           className={cn(
-            "hidden flex-col border-l border-border bg-card lg:flex",
-            inboxOn ? "min-w-[clamp(23.5rem,36%,34rem)] flex-1" : "w-[clamp(23.5rem,36%,34rem)] shrink-0",
+            "relative hidden flex-col border-l border-border bg-card lg:flex",
+            profileWidth.width === null &&
+              (inboxOn ? "min-w-[clamp(23.5rem,36%,34rem)] flex-1" : "w-[clamp(23.5rem,36%,34rem)] shrink-0"),
+            profileWidth.width !== null && "shrink-0",
           )}
+          style={
+            profileWidth.width !== null
+              ? { width: paneWidthCss(profileWidth.width, HUB_PANE_RESERVE_PX, HUB_PANE_MIN_PX) }
+              : undefined
+          }
           data-hub-profile-pane
         >
+          <PaneResizer
+            pane={profilePaneRef}
+            width={profileWidth.width}
+            onDrag={profileWidth.set}
+            onCommit={profileWidth.commit}
+            onReset={profileWidth.reset}
+            reservePx={HUB_PANE_RESERVE_PX}
+            minPx={HUB_PANE_MIN_PX}
+          />
           {/* With the Inbox on, the pane is the patient screen itself
               (COMMS_INBOX_PLAN.md §7) under the mockup's header; off, it is the
               profile pane exactly as it was. */}
