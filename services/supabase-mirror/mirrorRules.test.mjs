@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   PSEUDO,
   diffItems,
@@ -15,6 +17,7 @@ import {
   reconcileDue,
   reconcilePlan,
   shapeQuery,
+  takeCreatedSince,
   takeUpdatedSince,
 } from "./mirrorRules.mjs";
 
@@ -52,7 +55,7 @@ describe("queries — every document is a query, and the shapes monday answered 
   });
 
   it("the reconcile scan asks for ids, group and updated_at only", () => {
-    expect(idsPageQuery(1).query).toContain("items { id updated_at group { id } }");
+    expect(idsPageQuery(1).query).toContain("items { id created_at updated_at group { id } }");
     expect(idsPageQuery(1).query).not.toContain("column_values");
   });
 
@@ -161,6 +164,22 @@ describe("pacing", () => {
     expect(r.done).toBe(true);
     expect(takeUpdatedSince(items, null)).toEqual({ items, done: false });
     expect(takeUpdatedSince(items.slice(0, 2), "2026-09-29T11:00:00Z").done).toBe(false);
+  });
+
+  it("takeCreatedSince (start-empty scope): blank keeps all; otherwise only items created on/after; unknown created_at is out", () => {
+    const items = [{ id: 1, created_at: "2026-10-02T09:00:00Z" }, { id: 2, created_at: "2026-09-28T09:00:00Z" }, { id: 3 }];
+    expect(takeCreatedSince(items, null)).toEqual(items);
+    expect(takeCreatedSince(items, "")).toEqual(items);
+    expect(takeCreatedSince(items, "2026-10-01T00:00:00Z").map((i) => i.id)).toEqual([1]);
+    expect(takeCreatedSince(items, "2026-09-01T00:00:00Z").map((i) => i.id)).toEqual([1, 2]);
+    expect(takeCreatedSince(items, "2026-10-02T09:00:00Z").map((i) => i.id)).toEqual([1]); // on the instant is in
+  });
+
+  it("wiring: the scope is applied at the item-write choke point and to the reconcile scan", () => {
+    const src = readFileSync(join(process.cwd(), "services/supabase-mirror/index.mjs"), "utf8");
+    expect(src).toContain("takeCreatedSince(rawItems, CONFIG.createdSince)");
+    expect(src).toContain("takeCreatedSince(scanned, CONFIG.createdSince)");
+    expect(src).toMatch(/startRun\(pool, boardId, "full", CONFIG.createdSince\)/);
   });
 
   it("reconcile is due when never run or a day old", () => {

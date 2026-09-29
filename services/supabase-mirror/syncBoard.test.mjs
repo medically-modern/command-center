@@ -53,7 +53,7 @@ function fakeMonday(state) {
       else if (q.includes("items(ids: $ids)")) data = { items: state.items.filter((i) => doc.variables.ids.includes(i.id)) };
       else if (q.includes("order_by")) data = { boards: [{ items_page: { cursor: null, items: [...state.items].sort((a, b) => b.updated_at.localeCompare(a.updated_at)) } }] };
       else if (q.includes("column_values")) data = { boards: [{ items_page: { cursor: null, items: state.items } }] };
-      else data = { boards: [{ items_page: { cursor: null, items: state.items.map((i) => ({ id: i.id, updated_at: i.updated_at, group: i.group })) } }] };
+      else data = { boards: [{ items_page: { cursor: null, items: state.items.map((i) => ({ id: i.id, created_at: i.created_at, updated_at: i.updated_at, group: i.group })) } }] };
       data.complexity = { query: 10, after: 19_000_000 };
       return { ok: true, status: 200, json: async () => ({ data }) };
     },
@@ -127,6 +127,24 @@ maybe("syncBoard against Postgres", () => {
     expect(rows.map((r) => [Number(r.item_id), r.state, r.group_id, r.flagged])).toEqual([[101, "missing", "group_mm64b83h", true], [102, "active", "group_mm64b83h", false]]);
     const st = await pool.query("SELECT new_text FROM monday_mirror.item_changes WHERE item_id = 101 AND column_id = '__state__'");
     expect(st.rows.map((r) => r.new_text)).toEqual(["missing"]);
+  });
+
+  it("MIRROR_CREATED_SINCE: the mirror starts empty and takes only items created on/after it", async () => {
+    const BOARD2 = 18406352653;
+    mod.CONFIG.createdSince = "2026-10-01T00:00:00Z";
+    state.items = [item(102), item(201, { created_at: "2026-10-02T09:00:00Z", updated_at: "2026-10-02T09:00:00Z" })];
+    await mod.syncBoard(pool, BOARD2);
+    const { rows } = await pool.query("SELECT item_id FROM monday_mirror.items WHERE board_id = $1 ORDER BY item_id", [BOARD2]);
+    expect(rows.map((r) => Number(r.item_id))).toEqual([201]); // 102 (created 09-28) never entered
+    const run = await pool.query("SELECT since IS NOT NULL AS scoped, items_upserted FROM monday_mirror.sync_runs WHERE board_id = $1 AND kind = 'full'", [BOARD2]);
+    expect(run.rows[0].scoped).toBe(true);
+    expect(run.rows[0].items_upserted).toBe(1);
+    // A reconcile neither pulls the out-of-scope item in nor calls the in-scope one missing.
+    await pool.query("UPDATE monday_mirror.boards SET last_incremental_sync_at = now(), last_reconcile_at = now() - interval '2 days' WHERE board_id = $1", [BOARD2]);
+    await mod.syncBoard(pool, BOARD2);
+    const after = await pool.query("SELECT item_id, state FROM monday_mirror.items WHERE board_id = $1 ORDER BY item_id", [BOARD2]);
+    expect(after.rows.map((r) => [Number(r.item_id), r.state])).toEqual([[201, "active"]]);
+    mod.CONFIG.createdSince = null;
   });
 
   it("never sent monday anything but queries", () => {

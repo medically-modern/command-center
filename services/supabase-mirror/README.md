@@ -33,6 +33,7 @@ MIRROR_ENABLED=1
 MONDAY_API_TOKEN=…            # read scope is enough
 SUPABASE_DB_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 MIRROR_BOARD_IDS=18406352652  # default: Profile Send Off
+MIRROR_CREATED_SINCE=…        # ISO instant; the "start empty" scope (see below)
 ```
 
 Use Supabase's **Session pooler** (port 5432) or direct connection string — not the
@@ -40,6 +41,18 @@ transaction pooler on 6543, which does not support the prepared statements `pg`
 uses. Optional: `MIRROR_INTERVAL_SECONDS` (120), `MIRROR_PAGE_SIZE` (50),
 `MIRROR_PAGE_DELAY_MS` (400), `MIRROR_RECONCILE_HOURS` (24), `MIRROR_FULL=1` (force a
 full re-read), `ONCE=1` (one pass, exit), `DRY_RUN=1` (read monday, write nothing).
+
+## Starting empty (the chosen setup, 2026-09-29)
+
+Josh's call: the mirror starts **empty** — none of the ~2,800 items already on the board
+are copied. Set `MIRROR_CREATED_SINCE` to the instant the mirror goes live (an ISO
+instant; midnight ET is `T04:00:00Z`). Every pass then ignores items created before it
+entirely — an *update* to an older patient is ignored too, so only patients who enter
+the board from that day on exist in Supabase. Old patients drain out of monday as they
+finish. ⚠️ Set it before the first run; narrowing the scope after rows exist marks the
+now out-of-scope rows `missing` at the next reconcile (nothing is deleted). The board's
+full history stays in monday; before the monday subscription is ever cancelled, import
+it once by running a pass with `MIRROR_CREATED_SINCE` unset and `MIRROR_FULL=1`.
 
 A pass is: shape → full read (first time only; ~60 requests for Profile Send Off) or
 incremental read (items ordered newest-updated first, back to the previous pass's

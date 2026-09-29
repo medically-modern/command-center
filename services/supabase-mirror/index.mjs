@@ -44,6 +44,13 @@
  *   MIRROR_RECONCILE_HOURS    reconcile cadence (default 24)
  *   MIRROR_COMPLEXITY_FLOOR   sleep when monday's remaining budget is under
  *                             this (default 2000000)
+ *   MIRROR_CREATED_SINCE      an ISO instant; items created before it are
+ *                             ignored entirely, so the mirror starts EMPTY
+ *                             and holds only patients who entered the board
+ *                             from that day on (Josh, 2026-09-29). Set it
+ *                             before the first run; unset+MIRROR_FULL=1 is
+ *                             the one-time history import before monday is
+ *                             cancelled.
  *   MIRROR_FULL               "1" forces a full read on the next pass
  *   ONCE                      "1" runs one pass and exits
  *   DRY_RUN                   "1" reads monday and computes diffs but writes
@@ -67,6 +74,7 @@ import {
   reconcileDue,
   reconcilePlan,
   shapeQuery,
+  takeCreatedSince,
   takeUpdatedSince,
 } from "./mirrorRules.mjs";
 
@@ -75,7 +83,7 @@ const MONDAY_API_URL = "https://api.monday.com/v2";
 const MONDAY_API_VERSION = "2024-10";
 
 const env = (k, d) => (process.env[k] == null || process.env[k] === "" ? d : process.env[k]);
-const CONFIG = {
+export const CONFIG = {
   enabled: env("MIRROR_ENABLED", "") === "1",
   token: env("MONDAY_API_TOKEN", ""),
   dbUrl: env("SUPABASE_DB_URL", ""),
@@ -86,6 +94,7 @@ const CONFIG = {
   overlapSeconds: Number(env("MIRROR_OVERLAP_SECONDS", 300)),
   reconcileHours: Number(env("MIRROR_RECONCILE_HOURS", 24)),
   complexityFloor: Number(env("MIRROR_COMPLEXITY_FLOOR", 2_000_000)),
+  createdSince: env("MIRROR_CREATED_SINCE", "") || null,
   forceFull: env("MIRROR_FULL", "") === "1",
   once: env("ONCE", "") === "1",
   dryRun: env("DRY_RUN", "") === "1",
@@ -198,7 +207,9 @@ async function mirrorRows(pool, ids) {
  * changed ones are upserted with their diffs recorded. Returns counts.
  */
 async function writeItems(pool, boardId, rawItems, runId, stats) {
-  const rows = rawItems.map((it) => normalizeItem(it, boardId));
+  // The single choke point for item writes: the created-since scope applies
+  // to every pass (full, incremental, reconcile re-reads) right here.
+  const rows = takeCreatedSince(rawItems, CONFIG.createdSince).map((it) => normalizeItem(it, boardId));
   const prev = await mirrorRows(pool, rows.map((r) => r.item_id));
   for (const row of rows) {
     const old = prev.get(row.item_id);
@@ -302,11 +313,13 @@ async function reconcile(pool, boardId, run) {
     if (cursor) await sleep(CONFIG.pageDelayMs);
   } while (cursor);
   run.stats.items_seen = scanned.length;
+  // Out-of-scope items are not "unknown to the mirror" — they are ignored.
+  const inScope = takeCreatedSince(scanned, CONFIG.createdSince);
 
   const { rows } = await pool.query(`SELECT item_id, group_id, state, monday_updated_at FROM monday_mirror.items WHERE board_id = $1`, [boardId]);
-  const plan = reconcilePlan(rows, scanned);
+  const plan = reconcilePlan(rows, inScope);
   run.stats.items_missing = plan.missing.length;
-  log(`reconcile: ${scanned.length} listed, ${plan.missing.length} missing, ${plan.stale.length} to re-read`);
+  log(`reconcile: ${scanned.length} listed (${inScope.length} in scope), ${plan.missing.length} missing, ${plan.stale.length} to re-read`);
   if (plan.missing.length && !CONFIG.dryRun) {
     await pool.query(
       `UPDATE monday_mirror.items SET state = 'missing', missing_since = COALESCE(missing_since, now()), sync_run_id = $2
@@ -349,7 +362,7 @@ export async function syncBoard(pool, boardId, { forceFull = CONFIG.forceFull } 
   const needFull = forceFull || !board.last_full_sync_at;
 
   if (needFull) {
-    const run = await startRun(pool, boardId, "full");
+    const run = await startRun(pool, boardId, "full", CONFIG.createdSince);
     try {
       await fullRead(pool, boardId, run);
       await finishRun(pool, run, true);
@@ -395,6 +408,10 @@ async function main() {
   }
   if (!CONFIG.token) throw new Error("MONDAY_API_TOKEN not set");
   if (!CONFIG.dbUrl && !CONFIG.dryRun) throw new Error("SUPABASE_DB_URL not set");
+  if (CONFIG.createdSince && !Number.isFinite(new Date(CONFIG.createdSince).getTime())) {
+    throw new Error(`MIRROR_CREATED_SINCE is not a readable instant: ${CONFIG.createdSince}`);
+  }
+  if (CONFIG.createdSince) log(`scope: only items created at/after ${CONFIG.createdSince} are mirrored (start-empty mode)`);
 
   const pool = CONFIG.dbUrl ? new pg.Pool({ connectionString: CONFIG.dbUrl, max: 3, ssl: sslFor(CONFIG.dbUrl) }) : null;
   if (pool) {

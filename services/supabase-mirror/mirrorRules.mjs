@@ -69,7 +69,7 @@ export function idsPageQuery(boardId, { limit = 250, cursor = null } = {}) {
     return {
       query: `query ($cursor: String!, $limit: Int!) {
         complexity { query after }
-        next_items_page(cursor: $cursor, limit: $limit) { cursor items { id updated_at group { id } } }
+        next_items_page(cursor: $cursor, limit: $limit) { cursor items { id created_at updated_at group { id } } }
       }`,
       variables: { cursor, limit },
     };
@@ -77,7 +77,7 @@ export function idsPageQuery(boardId, { limit = 250, cursor = null } = {}) {
   return {
     query: `query ($boardId: ID!, $limit: Int!) {
       complexity { query after }
-      boards(ids: [$boardId]) { items_page(limit: $limit) { cursor items { id updated_at group { id } } } }
+      boards(ids: [$boardId]) { items_page(limit: $limit) { cursor items { id created_at updated_at group { id } } } }
     }`,
     variables: { boardId: String(boardId), limit },
   };
@@ -247,6 +247,22 @@ export function takeUpdatedSince(items, sinceIso) {
     }
   }
   return { items: kept, done };
+}
+
+/**
+ * The "start empty" scope (MIRROR_CREATED_SINCE): keep only items created
+ * at/after `sinceIso`. Patients already on the board when the mirror went
+ * live stay monday-only — even their later updates are ignored. Blank since
+ * keeps everything. With a scope set, an item whose created_at is missing or
+ * unreadable is dropped: it cannot be shown to be in scope.
+ */
+export function takeCreatedSince(items, sinceIso) {
+  if (!sinceIso) return items;
+  const since = new Date(sinceIso).getTime();
+  return items.filter((it) => {
+    const t = new Date(it.created_at ?? "").getTime();
+    return Number.isFinite(t) && t >= since;
+  });
 }
 
 export function chunk(arr, n) {
