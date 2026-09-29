@@ -66,7 +66,7 @@ import {
   WELCOME_GROUP_IDS,
 } from "@/lib/careCoordinator/mondayApi";
 import {
-  bucketedLeads, intakeBuckets, nextUp, summarize, toScheduledCall, welcomeCallBuckets,
+  bucketedLeads, intakeBuckets, nextUp, restMorningAttempts, summarize, toScheduledCall, welcomeCallBuckets,
   type CalendlyLookup, type Horizon, type IntakeLead, type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
 import { EMPTY_SELECTION, matchesFacets, type FacetSelection } from "@/lib/careCoordinator/intakeFilter";
@@ -273,7 +273,6 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
     () => welcomeCallBuckets(welcomeRows, ctx, bookings.byEmail),
     [welcomeRows, ctx, bookings.byEmail],
   );
-  const summary = useMemo(() => summarize(intakeB, welcomeB), [intakeB, welcomeB]);
 
   /**
    * Notes for every card in each column, in one batched read per column
@@ -300,6 +299,24 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
   ].map((e) => e.item.id), [welcomeB]);
   const intakeNotes = useCardNotes(intakeNoteIds, NOTES_COLUMN.intake);
   const welcomeNotes = useCardNotes(welcomeNoteIds, NOTES_COLUMN.welcome);
+
+  /**
+   * What the columns RENDER: the buckets with this morning's attempts rested
+   * until noon (Josh, 2026-09-29, §5.30k) — read off each card's newest
+   * stamped "Call attempt" note, which is why this sits after the notes read.
+   * ⚠️ The note ids above come from the UN-rested buckets on purpose: resting
+   * only moves a card between Today and Future, so the id set is the same and
+   * the batched read is not re-issued. The header counts follow the rested
+   * lists, so "Unscheduled: N" is what the list shows.
+   */
+  const intakeShown = useMemo(
+    () => restMorningAttempts(intakeB, (id) => intakeNotes.get(id), ctx),
+    [intakeB, intakeNotes, ctx],
+  );
+  const welcomeShown = useMemo(
+    () => restMorningAttempts(welcomeB, (id) => welcomeNotes.get(id), ctx),
+    [welcomeB, welcomeNotes, ctx],
+  );
 
   /**
    * How many calls and texts have EVER passed between us and each patient on
@@ -444,6 +461,7 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
   const user = getUser();
   const who = access.type === "processor" ? access.profile.name || user?.name || user?.email : user?.name || user?.email;
 
+  const summary = useMemo(() => summarize(intakeShown, welcomeShown), [intakeShown, welcomeShown]);
   const intakeNextUp = nextUp(intakeB.scheduledToday);
   const welcomeNextUp = nextUp(welcomeB.scheduledToday);
 
@@ -568,19 +586,19 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
             {intake.data && (
               <ColumnLists
                 horizon={intakeHorizon}
-                scheduledToday={intakeB.scheduledToday.map((e) => (
+                scheduledToday={intakeShown.scheduledToday.map((e) => (
                   <IntakeScheduledCard key={e.item.id} entry={e} nextUp={e === intakeNextUp} onBookingLink={linkForIntake}
                     extras={extrasFor(e.item.id, e.item.phone, intakeNotes)} />
                 ))}
-                scheduledFuture={intakeB.scheduledFuture.map((e) => (
+                scheduledFuture={intakeShown.scheduledFuture.map((e) => (
                   <IntakeScheduledCard key={e.item.id} entry={e} nextUp={false} onBookingLink={linkForIntake}
                     extras={extrasFor(e.item.id, e.item.phone, intakeNotes)} />
                 ))}
-                unscheduled={(intakeHorizon === "today" ? intakeB.unscheduledToday : intakeB.unscheduledFuture).map((e) => (
+                unscheduled={(intakeHorizon === "today" ? intakeShown.unscheduledToday : intakeShown.unscheduledFuture).map((e) => (
                   <IntakeUnscheduledCard key={e.item.id} entry={e} today={today} onBookingLink={linkForIntake}
                     extras={extrasFor(e.item.id, e.item.phone, intakeNotes)} />
                 ))}
-                review={intakeB.reviewProfile.map((e) => (
+                review={intakeShown.reviewProfile.map((e) => (
                   <IntakeReviewCard key={e.item.id} entry={e} today={today} onBookingLink={linkForIntake}
                     extras={extrasFor(e.item.id, e.item.phone, intakeNotes)} />
                 ))}
@@ -602,15 +620,15 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
             {!welcome.loading && (
               <ColumnLists
                 horizon={welcomeHorizon}
-                scheduledToday={welcomeB.scheduledToday.map((e) => (
+                scheduledToday={welcomeShown.scheduledToday.map((e) => (
                   <WelcomeScheduledCard key={e.item.id} entry={e} nextUp={e === welcomeNextUp} onBookingLink={linkForWelcome}
                     extras={extrasFor(e.item.id, e.item.phone, welcomeNotes)} />
                 ))}
-                scheduledFuture={welcomeB.scheduledFuture.map((e) => (
+                scheduledFuture={welcomeShown.scheduledFuture.map((e) => (
                   <WelcomeScheduledCard key={e.item.id} entry={e} nextUp={false} onBookingLink={linkForWelcome}
                     extras={extrasFor(e.item.id, e.item.phone, welcomeNotes)} />
                 ))}
-                unscheduled={(welcomeHorizon === "today" ? welcomeB.unscheduledToday : welcomeB.unscheduledFuture).map((e) => (
+                unscheduled={(welcomeHorizon === "today" ? welcomeShown.unscheduledToday : welcomeShown.unscheduledFuture).map((e) => (
                   <WelcomeUnscheduledCard key={e.item.id} entry={e} today={today} onBookingLink={linkForWelcome}
                     extras={extrasFor(e.item.id, e.item.phone, welcomeNotes)} />
                 ))}

@@ -195,6 +195,11 @@ function ScheduledWhen<T>({ entry, muted }: { entry: ScheduledEntry<T>; muted: b
   );
 }
 
+/** A card resting until noon after a morning attempt (§5.30k) — amber, where its wait would be. */
+function BackAt({ label }: { label: string }) {
+  return <span className="shrink-0 text-sm font-semibold text-amber-700 dark:text-amber-300">{label}</span>;
+}
+
 /** The right-hand wait for an unscheduled box — "Days since intake", gray. */
 function DaysSince({ createdAt, today }: { createdAt: string; today: string }) {
   return <span className="shrink-0 text-sm font-semibold tabular-nums text-muted-foreground">{formatDaysSince(createdAt, today)}</span>;
@@ -275,7 +280,7 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       clinic={lead.providedClinicPhone}
       networkPill={networkPill(lead)}
       warnings={cardWarnings(lead)}
-      when={<DaysSince createdAt={lead.createdAt} today={today} />}
+      when={entry.backAt ? <BackAt label={entry.backAt} /> : <DaysSince createdAt={lead.createdAt} today={today} />}
       pills={intakePills(lead, true)}
       pillActions={insurancePillAction(lead, extras)}
       inSystem={inSystem(lead)}
@@ -473,7 +478,7 @@ export function WelcomeUnscheduledCard({ entry, today, onBookingLink, extras }: 
       state={stateFromAddress(item.address)}
       doctor={item.doctorName}
       clinic={welcomeClinic(item)}
-      when={<DaysSince createdAt={item.createdAt} today={today} />}
+      when={entry.backAt ? <BackAt label={entry.backAt} /> : <DaysSince createdAt={item.createdAt} today={today} />}
       pills={welcomePills(item)}
       contact={extras.contact}
       phone={item.phone}

@@ -6,12 +6,23 @@
  * lib/careCoordinator/workflow.test.ts; this checks they reach the DOM in
  * Brandon's 2026-09-14 shape.
  */
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import type { IntakeLead, WelcomeCallItem } from "@/lib/careCoordinator/workflow";
 import { etToday } from "@/lib/masheke/etDate";
+
+/**
+ * The page's clock and one extra lead, settable per test (§5.30k's morning
+ * rest is a function of the time of day, and the suite runs at any hour).
+ * `vi.hoisted` so the mock factories below can read it.
+ */
+const scenario = vi.hoisted(() => ({ nowMinutes: null as number | null, extraLeads: [] as unknown[] }));
+vi.mock("@/lib/scheduledCalls/workflow", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/scheduledCalls/workflow")>();
+  return { ...actual, nowMinutesEt: () => scenario.nowMinutes ?? actual.nowMinutesEt() };
+});
 
 const NOW = Date.now();
 const hoursAgo = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
@@ -65,10 +76,14 @@ const fetchItemNotes = vi.fn(async () => "[Sep 3, 2026, 11:07 AM] Patient Intake
  * column, not one per patient — the whole reason notes are not in the list
  * query (§5.25).
  */
+/** "Sep 29, 2026" — today in the note stamp's own words (ET). */
+const TODAY_STAMP = new Date().toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" });
 const fetchItemNotesBatch = vi.fn(async (ids: readonly string[], _columnId: string) =>
   new Map(ids.map((id) => [id, id === "ready"
     ? "[Sep 2] Patient Intake: first call, no answer —MT\n[Sep 3, 2026, 11:07 AM] Patient Intake: Call attempt 1 — left a vm —MT"
-    : ""])));
+    : id === "rested"
+      ? `[${TODAY_STAMP}, 9:05 AM] Patient Intake: Call attempt 1 — no answer, try after lunch —MT`
+      : ""])));
 
 vi.mock("@/lib/careCoordinator/mondayApi", () => ({
   INTAKE_GROUP_IDS: ["group_mm5z87zt", "group_mm5zgeak", "group_mm6c3rhb"],
@@ -83,6 +98,7 @@ vi.mock("@/lib/careCoordinator/mondayApi", () => ({
     intake({ id: "import", name: "Hubert Baldwin", dropOffStep: "", referralType: "Doctor", referralSource: "SNJ [2.0]", attemptCounter: "1" }),
     intake({ id: "fresh", name: "Josen Man", createdAt: hoursAgo(3) }),
     intake({ id: "mgr", name: "Escalated Person", intakeEscalation: "Manager Escalation Required" }),
+    ...(scenario.extraLeads as IntakeLead[]),
   ],
   fetchWelcomeCallItems: async () => [
     wc({ id: "now", name: "Amara Nwosu", address: "12 Oak St, Albany, NY 12207, USA" }),
@@ -131,6 +147,11 @@ function mount() {
 }
 
 describe("CareCoordinatorPage", () => {
+  afterEach(() => {
+    scenario.nowMinutes = null;
+    scenario.extraLeads = [];
+  });
+
   it("renders the overview, the strip above the columns, and Today by default", async () => {
     mount();
     expect(screen.getByRole("heading", { level: 1, name: "My Patients" })).toBeInTheDocument();
@@ -192,6 +213,35 @@ describe("CareCoordinatorPage", () => {
 
     // The load bars are GONE once the reads resolved.
     expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
+  });
+
+  it("a morning attempt rests the card until noon — off Today, at the front of Future as 'Back at 12 PM' (Josh, 2026-09-29)", async () => {
+    scenario.extraLeads = [intake({ id: "rested", name: "Morning Caller", createdAt: etDaysAgo(3), groupId: "group_mm5zgeak", attemptCounter: "1" })];
+    scenario.nowMinutes = 10 * 60;
+    const { unmount } = mount();
+    const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
+    await within(intakeCol).findByText("Eleanor Boyd");
+    // Once the notes land she is gone from Today…
+    await vi.waitFor(() => expect(within(intakeCol).queryByText("Morning Caller")).toBeNull());
+    const groupings = within(intakeCol).getByRole("group", { name: /Patient Intake — Today or Future/ });
+    const [todayBtn, futureBtn] = within(groupings).getAllByRole("button");
+    expect(todayBtn).toHaveTextContent(/Unscheduled: 1/);
+    expect(futureBtn).toHaveTextContent(/Unscheduled: 2/);
+    // …and sits in Future, first, saying when she is back.
+    fireEvent.click(futureBtn);
+    const names = within(intakeCol).getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
+    expect(names.indexOf("Morning Caller")).toBeGreaterThanOrEqual(0);
+    expect(names.indexOf("Morning Caller")).toBeLessThan(names.indexOf("Theo Marsh"));
+    const card = within(intakeCol).getByText("Morning Caller").closest("article")!;
+    expect(within(card).getByText("Back at 12 PM")).toBeInTheDocument();
+    unmount();
+
+    // At 1 PM the same patient is simply back on Today — nothing was written.
+    scenario.nowMinutes = 13 * 60;
+    mount();
+    const col2 = await screen.findByRole("region", { name: "Patient Intake" });
+    expect(await within(col2).findByText("Morning Caller")).toBeInTheDocument();
+    expect(within(col2).queryByText("Back at 12 PM")).toBeNull();
   });
 
   it("switching a column to Future shows its future lists, and there is NO second switch", async () => {
@@ -366,7 +416,10 @@ describe("CareCoordinatorPage", () => {
 
     // ⚠️ One request per column, and never the per-card read.
     expect(fetchItemNotes).not.toHaveBeenCalled();
-    const intakeCalls = fetchItemNotesBatch.mock.calls.filter((c) => c[1] === "text_mm389fs");
+    // The request that carried THIS card also carried the rest of the column.
+    // (The morning-rest test above adds a lead of its own, which the cache
+    // fetches once in a batch of its own — not a per-card read.)
+    const intakeCalls = fetchItemNotesBatch.mock.calls.filter((c) => c[1] === "text_mm389fs" && c[0].includes("ready"));
     expect(intakeCalls).toHaveLength(1);
     // Every card the column rendered, in one go.
     expect(intakeCalls[0][0]).toEqual(expect.arrayContaining(["booked", "ready"]));

@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
+import type { UnscheduledEntry } from "./workflow";
 import {
   attemptLabel, chaseBuckets, chaseRoute, classifyBooking, columnSummary, daysBetween,
   daysInPipeline, dueLabel, followUpHorizon, formatDaysSince, formatWait, formCompletion,
-  intakeBuckets, isFormLead, latestAttempt, liveBooking, methodLabel, nextUp, overdueCount,
+  intakeBuckets, isFormLead, latestAttempt, liveBooking, methodLabel, nextUp, overdueCount, restMorningAttempts,
   shortMonthDay, summarize, toCount, toScheduledCall, waitingMs, welcomeCallBuckets,
   READY_AFTER_HOURS,
   type ChaseItem, type IntakeLead, type WelcomeCallItem,
@@ -458,5 +459,38 @@ describe("toScheduledCall — feeds the day strip from the column's own read", (
   it("passes a canceled booking THROUGH — the strip's isLiveBooking is the one filter", () => {
     const c = toScheduledCall(lead({ scheduledCallTime: "2026-09-08 14:30", bookingStatus: "Canceled" }));
     expect(c.bookingStatus).toBe("Canceled");
+  });
+});
+
+describe("restMorningAttempts — a morning attempt sits out until noon (Josh, 2026-09-29)", () => {
+  type Row = { id: string; name: string };
+  const entry = (id: string): UnscheduledEntry<Row> => ({ item: { id, name: id }, attempts: 1, followUpDate: "", overdueDays: 0, waitingMs: 0 });
+  const buckets = () => ({
+    scheduledToday: [], scheduledFuture: [],
+    unscheduledToday: [entry("a"), entry("b"), entry("c")],
+    unscheduledFuture: [entry("z")],
+    withManager: 0,
+  });
+  const notes: Record<string, string | undefined> = {
+    a: "[Sep 29, 2026, 9:05 AM] Patient Intake: Call attempt 1 — no answer —MT",
+    b: "[Sep 28, 2026, 9:05 AM] Patient Intake: Call attempt 1 — yesterday —MT",
+    c: undefined, // not read yet
+  };
+  const ctx = { today: "2026-09-29", nowMinutes: 10 * 60 };
+
+  it("moves this morning's attempt to the front of Future, marked, and leaves the rest", () => {
+    const out = restMorningAttempts<Row, ReturnType<typeof buckets>>(buckets(), (id) => notes[id], ctx);
+    expect(out.unscheduledToday.map((e) => e.item.id)).toEqual(["b", "c"]);
+    expect(out.unscheduledFuture.map((e) => [e.item.id, e.backAt ?? null])).toEqual([["a", "Back at 12 PM"], ["z", null]]);
+  });
+
+  it("after noon nothing rests — the same input, the same object back", () => {
+    const b = buckets();
+    expect(restMorningAttempts<Row, typeof b>(b, (id) => notes[id], { ...ctx, nowMinutes: 12 * 60 })).toBe(b);
+  });
+
+  it("nothing to rest ⇒ the same object back (no re-render)", () => {
+    const b = buckets();
+    expect(restMorningAttempts<Row, typeof b>(b, () => undefined, ctx)).toBe(b);
   });
 });

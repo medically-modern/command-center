@@ -35,7 +35,8 @@ import {
 } from "@/components/ui/dialog";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
 import { reportDial } from "@/hooks/commsInbox/useInbox";
-import { defaultFollowUpDate } from "@/lib/careCoordinator/followUp";
+import { attemptSlot, defaultFollowUpDateFor } from "@/lib/careCoordinator/followUp";
+import { nowMinutesEt } from "@/lib/scheduledCalls/workflow";
 import { logCallAttempt, type CallAttemptTarget } from "@/lib/careCoordinator/callAttempt";
 import { etToday } from "@/lib/masheke/etDate";
 import { formatPhoneNice } from "@/lib/shared/phoneDisplay";
@@ -71,7 +72,8 @@ export function CallPatientDialog({ target, onClose, onLogged }: {
 }) {
   const phone = useWebPhone();
   const [note, setNote] = useState("");
-  const [followUp, setFollowUp] = useState(() => defaultFollowUpDate(etToday()));
+  // ⚠️ Morning ⇒ TODAY (the card rests until noon, §5.30k); afternoon ⇒ tomorrow.
+  const [followUp, setFollowUp] = useState(() => defaultFollowUpDateFor(etToday(), nowMinutesEt()));
   const [saving, setSaving] = useState(false);
 
   // ⚠️ Dial on OPEN, once per patient. `target` is a fresh object each render
@@ -101,7 +103,7 @@ export function CallPatientDialog({ target, onClose, onLogged }: {
   useEffect(() => {
     if (!target) return;
     setNote("");
-    setFollowUp(defaultFollowUpDate(etToday()));
+    setFollowUp(defaultFollowUpDateFor(etToday(), nowMinutesEt()));
   }, [itemId, target]);
 
   if (!target) return null;
@@ -120,7 +122,9 @@ export function CallPatientDialog({ target, onClose, onLogged }: {
         toast.error(`Attempt ${res.attempt} logged, but the note didn't save`, { description: res.noteFailed });
       } else {
         toast.success(`Attempt ${res.attempt} logged`, {
-          description: `${target.name || "They"} come back on ${followUp}.`,
+          description: followUp === etToday()
+            ? `${target.name || "They"} come back after 12 PM today.`
+            : `${target.name || "They"} come back on ${followUp}.`,
         });
       }
       onLogged();
@@ -176,6 +180,16 @@ export function CallPatientDialog({ target, onClose, onLogged }: {
             value={followUp}
             onChange={(e) => setFollowUp(e.target.value)}
           />
+          {/* Josh, 2026-09-29: a morning attempt takes them off the list until
+              the afternoon, an afternoon one until tomorrow — said here so the
+              default date is not a surprise. */}
+          <p className="text-xs text-muted-foreground" data-testid="cc-attempt-follow-up-hint">
+            {followUp === etToday()
+              ? "Today: they leave the list now and come back after 12 PM. Pick a later date to push them further out."
+              : attemptSlot(nowMinutesEt()) === "morning"
+                ? "They come back on that day. (Before noon, leaving it on today brings them back this afternoon.)"
+                : "They come back on that day."}
+          </p>
         </div>
 
         {/* shadcn Buttons, NOT a page `.btn` class: this dialog portals to

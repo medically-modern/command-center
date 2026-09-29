@@ -45,6 +45,7 @@ import { isCrossSell, isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { minutesOfDay, type ScheduledCall } from "@/lib/scheduledCalls/workflow";
 import type { WelcomeCallBooking } from "@/lib/welcomeCall/calendlyBooking";
 import { etPartsOf } from "./scheduleEntries";
+import { BACK_AT_LABEL, attemptSlot, restsUntilNoon } from "./followUp";
 
 /* ── Constants that ARE the spec ────────────────────────────── */
 
@@ -407,6 +408,8 @@ export interface UnscheduledEntry<T> {
   /** Days the follow-up date is already past. 0 when due today or undated. */
   overdueDays: number;
   waitingMs: number;
+  /** Set on a card resting until noon after a morning attempt (§5.30k). */
+  backAt?: string;
 }
 
 export interface ColumnBuckets<T> {
@@ -443,6 +446,31 @@ export function classifyBooking(
     : ctx.nowMinutes <= at + NOW_AFTER_MIN ? "today-now"
     : "today-passed";
   return { when, minutesUntil };
+}
+
+/**
+ * A morning attempt takes the card off Today's list until noon (Josh,
+ * 2026-09-29, §5.30k): every Unscheduled → Today entry whose newest stamped
+ * "Call attempt" note is from this morning moves to the front of Future,
+ * marked `backAt`, while it is still morning. Pure, so it re-runs on the
+ * page's clock: at 12:00 the cards are simply back. Notes still loading ⇒
+ * nothing moves.
+ */
+export function restMorningAttempts<T extends { id: string }, B extends ColumnBuckets<T>>(
+  b: B, notesFor: (id: string) => string | undefined, ctx: Pick<BucketContext, "today" | "nowMinutes">,
+): B {
+  if (attemptSlot(ctx.nowMinutes) !== "morning") return b;
+  const resting: UnscheduledEntry<T>[] = [];
+  const kept: UnscheduledEntry<T>[] = [];
+  for (const e of b.unscheduledToday) {
+    (restsUntilNoon(notesFor(e.item.id), ctx.today, ctx.nowMinutes) ? resting : kept).push(e);
+  }
+  if (!resting.length) return b;
+  return {
+    ...b,
+    unscheduledToday: kept,
+    unscheduledFuture: [...resting.map((e) => ({ ...e, backAt: BACK_AT_LABEL })), ...b.unscheduledFuture],
+  };
 }
 
 /**
