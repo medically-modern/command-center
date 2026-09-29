@@ -146,6 +146,39 @@ describe("itemOpenHref", () => {
     expect(itemOpenHref(item())).toBe("/evaluate?patientId=1&from=patient");
   });
 
+  /**
+   * Profile Send Off is four queues on one board, so the GROUP decides which
+   * page and which sub-queue a link opens. Reported 2026-09-30: a link to Mary
+   * Terrell (Partial Leads) opened the intake page under the Completed
+   * selector, where she was not in the list, and the page silently showed a
+   * different patient instead.
+   */
+  describe("Profile Send Off routes by group", () => {
+    const intake = (groupId: string) =>
+      itemOpenHref(item({ boardId: PROFILE, groupId, route: "/unverified-referrals", boardName: "Profile Send Off" }));
+
+    it("⚠️ a PARTIAL LEADS patient carries source=partial", () => {
+      const href = intake("group_mm5z87zt")!;
+      expect(href).toContain("source=partial");
+      expect(href).toContain("patientId=1");
+      expect(href.startsWith("/unverified-referrals?")).toBe(true);
+    });
+
+    it("a COMPLETED-form patient carries no source (the page's default)", () => {
+      const href = intake("group_mm5zgeak")!;
+      expect(href).not.toContain("source=");
+      expect(href).toContain("patientId=1");
+    });
+
+    it("a PROFILE CLEAN-UP patient opens its own page, not Info Collection", () => {
+      expect(intake("group_mm6c3rhb")!.startsWith("/profile-cleanup?")).toBe(true);
+    });
+
+    it("every other board is untouched by the intake routing", () => {
+      expect(itemOpenHref(item({ groupId: "group_mm5z87zt" }))).toBe("/evaluate?patientId=1&from=patient");
+    });
+  });
+
   it("⚠️ opens a COMPLETED record with completedStage= — the review-mode WRITE GATE", () => {
     // Without this param `useCompletedStageReview` never fires, and a rep
     // reading history could re-advance a finished patient (§7 · §5.38).

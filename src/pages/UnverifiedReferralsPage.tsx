@@ -42,6 +42,7 @@ import { etToday } from "@/lib/masheke/etDate";
 
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { GROUPS, LIST_COLUMN_IDS, fetchClinicLabels, clearFileColumn } from "@/lib/profile/mondayApi";
+import { visibleIntakeRows, intakeRowForSelection } from "@/lib/profile/intakeSelection";
 // §6.1: this is the EXISTING component, unchanged. Search, Parachute panel,
 // location grid, order count and notes all behave exactly as on /profile —
 // rebuilding it would fork behaviour reps already rely on.
@@ -861,18 +862,18 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   // column carry ?origin=, and for them the escalated patients are the ONLY
   // ones worth showing, so the filter inverts rather than disappearing.
   const managerOrigin = managerOriginFromParams(searchParams);
-  const visible = useMemo(() => {
-    const escalated = (p: Patient) =>
-      p.intakeEscalation === "Manager Escalation Required" ||
-      p.intakeEscalation === "Final Escalation Required";
-    if (managerOrigin === "manager-intervention") {
-      return patients.filter((p) => p.intakeEscalation === "Manager Escalation Required");
-    }
-    if (managerOrigin === "final-decisions") {
-      return patients.filter((p) => p.intakeEscalation === "Final Escalation Required");
-    }
-    return patients.filter((p) => !escalated(p));
-  }, [patients, managerOrigin]);
+  /** The patient the URL names, if any — see `deepLinkedId`'s note below. */
+  const deepLinkedId = searchParams.get("patientId");
+  /**
+   * ⚠️ A patient the URL NAMES is never filtered out, by any of these rules.
+   * The rule and the reported failure are in `lib/profile/intakeSelection.ts`;
+   * it lives there so that "which patient is this rep writing to" is testable
+   * without rendering this page.
+   */
+  const visible = useMemo(
+    () => visibleIntakeRows(patients, managerOrigin, deepLinkedId),
+    [patients, managerOrigin, deepLinkedId],
+  );
 
   /**
    * The default patient is the one the SIDEBAR puts first, not whichever
@@ -898,10 +899,22 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
    * renders; safe for nothing else. Never pass it to a write, and never render
    * a pane from it.
    */
+  /**
+   * ⚠️ **A named patient who is not in the list selects NOTHING.** Falling
+   * through to `ordered[0]` put a different patient on screen — full pane,
+   * every control live, the rep believing it was the one they clicked — and
+   * said nothing. That is how a note, a benefits check or an Advance lands on
+   * a stranger's record. `ordered[0]` is still the right default when nothing
+   * has been asked for, which is the ordinary "open the page" case and the
+   * post-advance one (the advance nulls `selectedId` itself), so the fallback
+   * survives exactly there.
+   */
   const selectedRow = useMemo(
-    () => ordered.find((p) => p.id === selectedId) ?? ordered[0] ?? null,
+    () => intakeRowForSelection(ordered, selectedId),
     [ordered, selectedId],
   );
+  /** Asked for by name, and not here — the pane says so instead of substituting. */
+  const namedButMissing = !!selectedId && !selectedRow;
 
   // Point the full-width read at whoever the sidebar has selected. `loadDetail`
   // no-ops when the id is unchanged, so a re-sort of the list (logging an
@@ -2526,6 +2539,17 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                 <span>Loading {selectedRow.name || "patient"}…</span>
               </div>
             )
+          ) : namedButMissing ? (
+            /* Never silently show a different patient — see `selectedRow`. */
+            <div className="m-6 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">This patient isn't in this list.</p>
+              <p className="mt-1">
+                The link named a patient who isn't in {isCleanUp ? "Profile Clean-Up" : source === "partial" ? "New Form — Partial Leads" : "New Form — Completed"}.
+                They may have been advanced, moved to another group, or escalated to a manager.
+                Nothing was opened, so that you don't work the wrong record.
+              </p>
+              <p className="mt-2">Pick a patient from the list, or open them from Search.</p>
+            </div>
           ) : !selected ? (
             <div className="m-6 text-sm text-muted-foreground">Select a patient.</div>
           ) : (

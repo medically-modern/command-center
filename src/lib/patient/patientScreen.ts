@@ -8,6 +8,8 @@
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { PIPELINE_ORDER } from "@/lib/commsHub/pipelineOrder";
 import { COMPLETED_STAGE_ROUTES } from "@/lib/systemMgmt/stageCompletion";
+import { intakeProfileHref } from "@/lib/profile/intakeLink";
+import { BOARD_ID as PROFILE_SEND_OFF_BOARD } from "@/lib/profile/mondayApi";
 
 /** Query keys the page reads. */
 export const VIEW_PARAM = "view";
@@ -327,6 +329,18 @@ export function stageSubline(
 export function itemOpenHref(item: DossierItem | null): string | null {
   if (!item) return null;
   if (!item.isCompleted) {
+    /* ⚠️ Profile Send Off is FOUR queues on one board, and which one a link
+       opens is decided by the GROUP, not by the board's default route. The
+       intake page reads `?source=` and defaults to **completed**, so a Partial
+       Leads patient linked without it opens under the Completed selector — the
+       chrome calls an abandoned form a successful one, and the patient is not
+       in the list that was fetched. `intakeProfileHref` is the one builder for
+       that (Jason Ortiz-Troxell, 2026-09-25); this call site was missed, and
+       Mary Terrell (12895923748, Partial Leads) hit it again on 2026-09-30.
+       Every other board has one route per item, so they are unchanged. */
+    if (item.boardId === PROFILE_SEND_OFF_BOARD) {
+      return intakeProfileHref(item.itemId, item.groupId, "from=patient");
+    }
     return item.route ? `${item.route}?patientId=${item.itemId}&from=patient` : null;
   }
   const route = COMPLETED_STAGE_ROUTES[item.boardId];
