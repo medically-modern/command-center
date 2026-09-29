@@ -48,6 +48,23 @@ items monday stopped listing become `state = 'missing'`, silent group moves are
 re-read). Every answer's `complexity.after` is honoured: under
 `MIRROR_COMPLEXITY_FLOOR` the service sleeps out the minute.
 
+## Connecting Claude Code to the Supabase project
+
+`.mcp.json` at the repo root registers Supabase's hosted MCP server for project
+`xjwbfkvhqmztvblfyyia` (features: docs, account, database, debugging, development,
+functions, branching). It needs a one-time OAuth sign-in in a browser: open the repo in a
+local Claude Code session, run `/mcp`, pick `supabase`, then *Authenticate*. After that the
+MCP's `apply_migration` tool can apply `db/0001…` → `0002…` → `0003…` in order (or
+`supabase link` + `supabase db push` from `supabase/migrations/`), and `execute_sql` can check
+`select count(*) from monday_mirror.automations` (35 rows). A cloud session cannot finish the
+OAuth step; there, set `SUPABASE_DB_URL` as an environment secret and run the service with
+`ONCE=1` instead. `.claude/skills/supabase*` are Supabase's own agent skills
+(`npx skills add supabase/agent-skills`, pinned in `skills-lock.json`).
+
+On Railway the service belongs in project `handsome-simplicity` beside `cmd ctr server`, whose
+`MONDAY_API_TOKEN` it can share as a reference variable (`${{cmd ctr server.MONDAY_API_TOKEN}}`)
+rather than a second copy of the secret.
+
 ## Tests
 
 ```
