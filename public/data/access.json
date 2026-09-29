@@ -71,7 +71,9 @@
         "unverifiedReferrals"
       ],
       "roleOrder": {},
-      "roleFilters": {},
+      "roleFilters": {
+        "welcomeCall": "crossSell"
+      },
       "perms": {
         "viewOthers": true,
         "stageManager": false,
