@@ -50,7 +50,7 @@ npm run lint       # eslint
 npm test           # vitest run   (unit tests: evalState round-trips, accessStore, roleView, auth)
 ```
 
-There is **no CLAUDE-managed backend in this repo** beyond `worker/` and `services/`.
+There is **no CLAUDE-managed backend in this repo** beyond `worker/` and `services/`. `services/supabase-mirror` copies monday boards into Supabase, read-only and switched off unless `MIRROR_ENABLED=1` (§5.55); `supabase/` holds its migrations and PHI-free board snapshots.
 The Python backends the SPA mirrors (financial estimate, DVS automations) live on Railway.
 
 ---
@@ -130,6 +130,7 @@ Five mechanisms the rest of the app depends on. The full text of each is in its 
 - **Care Coordinator:** 5.15 scheduled calls and Calendly booking · 5.30 the dashboard (and the two-screens table) · 5.30b welcome calls on the grid · 5.30c day strip reads Calendly · 5.30d page audit · 5.30e, 5.30f, 5.30g, 5.30i Brandon's notes · 5.30h carrier dropdown · 5.30j Masani's 2026-09-25 notes (warnings panel, Active pill, sticky header, shared advance claims, the SOP, log-attempt reach on every call path) · 5.30k Brandon's 2026-09-29 notes (suggestion colour, shipment contents from Line Item Detail, the pane divider, AM/PM attempts proposal, the in-system sentence, WC panel docks left, card rotate, growing text box, unmatched bookings)
 - **Phones, texts and archives:** 5.13 inbound calls · 5.13b answering in the browser (Route B; Route A plan) · 5.16 call history and recordings · 5.27 SMS archive · 5.28 Communications Hub and contact marks · 5.29 patient name directory · 5.47 call-recording archive · 5.47b voicemail archive · 5.47c MMS archive · 5.49 Communications Inbox · 5.50 the Communications button · 5.51b call counts · 5.53 the 2026-09-25 comms audit (stuck dial/hang-up, voicemail vs missed, inverted missed calls, provision metronome)
 - **Orders, Subscription and payments:** 5.35 Orders and the SKU tracker · 5.36 MR status · 5.39i Inventory · 5.48 Cash Pay
+- **Off monday:** 5.55 the Supabase mirror — Profile Send Off's 164 columns and 35 automations inventoried, mirrored read-only into `monday_mirror` (sandboxed, off by default), and the flip plan
 - **Redesign: shell, search, access:** 5.39b shell and layout switch · 5.39c abilities, home views, fax bar · 5.39d the layout one-way door · 5.39e the roster · 5.39f UI rewrite, not a function rewrite · 5.39g-h my view, borrowing a view, abilities · 5.39j Access page edits vs the poll · 5.41 Reports and Stage Manager pages · 5.42 search returns one row per patient · 5.44 search failures and the settings menu · 5.46h search hides a patient's own orders; Orders page load · 5.52 pixel-match phases 3–7
 - **Redesign: the patient screen:** 5.39 patient screen · 5.39c2 per-stage panels · 5.39c3 recent notes · 5.39c4 fax bar right pane · 5.43 dossier escalation column · 5.45 Subscription view · 5.45b editable Subscription profile · 5.46b the 2026-09-22 pass · 5.46c reorder form · 5.46d expected items · 5.46e contacts · 5.46f info strip · 5.46g top-bar email and pencils · 5.51 pixel-match phase 1 · 5.51c pixel-match phase 2
 

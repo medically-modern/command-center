@@ -1,0 +1,6952 @@
+{
+  "board_id": 18406352652,
+  "name": "Profile Send Off Board",
+  "snapshot_taken": "2026-09-29",
+  "items_count": 2819,
+  "groups": [
+    {
+      "id": "group_mm1xf2jb",
+      "title": "1. Intake"
+    },
+    {
+      "id": "group_mm64b83h",
+      "title": "Already In System"
+    },
+    {
+      "id": "group_mm5z87zt",
+      "title": "New Form — Partial Leads"
+    },
+    {
+      "id": "group_mm5zgeak",
+      "title": "New Form — Completed"
+    },
+    {
+      "id": "group_mm6c3rhb",
+      "title": "Profile Clean-Up"
+    },
+    {
+      "id": "group_mm1wvq8p",
+      "title": "Tests"
+    },
+    {
+      "id": "group_mm4vhqff",
+      "title": "Archived DTCs"
+    },
+    {
+      "id": "group_mm1xyczx",
+      "title": "Stuck"
+    },
+    {
+      "id": "group_mm1y57sz",
+      "title": "Completed"
+    }
+  ],
+  "columns": [
+    {
+      "id": "name",
+      "title": "Name",
+      "type": "name",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm1zmeb3",
+      "title": "Move to Onboarding",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Already Serving",
+            "hex": "#ff007f",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Advance to MN",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Send Back To Referral",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Need More Info.",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "Advance to Welcome Call",
+            "hex": "#037f4c",
+            "is_done": true,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1xg10n",
+      "title": "Primary Insurance",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Fidelis Medicaid",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Fidelis Low-Cost",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Medicare A&B",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "NYSHIP",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "United Commercial",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "United Medicare",
+            "hex": "#037f4c",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "United Medicaid",
+            "hex": "#579bfc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "Aetna Commercial",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "Aetna Medicare",
+            "hex": "#ffcb00",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "Wellcare",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 11,
+            "label": "Humana",
+            "hex": "#bb3354",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 12,
+            "label": "Cigna",
+            "hex": "#ff007f",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 13,
+            "label": "Medicaid",
+            "hex": "#ff5ac4",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 14,
+            "label": "Midlands Choice",
+            "hex": "#784bd1",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 15,
+            "label": "Horizon BCBS",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 16,
+            "label": "BCBS TN",
+            "hex": "#66ccff",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 17,
+            "label": "BCBS FL",
+            "hex": "#757575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 18,
+            "label": "BCBS WY",
+            "hex": "#7f5347",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 19,
+            "label": "Magnacare",
+            "hex": "#ff6d3b",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 101,
+            "label": "Oregon Care",
+            "hex": "#ff7575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 102,
+            "label": "UMR",
+            "hex": "#faa1f1",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 103,
+            "label": "Anthem BCBS Medicaid (JLJ)",
+            "hex": "#ffadad",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 104,
+            "label": "Fidelis Commercial",
+            "hex": "#7e3b8a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 105,
+            "label": "Anthem BCBS Commercial",
+            "hex": "#9aadbd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 106,
+            "label": "Anthem BCBS Medicare",
+            "hex": "#74afcc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 107,
+            "label": "Stedi",
+            "hex": "#225091",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 108,
+            "label": "Anthem BCBS Low-Cost (JLJ)",
+            "hex": "#4eccc6",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 109,
+            "label": "United Low-Cost",
+            "hex": "#5559df",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 110,
+            "label": "Fidelis Medicare",
+            "hex": "#401694",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 151,
+            "label": "Fidelis NJ",
+            "hex": "#563e3e",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 152,
+            "label": "Cash Pay",
+            "hex": "#bda8f9",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 159,
+            "label": "Health Plans Inc (PHCS)",
+            "hex": "#cd9282",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 160,
+            "label": "Cigna Medicare",
+            "hex": "#175a63",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm24ap4j",
+      "title": "General Insurance",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Anthem / BCBS",
+            "hex": "#66ccff",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Aetna",
+            "hex": "#5559df",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Cigna",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Fidelis",
+            "hex": "#74afcc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Medicare A&B",
+            "hex": "#216edf",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "Medicaid",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "NYSHIP Empire",
+            "hex": "#ffadad",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "UMR",
+            "hex": "#ff5ac4",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "Wellcare",
+            "hex": "#784bd1",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "United Healthcare",
+            "hex": "#225091",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 11,
+            "label": "Humana",
+            "hex": "#bca58a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 12,
+            "label": "MagnaCare",
+            "hex": "#7f5347",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 13,
+            "label": "Midlands Choice",
+            "hex": "#bb3354",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 14,
+            "label": "Stedi",
+            "hex": "#ffcb00",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 15,
+            "label": "Other",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 16,
+            "label": "Cash Pay",
+            "hex": "#037f4c",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 17,
+            "label": "Fidelis NJ",
+            "hex": "#757575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 159,
+            "label": "Health Plans Inc (PHCS)",
+            "hex": "#cd9282",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm4t8gbq",
+      "title": "Member ID",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1x2qk2",
+      "title": "Member ID 1",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm1zbrx0",
+      "title": "Secondary Insurance",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "NY Medicaid",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Medicare Supplement",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "None",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm1xaccx",
+      "title": "Member ID 2",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xdcet",
+      "title": "Stedi Plan Name",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "dropdown_mm457xy2",
+      "title": "Stedi Home Plan",
+      "type": "dropdown",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Blue Cross and Blue Shield of Montana",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "UMR",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Fidelis Care",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "NYSDOH",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "UNITEDHEALTHCARE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 5,
+            "label": "Fidelis Care New York",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "EMPIRE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Horizon Blue Cross and Blue Shield of New Jersey",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "AETNA INC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "HUMANA",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "CMS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 11,
+            "label": "Blue Cross and Blue Shield of Alabama",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 12,
+            "label": "Anthem Blue Cross Blue Shield New York",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 13,
+            "label": "Anthem Blue Cross and Blue Shield of Georgia",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 14,
+            "label": "Medicaid New York",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 15,
+            "label": "16013",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 16,
+            "label": "CHLIC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 17,
+            "label": "Blue Cross and Blue Shield of Massachusetts",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 18,
+            "label": "CIGNA",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 19,
+            "label": "Excellus BlueCross BlueShield New York",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 20,
+            "label": "Blue Cross & Blue Shield of Rhode Island",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 21,
+            "label": "Capital Blue Cross Pennsylvania",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 22,
+            "label": "Blue Cross of Idaho",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 23,
+            "label": "ANTHEM",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 24,
+            "label": "Blue Cross and Blue Shield of Illinois",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 25,
+            "label": "Florida Blue",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 26,
+            "label": "Blue Shield of California",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 27,
+            "label": "Independence Blue Cross Pennsylvania",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 28,
+            "label": "Blue Cross and Blue Shield of Texas",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 29,
+            "label": "WELLCARE HEALTH PLANS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 30,
+            "label": "Blue Cross Blue Shield of Michigan",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 31,
+            "label": "Cigna Dental Health, Inc.",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 32,
+            "label": "Regence BlueShield of Idaho",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 33,
+            "label": "Anthem Blue Cross and Blue Shield Wisconsin",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 34,
+            "label": "Blue Cross and Blue Shield of Nebraska",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 35,
+            "label": "Arkansas Blue Cross and Blue Shield",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 36,
+            "label": "Blue Cross & Blue Shield of Mississippi",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 37,
+            "label": "BlueCross BlueShield of Tennessee",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 38,
+            "label": "Blue Cross and Blue Shield of Kansas",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 39,
+            "label": "CareFirst Blue Cross Blue Shield Maryland",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 40,
+            "label": "Anthem Blue Cross and Blue Shield Virginia",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 41,
+            "label": "Health Plans Inc",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 42,
+            "label": "CGLIC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 43,
+            "label": "Anthem Blue Cross and Blue Shield Missouri",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 44,
+            "label": "Blue Cross and Blue Shield of South Carolina",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 45,
+            "label": "Highmark of Pennsylvania",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 46,
+            "label": "Blue Cross and Blue Shield of Minnesota",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 47,
+            "label": "GOLDEN RULE INSURANCE COMPANY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "dropdown_mm1y2x75",
+      "title": "Insurance Plan",
+      "type": "dropdown",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 1,
+            "label": "Essential Plan 200-250",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "NY CHIP PARTIAL SUBSIDY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "DIRECT ACCESS,DENTAL PPO YOUNG GRINS PPO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "PPO PRUDENT BUYER CLASSIC MULTI-CHOICE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 5,
+            "label": "Medicaid TANF/SN",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "NEW YORK MEDICAID - NO RX COPAY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "OPEN ACCESS PLUS,CIGNA VISION SERVICED BY EYEMED",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "OMNIA",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "NJ DIRECT HDLOW",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "Aetna Medicare Signature Care (HMO)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 11,
+            "label": "CHP Income Grtr than 400 FPL",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 12,
+            "label": "HealthierLife",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 13,
+            "label": "Ny UnitedHealthcare Dual Complete Lppo Co Partial",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 14,
+            "label": "NEW YORK MEDICAID",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 15,
+            "label": "Child Health Plus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 16,
+            "label": "Wellcare Fidelis Dual Liberty Sync MMC (Upstate)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 17,
+            "label": "NY EP5 > 200 THRU 250% FPL STD HX",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 18,
+            "label": "HMOPOS-UHC COMPLETE CARE NY-33 (HMO-POS C-SNP)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 19,
+            "label": "POS CHOICE PLUS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 20,
+            "label": "CDHP IN HEALTH SAVINGS ACCOUNT",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 21,
+            "label": "Fidelis Care Silver",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 22,
+            "label": "Fidelis Medicaid Managed Care",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 23,
+            "label": "resubmitted after Doctor bug fix)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 24,
+            "label": "Humana Gold Plus H4141-017",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 25,
+            "label": "NY SSI HARP",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 26,
+            "label": "Fidelis Care New York",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 27,
+            "label": "PREFERRED PROVIDER",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 28,
+            "label": "HealthierLife Plan",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 29,
+            "label": "Aetna Choice POS II",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 30,
+            "label": "NEW YORK MLTC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 31,
+            "label": "Medicare (S02) ESA PPO Plan",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 32,
+            "label": "HumanaChoice",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 33,
+            "label": "PPO - BLUE CARE ELECT PREFERRED",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 34,
+            "label": "NJ DIRECT",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 35,
+            "label": "Aetna Medicare Enhanced Extra (PPO)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 36,
+            "label": "TCN SVS HEARING DME - ACTIVE UAW - TRADITIONAL - N",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 37,
+            "label": "DIRECT ACCESS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 38,
+            "label": "Essential Plan 1",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 39,
+            "label": "Aetna Medicare Elite (PPO)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 40,
+            "label": "EXCLUSIVE PROVIDER ORGANIZATION",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 41,
+            "label": "NY COMMUNITY PLAN FOR KIDS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 42,
+            "label": "BLUE ACCESS PPO NY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 43,
+            "label": "Essential Plan 2",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 44,
+            "label": "NJ EDUCATORS HEALTH PLAN",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 45,
+            "label": "ELIGIBLE PCP",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 46,
+            "label": "CDHP CA GENERIC HLTH SAVINGS ACCT",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 47,
+            "label": "CHOICE EPO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 48,
+            "label": "BLUEOPTIONS PREDICTABLE COST 03559",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 49,
+            "label": "PPO COVERAGE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 50,
+            "label": "Humana Value Choice",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 51,
+            "label": "Alignment Health Heart & Diabetes CalPlus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 52,
+            "label": "JUDI HEALTH - STAFF",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 53,
+            "label": "NY UHC DUAL COMPLETE HMOPOS FULL H3387-014-001 IB",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 54,
+            "label": "STANDARD",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 55,
+            "label": "NY UNITEDHEALTHCARE DUAL COMPLETE HMOPOS FULL H338",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 56,
+            "label": "PPO DENTAL",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 57,
+            "label": "Humana Gold Plus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 58,
+            "label": "Freedom Network",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 59,
+            "label": "BC PPO INCENTIVE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 60,
+            "label": "ADVANTAGE EPO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 61,
+            "label": "HRA (NETWORK S)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 62,
+            "label": "PREFERRED PROVIDER ORGANIZATION",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 63,
+            "label": "Essential Plan 4",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 64,
+            "label": "Humana Essentials",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 65,
+            "label": "CDHP GEORGIA HEALTH SAVINGS ACCOUNT",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 66,
+            "label": "PREFERRED CARE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 67,
+            "label": "AHF Choice POS II",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 68,
+            "label": "DIRECT ACCESS HSA",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 69,
+            "label": "NY TANF FOR ADULTS WITH BH",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 70,
+            "label": "PPO - BLUE CARE ELECT SAVER WITH COINSURANCE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 71,
+            "label": "Wellcare Fidelis Dual Liberty Sync (Upstate)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 72,
+            "label": "HUM Gold Pl-Diab/Hrt",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 73,
+            "label": "YOUR H S A ELIGIBLE PLAN P2",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 74,
+            "label": "HEALTHMATE COAST TO COAST",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 75,
+            "label": "EPO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 76,
+            "label": "EXCHANGE MEMBER - ANTHEM GATEKEEPER X, SILVER, ST,",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 77,
+            "label": "MA Eligible",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 78,
+            "label": "PREFERRED PROVIDER ORGANIZATION (PPO)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 79,
+            "label": "NY CHIP - MEMBER AND STATE BILLING",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 80,
+            "label": "HSA Aetna Choice POS II",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 81,
+            "label": "NY H8432-042-000 ANTHEM HEALTHPLUS FULL DUAL ADVAN",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 82,
+            "label": "Aetna Medicare Full Dual Care (HMO D-SNP)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 83,
+            "label": "NETWORKBLUE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 84,
+            "label": "PREFERRED_PROVIDER_ORG_(PPO)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 85,
+            "label": "PREFERRED PROVIDER OPTION PLUS MEDICAL",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 86,
+            "label": "BASIC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 87,
+            "label": "EXCELLUS BLUE PPO SIGNATURE DEDUCTIBLE 3",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 88,
+            "label": "OMNIA INNER CIRCLE 4 TIER",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 89,
+            "label": "HEALTH MAINTENANCE ORGANIZATION  MEDICAL",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 90,
+            "label": "P - IN-NETWORK",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 91,
+            "label": "Humana GoldPlus-Diab",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 92,
+            "label": "NJ FamilyCare A",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 93,
+            "label": "MED ADV",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 94,
+            "label": "MEDICAL MUTUAL OF OHIO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 95,
+            "label": "26 CWA UNITY DIRECT",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 96,
+            "label": "Fidelis Care Gold",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 97,
+            "label": "DIRECT ACCESS HRA",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 98,
+            "label": "ADVANTAGE EPO CDH HSA COMPATIBLE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 99,
+            "label": "PPO NY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 100,
+            "label": "Dental HMO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 101,
+            "label": "Open Access Plus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 102,
+            "label": "UnitedHealthcare Group Medicare Advantage",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 103,
+            "label": "BLUEOPTIONS LOWER PREMIUM 05302",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 104,
+            "label": "SILVER/PREFERRED",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 105,
+            "label": "NEW YORK MEDICAID HARP",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 106,
+            "label": "26 NJ DIRECT",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 107,
+            "label": "Fidelis Care at Home",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 108,
+            "label": "HumanaChoice H5970-029",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 109,
+            "label": "HUMChoice-Diab/Hrt",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 110,
+            "label": "HumanaChoice Florida",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 111,
+            "label": "HUM Full Ac Giveback",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 112,
+            "label": "State Employees' Insurance Boa",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 113,
+            "label": "Aetna Medicare Eagle Giveback (PPO)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 114,
+            "label": "North Carolina State Health Pl",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 115,
+            "label": "Humana Value Plus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 116,
+            "label": "Kentucky Public Pensions Autho",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 117,
+            "label": "Humana Dual Select",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 118,
+            "label": "HUM USAA Honor w Rx",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 119,
+            "label": "Humana Basic Rx Plan",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 120,
+            "label": "Humana Honor",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 121,
+            "label": "The Pension Board United Churc",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 122,
+            "label": "PEEHIP",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 123,
+            "label": "Aetna Medicare Dual Extra Care (PPO D-SNP)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 124,
+            "label": "HumanaChoice H5216-337",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 125,
+            "label": "Humana Gold Plus SNP-DE H0028-032",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 126,
+            "label": "Humana Gold Plus SNP-DE H4141-003",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 127,
+            "label": "ZZZ Batch Test Label",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 128,
+            "label": "DOMESTIC NETWORK PPO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 129,
+            "label": "NY COMMUNITY PLAN FOR FAMILIES W/BH",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 130,
+            "label": "HSA OPEN POS II",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 131,
+            "label": "UNITEDHEALTHCARE CHOICE PLUS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 132,
+            "label": "NEW YORK MEDICAID - LONG ISLAND",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 133,
+            "label": "Open Access Aetna Health Network Only",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 134,
+            "label": "Virginia EPO Connect",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 135,
+            "label": "BLUECHOICE HMO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 136,
+            "label": "BC PPO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 137,
+            "label": "EXCHANGE MEMBER - ANTHEM HEALTHKEEPERS SILVER X DE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 138,
+            "label": "NY SSI",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 139,
+            "label": "NY CHIP - STATE BILLING ONLY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 140,
+            "label": "Fidelis Care Bronze",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 141,
+            "label": "VA H4909-014-000 ANTHEM MEDICARE ADVANTAGE (PPO)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 142,
+            "label": "KINDERCARE LOW DED FAMW/ PHYS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 143,
+            "label": "VA H3447-051-000 ANTHEM MEDICARE ADVANTAGE 3 (HMO-",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 144,
+            "label": "BLUECHOICE ADVANTAGE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 145,
+            "label": "NY EP STANDARD 1 RISK",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 146,
+            "label": "C-30 PA NBN OAP",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 147,
+            "label": "FL PPO ALTNET NETWORKBLUE 10P0",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 148,
+            "label": "HMOPOS-AARP MEDICARE ADVANTAGE FROM UHC VA-0010 (H",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 149,
+            "label": "KEYCARE PPO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 150,
+            "label": "VA POS HEALTHKEEPERS SLCT PPO CHIRO",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 151,
+            "label": "HEALTHKEEPERS OPEN ACCESS POS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 152,
+            "label": "KAISER PERMANENTE - MAS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 153,
+            "label": "THE LOOMIS COMPANY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 154,
+            "label": "Essential Plan 3",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 155,
+            "label": "GEN 25/PAHSA100",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm25bjz7",
+      "title": "Stedi Secondary / Medicaid ID",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm1yeksx",
+      "title": "Run Stedi Eligibility",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Failed",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Run",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "date_mm1wf43j",
+      "title": "Date of Intake",
+      "type": "date",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm1wrrqz",
+      "title": "REFERRAL DETAILS -->",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "REFERRAL DETAILS -->",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1wm4n4",
+      "title": "Referral Type",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Manufacturer",
+            "hex": "#a1e3f6",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Payor",
+            "hex": "#7e3b8a",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Patient",
+            "hex": "#bca58a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Doctor",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Advocacy Group",
+            "hex": "#579bfc",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1w5wxr",
+      "title": "Referral Source",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Patient",
+            "hex": "#bca58a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Tandem",
+            "hex": "#579bfc",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Beta Bionics",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "CareCentrix",
+            "hex": "#7f5347",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Doctor",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "Wellstart",
+            "hex": "#037f4c",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Solace Advocates",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "SNJ",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "District Endocrine",
+            "hex": "#ffadad",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "SNJ [2.0]",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm7d71vd",
+      "title": "Referral Subclass",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Tandem FL",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Tandem NY",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm7f2erf",
+      "title": "Referral Region",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": []
+      }
+    },
+    {
+      "id": "color_mm1wjjtk",
+      "title": "Pump Type",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "iLet",
+            "hex": "#74afcc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Mobi",
+            "hex": "#225091",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "t:slim",
+            "hex": "#4eccc6",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Minimed 780G",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1w7pmf",
+      "title": "CGM Type",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "FreeStyle Libre 14-Day",
+            "hex": "#a1e3f6",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Guardian 4",
+            "hex": "#401694",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Instinct",
+            "hex": "#5559df",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "FreeStyle Libre 3 Plus",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "FreeStyle Libre 2 Plus",
+            "hex": "#66ccff",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "Dexcom G7",
+            "hex": "#7f5347",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Dexcom G7 15-Day",
+            "hex": "#cd9282",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "Dexcom G6",
+            "hex": "#bca58a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1w1978",
+      "title": "Request Type",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Insulin Pump",
+            "hex": "#225091",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Supplies Only",
+            "hex": "#a9bee8",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "CGM",
+            "hex": "#784bd1",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Insulin Pump + CGM",
+            "hex": "#4eccc6",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Supplies + CGM",
+            "hex": "#9aadbd",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1yets8",
+      "title": "CGM Cross-Sell",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Cross-Sell",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Couldn't Cross-Sell",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Already Serving CGM",
+            "hex": "#225091",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1w1cm9",
+      "title": "Serving",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Insulin Pump",
+            "hex": "#225091",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Supplies Only",
+            "hex": "#a9bee8",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "CGM",
+            "hex": "#401694",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Insulin Pump + CGM",
+            "hex": "#4eccc6",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Supplies + CGM",
+            "hex": "#9aadbd",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1yx6mq",
+      "title": "EMAIL REFERRAL INFO -->",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "EMAIL REFERRAL INFO -->",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "date_mm1y43ak",
+      "title": "OOW Date",
+      "type": "date",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1yhgf7",
+      "title": "Malfunction Reason",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "dropdown_mm1ygncg",
+      "title": "Current Diabetes Therapy",
+      "type": "dropdown",
+      "description": null,
+      "settings": {
+        "labels": []
+      }
+    },
+    {
+      "id": "color_mm1yd4v5",
+      "title": "MEDICAL NECESSITY DETAILS -->",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "MEDICAL NECESSITY DETAILS -->",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1w5xn1",
+      "title": "Insulin Pump Coverage Path",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "IW New Insurance",
+            "hex": "#74afcc",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Omnipod Switch",
+            "hex": "#cd9282",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "OOW Pump",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "1st Pump >6M Diagnosed",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "1st Pump <6M Diagnosed",
+            "hex": "#9d99b9",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Supplies Only",
+            "hex": "#a9bee8",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1w7e5q",
+      "title": "CGM Coverage Path",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Insulin",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Hypo",
+            "hex": "#175a63",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Neither Applies",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "file_mm1w5vwp",
+      "title": "Clinical Files",
+      "type": "file",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm1y4gyp",
+      "title": "DEMOGRAPHICS -->",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "DEMOGRAPHICS-->",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm1xvxst",
+      "title": "DOB",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "phone_mm1x44yk",
+      "title": "Pt. Phone",
+      "type": "phone",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "location_mm1xhw17",
+      "title": "Address",
+      "type": "location",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xc140",
+      "title": "Email",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm1x1bdg",
+      "title": "Gender",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Male",
+            "hex": "#225091",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Female",
+            "hex": "#ff5ac4",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Unknown",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1x3d9q",
+      "title": "INSURANCE -->",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "INSURANCE-->",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1xycqc",
+      "title": "Active/Not-Active",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Active",
+            "hex": "#037f4c",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Not Active",
+            "hex": "#bb3354",
+            "is_done": true,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "numeric_mm1zzyph",
+      "title": "Co-insurance %",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xyp9y",
+      "title": "Secondary Insurance",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "numeric_mm1ztdz4",
+      "title": "Deductible",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "numeric_mm1zv64b",
+      "title": "Deductible Remaining",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "numeric_mm1zfv02",
+      "title": "OOP Max",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "numeric_mm1zxktp",
+      "title": "OOP Max Remaining",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm2bgjxp",
+      "title": "CGM & Pump Insurance",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Fidelis Medicaid",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Fidelis Low-Cost",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Medicare A&B",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "NYSHIP",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "United Commercial",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "United Medicare",
+            "hex": "#037f4c",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "United Medicaid",
+            "hex": "#579bfc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "Aetna Commercial",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "Aetna Medicare",
+            "hex": "#ffcb00",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "Wellcare",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 11,
+            "label": "Humana",
+            "hex": "#bb3354",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 12,
+            "label": "Cigna",
+            "hex": "#ff007f",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 13,
+            "label": "Medicaid",
+            "hex": "#ff5ac4",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 14,
+            "label": "Midlands Choice",
+            "hex": "#784bd1",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 15,
+            "label": "Horizon BCBS",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 16,
+            "label": "BCBS TN",
+            "hex": "#66ccff",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 17,
+            "label": "BCBS FL",
+            "hex": "#757575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 18,
+            "label": "BCBS WY",
+            "hex": "#7f5347",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 19,
+            "label": "MagnaCare",
+            "hex": "#ff6d3b",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 101,
+            "label": "Oregon Care",
+            "hex": "#ff7575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 102,
+            "label": "UMR",
+            "hex": "#faa1f1",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 103,
+            "label": "Anthem BCBS Medicaid (JLJ)",
+            "hex": "#ffadad",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 104,
+            "label": "Fidelis Commercial",
+            "hex": "#7e3b8a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 105,
+            "label": "Anthem BCBS Commercial",
+            "hex": "#9aadbd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 106,
+            "label": "Anthem BCBS Medicare",
+            "hex": "#74afcc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 107,
+            "label": "Stedi",
+            "hex": "#225091",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 108,
+            "label": "Anthem BCBS Low-Cost (JLJ)",
+            "hex": "#4eccc6",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 109,
+            "label": "United Low-Cost",
+            "hex": "#5559df",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 110,
+            "label": "Fidelis Medicare",
+            "hex": "#401694",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm2b5bf5",
+      "title": "CGM & Pump Member ID",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm2bg0rs",
+      "title": "CGM & Pump Ins Active?",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Active",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Not Active",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2b5e6a",
+      "title": "Supplies Insurance",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Fidelis Medicaid",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Fidelis Low-Cost",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Medicare A&B",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "NYSHIP",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "United Commercial",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "United Medicare",
+            "hex": "#037f4c",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "United Medicaid",
+            "hex": "#579bfc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "Aetna Commercial",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "Aetna Medicare",
+            "hex": "#ffcb00",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "Wellcare",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 11,
+            "label": "Humana",
+            "hex": "#bb3354",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 12,
+            "label": "Cigna",
+            "hex": "#ff007f",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 13,
+            "label": "Medicaid",
+            "hex": "#ff5ac4",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 14,
+            "label": "Midlands Choice",
+            "hex": "#784bd1",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 15,
+            "label": "Horizon BCBS",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 16,
+            "label": "BCBS TN",
+            "hex": "#66ccff",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 17,
+            "label": "BCBS FL",
+            "hex": "#757575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 18,
+            "label": "BCBS WY",
+            "hex": "#7f5347",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 19,
+            "label": "MagnaCare",
+            "hex": "#ff6d3b",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 101,
+            "label": "Oregon Care",
+            "hex": "#ff7575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 102,
+            "label": "UMR",
+            "hex": "#faa1f1",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 103,
+            "label": "Anthem BCBS Medicaid (JLJ)",
+            "hex": "#ffadad",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 104,
+            "label": "Fidelis Commercial",
+            "hex": "#7e3b8a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 105,
+            "label": "Anthem BCBS Commercial",
+            "hex": "#9aadbd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 106,
+            "label": "Anthem BCBS Medicare",
+            "hex": "#74afcc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 107,
+            "label": "Stedi",
+            "hex": "#225091",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 108,
+            "label": "Anthem BCBS Low-Cost (JLJ)",
+            "hex": "#4eccc6",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 109,
+            "label": "United Low-Cost",
+            "hex": "#5559df",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 110,
+            "label": "Fidelis Medicare",
+            "hex": "#401694",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm2bs9y4",
+      "title": "Supplies Member ID",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm2bvmw7",
+      "title": "Supplies Ins Active?",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Active",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Not Active",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2bpw7z",
+      "title": "Monitor Auth Req?",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "No",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Yes",
+            "hex": "#ff007f",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2bekxa",
+      "title": "Monitor Network Status",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "INN",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "OON",
+            "hex": "#ff7575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Borrowed Network",
+            "hex": "#74afcc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "numeric_mm2bffek",
+      "title": "Monitor Co-insurance %",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm2b1zgq",
+      "title": "Monitor HCPC",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "E2103",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2bscj",
+      "title": "Sensors Auth Req?",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "No",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Yes",
+            "hex": "#ff007f",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2brh0x",
+      "title": "Sensors Network Status",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "INN",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "OON",
+            "hex": "#ff7575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Borrowed Network",
+            "hex": "#74afcc",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "numeric_mm2byn1k",
+      "title": "Sensors Co-insurance %",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm2b6t98",
+      "title": "Sensors HCPC",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "A4239",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2bx2ys",
+      "title": "Insulin Pump Auth Req?",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "No",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Yes",
+            "hex": "#ff007f",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2b91nc",
+      "title": "Insulin Pump Network Status",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "INN",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "OON",
+            "hex": "#ff7575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Borrowed Network",
+            "hex": "#74afcc",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "numeric_mm2b4nzx",
+      "title": "Insulin Pump Co-insurance %",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm2bjwvx",
+      "title": "Insulin Pump HCPC",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "E0784",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2btvq0",
+      "title": "Infusion Set Auth Req?",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "No",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Yes",
+            "hex": "#ff007f",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2b1ver",
+      "title": "Infusion Set Network Status",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "INN",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "OON",
+            "hex": "#ff7575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Borrowed Network",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "numeric_mm2bksj8",
+      "title": "Infusion Set Co-insurance %",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm2bpvvy",
+      "title": "Infusion Set HCPC",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "A4230",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "A4231",
+            "hex": "#bca58a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "A4224",
+            "hex": "#cd9282",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2bd0q0",
+      "title": "Cartridge Auth Req?",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "No",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Yes",
+            "hex": "#ff007f",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm2bm7g8",
+      "title": "Cartridge Network Status",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "INN",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "OON",
+            "hex": "#ff7575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Borrowed Network",
+            "hex": "#74afcc",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "numeric_mm2bhdrr",
+      "title": "Cartridge Co-insurance %",
+      "type": "numbers",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm2bxxz2",
+      "title": "Cartridge HCPC",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Evaluate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Not Serving",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "A4232",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "A4225",
+            "hex": "#bca58a",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1ycys3",
+      "title": "DOCTOR -->",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 1,
+            "label": "DOCTOR -->",
+            "hex": "#333333",
+            "is_done": true,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm1ychz8",
+      "title": "Doctor Status",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "New",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Existing",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Failed Search",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm1x46et",
+      "title": "Doctor Name",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "phone_mm1xz8c0",
+      "title": "Doctor Phone",
+      "type": "phone",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1x7d91",
+      "title": "Doctor NPI",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm1xw7y5",
+      "title": "Clinicals Method",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Fax",
+            "hex": "#66ccff",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Parachute",
+            "hex": "#225091",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Email",
+            "hex": "#4eccc6",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Dashboard",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "email_mm1x6fq5",
+      "title": "Doctor Email",
+      "type": "email",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "email_mm1xdzcj",
+      "title": "Doctor Fax (@rcfax)",
+      "type": "email",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "dropdown_mm1xbvas",
+      "title": "Clinic Name",
+      "type": "dropdown",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 1,
+            "label": "SUNY Upstate Pediatric - Joslin Diabetes Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "NYU PEDIATRIC DIABETES CENTER",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "NewYork-Presbyterian - Naomi Berrie Diabetes Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "NYU Langone - ACGC Endo 3rd FL",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 5,
+            "label": "NewYork-Presbyterian - WCIMA Helmsley Tower",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "Montefiore Einstein",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Guthrie",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "NewYork-Presbyterian - Naomi Berrie, Diabetes Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "SUNY Upstate Pediatric Joslin Diabetes Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "SUNY Upstate Joslin Diabetes Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 11,
+            "label": "NYU Langone - ACGC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 12,
+            "label": "Endo 3rd FL",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 13,
+            "label": "NewYork-Presbyterian -",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 14,
+            "label": "Weill Greenberg Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 15,
+            "label": "NewYork-Presbyterian - Weill Greenberg Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 16,
+            "label": "SUNY Upstate Pediatric",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 17,
+            "label": "Joslin Diabetes Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 18,
+            "label": "Joslin Pediatric Educators",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 19,
+            "label": "NYU Diabetes and Endocrinology Associates",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 20,
+            "label": "LAKEWOOD MEDICAL ASSOCIATES",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 21,
+            "label": "Park Avenue Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 22,
+            "label": "Park Avenue  Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 23,
+            "label": "SUNY Upstate Joslin Diabetes Center Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 24,
+            "label": "Upstate University Hospital",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 25,
+            "label": "Albany Med Health System - AMC 220 Washington Community Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 26,
+            "label": "CVPH Endocrinology Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 27,
+            "label": "UVM Health Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 28,
+            "label": "AMG Diabetes & Endocrinology at Morristown Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 29,
+            "label": "AMG Diabetes & Endocrinology at Morristown",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 30,
+            "label": "BELLEVUE HOSPITAL CENTER HHC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 31,
+            "label": "Nathan Littauer Primary/Specialty Care",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 32,
+            "label": "Medical Diagnostic Associates, P.A. - Central Endo",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 33,
+            "label": "NewYork-Presbyterian - Naomi Berrie Diabetes Center Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 34,
+            "label": "SMH Endo",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 35,
+            "label": "UHS Diabetes and Endocrinology Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 36,
+            "label": "Albany Med Health",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 37,
+            "label": "Intermountain - SCL Health Medical Group Billings Diabetes/Endocrine",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 38,
+            "label": "CHS Integrated Care at Lake Success",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 39,
+            "label": "COMMUNITY OF HOPE, INC.",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 40,
+            "label": "Endo Consultants of Morris County",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 41,
+            "label": "UVMHN - UVM Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 42,
+            "label": "Northwell Health - Endocrinology at Phelps",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 43,
+            "label": "Northwell Physicians Partners Division of Endocrinology and Diabetes at Great Neck",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 44,
+            "label": "Summit Health Endocrinology Morristown",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 45,
+            "label": "Upstate Medical University",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 46,
+            "label": "Albany Med Health System - Albany Medical Center Endocrinology - South Clinical Campus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 47,
+            "label": "Children's Hospital at Montefiore",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 48,
+            "label": "Atlantic Medical Group Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 49,
+            "label": "Memorial Sloan Kettering",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 50,
+            "label": "North Jersey Endocrine Consultants",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 51,
+            "label": "Albany Medical Center Endocrinology - South Clinical Campus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 52,
+            "label": "OPTUM Fishkill Westage Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 53,
+            "label": "Albany Med Health System - 22 New Scotland Division of Pediatric Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 54,
+            "label": "NYU Langone Medical Associates - Penn District",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 55,
+            "label": "Slocum Dickson Medical Group - Syed",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 56,
+            "label": "Tens Medical PC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 57,
+            "label": "Diabetes and Endocrine Associates of Bridgewater Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 58,
+            "label": "RRH Diabetes and Endocrinology - Ridgeway Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 59,
+            "label": "Guthrie Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 60,
+            "label": "ST. PETER'S HEALTH PARTNERS - ALBANY OFFICE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 61,
+            "label": "The Office Don Zwickler, MD",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 62,
+            "label": "AMHS- SHMG Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 63,
+            "label": "NYU Langone Great Neck",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 64,
+            "label": "UPMC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 65,
+            "label": "SUNIL ASNANI 1669574281 Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 66,
+            "label": "Catholic Health Ronkonkoma",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 67,
+            "label": "Primary Care of Western New York",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 68,
+            "label": "Mount St Marys Health Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 69,
+            "label": "Montefiore - Medical ArtsPavillion",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 70,
+            "label": "Grandview Medical Group",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 71,
+            "label": "Mana Endocrinology Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 72,
+            "label": "NYU Langone",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 73,
+            "label": "Metropolitan Hospital Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 74,
+            "label": "CVPH Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 75,
+            "label": "Edward Condon Medical",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 76,
+            "label": "ST. PETER'S HEALTH PARTNERS - ALBANY OFFICE Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 77,
+            "label": "Albany Med Health  System - 22 New  Scotland Division of  Pediatric Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 78,
+            "label": "UBMD Pediatric Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 79,
+            "label": "Catholic Health Ambulatory Care at West Babylon",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 80,
+            "label": "Pediatric Endocrinology / Diabetes At Conventus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 81,
+            "label": "Ochsner Health",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 82,
+            "label": "Florida Medical Clinic Orlando Health",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 83,
+            "label": "HIGH COUNTRY COMMUNITY HEALTH",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 84,
+            "label": "Village Medical",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 85,
+            "label": "Penn Medicine",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 86,
+            "label": "New Windsor Pediatrics and Family Care",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 87,
+            "label": "UC Davis Health System",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 88,
+            "label": "Anna Suponya MD PC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 89,
+            "label": "Bronson Diabetes & Endocrinology Center - Portage (A Bronson Methodist Hospital facility)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 90,
+            "label": "Northwell Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 91,
+            "label": "NYU Langone Huntington Medical Group",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 92,
+            "label": "St. Joseph's Health Syracuse, New York (NY) Hospitals",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 93,
+            "label": "NYU Langone Health",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 94,
+            "label": "MapQuest",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 95,
+            "label": "Heritage Valley Health System",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 96,
+            "label": "MARY IMOGENE BASSETT HOSPITAL - 1841847779 Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 97,
+            "label": "Memorial Health System",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 98,
+            "label": "The Enlyv Clinic Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 99,
+            "label": "Cohen Children's Medical Center Division of Pediatric Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 100,
+            "label": "NewYork-Presbyterian - WCIMA Helmsley Tower Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 101,
+            "label": "Northwell Health Physician Partners - Diabetes and Endocrinology of Suffolk Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 102,
+            "label": "Crouse Medical Practice Endocrinology Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 103,
+            "label": "Catholic Health Mount St. Mary’s Hospital Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 104,
+            "label": "Sutter Health",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 105,
+            "label": "The Endocrine Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 106,
+            "label": "ENDOCRINE & DIABETES CONSULTANTS OF CENTRAL FLORIDA, LLC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 107,
+            "label": "AMHS- SHMG Endocrinology Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 108,
+            "label": "VMG - Endocrinology, Ridgewood Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 109,
+            "label": "UVM Children's Hospital",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 110,
+            "label": "NYU Ambulatory Care Westside - Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 111,
+            "label": "Dr Natalia Anchipolovsky PA Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 112,
+            "label": "Mount Sinai Marathon Medical - Merrick Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 113,
+            "label": "Stony Brooke Pediatric Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 114,
+            "label": "WMCHealth Physicians Endocrinology, Hawthorne",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 115,
+            "label": "Galen Medical Group Center for Diabetes and Endocrinology Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 116,
+            "label": "Southgate Medical Group",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 117,
+            "label": "Scarsdale Medical Group Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 118,
+            "label": "Bozeman Health Diabetes and Endocrinology Center Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 119,
+            "label": "MANHATTAN ENDOCRINOLOGY, PLLC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 120,
+            "label": "Sayre Desmond Street - Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 121,
+            "label": "Bradford Regional Medical Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 122,
+            "label": "UVMHN - UVM Children's Hospital",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 123,
+            "label": "Mount Sinai Morningside ACC6 Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 124,
+            "label": "Sayre Desmond Street - Endocrinology Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 125,
+            "label": "Summit Health Endocrinology Morristown Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 126,
+            "label": "Pediatric Diabetes & Endocrinology Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 127,
+            "label": "HIGH COUNTRY COMMUNITY HEALTH (3) Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 128,
+            "label": "St. Luke's Clinic - Endocrinology and Diabetes - Twin Falls",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 129,
+            "label": "DIABETES & ENDOCRINE HEALTH CONSULTANT",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 130,
+            "label": "Coastal Plains Primary Care Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 131,
+            "label": "Endocrine Associates of Rockland Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 132,
+            "label": "NYU Langone - ACWS Endo 3rd FL",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 133,
+            "label": "RRH Endo - Clifton Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 134,
+            "label": "The Children's Hospital at Saint Peter's University Hospital Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 135,
+            "label": "CHILDRENS HOSPITAL OF PHILADELPHIA ENDO Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 136,
+            "label": "EMERALD COAST MEDICAL GROUP Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 137,
+            "label": "JOSH TEST CLINIC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 138,
+            "label": "Shore Physicians Group Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 139,
+            "label": "MuIti-Specialty in Bellmore",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 140,
+            "label": "Englewood Health Physician Network - Oradell",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 141,
+            "label": "Diabetes and Endocrine Associates of Hunterdon",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 142,
+            "label": "Horner Family Practice",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 143,
+            "label": "Hawaii Pacific health",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 144,
+            "label": "TMGNJ-Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 145,
+            "label": "Cape May Regional Physicians Associates Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 146,
+            "label": "University of Rochester Medical Center Pediatric Endocrinology Update Facility",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 147,
+            "label": "Crouse Medical Practice",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 148,
+            "label": "UR Medicine Noyes Health",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 149,
+            "label": "NYU Ambulatory Care Bethpage - Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 150,
+            "label": "James M. Caskey MD PA",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 151,
+            "label": "Jamaica Hospital Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 152,
+            "label": "MMC Wellness Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 153,
+            "label": "Mountainside Medical Group Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 154,
+            "label": "NYU Langone - Greenpoint Endo",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 155,
+            "label": "Valatie Family Care",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 156,
+            "label": "Luanne Hill-Goldberg PC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 157,
+            "label": "Mather Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 158,
+            "label": "NYU Langone Cardiovascular Medical Associates",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 159,
+            "label": "WMC Health",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 160,
+            "label": "Mount Sinai - Staten Island Multispecialty",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 161,
+            "label": "Endocrinology, Diabetes, & Metabolism NY, PC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 162,
+            "label": "Brigham and Women's Primary Care Associates of Brookline",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 163,
+            "label": "Valley Area Primary Care",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 164,
+            "label": "Atrium Health Primary Care Oakboro Family Medicine",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 165,
+            "label": "Arroyo Oaks Medical Group",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 166,
+            "label": "Community Health Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 167,
+            "label": "Adventist Health Simi Valley",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 168,
+            "label": "Summit Medical Group - Morristown",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 169,
+            "label": "Ozarks Healthcare",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 170,
+            "label": "Baptist Health Medical Group Primary Care",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 171,
+            "label": "One Medical",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 172,
+            "label": "JHCP Downtown Bethesda Specialties",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 173,
+            "label": "Houston Methodist Primary Care Group - Clear Lake",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 174,
+            "label": "7187979075@rcfax.com",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 175,
+            "label": "Baycare",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 176,
+            "label": "Endocrine Associates",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 177,
+            "label": "Memorial Endocrinology & Diabetes",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 178,
+            "label": "District Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 179,
+            "label": "NewYork-Presbyterian - Queens Medical Group 174-15 Horace Harding Expy",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 180,
+            "label": "District Endocrine",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 181,
+            "label": "RRH Diabetes - Alex Park",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 182,
+            "label": "UBMD Pediatrics Diabetes Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 183,
+            "label": "Endocrinology at Tyrellan Avenue (Department # 30001408)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 184,
+            "label": "Endo Summit",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 185,
+            "label": "University of Rochester Medical Center Pediatric Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 186,
+            "label": "Padder Health Services",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 187,
+            "label": "Virginia Mason",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 188,
+            "label": "NYU Langone Garden City",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 189,
+            "label": "McLeod Health",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 190,
+            "label": "806-516-5352",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 191,
+            "label": "Stone Mountain Health Services St. Charles Community Health Center",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 192,
+            "label": "Maury Regional Medical Group",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 193,
+            "label": "Florence Endocrine Clinic",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 194,
+            "label": "Lexington Health Blythewood",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 195,
+            "label": "Bridgeport Endocrinology",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 196,
+            "label": "RRH Diabetes and Endocrinology - Ridgeway",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 197,
+            "label": "Sharon E. Selinger, M.D., P.C., & Associates",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 198,
+            "label": "Novant Health Rowan Family Physicians",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "location_mm1xjnfv",
+      "title": "Clinic Address",
+      "type": "location",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm1yf9k9",
+      "title": "STEDI -->",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 1,
+            "label": "STEDI -->",
+            "hex": "#333333",
+            "is_done": true,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm1xpgy2",
+      "title": "Stedi Eligibility Active?",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm25pxed",
+      "title": "Stedi Coverage Type",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm25wrxw",
+      "title": "Stedi Payer Name",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "dropdown_mm594743",
+      "title": "Stedi Primary Payer",
+      "type": "dropdown",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "NYSDOH",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "ANTHEM",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Fidelis Care New York",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "AETNA INC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Medicare",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 5,
+            "label": "Senior Whole Health of New York NHC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "BLUE CROSS BLUE SHIELD S.C.",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "NY H8432-042-000 ANTHEM HEALTHPLUS FULL DUAL ADVAN",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "UnitedHealthcare Group Medicare Advantage",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "Medicare BlueEssential",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "Alignment Health Heart & Diabetes Care",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 11,
+            "label": "United Healthcare Student Resource",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 12,
+            "label": "AETNA HEALTH INC.",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 13,
+            "label": "UNITEDHEALTHCARE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 14,
+            "label": "QCC INSURANCE COMPANY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 15,
+            "label": "VNS Health EasyCare Plus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 16,
+            "label": "UMR",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 17,
+            "label": "Humana GoldPlus-Diab",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 18,
+            "label": "WELLCARE HEALTH PLANS",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 19,
+            "label": "Medicare Plus Blue PPO Employer CY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 20,
+            "label": "Elderplan Flex",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 21,
+            "label": "CHLIC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 22,
+            "label": "HumanaChoice SNP-DE H5970-020",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 23,
+            "label": "HUMANA",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 24,
+            "label": "Cigna Dental Health, Inc.",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 25,
+            "label": "Medicare Parts A & B",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 26,
+            "label": "Wellcare Medicare",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 27,
+            "label": "HumanaChoice H5970-029",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 28,
+            "label": "HUM Gold Pl-Diab/Hrt",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 29,
+            "label": "Humana Gold Plus",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 30,
+            "label": "HumanaChoice H5216-337",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 31,
+            "label": "Humana Gold Plus SNP-DE H0028-032",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 32,
+            "label": "KS UNITEDHEALTHCARE DUAL COMPLETE HMOPOS CO QMB H0",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 33,
+            "label": "Humana Gold Plus SNP-DE H4141-003",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 34,
+            "label": "Humana Dual Int",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 35,
+            "label": "Aetna Medicare Plan",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 36,
+            "label": "Healthfirst CompleteCare",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 37,
+            "label": "AARP Medicare Advantage from UHC MA-0006",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 38,
+            "label": "MEDICARE",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 39,
+            "label": "ANTHEM BCBS NY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 40,
+            "label": "VA H4909-014-000 ANTHEM MEDICARE ADVANTAGE (PPO)",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 41,
+            "label": "Health Plans Inc",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 42,
+            "label": "CGLIC",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 43,
+            "label": "VA H3447-051-000 ANTHEM MEDICARE ADVANTAGE 3 (HMO-",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 44,
+            "label": "Humana Dual Select",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 45,
+            "label": "MEDICARE A & B",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 46,
+            "label": "SYNAPSE HEALTH",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 47,
+            "label": "Aetna Medicare",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 48,
+            "label": "PacificSource Medicare MyCare Choice Rx 34",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 49,
+            "label": "GOLDEN RULE INSURANCE COMPANY",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm25j9aj",
+      "title": "Stedi Medicare Advantage?",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm25pyfx",
+      "title": "Stedi Medicare Advantage Carrier",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm25j9j7",
+      "title": "Stedi Medicare Advantage Member ID",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm25zsdd",
+      "title": "Stedi QMB?",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm298skc",
+      "title": "Stedi Medicare Jurisdiction",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm29kccv",
+      "title": "Stedi Medicaid MLTC",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm2vyta1",
+      "title": "Stedi Managed Medicaid",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm31e5se",
+      "title": "Stedi Medicaid ID",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xehx8",
+      "title": "Stedi In Network?",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xhymg",
+      "title": "Stedi Prior Auth Required?",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xssyw",
+      "title": "Stedi Coinsurance %",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xzqe0",
+      "title": "Stedi Copay",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1x46kd",
+      "title": "Stedi Individual Deductible",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xyga2",
+      "title": "Stedi Individual Deductible Remaining",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1x7hkk",
+      "title": "Stedi Family Deductible",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xyzqx",
+      "title": "Stedi Family Deductible Remaining",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xdtxq",
+      "title": "Stedi Individual OOP Max",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1x32jw",
+      "title": "Stedi Individual OOP Max Remaining",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xqmg9",
+      "title": "Stedi Family OOP Max",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xkdgq",
+      "title": "Stedi Family OOP Max Remaining",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm4tvsk6",
+      "title": "OOP Estimate - First",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm4ttaa6",
+      "title": "OOP Estimate - Recurring",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1xsa9",
+      "title": "Stedi Plan Begin Date",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "dropdown_mm30thnj",
+      "title": "Stedi Gender",
+      "type": "dropdown",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 1,
+            "label": "Male",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Female",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm5fqm4s",
+      "title": "Stedi Address",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm1x9tje",
+      "title": "Stedi Eligibility Error Description",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm2nfwjs",
+      "title": "Josh Error Log",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm2vf40t",
+      "title": "stuck reason",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "direct_doc_mm2trjyb",
+      "title": "monday Doc v2",
+      "type": "direct_doc",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm2xe7r8",
+      "title": "Already In System",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Yes",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "No",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm389fs",
+      "title": "Profile Send Off Notes",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "color_mm3822qq",
+      "title": "Follow Up",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Working on it",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Done",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Stuck",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "date_mm3874an",
+      "title": "Follow Up Date",
+      "type": "date",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "text_mm3y53qn",
+      "title": "Prescriber Requirements",
+      "type": "text",
+      "description": null,
+      "settings": {}
+    },
+    {
+      "id": "date_mm4wh83f",
+      "title": "Plan Begin Date",
+      "type": "date",
+      "description": "yyyy-mm-dd plan begin date (set by the Command Center app from Stedi Plan Begin Date; copied date→date down the pipeline so the format never changes)",
+      "settings": {}
+    },
+    {
+      "id": "color_mm52kc3n",
+      "title": "Referral?",
+      "type": "status",
+      "description": null,
+      "settings": {
+        "labels": [
+          {
+            "id": 1,
+            "label": "Yes",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "dropdown_mm5ex3d7",
+      "title": "SNF/Hospice/Hospital",
+      "type": "dropdown",
+      "description": "Stedi eligibility: active Hospice election / Hospital-SNF stay (mirror of the Subscription Board column). Written on every Medicare check; cleared when no longer active.",
+      "settings": {
+        "labels": [
+          {
+            "id": 1,
+            "label": "Hospital/SNF",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Hospice",
+            "hex": null,
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm5zb8h6",
+      "title": "Reason for Inquiry",
+      "type": "status",
+      "description": "Step 1 of the DTC intake form — why the patient came to us.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Pharmacy is too expensive",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Denied by insurance",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "I need a new supplier",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "I want off the finger prick / try a pump",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm5zc4vy",
+      "title": "State",
+      "type": "text",
+      "description": "Patient home state from the intake form. Drives primaryInsurance.ts home-state routing.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm5zsfmj",
+      "title": "Pump Need",
+      "type": "status",
+      "description": "From the form. Input to the derived Request Type and Insulin Pump Coverage Path.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Need a new pump",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Only need supplies",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm5z5v3n",
+      "title": "Provided CGM Preference",
+      "type": "status",
+      "description": "Patient's verbatim CGM answer from the form. Distinct from the verified CGM Type.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Freestyle Libre 3 Plus",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Dexcom G7",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Medtronic Guardian 4",
+            "hex": "#9cd326",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Any will work",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm5zxfh9",
+      "title": "Provided Pump Preference",
+      "type": "status",
+      "description": "Patient's verbatim pump answer from the form. Distinct from the verified Pump Type.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Tandem t:slim X2",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Tandem Mobi",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Beta Bionics iLet",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Not sure",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm5z586h",
+      "title": "Provided Doctor Name",
+      "type": "text",
+      "description": "Form: 'Provider name (or clinic name)'. Write-once, never overwritten by Select Correct Provider. Distinct from the verified Doctor Name (text_mm1x46et).",
+      "settings": {}
+    },
+    {
+      "id": "text_mm5zjh88",
+      "title": "Provided Clinic Phone",
+      "type": "text",
+      "description": "Form: 'Clinic phone or location'. Free text — may hold either a phone or an address, so it is deliberately not a phone column.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm5zv5pa",
+      "title": "Insurance Provided Via",
+      "type": "status",
+      "description": "How the patient supplied their insurance on the form.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Photo of card",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Entered manually",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Not provided",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm5z8w99",
+      "title": "Insurance (Other) - as typed",
+      "type": "text",
+      "description": "Free text the patient typed when they picked 'Other' for their insurance carrier.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm5zh2af",
+      "title": "Secondary Insurance (as provided)",
+      "type": "status",
+      "description": "The form's raw payer answer. Distinct from the condensed board label set in Secondary Insurance (color_mm1zbrx0).",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Anthem or Blue Cross Blue Shield",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "UnitedHealthcare",
+            "hex": "#df2f4a",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Aetna",
+            "hex": "#faa1f1",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Cigna",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Humana",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 5,
+            "label": "",
+            "hex": "#c4c4c4",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "Medicare",
+            "hex": "#037f4c",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Fidelis",
+            "hex": "#579bfc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "NYSHIP Empire",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "Other",
+            "hex": "#ffcb00",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 10,
+            "label": "None",
+            "hex": "#333333",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 11,
+            "label": "NYS Medicaid",
+            "hex": "#a9bee8",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm5ztdq9",
+      "title": "Secondary Member ID (as provided)",
+      "type": "text",
+      "description": "Optional secondary member ID as the patient entered it on the form.",
+      "settings": {}
+    },
+    {
+      "id": "file_mm5zhy1",
+      "title": "Insurance Card Photo",
+      "type": "file",
+      "description": "Card photos captured on the intake form. No OCR — a rep reads these to fill the verified insurance fields.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm5zp6rt",
+      "title": "Proceed Preference",
+      "type": "status",
+      "description": "Last question on the form. 'Send request now' satisfies condition 1 of the advance-unlock rule; 'Wants a call first' requires Intake Call Complete instead.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Send request now",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Wants a call first",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm5za6zx",
+      "title": "Call Slot - Selected on Form",
+      "type": "text",
+      "description": "The callback slot the patient picked on the form. Rep can override; the override lives in its own column.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm5zrbn3",
+      "title": "Booking Status",
+      "type": "status",
+      "description": "Whether a callback slot has been picked.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Scheduled",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Unscheduled",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Canceled",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm5zv7q8",
+      "title": "Drop-off Step",
+      "type": "status",
+      "description": "Furthest step a partial lead reached before abandoning. Set on every forward step; 'Completed' once the form is submitted.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Step 1 - Reason for visit",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Step 2 - Patient info",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Step 3 - What they need",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Step 4 - Doctor",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Step 5 - Insurance",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 5,
+            "label": "",
+            "hex": "#c4c4c4",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 6,
+            "label": "Step 7 - Confirm",
+            "hex": "#037f4c",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Saved for later",
+            "hex": "#579bfc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 8,
+            "label": "Completed",
+            "hex": "#cab641",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 9,
+            "label": "Step 6 - Coverage",
+            "hex": "#ffcb00",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm5zmfgg",
+      "title": "Form Session ID",
+      "type": "text",
+      "description": "Client-generated session ID. Used to match a partial lead to its completed submission and to dedupe beacons.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm5z31hs",
+      "title": "Self Advocacy",
+      "type": "status",
+      "description": "Care Assessment. Rep-entered on the call. Optional — must tolerate blank.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "High",
+            "hex": "#037f4c",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Low",
+            "hex": "#df2f4a",
+            "is_done": true,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm5zj2q1",
+      "title": "Current Out-of-Pocket Cost",
+      "type": "text",
+      "description": "Cost & Coverage. Rep-entered on the call. Text, not numeric — reps capture things like '$75/month' or '$400 per 90 days'. Optional.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm5z4yqq",
+      "title": "CGM Data & Doctor Awareness",
+      "type": "status",
+      "description": "Rep-entered on the call. Deliberately not on the patient form — phone-call only.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Patient has existing data",
+            "hex": "#ff7575",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Doctor is aware",
+            "hex": "#00c875",
+            "is_done": true,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Neither applies",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 3,
+            "label": "Both apply",
+            "hex": "#007eb5",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "file_mm5zhsxh",
+      "title": "CGM Data File",
+      "type": "file",
+      "description": "Written by the tokenized patient upload link, or dropped in by the rep. Accepts jpg/png/heic/pdf/csv.",
+      "settings": {}
+    },
+    {
+      "id": "numeric_mm5ze82q",
+      "title": "Attempt Counter",
+      "type": "numbers",
+      "description": "Unified contact attempts — automated email/text, autodialer and manual rep calls all roll into this one number.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm5z6eze",
+      "title": "Intake Call Complete",
+      "type": "status",
+      "description": "Rep-side equivalent of the patient choosing 'Send request now'. Satisfies condition 1 of the advance-unlock rule for a patient who asked for a call first.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Yes",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "color_mm5zww42",
+      "title": "Intake Escalation",
+      "type": "status",
+      "description": "Mirrors the Medical Evaluation escalation model. Index 0 = escalated to Manager Intervention; index 2 = Proposed Stuck, which promotes to Final Decisions; index 1 = resolved. An escalated patient is excluded from the rep queue and burndown.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Manager Escalation Required",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Done",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Final Escalation Required",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "long_text_mm5z3sq9",
+      "title": "Intake Escalation Notes",
+      "type": "long_text",
+      "description": "Append-style log of escalation reasons and manager decisions for the intake stage.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm5zhw4e",
+      "title": "Rx Docs to Patient",
+      "type": "status",
+      "description": "Did the prescription template reach the patient by email and text after they chose \"send my request now\"? Written automatically by the intake backend.",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Partially sent",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "Sent",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Failed",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 17,
+            "label": "Nothing to send",
+            "hex": "#757575",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "text_mm5zqtz1",
+      "title": "Rx Docs Detail",
+      "type": "text",
+      "description": "Why the prescription documents did not fully send — which channel failed and the error. Empty when everything went out.",
+      "settings": {}
+    },
+    {
+      "id": "date_mm63na19",
+      "title": "Scheduled Call Time",
+      "type": "date",
+      "description": "The booked intake call, mirrored from Calendly (date + time, Eastern). Written by the dtc-mm-form backend on booking and corrected by the Calendly webhook on reschedule/cancel. Calendly is the system of record; this is a read model so the Command Center can query bookings like any other stage.",
+      "settings": {}
+    },
+    {
+      "id": "text_mm63e086",
+      "title": "Calendly Event URI",
+      "type": "text",
+      "description": "The Calendly scheduled_event URI for this patient's booked intake call. Used to cancel a booking and to tell a live cancellation from a stale one during a reschedule (which arrives as cancel + create with a new URI). Written by the dtc-mm-form backend; not rep-editable.",
+      "settings": {}
+    },
+    {
+      "id": "date_mm647ck0",
+      "title": "Last Form Activity",
+      "type": "date",
+      "description": "When the patient last touched the DTC intake form. Written by the form backend on every /track beacon. This is the clock the drop-off nudge keys on — deliberately NOT monday's updated_at, which moves when anyone edits the row and would silently reset the timer.",
+      "settings": {}
+    },
+    {
+      "id": "date_mm644d3s",
+      "title": "Drop-off Text Sent",
+      "type": "date",
+      "description": "When the one-time drop-off nudge text was sent. Claimed BEFORE the send, so a slow or retried send cannot become two texts. A patient is nudged once, ever — a non-empty value here permanently excludes them.",
+      "settings": {}
+    },
+    {
+      "id": "long_text_mm651jfa",
+      "title": "Dup Check Analysis",
+      "type": "long_text",
+      "description": "Claude's written analysis of a confirmed Already-In-System match: which identifiers linked the records, where the existing patient is in the pipeline, and what the new referral changes. Written by josh-monday-automations (duplicate-analysis). Currently in shadow mode - analysis goes to ntfy only.",
+      "settings": {}
+    },
+    {
+      "id": "text_mm65xbm0",
+      "title": "Matched Patient UID",
+      "type": "text",
+      "description": "Patient UID of the existing record this referral matched, so a rep can jump straight to it. The UID is a shared cross-board identity (Medical Evaluation / Insurance / Welcome Call / Subscription). Written by josh-monday-automations (duplicate-analysis).",
+      "settings": {}
+    },
+    {
+      "id": "color_mm65tv1m",
+      "title": "Dup Check Result",
+      "type": "status",
+      "description": "Outcome of the duplicate check. Distinguishes a real \"no match\" from a check that could not run - Already In System alone cannot express that. Written by josh-monday-automations (duplicate-analysis).",
+      "settings": {
+        "labels": [
+          {
+            "id": 0,
+            "label": "Duplicate",
+            "hex": "#fdab3d",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 1,
+            "label": "New",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 2,
+            "label": "Check failed",
+            "hex": "#df2f4a",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 4,
+            "label": "Needs review",
+            "hex": "#9d50dd",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Duplicate — updated info",
+            "hex": "#579bfc",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 19,
+            "label": "New order — different serving",
+            "hex": "#ff6d3b",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "numeric_mm67822b",
+      "title": "Drop-off Attempt",
+      "type": "numbers",
+      "description": "How many drop-off outreach attempts have been sent to this patient (1 = the 24h email+text, 2 = the 48h reminder). Written by dtc-mm-form-api's sweep. Capped at 2.",
+      "settings": {}
+    },
+    {
+      "id": "color_mm6ct431",
+      "title": "Intake Sub-Stage",
+      "type": "status",
+      "description": "Stage advancer for the Patient Intake split. Info Collection (the DTC form groups) -> Profile Clean-Up (its own group). Written by the Command Center only, LAST in a verified write.",
+      "settings": {
+        "labels": [
+          {
+            "id": 1,
+            "label": "Profile Clean-Up",
+            "hex": "#00c875",
+            "is_done": null,
+            "is_deactivated": null
+          },
+          {
+            "id": 7,
+            "label": "Info Collection",
+            "hex": "#579bfc",
+            "is_done": null,
+            "is_deactivated": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "date_mm6eakae",
+      "title": "Resume Link Sent",
+      "type": "date",
+      "description": "When the patient was first texted their \"Save & finish later\" link. Set once, by the form backend, and never overwritten — it is what stops a second tap texting a second link.",
+      "settings": {}
+    },
+    {
+      "id": "date_mm6eev4b",
+      "title": "Insurance Link Sent",
+      "type": "date",
+      "description": "When the patient was first texted the \"upload your insurance card whenever you have it\" link, after answering \"I don't have it on me\". Set once by the form backend; the rep's Start Insurance Follow-Up can still send the link again.",
+      "settings": {}
+    },
+    {
+      "id": "long_text_mm7g4b4h",
+      "title": "Intake Warnings",
+      "type": "long_text",
+      "description": "Written by the backend after each benefits check. One warning per line: KEY|TYPE|message (TYPE = BLOCK or CONFIRM:<label>).",
+      "settings": {}
+    },
+    {
+      "id": "text_mm7g1hr",
+      "title": "Intake Warning Acks",
+      "type": "text",
+      "description": "Written by Command Center. Comma-separated warning KEYs the rep confirmed (e.g. MEDICARE_PUMP_MEDICAID_ID).",
+      "settings": {}
+    }
+  ]
+}

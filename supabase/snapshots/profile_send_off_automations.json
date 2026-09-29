@@ -1,0 +1,2391 @@
+{
+  "board_id": 18406352652,
+  "snapshot_taken": "2026-09-29",
+  "workflows": [
+    {
+      "id": 7917667424,
+      "kind": "workflow",
+      "active": false,
+      "created_at": "2026-03-30T18:37:20.566Z",
+      "updated_at": "2026-05-01T19:10:44.237Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When item created",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          }
+        }
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "node": 2,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "REFERRAL DETAILS -->",
+              "id": "color_mm1wrrqz"
+            },
+            "statusColumnValue": {
+              "title": "REFERRAL DETAILS -->",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 3,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "D2C FORM FILLOUT -->",
+              "id": "color_mm1y84ba"
+            },
+            "statusColumnValue": {
+              "title": "D2C FORM FILLOUT --> -->",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 4,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "EMAIL REFERRAL INFO -->",
+              "id": "color_mm1yx6mq"
+            },
+            "statusColumnValue": {
+              "title": "EMAIL REFERRAL INFO -->",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 5,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "MEDICAL NECESSITY DETAILS -->",
+              "id": "color_mm1yd4v5"
+            },
+            "statusColumnValue": {
+              "title": "MEDICAL NECESSITY DETAILS -->",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 6,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "DEMOGRAPHICS -->",
+              "id": "color_mm1y4gyp"
+            },
+            "statusColumnValue": {
+              "title": "DEMOGRAPHICS-->",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 7,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "INSURANCE -->",
+              "id": "color_mm1x3d9q"
+            },
+            "statusColumnValue": {
+              "title": "INSURANCE-->",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 8,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "DOCTOR -->",
+              "id": "color_mm1ycys3"
+            },
+            "statusColumnValue": {
+              "title": "DOCTOR -->",
+              "id": 1
+            }
+          }
+        },
+        {
+          "node": 9,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "STEDI -->",
+              "id": "color_mm1yf9k9"
+            },
+            "statusColumnValue": {
+              "title": "STEDI -->",
+              "id": 1
+            }
+          }
+        },
+        {
+          "node": 10,
+          "block": "Set date",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "dateColumnId": {
+              "title": "Date of Intake",
+              "id": "date_mm1wf43j"
+            },
+            "dateColumnValue": {
+              "title": "Today",
+              "id": "today"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917676280,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-03-31T03:48:23.971Z",
+      "updated_at": "2026-09-23T17:55:33.393Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When status changes to something",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "statusColumnId": {
+            "title": "Move to Onboarding",
+            "id": "color_mm1zmeb3",
+            "type": "status"
+          },
+          "desiredStatusColumnValue": {
+            "title": "Advance to MN",
+            "id": 1
+          }
+        }
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "node": 2,
+          "block": "Create item in board",
+          "fields": {
+            "boardId": {
+              "title": "Medical Evaluation",
+              "id": 18406060017
+            },
+            "groupId": {
+              "title": "Top group (Currently 2. Medical Necessity)",
+              "id": "__top_group__"
+            },
+            "itemName": {
+              "from_node": 1,
+              "field": "item.name"
+            },
+            "item.date_mm1wf43j": {
+              "from_node": 1,
+              "field": "item.date_mm1wf43j"
+            },
+            "item.color_mm1wm4n4.label": {
+              "from_node": 1,
+              "field": "item.color_mm1wm4n4.label"
+            },
+            "item.color_mm1w5wxr.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w5wxr.label"
+            },
+            "item.color_mm1wjjtk.label": {
+              "from_node": 1,
+              "field": "item.color_mm1wjjtk.label"
+            },
+            "item.color_mm1w7pmf.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w7pmf.label"
+            },
+            "item.color_mm1w1978.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w1978.label"
+            },
+            "item.color_mm1w1cm9.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w1cm9.label"
+            },
+            "item.color_mm1w5xn1.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w5xn1.label"
+            },
+            "item.color_mm1w7e5q.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w7e5q.label"
+            },
+            "item.file_mm1w5vwp": {
+              "from_node": 1,
+              "field": "item.file_mm1w5vwp"
+            },
+            "item.text_mm1xvxst": {
+              "from_node": 1,
+              "field": "item.text_mm1xvxst"
+            },
+            "item.phone_mm1x44yk": {
+              "from_node": 1,
+              "field": "item.phone_mm1x44yk"
+            },
+            "item.location_mm1xhw17": {
+              "from_node": 1,
+              "field": "item.location_mm1xhw17"
+            },
+            "item.text_mm1xc140": {
+              "from_node": 1,
+              "field": "item.text_mm1xc140"
+            },
+            "item.color_mm1x1bdg.label": {
+              "from_node": 1,
+              "field": "item.color_mm1x1bdg.label"
+            },
+            "item.color_mm1x157j.label": {
+              "from_node": 1,
+              "field": "item.color_mm1xg10n.label"
+            },
+            "item.text_mm1x2qk2": {
+              "from_node": 1,
+              "field": "item.text_mm1x2qk2"
+            },
+            "item.text_mm1xyp9y": {
+              "from_node": 1,
+              "field": "item.text_mm1xyp9y"
+            },
+            "item.text_mm1xaccx": {
+              "from_node": 1,
+              "field": "item.text_mm1xaccx"
+            },
+            "item.text_mm1xkbqc": {
+              "from_node": 1,
+              "field": "item.numeric_mm1ztdz4"
+            },
+            "item.text_mm1xdzxw": {
+              "from_node": 1,
+              "field": "item.numeric_mm1zv64b"
+            },
+            "item.text_mm1xdtj7": {
+              "from_node": 1,
+              "field": "item.numeric_mm1zfv02"
+            },
+            "item.text_mm1xx5f": {
+              "from_node": 1,
+              "field": "item.numeric_mm1zxktp"
+            },
+            "item.text_mm1x46et": {
+              "from_node": 1,
+              "field": "item.text_mm1x46et"
+            },
+            "item.phone_mm1xz8c0": {
+              "from_node": 1,
+              "field": "item.phone_mm1xz8c0"
+            },
+            "item.text_mm1x7d91": {
+              "from_node": 1,
+              "field": "item.text_mm1x7d91"
+            },
+            "item.color_mm1xw7y5.label": {
+              "from_node": 1,
+              "field": "item.color_mm1xw7y5.label"
+            },
+            "item.email_mm1x6fq5": {
+              "from_node": 1,
+              "field": "item.email_mm1x6fq5"
+            },
+            "item.email_mm1xdzcj": {
+              "from_node": 1,
+              "field": "item.email_mm1xdzcj"
+            },
+            "item.dropdown_mm1xbvas.labels": {
+              "from_node": 1,
+              "field": "item.dropdown_mm1xbvas.labels"
+            },
+            "item.location_mm1xjnfv": {
+              "from_node": 1,
+              "field": "item.location_mm1xjnfv"
+            },
+            "item.color_mm241kqp.label": {
+              "from_node": 1,
+              "field": "item.color_mm1zbrx0.label"
+            },
+            "item.text_mm1xpgy2": {
+              "from_node": 1,
+              "field": "item.text_mm1xpgy2"
+            },
+            "item.text_mm1xehx8": {
+              "from_node": 1,
+              "field": "item.text_mm1xehx8"
+            },
+            "item.text_mm1xzqe0": {
+              "from_node": 1,
+              "field": "item.text_mm1xzqe0"
+            },
+            "item.text_mm1x46kd": {
+              "from_node": 1,
+              "field": "item.numeric_mm1ztdz4"
+            },
+            "item.text_mm1xyga2": {
+              "from_node": 1,
+              "field": "item.text_mm1xyga2"
+            },
+            "item.text_mm1x7hkk": {
+              "from_node": 1,
+              "field": "item.text_mm1x7hkk"
+            },
+            "item.text_mm1xyzqx": {
+              "from_node": 1,
+              "field": "item.text_mm1xyzqx"
+            },
+            "item.text_mm1x32jw": {
+              "from_node": 1,
+              "field": "item.text_mm1x32jw"
+            },
+            "item.text_mm1xkdgq": {
+              "from_node": 1,
+              "field": "item.text_mm1xkdgq"
+            },
+            "item.text_mm1xssyw": {
+              "from_node": 1,
+              "field": "item.text_mm1xssyw"
+            },
+            "item.text_mm1xhymg": {
+              "from_node": 1,
+              "field": "item.text_mm1xhymg"
+            },
+            "item.text_mm1xdcet": {
+              "from_node": 1,
+              "field": "item.text_mm1xdcet"
+            },
+            "item.color_mm281et9.label": {
+              "from_node": 1,
+              "field": "item.color_mm1yeksx.label"
+            },
+            "item.dropdown_mm2wrzrk.labels": {
+              "from_node": 1,
+              "field": "item.dropdown_mm1y2x75.labels"
+            },
+            "item.text_mm2wms12": {
+              "from_node": 1,
+              "field": "item.text_mm25zsdd"
+            },
+            "item.text_mm1xsa9": {
+              "from_node": 1,
+              "field": "item.text_mm1xsa9"
+            },
+            "item.text_mm3xdze1": {
+              "from_node": 1,
+              "field": "item.text_mm389fs"
+            },
+            "item.text_mm4b45rh": {
+              "from_node": 1,
+              "field": "item.text_mm3y53qn"
+            },
+            "item.color_mm52pa3r.label": {
+              "from_node": 1,
+              "field": "item.color_mm52kc3n.label"
+            },
+            "item.dropdown_mm5es2yz.labels": {
+              "from_node": 1,
+              "field": "item.dropdown_mm457xy2.labels"
+            },
+            "item.color_mm7dn13v.label": {
+              "from_node": 1,
+              "field": "item.color_mm7d71vd.label"
+            },
+            "item.color_mm7f2zfs.label": {
+              "from_node": 1,
+              "field": "item.color_mm7f2erf.label"
+            }
+          }
+        },
+        {
+          "node": 3,
+          "block": "Move item to group",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "groupId": {
+              "title": "Completed",
+              "id": "group_mm1y57sz"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917881347,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-11T16:34:05.057Z",
+      "updated_at": "2026-04-11T16:34:06.754Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When column changes",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "columnId": {
+            "title": "Primary Insurance",
+            "id": "color_mm1xg10n",
+            "type": "status"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "title": "Evaluate",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 3,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Primary Insurance",
+              "id": "color_mm1xg10n"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is not",
+              "id": true
+            },
+            "desiredStatusColumnValue": {
+              "any_of": [
+                {
+                  "title": "Fidelis Medicaid",
+                  "id": 0
+                },
+                {
+                  "title": "United Commercial",
+                  "id": 4
+                },
+                {
+                  "title": "United Medicare",
+                  "id": 6
+                },
+                {
+                  "title": "United Medicaid",
+                  "id": 7
+                },
+                {
+                  "title": "Anthem BCBS Low-Cost (JLJ)",
+                  "id": 108
+                },
+                {
+                  "title": "Anthem BCBS Medicaid (JLJ)",
+                  "id": 103
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 4,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "statusColumnValue": {
+              "title": "Cross-Sell",
+              "id": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917881350,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-11T16:36:07.946Z",
+      "updated_at": "2026-04-11T16:36:09.080Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When column changes",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "columnId": {
+            "title": "Primary Insurance",
+            "id": "color_mm1xg10n",
+            "type": "status"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "title": "Evaluate",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 3,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Primary Insurance",
+              "id": "color_mm1xg10n"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "any_of": [
+                {
+                  "title": "Fidelis Medicaid",
+                  "id": 0
+                },
+                {
+                  "title": "United Commercial",
+                  "id": 4
+                },
+                {
+                  "title": "United Medicare",
+                  "id": 6
+                },
+                {
+                  "title": "United Medicaid",
+                  "id": 7
+                },
+                {
+                  "title": "Anthem BCBS Low-Cost (JLJ)",
+                  "id": 108
+                },
+                {
+                  "title": "Anthem BCBS Medicaid (JLJ)",
+                  "id": 103
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 4,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "statusColumnValue": {
+              "title": "Medicaid Can't Serve",
+              "id": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886676,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:15:47.519Z",
+      "updated_at": "2026-04-12T17:15:49.208Z",
+      "description": "pump/supplies request",
+      "trigger": {
+        "node": 1,
+        "block": "When item created",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Request Type",
+              "id": "color_mm1w1978"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "any_of": [
+                {
+                  "title": "Insulin Pump",
+                  "id": 0
+                },
+                {
+                  "title": "Supplies Only",
+                  "id": 1
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 3,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "statusColumnValue": {
+              "title": "Evaluate",
+              "id": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886678,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:16:18.361Z",
+      "updated_at": "2026-04-12T17:16:19.925Z",
+      "description": "cgm already serving",
+      "trigger": {
+        "node": 1,
+        "block": "When item created",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Request Type",
+              "id": "color_mm1w1978"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "any_of": [
+                {
+                  "title": "CGM",
+                  "id": 2
+                },
+                {
+                  "title": "Insulin Pump + CGM",
+                  "id": 3
+                },
+                {
+                  "title": "Supplies + CGM",
+                  "id": 4
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 3,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "statusColumnValue": {
+              "title": "Already Requested",
+              "id": 4
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886786,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:34:17.572Z",
+      "updated_at": "2026-04-12T17:50:54.545Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When status changes to something",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "statusColumnId": {
+            "title": "Primary Insurance",
+            "id": "color_mm1xg10n",
+            "type": "status"
+          },
+          "desiredStatusColumnValue": {
+            "title": "Anything"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "title": "Evaluate",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 3,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Primary Insurance",
+              "id": "color_mm1xg10n"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "any_of": [
+                {
+                  "title": "Fidelis Medicaid",
+                  "id": 0
+                },
+                {
+                  "title": "Anthem BCBS Medicaid (JLJ)",
+                  "id": 103
+                },
+                {
+                  "title": "Anthem BCBS Low-Cost (JLJ)",
+                  "id": 108
+                },
+                {
+                  "title": "United Commercial",
+                  "id": 4
+                },
+                {
+                  "title": "United Medicare",
+                  "id": 6
+                },
+                {
+                  "title": "United Medicaid",
+                  "id": 7
+                },
+                {
+                  "title": "United Low-Cost",
+                  "id": 109
+                },
+                {
+                  "title": "Cigna",
+                  "id": 12
+                },
+                {
+                  "title": "Medicaid",
+                  "id": 13
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 4,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "statusColumnValue": {
+              "title": "Couldn't Cross-Sell",
+              "id": 2
+            }
+          }
+        },
+        {
+          "node": 5,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Type",
+              "id": "color_mm1w7pmf"
+            },
+            "statusColumnValue": {
+              "title": "Not Serving",
+              "id": 9
+            }
+          }
+        },
+        {
+          "node": 6,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Coverage Path",
+              "id": "color_mm1w7e5q"
+            },
+            "statusColumnValue": {
+              "title": "Not Serving",
+              "id": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886790,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:34:55.485Z",
+      "updated_at": "2026-04-12T17:50:14.621Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When status changes to something",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "statusColumnId": {
+            "title": "Primary Insurance",
+            "id": "color_mm1xg10n",
+            "type": "status"
+          },
+          "desiredStatusColumnValue": {
+            "title": "Anything"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "title": "Evaluate",
+              "id": 0
+            }
+          }
+        },
+        {
+          "node": 3,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Primary Insurance",
+              "id": "color_mm1xg10n"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is not",
+              "id": true
+            },
+            "desiredStatusColumnValue": {
+              "any_of": [
+                {
+                  "title": "Fidelis Medicaid",
+                  "id": 0
+                },
+                {
+                  "title": "Anthem BCBS Medicaid (JLJ)",
+                  "id": 103
+                },
+                {
+                  "title": "Anthem BCBS Low-Cost (JLJ)",
+                  "id": 108
+                },
+                {
+                  "title": "United Commercial",
+                  "id": 4
+                },
+                {
+                  "title": "United Medicare",
+                  "id": 6
+                },
+                {
+                  "title": "United Medicaid",
+                  "id": 7
+                },
+                {
+                  "title": "United Low-Cost",
+                  "id": 109
+                },
+                {
+                  "title": "Cigna",
+                  "id": 12
+                },
+                {
+                  "title": "Medicaid",
+                  "id": 13
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 4,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Cross-Sell",
+              "id": "color_mm1yets8"
+            },
+            "statusColumnValue": {
+              "title": "Cross-Sell",
+              "id": 1
+            }
+          }
+        },
+        {
+          "node": 5,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Type",
+              "id": "color_mm1w7pmf"
+            },
+            "statusColumnValue": {
+              "title": "Dexcom G7",
+              "id": 6
+            }
+          }
+        },
+        {
+          "node": 6,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "CGM Coverage Path",
+              "id": "color_mm1w7e5q"
+            },
+            "statusColumnValue": {
+              "title": "Insulin",
+              "id": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886805,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:36:12.799Z",
+      "updated_at": "2026-04-12T17:36:14.387Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When status changes to something",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "statusColumnId": {
+            "title": "CGM Cross-Sell",
+            "id": "color_mm1yets8",
+            "type": "status"
+          },
+          "desiredStatusColumnValue": {
+            "title": "Couldn't Cross-Sell",
+            "id": 2
+          }
+        }
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "node": 2,
+          "block": "Change column value",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "columnId": {
+              "title": "Serving",
+              "id": "color_mm1w1cm9"
+            },
+            "columnValue.color_mm1w1cm9.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w1978.label"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886811,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:37:08.735Z",
+      "updated_at": "2026-04-12T17:37:10.323Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When status changes to something",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "statusColumnId": {
+            "title": "CGM Cross-Sell",
+            "id": "color_mm1yets8",
+            "type": "status"
+          },
+          "desiredStatusColumnValue": {
+            "title": "Cross-Sell",
+            "id": 1
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 3,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Request Type",
+              "id": "color_mm1w1978"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "title": "Insulin Pump",
+              "id": 0
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 4,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Serving",
+              "id": "color_mm1w1cm9"
+            },
+            "statusColumnValue": {
+              "title": "Insulin Pump + CGM",
+              "id": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886813,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:37:29.054Z",
+      "updated_at": "2026-04-12T17:37:30.401Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When status changes to something",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "statusColumnId": {
+            "title": "CGM Cross-Sell",
+            "id": "color_mm1yets8",
+            "type": "status"
+          },
+          "desiredStatusColumnValue": {
+            "title": "Cross-Sell",
+            "id": 1
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 3,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Request Type",
+              "id": "color_mm1w1978"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "title": "Supplies Only",
+              "id": 1
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 4,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Serving",
+              "id": "color_mm1w1cm9"
+            },
+            "statusColumnValue": {
+              "title": "Supplies + CGM",
+              "id": 4
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886872,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:45:58.248Z",
+      "updated_at": "2026-04-12T17:45:59.672Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When item created",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Referral Source",
+              "id": "color_mm1w5wxr"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "any_of": [
+                {
+                  "title": "Tandem",
+                  "id": 1
+                },
+                {
+                  "title": "Beta Bionics",
+                  "id": 2
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 3,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Referral Type",
+              "id": "color_mm1wm4n4"
+            },
+            "statusColumnValue": {
+              "title": "Manufacturer",
+              "id": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886873,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:46:17.427Z",
+      "updated_at": "2026-04-12T17:46:18.791Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When item created",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Referral Source",
+              "id": "color_mm1w5wxr"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "title": "Patient",
+              "id": 0
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 3,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Referral Type",
+              "id": "color_mm1wm4n4"
+            },
+            "statusColumnValue": {
+              "title": "Patient",
+              "id": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886874,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:46:33.994Z",
+      "updated_at": "2026-04-12T17:46:35.561Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When item created",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Referral Source",
+              "id": "color_mm1w5wxr"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "title": "CareCentrix",
+              "id": 3
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 3,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Referral Type",
+              "id": "color_mm1wm4n4"
+            },
+            "statusColumnValue": {
+              "title": "Payor",
+              "id": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7917886875,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-12T17:46:48.683Z",
+      "updated_at": "2026-04-12T17:46:51.279Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When item created",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Referral Source",
+              "id": "color_mm1w5wxr"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "desiredStatusColumnValue": {
+              "title": "Doctor",
+              "id": 4
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 3,
+          "block": "Change status",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "statusColumnId": {
+              "title": "Referral Type",
+              "id": "color_mm1wm4n4"
+            },
+            "statusColumnValue": {
+              "title": "Doctor",
+              "id": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7918293476,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-04-28T18:02:19.731Z",
+      "updated_at": "2026-04-28T18:02:21.235Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When column changes",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "columnId": {
+            "title": "stuck reason",
+            "id": "text_mm2vf40t",
+            "type": "text"
+          }
+        }
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "node": 2,
+          "block": "Move item to group",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "groupId": {
+              "title": "Stuck",
+              "id": "group_mm1xyczx"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7921666432,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-08-07T20:01:29.109Z",
+      "updated_at": "2026-08-07T20:03:46.830Z",
+      "description": "Trigger:\n  When a new item is created\n\nConditions:\n  - Only if the item's status is something\n    Details:\n      Status column: Referral Source\n      Status value: CareCentrix\n\nActions:\n  - Move the item to a group:\n      Group: New Form — Completed",
+      "trigger": {
+        "node": 1,
+        "block": "When item created",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          }
+        }
+      },
+      "conditions": [
+        {
+          "node": 2,
+          "block": "If status is something",
+          "fields": {
+            "boardId": {
+              "board": "this"
+            },
+            "shouldCheckIfStatusIsNot": {
+              "title": "is",
+              "id": false
+            },
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "statusColumnId": {
+              "title": "Referral Source",
+              "id": "color_mm1w5wxr"
+            },
+            "desiredStatusColumnValue": {
+              "title": "CareCentrix",
+              "id": 3
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "node": 3,
+          "block": "Move item to group",
+          "fields": {
+            "boardId": {
+              "board": "this"
+            },
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "groupId": {
+              "title": "New Form — Completed",
+              "id": "group_mm5zgeak"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7922049614,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-08-18T15:42:39.613Z",
+      "updated_at": "2026-08-18T15:42:41.028Z",
+      "description": null,
+      "trigger": {
+        "node": 1,
+        "block": "When status changes to something",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "statusColumnId": {
+            "title": "Already In System",
+            "id": "color_mm2xe7r8",
+            "type": "status"
+          },
+          "desiredStatusColumnValue": {
+            "title": "Yes",
+            "id": 0
+          }
+        }
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "node": 2,
+          "block": "Move item to group",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "groupId": {
+              "title": "Already In System",
+              "id": "group_mm64b83h"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7923595946,
+      "kind": "workflow",
+      "active": true,
+      "created_at": "2026-09-22T19:17:32.217Z",
+      "updated_at": "2026-09-22T20:20:21.825Z",
+      "description": "Cash Pay",
+      "trigger": {
+        "node": 1,
+        "block": "When status changes to something",
+        "fields": {
+          "boardId": {
+            "board": "this"
+          },
+          "statusColumnId": {
+            "title": "Move to Onboarding",
+            "id": "color_mm1zmeb3",
+            "type": "status"
+          },
+          "desiredStatusColumnValue": {
+            "title": "Advance to Welcome Call",
+            "id": 6
+          }
+        }
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "node": 2,
+          "block": "Create item in board",
+          "fields": {
+            "boardId": {
+              "title": "Welcome Call",
+              "id": 18410804557
+            },
+            "itemName": {
+              "from_node": 1,
+              "field": "item.name"
+            },
+            "item.date_mm1wf43j": {
+              "from_node": 1,
+              "field": "item.date_mm1wf43j"
+            },
+            "item.color_mm1wm4n4.label": {
+              "from_node": 1,
+              "field": "item.color_mm1wm4n4.label"
+            },
+            "item.color_mm1w5wxr.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w5wxr.label"
+            },
+            "item.color_mm1wjjtk.label": {
+              "from_node": 1,
+              "field": "item.color_mm1wjjtk.label"
+            },
+            "item.color_mm1w7pmf.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w7pmf.label"
+            },
+            "item.color_mm1w1978.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w1978.label"
+            },
+            "item.color_mm1w1cm9.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w1cm9.label"
+            },
+            "item.color_mm1w5xn1.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w5xn1.label"
+            },
+            "item.color_mm1w7e5q.label": {
+              "from_node": 1,
+              "field": "item.color_mm1w7e5q.label"
+            },
+            "item.file_mm1w5vwp": {
+              "from_node": 1,
+              "field": "item.file_mm1w5vwp"
+            },
+            "item.text_mm1xvxst": {
+              "from_node": 1,
+              "field": "item.text_mm1xvxst"
+            },
+            "item.phone_mm1x44yk": {
+              "from_node": 1,
+              "field": "item.phone_mm1x44yk"
+            },
+            "item.location_mm1xhw17": {
+              "from_node": 1,
+              "field": "item.location_mm1xhw17"
+            },
+            "item.text_mm1xc140": {
+              "from_node": 1,
+              "field": "item.text_mm1xc140"
+            },
+            "item.color_mm1x1bdg.label": {
+              "from_node": 1,
+              "field": "item.color_mm1x1bdg.label"
+            },
+            "item.color_mm1x157j.label": {
+              "from_node": 1,
+              "field": "item.color_mm1xg10n.label"
+            },
+            "item.text_mm1x2qk2": {
+              "from_node": 1,
+              "field": "item.text_mm1x2qk2"
+            },
+            "item.text_mm1xyp9y": {
+              "from_node": 1,
+              "field": "item.text_mm1xyp9y"
+            },
+            "item.text_mm1xaccx": {
+              "from_node": 1,
+              "field": "item.text_mm1xaccx"
+            },
+            "item.text_mm1xkbqc": {
+              "from_node": 1,
+              "field": "item.numeric_mm1ztdz4"
+            },
+            "item.text_mm1xdzxw": {
+              "from_node": 1,
+              "field": "item.numeric_mm1zv64b"
+            },
+            "item.text_mm1xdtj7": {
+              "from_node": 1,
+              "field": "item.numeric_mm1zfv02"
+            },
+            "item.text_mm1xx5f": {
+              "from_node": 1,
+              "field": "item.numeric_mm1zxktp"
+            },
+            "item.text_mm1x46et": {
+              "from_node": 1,
+              "field": "item.text_mm1x46et"
+            },
+            "item.phone_mm1xz8c0": {
+              "from_node": 1,
+              "field": "item.phone_mm1xz8c0"
+            },
+            "item.text_mm1x7d91": {
+              "from_node": 1,
+              "field": "item.text_mm1x7d91"
+            },
+            "item.color_mm1xw7y5.label": {
+              "from_node": 1,
+              "field": "item.color_mm1xw7y5.label"
+            },
+            "item.email_mm1x6fq5": {
+              "from_node": 1,
+              "field": "item.email_mm1x6fq5"
+            },
+            "item.email_mm1xdzcj": {
+              "from_node": 1,
+              "field": "item.email_mm1xdzcj"
+            },
+            "item.dropdown_mm1xbvas.labels": {
+              "from_node": 1,
+              "field": "item.dropdown_mm1xbvas.labels"
+            },
+            "item.location_mm1xjnfv": {
+              "from_node": 1,
+              "field": "item.location_mm1xjnfv"
+            },
+            "item.color_mm241kqp.label": {
+              "from_node": 1,
+              "field": "item.color_mm1zbrx0.label"
+            },
+            "item.text_mm1xpgy2": {
+              "from_node": 1,
+              "field": "item.text_mm1xpgy2"
+            },
+            "item.text_mm1xehx8": {
+              "from_node": 1,
+              "field": "item.text_mm1xehx8"
+            },
+            "item.text_mm1xzqe0": {
+              "from_node": 1,
+              "field": "item.text_mm1xzqe0"
+            },
+            "item.text_mm1x46kd": {
+              "from_node": 1,
+              "field": "item.numeric_mm1ztdz4"
+            },
+            "item.text_mm1xyga2": {
+              "from_node": 1,
+              "field": "item.text_mm1xyga2"
+            },
+            "item.text_mm1x7hkk": {
+              "from_node": 1,
+              "field": "item.text_mm1x7hkk"
+            },
+            "item.text_mm1xyzqx": {
+              "from_node": 1,
+              "field": "item.text_mm1xyzqx"
+            },
+            "item.text_mm1x32jw": {
+              "from_node": 1,
+              "field": "item.text_mm1x32jw"
+            },
+            "item.text_mm1xkdgq": {
+              "from_node": 1,
+              "field": "item.text_mm1xkdgq"
+            },
+            "item.text_mm1xssyw": {
+              "from_node": 1,
+              "field": "item.text_mm1xssyw"
+            },
+            "item.text_mm1xhymg": {
+              "from_node": 1,
+              "field": "item.text_mm1xhymg"
+            },
+            "item.text_mm1xdcet": {
+              "from_node": 1,
+              "field": "item.text_mm1xdcet"
+            },
+            "item.color_mm281et9.label": {
+              "from_node": 1,
+              "field": "item.color_mm1yeksx.label"
+            },
+            "item.dropdown_mm2wrzrk.labels": {
+              "from_node": 1,
+              "field": "item.dropdown_mm1y2x75.labels"
+            },
+            "item.text_mm2wms12": {
+              "from_node": 1,
+              "field": "item.text_mm25zsdd"
+            },
+            "item.text_mm1xsa9": {
+              "from_node": 1,
+              "field": "item.text_mm1xsa9"
+            },
+            "item.text_mm3xdze1": {
+              "from_node": 1,
+              "field": "item.text_mm389fs"
+            },
+            "item.text_mm4b45rh": {
+              "from_node": 1,
+              "field": "item.text_mm3y53qn"
+            },
+            "item.color_mm52pa3r.label": {
+              "from_node": 1,
+              "field": "item.color_mm52kc3n.label"
+            },
+            "item.dropdown_mm5es2yz.labels": {
+              "from_node": 1,
+              "field": "item.dropdown_mm457xy2.labels"
+            },
+            "item.color_mm7dn13v.label": {
+              "from_node": 1,
+              "field": "item.color_mm7d71vd.label"
+            },
+            "groupId": {
+              "title": "Welcome Call",
+              "id": "group_mm1wvq8p"
+            },
+            "item.color_mm7d1rje.label": {
+              "from_node": 1,
+              "field": "item.color_mm7d71vd.label"
+            },
+            "item.text_mm6vvsjy": {
+              "from_node": 1,
+              "field": "item.text_mm389fs"
+            }
+          }
+        },
+        {
+          "node": 3,
+          "block": "Move item to group",
+          "fields": {
+            "itemId": {
+              "from_node": 1,
+              "field": "itemId"
+            },
+            "boardId": {
+              "board": "this"
+            },
+            "groupId": {
+              "title": "Completed",
+              "id": "group_mm1y57sz"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "legacy": [
+    {
+      "id": 560115738,
+      "kind": "legacy_recipe",
+      "active": false,
+      "state": "deactivated",
+      "created_at": "2026-04-02T19:39:51.447Z",
+      "updated_at": "2026-08-05T15:55:22.090Z",
+      "recipe_id": 127,
+      "sentence": "When any column changes, send a webhook",
+      "config": {},
+      "source": "API"
+    },
+    {
+      "id": 560116097,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-04-02T19:40:20.432Z",
+      "updated_at": "2026-04-02T19:40:20.829Z",
+      "recipe_id": 126,
+      "sentence": "When an item is created, send a webhook",
+      "config": {},
+      "source": "API"
+    },
+    {
+      "id": 562943120,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-04-09T13:25:22.400Z",
+      "updated_at": "2026-04-09T13:25:29.952Z",
+      "recipe_id": 130,
+      "sentence": "When {a status, columnId} changes to {something, columnValue}, send a webhook",
+      "config": {
+        "columnId": {
+          "boardId": 18406352652,
+          "columnId": "color_mm1yeksx",
+          "columnType": "color",
+          "isSubitemColumn": false
+        },
+        "columnValue": {
+          "index": 1
+        }
+      },
+      "source": null
+    },
+    {
+      "id": 564352754,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-04-13T01:07:50.701Z",
+      "updated_at": "2026-04-13T01:08:01.440Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": {
+          "boardId": 18406352652,
+          "columnId": "dropdown_mm1y2x75",
+          "columnType": "dropdown",
+          "isSubitemColumn": false
+        }
+      },
+      "source": null
+    },
+    {
+      "id": 572548897,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-04-29T14:58:35.130Z",
+      "updated_at": "2026-05-14T15:46:18.576Z",
+      "recipe_id": 126,
+      "sentence": "When an item is created, send a webhook",
+      "config": {},
+      "source": "API"
+    },
+    {
+      "id": 573232764,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-04-30T15:05:04.584Z",
+      "updated_at": "2026-05-14T15:46:18.014Z",
+      "recipe_id": 126,
+      "sentence": "When an item is created, send a webhook",
+      "config": {},
+      "source": "API"
+    },
+    {
+      "id": 580793166,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-05-15T17:26:01.405Z",
+      "updated_at": "2026-05-15T17:26:01.914Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": "text_mm1x46et"
+      },
+      "source": "API"
+    },
+    {
+      "id": 580793198,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-05-15T17:26:03.183Z",
+      "updated_at": "2026-05-15T17:26:03.513Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": "phone_mm1xz8c0"
+      },
+      "source": "API"
+    },
+    {
+      "id": 580793225,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-05-15T17:26:04.453Z",
+      "updated_at": "2026-05-15T17:26:04.887Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": "text_mm1x7d91"
+      },
+      "source": "API"
+    },
+    {
+      "id": 580793235,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-05-15T17:26:05.963Z",
+      "updated_at": "2026-05-15T17:26:06.400Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": "color_mm1xw7y5"
+      },
+      "source": "API"
+    },
+    {
+      "id": 580793248,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-05-15T17:26:07.253Z",
+      "updated_at": "2026-05-15T17:26:07.635Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": "email_mm1x6fq5"
+      },
+      "source": "API"
+    },
+    {
+      "id": 580793274,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-05-15T17:26:08.796Z",
+      "updated_at": "2026-05-15T17:26:09.141Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": "email_mm1xdzcj"
+      },
+      "source": "API"
+    },
+    {
+      "id": 580793290,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-05-15T17:26:10.310Z",
+      "updated_at": "2026-05-15T17:26:10.650Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": "dropdown_mm1xbvas"
+      },
+      "source": "API"
+    },
+    {
+      "id": 580793308,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-05-15T17:26:12.689Z",
+      "updated_at": "2026-05-15T17:26:13.072Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": "location_mm1xjnfv"
+      },
+      "source": "API"
+    },
+    {
+      "id": 603422335,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-07-02T20:21:47.585Z",
+      "updated_at": "2026-07-02T20:21:48.165Z",
+      "recipe_id": 135,
+      "sentence": "When {a column, columnId} changes, send a webhook",
+      "config": {
+        "columnId": "text_mm3y53qn"
+      },
+      "source": "API"
+    },
+    {
+      "id": 625896293,
+      "kind": "legacy_recipe",
+      "active": true,
+      "state": "active",
+      "created_at": "2026-08-20T16:24:43.999Z",
+      "updated_at": "2026-08-20T16:24:44.298Z",
+      "recipe_id": 194,
+      "sentence": "When an item moves to {group, groupId}, send a webhook",
+      "config": {
+        "groupId": "group_mm5zgeak"
+      },
+      "source": "API"
+    }
+  ]
+}

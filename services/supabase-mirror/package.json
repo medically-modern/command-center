@@ -1,0 +1,15 @@
+{
+  "name": "supabase-mirror",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Mirrors monday.com boards into Supabase (Postgres). Read-only on monday.",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}
