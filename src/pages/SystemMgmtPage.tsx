@@ -439,6 +439,14 @@ const SystemMgmtPage = () => {
               icon={<BarChart3 className="w-4 h-4" />}
               label="Oversight"
             />
+            {/* The door to the Supabase copy's board page (§5.55). A page of
+                its own, not a tab: it draws a whole board edge to edge. */}
+            <TabBtn
+              active={false}
+              onClick={() => navigate("/supabase-board")}
+              icon={<Database className="w-4 h-4" />}
+              label="Supabase board"
+            />
           </nav>
         </div>
       </header>

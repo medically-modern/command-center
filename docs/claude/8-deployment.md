@@ -86,8 +86,9 @@ automation — the "Trigger DVS" column), `parachute-doctor-lookup` (Parachute c
 lookup), `doctor-sync-webhook` / `auto-doctor-database-search` (Doctor Database sync),
 `mm-dtc-api` / `manufacturer-referral-webhook` (intake), `mm-patient-portal` /
 `reorder-patient-form` / `coins-form-payment` / `patient-intake-texts-backend` (patient-facing),
-`baseline-cron-CMD CTR-T` (burndown baseline), and — from this repo, not yet deployed —
-`supabase-mirror` (§5.55: monday → Supabase, read-only, `MIRROR_ENABLED=1` to run). The OOP estimator and DVS columns are owned by
+`baseline-cron-CMD CTR-T` (burndown baseline), and `supabase-mirror` (§5.55: monday → Supabase,
+read-only on monday, new patients only, live since 2026-09-29; the gateway reads it for
+`/supabase-board` through its own `SUPABASE_DB_URL` reference). The OOP estimator and DVS columns are owned by
 these services; when their math changes, `oopEstimator.ts` must be updated to match.
 
 ---

@@ -51,6 +51,8 @@ const SystemMgmtPage = lazyWithReload(() => import("./pages/SystemMgmtPage"));
 
 // Access management (managers only)
 const AccessAdminPage = lazyWithReload(() => import("./pages/AccessAdminPage"));
+// The Supabase copy of Profile Send Off, drawn like a monday board (§5.55).
+const SupabaseBoardPage = lazyWithReload(() => import("./pages/SupabaseBoardPage"));
 
 // Oversight (full-screen managers grid)
 const OversightPage = lazyWithReload(() => import("./pages/OversightPage"));
@@ -181,6 +183,9 @@ const App = () => (
           <Route path="/patient-questions" element={<PatientQuestionsPage />} />
           <Route path="/system-mgmt" element={<SystemMgmtPage />} />
           <Route path="/access" element={<AccessAdminPage />} />
+          {/* Read-only: the Supabase copy of Profile Send Off in monday's look
+              (§5.55 *The board page*). Door: System Management's tab bar. */}
+          <Route path="/supabase-board" element={<SupabaseBoardPage />} />
           <Route path="/oversight" element={<OversightPage />} />
           {/* Reports & Metrics and Stage Manager as their own pages (§5.41) —
               Josh, 2026-09-21. Both were tabs of /system-mgmt, so a header tab
