@@ -8,6 +8,17 @@
  *   MIRROR_TEST_DB_URL=postgres://postgres:pw@127.0.0.1:5433/postgres npx vitest run services/supabase-mirror
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+
+/**
+ * ⚠️ `pg` is loaded with a runtime require, never `import("pg")`. The service's
+ * dependencies live in its own node_modules, which CI (a root `npm install`)
+ * does not have — and vite resolves every literal import specifier while
+ * transforming this file, even inside a skipped suite. A literal `import("pg")`
+ * here failed the whole deploy workflow from 2026-09-29 18:42 to ~21:00.
+ */
+const requirePg = () => createRequire(join(process.cwd(), "services/supabase-mirror/package.json"))("pg");
 
 const URL = process.env.MIRROR_TEST_DB_URL;
 const maybe = URL ? describe : describe.skip;
@@ -67,7 +78,7 @@ maybe("syncBoard against Postgres", () => {
     process.env.MONDAY_API_TOKEN = "test";
     process.env.SUPABASE_DB_URL = URL;
     process.env.MIRROR_PAGE_DELAY_MS = "0";
-    pg = (await import("pg")).default;
+    pg = requirePg();
     pool = new pg.Pool({ connectionString: URL, max: 2, ssl: /sslmode=disable|127\.0\.0\.1|localhost/.test(URL) ? false : { rejectUnauthorized: false } });
     await pool.query("DROP SCHEMA IF EXISTS monday_mirror CASCADE");
     mod = await import("./index.mjs");
