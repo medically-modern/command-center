@@ -62,6 +62,7 @@ import {
 import { buildHistoryQuery } from "./callHistoryQuery.mjs";
 import { RETRY_STEPS_MS, retryAfterMs, retryDelayMs } from "./reconcileBackoff.mjs";
 import { normalizeReport, presenceFaults, summarize, verdictFor } from "./phonePresenceRules.mjs";
+import { staffNumbers } from "./rcUserAuth.mjs";
 
 const { ASSIGNMENTS_DATABASE_URL } = process.env;
 
@@ -477,7 +478,9 @@ async function handleEvent(payload) {
     void recordEvent({ kind: "end_unseen", sessionId, state: outcome });
     return;
   }
-  const party = pickInboundParty(body, SELF_NUMBERS);
+  // Plus every connected person's own extension numbers (§5.13c): a rep who
+  // dials out on their own line raises the same self-shaped leg.
+  const party = pickInboundParty(body, [...SELF_NUMBERS, ...staffNumbers()]);
   if (!party) {
     // Was it OUR OWN outbound leg? Asking the same pure function again without
     // the self list is cheaper than duplicating its matching rules here, and it

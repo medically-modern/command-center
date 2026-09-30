@@ -67,6 +67,7 @@ import {
   shouldRefreshCredentials,
   writeCachedSipInfo,
   writeMuted,
+  type SipLine,
 } from "./registration";
 import { CHANNEL_NAME, LOCK_NAME, followerView, isTabMessage, type TabCommand, type TabMessage } from "./tabProtocol";
 import { audibleRings, nextExpiryMs, sameRings, type RingLike } from "./ringRules";
@@ -271,6 +272,13 @@ class Softphone {
   private channel: BroadcastChannel | null = null;
   /** This person is an assigned call answerer (set by the host from access.json). */
   private enabled = false;
+  /** Which extension to register on: the person's own (they connected their
+   *  RingCentral login) or the shared one (§5.13c). Set by the host. */
+  private line: SipLine = "shared";
+  /** The line the live registration was made for. A mismatch with `line` means
+   *  the person connected or disconnected since — re-register, once no call
+   *  is in the way (`reconcile`). */
+  private wpLine: SipLine | null = null;
   /** Ringtone muted in this browser (localStorage, shared by every tab of it).
    *  Distinct from `active.call.muted`, which is the microphone on a live call. */
   private ringMuted = readMuted(storage() ?? NO_STORAGE);
@@ -368,6 +376,15 @@ class Softphone {
     if (on === this.enabled) return;
     this.enabled = on;
     this.publish();
+    if (this.isLeader) this.reconcile();
+  };
+
+  /** The host calls this BEFORE `setEnabled`, from `phoneLine` (rcLine.ts), so
+   *  the first registration is already on the right extension. A change later
+   *  (connect / disconnect) re-registers once no call is in the way. */
+  setLine = (line: SipLine | null): void => {
+    if (!line || line === this.line) return;
+    this.line = line;
     if (this.isLeader) this.reconcile();
   };
 
@@ -593,6 +610,10 @@ class Softphone {
         clearTimeout(this.releaseTimer);
         this.releaseTimer = null;
       }
+      // Registered on the other line (the person connected or disconnected
+      // their own login): drop it and register on the right one — but never
+      // under a live call, which would cut the audio. `endActive` reconciles.
+      if (this.wp && this.wpLine !== this.line && !this.active) this.release();
       if (!this.wp && !this.registering) void this.ensureRegistered();
       return;
     }
@@ -615,10 +636,10 @@ class Softphone {
     this.publish();
   }
 
-  private async provision(): Promise<SipInfo> {
+  private async provision(line: SipLine): Promise<SipInfo> {
     const email = (getUser()?.email || "").toLowerCase();
     const store = storage() ?? NO_STORAGE;
-    const cached = readCachedSipInfo(store, email, Date.now());
+    const cached = readCachedSipInfo(store, email, Date.now(), line);
     if (cached) return cached;
     if (!GATEWAY) throw new Error("Calling needs the Monday gateway (VITE_MONDAY_GATEWAY_URL).");
     const token = getIdToken();
@@ -642,14 +663,16 @@ class Softphone {
           }
           throw new Error(msg);
         }
-        return (await res.json()) as { sipInfo?: SipInfo[] | SipInfo };
+        return (await res.json()) as { sipInfo?: SipInfo[] | SipInfo; mmLine?: SipLine };
       })(),
       PROVISION_DEADLINE_MS,
       PROVISION_TIMEOUT_MESSAGE,
     ).finally(() => ctrl.abort());
     const sipInfo = Array.isArray(provisioned.sipInfo) ? provisioned.sipInfo[0] : provisioned.sipInfo;
     if (!sipInfo) throw new Error("RingCentral returned no SIP credentials for this extension.");
-    writeCachedSipInfo(store, email, sipInfo, Date.now());
+    // Cached under the line the GATEWAY says it provisioned, which is the
+    // truth; an older gateway that does not say was always the shared line.
+    writeCachedSipInfo(store, email, sipInfo, Date.now(), provisioned.mmLine === "own" ? "own" : "shared");
     return sipInfo;
   }
 
@@ -659,8 +682,12 @@ class Softphone {
     this.registering = (async () => {
       this.setRegistration("registering");
       let wp: WebPhone | null = null;
+      // ⚠️ The line ASKED for, not the one the gateway answered with: keyed on
+      // the answer, a gateway that says "shared" to someone the page believes
+      // is connected would re-register them on every reconcile.
+      const line = this.line;
       try {
-        const sipInfo = await this.provision();
+        const sipInfo = await this.provision(line);
         wp = new WebPhone({ sipInfo, instanceId: this.instanceId, autoAnswer: false });
         wp.on("inboundCall", (s: Session) => this.onInbound(s));
         wp.on("outboundCall", (s: Session) => this.onOutbound(s));
@@ -675,12 +702,14 @@ class Softphone {
           return;
         }
         this.wp = wp;
+        this.wpLine = line;
         this.watchSocket(wp);
         this.attempt = 0;
         this.setRegistration("registered", null);
         // Nothing may want it any more (un-assigned mid-REGISTER): hand it to
         // the ordinary release timer rather than holding a slot for nobody.
-        if (!this.wanted()) this.reconcile();
+        // Or the line changed while this was registering: move to the new one.
+        if (!this.wanted() || this.line !== line) this.reconcile();
       } catch (err) {
         abandon(wp);
         if (!this.isLeader) return;

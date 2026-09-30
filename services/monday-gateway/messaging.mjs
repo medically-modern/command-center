@@ -32,6 +32,7 @@ const { Pool } = pkg;
 
 import { verifyGoogleIdentity, authEnforced, setKeyStore } from "./auth.mjs";
 import { rcApiFetch, SIP_PROVISION_PATH } from "./ringcentral.mjs";
+import { provisionOwnLine } from "./rcUserAuth.mjs";
 import { toE164, phoneHmac, hashingConfigured } from "./phoneHash.mjs";
 import { confirmSmsAccepted } from "./smsSend.mjs";
 import { registerSmsArchive, readArchivedConversation } from "./smsArchive.mjs";
@@ -58,6 +59,10 @@ const pool = ASSIGNMENTS_DATABASE_URL
   : null;
 
 const configured = () => !!(pool && hashingConfigured());
+
+/** The messaging Postgres, for rcUserAuth.mjs's links table (registered from
+ *  index.mjs, ahead of the /rc proxy). Null when unconfigured. */
+export const messagingPool = () => pool;
 
 /**
  * The sip-provision floor — see the route. 8s: comfortably under the client's
@@ -470,13 +475,29 @@ export function registerMessaging({ app }) {
       for (const [k, at] of sipProvisionLast) if (Date.now() - at >= SIP_PROVISION_FLOOR_MS) sipProvisionLast.delete(k);
     }
     try {
+      // A person who connected their own RingCentral login rings on THEIR
+      // extension (§5.13c). Everybody else is provisioned on the shared line
+      // exactly as before. `mmLine` tells the browser which one it got, so its
+      // cached credentials are never reused for the other.
+      const own = await provisionOwnLine(who);
+      if (own) {
+        const body = own.status === 200 ? { ...own.body, mmLine: "own" } : own.body;
+        return res.status(own.status).json(body);
+      }
       const up = await rcApiFetch(SIP_PROVISION_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sipInfo: [{ transport: "WSS" }] }),
       });
       const body = await up.text();
-      res.status(up.ok ? 200 : up.status).type("application/json").send(body);
+      if (!up.ok) return res.status(up.status).type("application/json").send(body);
+      let shared;
+      try {
+        shared = { ...JSON.parse(body), mmLine: "shared" };
+      } catch {
+        return res.status(200).type("application/json").send(body);
+      }
+      res.status(200).json(shared);
     } catch (e) {
       res.status(502).json({ error: String((e && e.message) || e) });
     }

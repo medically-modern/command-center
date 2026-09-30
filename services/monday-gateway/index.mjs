@@ -48,7 +48,8 @@ import pkg from "pg";
 const { Pool } = pkg;
 import { registerSend } from "./send.mjs";
 import { registerRingCentral } from "./ringcentral.mjs";
-import { registerMessaging } from "./messaging.mjs";
+import { registerMessaging, messagingPool } from "./messaging.mjs";
+import { registerRcUserAuth } from "./rcUserAuth.mjs";
 import { registerInboundCalls } from "./inboundCalls.mjs";
 import { logRcSetup, registerRcSetup } from "./rcSetup.mjs";
 import { registerCalendlyDay } from "./calendlyDay.mjs";
@@ -785,6 +786,10 @@ registerStageActor({ app, pool });
 
 // ── Phase 2: server-side transactional /send (durable, idempotent) ──
 registerSend({ app, pool, clientIp });
+// ⚠️ BEFORE registerRingCentral: its `/rc/.+` proxy would otherwise swallow
+// /rc/user/* (the callback address is registered with RingCentral, so the
+// path is fixed). Each person's own line — see rcUserAuth.mjs, §5.13c.
+registerRcUserAuth({ app, pool: messagingPool(), allowedOrigins: ALLOWED_ORIGINS });
 registerRingCentral({ app });
 // Patient texting + calling, with per-message sender attribution. Runs on its
 // OWN Postgres (ASSIGNMENTS_DATABASE_URL) so the audit DB above keeps its

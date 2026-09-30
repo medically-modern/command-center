@@ -43,6 +43,8 @@ vi.mock("@/lib/shared/auth", () => ({
   authRequired: () => true,
   getUser: () => ({ email: "me@medicallymodern.com", name: "Me" }),
   signOut: () => {},
+  getIdToken: () => null,
+  onAuthChange: () => () => {},
 }));
 // Radix, portals and a fetch of its own — not what this test is about.
 vi.mock("@/components/inboundCalls/RingPreferencesDialog", () => ({

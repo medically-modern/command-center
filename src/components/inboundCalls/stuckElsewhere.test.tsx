@@ -26,7 +26,7 @@ vi.mock("@/components/AccessProvider", () => ({
   useAccessContext: () => ({ email: "rep@example.com", config: {} }),
 }));
 // No sign-in gate in tests: the badge treats everyone as an assigned answerer.
-vi.mock("@/lib/shared/auth", () => ({ authRequired: () => false }));
+vi.mock("@/lib/shared/auth", () => ({ authRequired: () => false, getIdToken: () => null, onAuthChange: () => () => {} }));
 
 import CallConnectionBadge, { STUCK_ELSEWHERE_MS } from "./CallConnectionBadge";
 

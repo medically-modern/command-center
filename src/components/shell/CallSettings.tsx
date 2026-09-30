@@ -18,7 +18,9 @@
  * nothing here can change that (§5.13b: the assignment is a manager's, on
  * /access).
  */
-import { useCallStatus } from "@/components/inboundCalls/CallConnectionBadge";
+import { toast } from "sonner";
+import { startRcConnect, useCallStatus } from "@/components/inboundCalls/CallConnectionBadge";
+import { disconnectRcLine } from "@/lib/softphone/rcLine";
 import { askDesktopAlerts } from "@/components/inboundCalls/RingPreferencesDialog";
 import { callStatusLine } from "@/lib/shell/callStatusLine";
 
@@ -56,14 +58,18 @@ function TogRow({
 
 export function CallSettings() {
   const call = useCallStatus();
-  const { phone, enabled } = call;
+  const { phone, enabled, rcLine, canConnect, lineLabel } = call;
 
   return (
     <div className="sec">
       <div className="eyebrow">Calls</div>
       <div className="status">
         <span className={`dot ${enabled ? call.tone : "grey"}`} />
-        {callStatusLine(enabled, true, call.detail ? `${call.label} — ${call.detail}` : call.label)}
+        {callStatusLine(
+          enabled,
+          true,
+          `${call.detail ? `${call.label} — ${call.detail}` : call.label}${lineLabel ? ` · ${lineLabel}` : ""}`,
+        )}
       </div>
       <TogRow
         label="Play a ringtone in this browser"
@@ -72,6 +78,25 @@ export function CallSettings() {
         disabled={!enabled}
         onToggle={() => phone.setRingMuted(!phone.ringMuted)}
       />
+      {/* §5.13c — ring on your OWN RingCentral extension instead of Katie's. */}
+      {canConnect && (
+        <button type="button" className="opt" onClick={startRcConnect}>
+          {rcLine.broken ? "Reconnect my RingCentral line…" : "Connect my own RingCentral line…"}
+        </button>
+      )}
+      {rcLine.connected && (
+        <button
+          type="button"
+          className="opt"
+          disabled={!!phone.call}
+          title={phone.call ? "Finish the call first" : undefined}
+          onClick={() =>
+            void disconnectRcLine().catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)))
+          }
+        >
+          Disconnect my RingCentral line
+        </button>
+      )}
       {enabled && (
         <button type="button" className="opt" onClick={() => void askDesktopAlerts()}>
           Alert me when this tab is in the background…

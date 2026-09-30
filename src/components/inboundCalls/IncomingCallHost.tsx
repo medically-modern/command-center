@@ -37,6 +37,9 @@
  * at most five) get any of this — the stream, the cards, the registration.
  * Everyone else sees nothing, by design (Josh, 2026-09-14). The one thing that
  * renders for everybody is the overlay for a call THEY placed from the hub.
+ * Since §5.13c a person who connected their OWN RingCentral login gets all of
+ * it too, on their own extension, without the assignment or the cap
+ * (`phoneLine` in lib/softphone/rcLine.ts).
  *
  * Cards come in top-right, deliberately away from the CallOverlay at
  * bottom-right — "a call is arriving" and "you are on a call" must never be
@@ -60,6 +63,7 @@ import { fmtPhone, senderName } from "@/lib/assignedPatients/format";
 import { authRequired, getUser } from "@/lib/shared/auth";
 import { useAccessContext } from "@/components/AccessProvider";
 import { canAnswerCalls } from "@/lib/accessStore";
+import { clearRcLineNotice, phoneLine, useRcLine } from "@/lib/softphone/rcLine";
 import { cn } from "@/lib/utils";
 
 /** Is this claim the signed-in user's own? Claims can only come from another
@@ -285,15 +289,30 @@ export default function IncomingCallHost() {
   const { email, config } = useAccessContext();
   // With Google sign-in off (a dev build) everyone is a manager and, by the
   // same token, an answerer — otherwise nothing could be tried locally.
-  const enabled = !authRequired() || canAnswerCalls(email, config);
+  const answerer = !authRequired() || canAnswerCalls(email, config);
+  // Or they connected their OWN RingCentral login (§5.13c): then they ring on
+  // their own extension, assigned or not, and spend none of Katie's five.
+  const rcLine = useRcLine();
+  const { enabled, line } = phoneLine(answerer, rcLine);
   const { calls, dismiss, connected, error } = useInboundCalls(enabled);
   const phone = useSoftphone();
   // The store registers (or lets go) within a poll of the assignment changing.
   // `setEnabled` is the store's own bound function, so its identity is stable.
-  const { setCardRings, setEnabled } = phone;
+  // ⚠️ The line FIRST, so the registration `setEnabled` starts is already on
+  // the right extension.
+  const { setCardRings, setEnabled, setLine } = phone;
   useEffect(() => {
+    setLine(line);
     setEnabled(enabled);
-  }, [enabled, setEnabled]);
+  }, [enabled, line, setEnabled, setLine]);
+  // The outcome of a Connect that just came back from RingCentral — once.
+  useEffect(() => {
+    const n = rcLine.notice;
+    if (!n) return;
+    if (n.kind === "connected") toast.success("RingCentral connected — calls now ring on your own line");
+    else toast.error(n.reason ? `RingCentral didn't connect: ${n.reason}` : "RingCentral didn't connect");
+    clearRcLineNotice();
+  }, [rcLine.notice]);
   // ⚠️ **The ringtone is keyed on the CARDS, not on this browser's SIP legs**
   // (§5.13b, 2026-09-28 — Josh: "sometimes the notif pops up and it doesnt"
   // ring). A card arrives for every assigned answerer; the SIP leg only

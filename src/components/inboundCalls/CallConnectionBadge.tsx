@@ -43,8 +43,10 @@ import { useEffect, useState } from "react";
 import { Loader2, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
 import { useAccessContext } from "@/components/AccessProvider";
 import { useSoftphone } from "@/hooks/softphone/useSoftphone";
+import { toast } from "sonner";
 import { canAnswerCalls } from "@/lib/accessStore";
 import { authRequired } from "@/lib/shared/auth";
+import { connectRcLine, phoneLine, useRcLine } from "@/lib/softphone/rcLine";
 import { cn } from "@/lib/utils";
 
 /** How long this tab watches another tab sit on "registering" before it offers
@@ -68,7 +70,14 @@ export type CallTone = "green" | "amber" | "red" | "grey";
 export function useCallStatus() {
   const { email, config } = useAccessContext();
   const phone = useSoftphone();
-  const enabled = !authRequired() || canAnswerCalls(email, config);
+  const answerer = !authRequired() || canAnswerCalls(email, config);
+  // Connected their own RingCentral login → rings on their own extension,
+  // assigned or not (§5.13c). The same `phoneLine` IncomingCallHost uses.
+  const rcLine = useRcLine();
+  const { enabled, line } = phoneLine(answerer, rcLine);
+  // Offer "Connect" to a signed-in person who is not on their own line yet,
+  // once the gateway says the second RingCentral app is set up.
+  const canConnect = authRequired() && rcLine.loaded && rcLine.configured && (!rcLine.connected || rcLine.broken);
   // A connecting badge flickering on every page load is noise; give the
   // REGISTER a couple of seconds before saying anything but "connected".
   const [settled, setSettled] = useState(false);
@@ -128,7 +137,38 @@ export function useCallStatus() {
   // there is nothing to move, so it is inert and only reports.
   const canTake = (elsewhere || stuck) && !phone.call;
 
-  return { phone, enabled, tone, label, detail, connected, pending, elsewhere, stuck, canTake };
+  if (line === "own" && rcLine.broken) {
+    tone = "red";
+    label = "Your RingCentral connection expired";
+    detail = "Connect again to take calls here";
+  }
+  const ext = rcLine.extension;
+  // Only said once somebody HAS connected: for everyone else the status reads
+  // exactly as it did before §5.13c.
+  const lineLabel = line === "own" ? `Your own line${ext?.number ? ` · Ext. ${ext.number}` : ""}` : null;
+
+  return {
+    phone,
+    enabled,
+    tone,
+    label,
+    detail,
+    connected,
+    pending,
+    elsewhere,
+    stuck,
+    canTake,
+    line,
+    lineLabel,
+    rcLine,
+    canConnect,
+  };
+}
+
+/** Start the RingCentral sign-in; a refusal is a toast, not a silent no-op. */
+// eslint-disable-next-line react-refresh/only-export-components -- shared with the settings menu
+export function startRcConnect(): void {
+  void connectRcLine().catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)));
 }
 
 export default function CallConnectionBadge({
@@ -139,10 +179,30 @@ export default function CallConnectionBadge({
   /** The global header's icon-only form (§5.39c). */
   compact?: boolean;
 }) {
-  const { phone, enabled, tone, label, detail, connected, pending, elsewhere, stuck, canTake } =
+  const { phone, enabled, tone, label, detail, connected, pending, elsewhere, stuck, canTake, lineLabel, canConnect, rcLine } =
     useCallStatus();
+  const lineNote = lineLabel ? ` (${lineLabel})` : "";
 
-  if (!enabled) return null;
+  if (!enabled) {
+    // Not rung at all yet. The home page offers the one thing that changes
+    // that without a manager: connecting their own RingCentral login (§5.13c).
+    // The header stays empty for them, as before.
+    if (compact || !canConnect) return null;
+    return (
+      <button
+        type="button"
+        onClick={startRcConnect}
+        title="Sign in with your own RingCentral login so calls ring here, on your own line"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/80 hover:bg-white/10",
+          className,
+        )}
+      >
+        <PhoneCall className="h-3 w-3" />
+        Connect RingCentral to take calls
+      </button>
+    );
+  }
 
   const StateIcon = pending ? Loader2 : connected ? PhoneCall : PhoneOff;
 
@@ -164,8 +224,8 @@ export default function CallConnectionBadge({
               : stuck
                 ? "Another tab is stuck connecting — click to connect from this tab"
                 : detail
-                ? `${label} — ${detail}`
-                : label
+                ? `${label} — ${detail}${lineNote}`
+                : `${label}${lineNote}`
           }
           aria-label={label}
         >
@@ -196,7 +256,7 @@ export default function CallConnectionBadge({
   return (
     <div
       role="status"
-      title={detail || label}
+      title={`${detail || label}${lineNote}`}
       className={cn(
         "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium",
         tone === "green" && "border-emerald-400/40 bg-emerald-400/15 text-emerald-100",
@@ -235,6 +295,19 @@ export default function CallConnectionBadge({
       >
         {phone.ringMuted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
       </button>
+      {canConnect && (
+        <button
+          onClick={startRcConnect}
+          title={
+            rcLine.broken
+              ? "Sign in to RingCentral again so calls keep ringing on your own line"
+              : "Sign in with your own RingCentral login, so you ring on your own line instead of Katie's"
+          }
+          className="ml-1 rounded-full border border-current/40 px-1.5 py-0.5 text-[10px] hover:bg-white/10"
+        >
+          {rcLine.broken ? "Reconnect" : "Use my own line"}
+        </button>
+      )}
       {(elsewhere || stuck) && (
         <button
           onClick={phone.takeOver}
