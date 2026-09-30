@@ -33,6 +33,26 @@ export function phoneDigits(raw: string | null | undefined): string {
 }
 
 /**
+ * The PHONE join key a Calendly booking is matched to a chart by — ten US
+ * digits, or "" (CLAUDE.md §5.30l). Mirrors the gateway's
+ * `calendlyPatientRules.phoneKey`: a country code is dropped and nothing is
+ * truncated, because an extension cut to ten digits could be somebody else's
+ * number.
+ *
+ * ⚠️ Why a second key at all: on 2026-09-30 only 10 of 32 Welcome Call
+ * patients had an email on the board and all 32 had a phone, so an email-only
+ * join left most welcome bookings linked to nobody. The booking's phone comes
+ * from the Calendly booking page (dtc-mm-form `calendly.inviteePhone`).
+ *
+ * Lives here rather than beside the Calendly client because tests mock that
+ * client wholesale, and a join key must not vanish under a mock.
+ */
+export function bookingPhoneKey(raw: string | null | undefined): string {
+  const d = phoneDigits(raw);
+  return d.length === 10 ? d : "";
+}
+
+/**
  * True for anything Monday will accept as a US phone number.
  *
  * Deliberately length-checked rather than truncating: an extension

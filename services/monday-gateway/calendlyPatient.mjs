@@ -6,8 +6,8 @@
  * has. The one route our side of the wall exposes is a single Eastern DAY
  * (`calendlyDay.mjs` → dtc-mm-form's `/api/calendly/day`), so this assembles a
  * patient-shaped answer out of day-shaped reads: one short forward window,
- * indexed by invitee email, cached, and shared by every browser and every
- * patient until it goes stale.
+ * indexed by invitee email AND phone (§5.30l), cached, and shared by every
+ * browser and every patient until it goes stale.
  *
  * ⚠️ **THE INDEX IS BUILT ONCE AND SHARED — never once per patient.** A lookup
  * per patient would be a Calendly round trip per header render on a page a rep
@@ -30,10 +30,14 @@ import {
   DEFAULT_WINDOW_DAYS,
   etDateString,
   indexByEmail,
+  indexByPhone,
   looksLikeEmail,
   lookupMany,
+  lookupManyPhones,
   MAX_LOOKUP_EMAILS,
+  MAX_LOOKUP_PHONES,
   normalizeEmail,
+  phoneKey,
   pickBooking,
   requireKind,
   windowDates,
@@ -70,7 +74,7 @@ const INDEX_TTL_MS = Math.max(
  */
 const CONCURRENCY = 4;
 
-let index = null; // { at, byEmail: Map, from, through }
+let index = null; // { at, byEmail: Map, byPhone: Map, from, through }
 let building = null; // Promise, so concurrent askers share ONE build
 
 async function mapWithLimit(items, limit, fn) {
@@ -127,11 +131,15 @@ async function buildIndex() {
     if (k && !unresolved.has(k)) unresolved.set(k, u.error || "could not resolve");
   }
 
+  const bookings = days.flatMap((d) => d.bookings ?? []);
   return {
     ok: true,
     entry: {
       at: Date.now(),
-      byEmail: indexByEmail(days.flatMap((d) => d.bookings ?? [])),
+      byEmail: indexByEmail(bookings),
+      // The second key (§5.30l). Empty until dtc-mm-form's day route carries a
+      // phone AND the Calendly event type collects one — never an error.
+      byPhone: indexByPhone(bookings),
       unresolved,
       from,
       through: dates[dates.length - 1],
@@ -174,6 +182,9 @@ export function registerCalendlyPatient({ app }) {
       ttlMs: INDEX_TTL_MS,
       kinds: BOOKING_KINDS,
       indexed: index ? index.byEmail.size : 0,
+      // Distinct invitee phones. 0 while the booking pages collect none — the
+      // quickest way to see whether the Calendly setup has taken (§5.30l).
+      indexedPhones: index?.byPhone ? index.byPhone.size : 0,
       // Which kinds this index can actually answer for — a kind listed here
       // returns 502 rather than an empty answer (see `unresolvedReason`).
       unresolved: index ? Object.fromEntries(index.unresolved ?? []) : {},
@@ -203,11 +214,13 @@ export function registerCalendlyPatient({ app }) {
     }
 
     const email = normalizeEmail(req.query.email);
-    if (!looksLikeEmail(email)) {
-      // ⚠️ 400, never a cheerful `{booking: null}`. "We have no address for this
-      // patient" and "this patient has no appointment" are different answers and
-      // the screen says different things about them.
-      return res.status(400).json({ ok: false, error: "email is required" });
+    const phone = phoneKey(req.query.phone);
+    const hasEmail = looksLikeEmail(email);
+    if (!hasEmail && !phone) {
+      // ⚠️ 400, never a cheerful `{booking: null}`. "We have neither an address
+      // nor a number for this patient" and "this patient has no appointment"
+      // are different answers and the screen says different things about them.
+      return res.status(400).json({ ok: false, error: "email or phone is required" });
     }
 
     try {
@@ -217,11 +230,16 @@ export function registerCalendlyPatient({ app }) {
       const { entry } = built;
       const why = unresolvedReason(entry, kind);
       if (why) return res.status(502).json({ ok: false, error: why });
-      const booking = pickBooking(entry.byEmail.get(email) ?? [], kind);
+      // Email first — it is the key the booking link prefills and the one this
+      // route has always answered on — then the phone (§5.30l).
+      const byEmail = hasEmail ? pickBooking(entry.byEmail.get(email) ?? [], kind) : null;
+      const byPhone = !byEmail && phone ? pickBooking(entry.byPhone?.get(phone) ?? [], kind) : null;
+      const booking = byEmail ?? byPhone;
       res.json({
         ok: true,
         kind,
         booking,
+        matchedBy: byEmail ? "email" : byPhone ? "phone" : null,
         // So the caller can say what was actually looked at rather than implying
         // "ever" — a booking past this date is outside the window, not absent.
         from: entry.from,
@@ -237,8 +255,11 @@ export function registerCalendlyPatient({ app }) {
    *
    * Same index, same auth, one round trip for a whole column instead of one
    * per card: the index is built once and shared, so answering 40 addresses
-   * costs the same as answering one. Body `{ emails: string[] }`; answer
-   * `{ ok, bookings: { [email]: booking | null }, from, through }`.
+   * costs the same as answering one. Body `{ emails?: string[], phones?:
+   * string[], kind }` (at least one list); answer `{ ok, bookings: { [email]:
+   * booking | null }, byPhone: { [tenDigits]: booking | null }, from, through }`.
+   * `phones` is the §5.30l second key — an older client that sends only
+   * `emails` gets exactly the answer it always did, plus an empty `byPhone`.
    *
    * ⚠️ A partial window still answers as an ERROR here, exactly as the single
    * lookup does — a column that reads "nobody is booked" because Calendly
@@ -256,11 +277,21 @@ export function registerCalendlyPatient({ app }) {
     }
 
     const emails = req.body?.emails;
-    if (!Array.isArray(emails)) {
-      return res.status(400).json({ ok: false, error: "emails[] is required" });
+    const phones = req.body?.phones;
+    if (!Array.isArray(emails) && !Array.isArray(phones)) {
+      return res.status(400).json({ ok: false, error: "emails[] or phones[] is required" });
     }
-    if (emails.length > MAX_LOOKUP_EMAILS) {
+    if (emails !== undefined && !Array.isArray(emails)) {
+      return res.status(400).json({ ok: false, error: "emails must be an array" });
+    }
+    if (phones !== undefined && !Array.isArray(phones)) {
+      return res.status(400).json({ ok: false, error: "phones must be an array" });
+    }
+    if ((emails?.length ?? 0) > MAX_LOOKUP_EMAILS) {
       return res.status(400).json({ ok: false, error: `at most ${MAX_LOOKUP_EMAILS} emails per request` });
+    }
+    if ((phones?.length ?? 0) > MAX_LOOKUP_PHONES) {
+      return res.status(400).json({ ok: false, error: `at most ${MAX_LOOKUP_PHONES} phones per request` });
     }
 
     try {
@@ -272,7 +303,8 @@ export function registerCalendlyPatient({ app }) {
       res.json({
         ok: true,
         kind,
-        bookings: lookupMany(entry.byEmail, emails, kind),
+        bookings: lookupMany(entry.byEmail, emails ?? [], kind),
+        byPhone: lookupManyPhones(entry.byPhone ?? new Map(), phones ?? [], kind),
         from: entry.from,
         through: entry.through,
       });

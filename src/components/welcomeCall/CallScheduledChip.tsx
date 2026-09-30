@@ -16,24 +16,21 @@
  * appointment", and "you're not booked in" is the one wrong answer a rep acts
  * on — the same rule `StaleDataNotice` and `fetchCalendlyDay` exist for.
  *
- * ⚠️ A patient with **no email on the board** renders nothing, deliberately,
- * and that is a judgement rather than an oversight. Email is the only join
- * Calendly gives us (`calendlyPatientRules.normalizeEmail` says why a name
- * cannot be one), so those patients are strictly unanswerable — but measured on
- * 2026-09-10, every row that has ever reached the booking flow carried an email
- * (6 of 6, the one real booking included), because the flow is only reachable
- * through an address we already hold. Printing "no email on file" on the ~5 in 6
- * live patients who have neither an address nor an appointment would be noise
- * on almost every header, to flag a case the data says does not arise. The hook
- * still reports `noEmail` for any surface that wants to.
+ * ⚠️ Asked by EMAIL and, failing that, PHONE (§5.30l, 2026-09-30). The
+ * 2026-09-10 note that "every row that reached the booking flow carried an
+ * email" measured the wrong population: on 2026-09-30 only 10 of 32 Welcome
+ * Call patients had one, and all 32 had a phone. A patient with neither still
+ * renders nothing (the hook reports `noContact` for any surface that wants to
+ * say so). A PHONE match can be a household's shared number, so the chip's
+ * hover says the booking was matched by phone and whose name is on it.
  */
 import { CalendarClock, ExternalLink } from "lucide-react";
 
 import { formatBookingWhen } from "@/lib/welcomeCall/calendlyBooking";
 import { useWelcomeCallBooking } from "@/hooks/welcomeCall/useWelcomeCallBooking";
 
-export function CallScheduledChip({ email }: { email: string | undefined | null }) {
-  const { booking, error, loading, available } = useWelcomeCallBooking(email);
+export function CallScheduledChip({ email, phone }: { email: string | undefined | null; phone?: string | null }) {
+  const { booking, error, loading, available, matchedBy } = useWelcomeCallBooking(email, phone);
 
   // No gateway in this build: there is no question we could have asked, so
   // there is nothing honest to report either way.
@@ -57,6 +54,9 @@ export function CallScheduledChip({ email }: { email: string | undefined | null 
   if (loading || !booking) return null;
 
   const when = formatBookingWhen(booking.startTime);
+  const byPhone = matchedBy === "phone"
+    ? ` — matched by phone number; booked as ${booking.name || "an unnamed invitee"}`
+    : "";
 
   const label = (
     <>
@@ -77,7 +77,7 @@ export function CallScheduledChip({ email }: { email: string | undefined | null 
   // §5.31b records the mockup's "View Calendly booking" link as unbuildable —
   // it is buildable, just not out of that field.
   if (!booking.rescheduleUrl) {
-    return <span className={chip}>{label}</span>;
+    return <span className={chip} title={byPhone ? `Welcome call${byPhone}` : undefined}>{label}</span>;
   }
 
   return (
@@ -86,7 +86,7 @@ export function CallScheduledChip({ email }: { email: string | undefined | null 
       target="_blank"
       rel="noopener noreferrer"
       className={`${chip} hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2`}
-      title={`Open ${booking.name || "this patient"}'s booking in Calendly`}
+      title={`Open ${booking.name || "this patient"}'s booking in Calendly${byPhone}`}
     >
       {label}
       <ExternalLink className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />

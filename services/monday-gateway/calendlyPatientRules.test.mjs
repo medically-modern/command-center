@@ -3,10 +3,14 @@ import {
   DEFAULT_WINDOW_DAYS,
   etDateString,
   indexByEmail,
+  indexByPhone,
   looksLikeEmail,
   lookupMany,
+  lookupManyPhones,
   MAX_LOOKUP_EMAILS,
+  MAX_LOOKUP_PHONES,
   normalizeEmail,
+  phoneKey,
   ofKind,
   pickBooking,
   requireKind,
@@ -233,5 +237,67 @@ describe("kinds", () => {
     const untyped = indexByEmail([booking({ kind: undefined })]);
     expect(lookupMany(untyped, ["nejwanegash@gmail.com"], "welcome", now))
       .toEqual({ "nejwanegash@gmail.com": null });
+  });
+});
+
+/**
+ * The PHONE key (CLAUDE.md §5.30l). On 2026-09-30 only 10 of 32 Welcome Call
+ * patients had an email on the board and all 32 had a phone, so the booking's
+ * phone is the key that actually links most welcome calls.
+ */
+describe("phoneKey", () => {
+  it("reads every rendering of a US number as the same ten digits", () => {
+    for (const raw of ["9175550142", "(917) 555-0142", "917.555.0142", "+1 917 555 0142", "1-917-555-0142"]) {
+      expect(phoneKey(raw)).toBe("9175550142");
+    }
+  });
+
+  it("refuses anything that is not exactly ten digits rather than truncating it", () => {
+    // An extension or a short number truncated to ten could equal somebody
+    // else's number — a wrong chart is worse than no link.
+    for (const bad of ["", null, undefined, "917555014", "917-555-0142 x12", "+44 20 7946 0958", "21917555014"]) {
+      expect(phoneKey(bad)).toBe("");
+    }
+  });
+});
+
+describe("indexByPhone / lookupManyPhones", () => {
+  const now = "2026-09-10T12:00:00Z";
+  const idx = indexByPhone([
+    booking({ email: "", phone: "9175550142" }),
+    booking({ email: "", phone: "", name: "No Phone" }),
+    booking({ email: "", phone: "2125550199", startTime: "2026-09-13T15:00:00Z", endTime: "2026-09-13T15:10:00Z" }),
+  ]);
+
+  it("buckets by the phone key and DROPS a booking with no phone rather than bucketing it under ''", () => {
+    expect([...idx.keys()].sort()).toEqual(["2125550199", "9175550142"]);
+    expect(idx.has("")).toBe(false);
+  });
+
+  it("answers every usable number once, null for nothing booked, and skips the rest", () => {
+    const out = lookupManyPhones(idx, ["(917) 555-0142", "+1 212 555 0199", "3475550101", "", "123", "917-555-0142"], "welcome", now);
+    // Sorted: digit-only keys below 2^32 are ordered numerically by the
+    // engine, so insertion order is not what Object.keys reports. The caller
+    // reads this as a map.
+    expect(Object.keys(out).sort()).toEqual(["2125550199", "3475550101", "9175550142"]);
+    expect(out["9175550142"].startTime).toBe("2026-09-12T18:00:00.000000Z");
+    expect(out["2125550199"].startTime).toBe("2026-09-13T15:00:00Z");
+    expect(out["3475550101"]).toBeNull();
+  });
+
+  it("is kind-aware exactly as the email lookup is", () => {
+    expect(lookupManyPhones(idx, ["9175550142"], "intake", now)).toEqual({ "9175550142": null });
+    expect(() => lookupManyPhones(idx, ["9175550142"], undefined, now)).toThrow(/kind must be one of/);
+  });
+
+  it("caps the answer and tolerates a non-array", () => {
+    const many = Array.from({ length: MAX_LOOKUP_PHONES + 5 }, (_, i) => `917${String(1000000 + i)}`);
+    expect(Object.keys(lookupManyPhones(idx, many, "welcome", now)).length).toBe(MAX_LOOKUP_PHONES);
+    expect(lookupManyPhones(idx, undefined, "welcome", now)).toEqual({});
+  });
+
+  it("an index built from bookings with no phone field at all is simply empty", () => {
+    // What every booking looks like until dtc-mm-form's day route carries one.
+    expect(indexByPhone([booking()]).size).toBe(0);
   });
 });

@@ -25,6 +25,7 @@ import { sendViaWorker, SendValidationError } from "@/lib/shared/sendViaWorker";
 import {
   bookingLinkFor, bookingMessage, BOOKING_KIND_LABEL, BOOKING_URLS, type BookingKind,
 } from "@/lib/scheduledCalls/bookingLink";
+import { phoneDigits } from "@/lib/shared/phoneCell";
 import { cn } from "@/lib/utils";
 
 /**
@@ -79,6 +80,13 @@ export default function BookingLinkDialog({
    *  such source and is the constant (bookingLink.ts says why). */
   const [intakeUrl, setIntakeUrl] = useState(BOOKING_URLS.intake);
   const url = kind === "intake" ? intakeUrl : BOOKING_URLS.welcome;
+  /**
+   * Where each event type takes a prefilled phone — "location" when its only
+   * location is Calendly's "Phone call", else "" (§5.30l). Reported by the same
+   * endpoint as the intake link; blank until it answers, which just means the
+   * link goes out without the phone, exactly as before.
+   */
+  const [phoneParam, setPhoneParam] = useState<Record<BookingKind, string>>({ intake: "", welcome: "" });
   const [mode, setMode] = useState<Mode>("text");
   const [name, setName] = useState("");
   /** One recipient PER CHANNEL, so flipping Text ↔ Email never wipes what's
@@ -95,7 +103,13 @@ export default function BookingLinkDialog({
     if (!open) return;
     fetch(SCHEDULING_ENDPOINT)
       .then((r) => r.json())
-      .then((d) => { if (d?.enabled && d.url) setIntakeUrl(d.url); })
+      .then((d) => {
+        if (d?.enabled && d.url) setIntakeUrl(d.url);
+        setPhoneParam({
+          intake: typeof d?.phone_prefill === "string" ? d.phone_prefill : "",
+          welcome: typeof d?.welcome?.phone_prefill === "string" ? d.welcome.phone_prefill : "",
+        });
+      })
       .catch(() => { /* fallback already in state */ });
   }, [open]);
 
@@ -132,9 +146,13 @@ export default function BookingLinkDialog({
    * mode: that's a phone number.
    */
   const prefillEmail = (email ?? "").trim() || (mode === "email" ? to.trim() : "");
+  /** The phone Calendly should prefill — the second key the booking is matched
+   *  on (§5.30l). The row's own number wins; failing that, in TEXT mode, the
+   *  number the rep is texting, by the same reasoning as `prefillEmail`. */
+  const prefillPhone = phoneDigits(phone) || (mode === "text" ? phoneDigits(to) : "");
   const link = useMemo(
-    () => bookingLinkFor(url, { name, email: prefillEmail }),
-    [url, name, prefillEmail],
+    () => bookingLinkFor(url, { name, email: prefillEmail, phone: prefillPhone }, phoneParam[kind]),
+    [url, name, prefillEmail, prefillPhone, phoneParam, kind],
   );
 
   /** Opened from a patient's record rather than cold from the Care Coordinator header. */
@@ -294,14 +312,16 @@ export default function BookingLinkDialog({
           </label>
 
           {/* The one case the prefill can't cover, said plainly. A booking is
-              matched to a patient by the invitee's email against their row, so
-              with no address on file there is nothing to match on and the
-              appointment lands in Calendly alone — silently. Only shown when we
-              opened with a patient: sent cold from the Care Coordinator header there is no
-              record to link to and the note would be noise. */}
-          {hasPatient && !prefillEmail && (
+              matched to a patient by the invitee's email, or by the phone the
+              booking page collected (§5.30l), against their row — so with no
+              address on file AND no phone going out in the link, the match
+              rests on whatever the patient types, and may land in Calendly
+              alone. Only shown when we opened with a patient: sent cold from
+              the Care Coordinator header there is no record to link to and the
+              note would be noise. */}
+          {hasPatient && !prefillEmail && !(phoneParam[kind] === "location" && prefillPhone.length === 10) && (
             <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-              No email on file for this patient, so their booking won't link back to this record on
+              No email on file for this patient, so their booking may not link back to this record on
               its own. Add one on the intake page first if you can — otherwise watch for the
               appointment in Calendly.
             </p>

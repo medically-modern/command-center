@@ -27,6 +27,12 @@ export interface CalendlyBooking {
   endTime: string;
   name: string;
   email: string;
+  /**
+   * The phone the booking page collected, as ten digits — blank or absent
+   * until the Calendly event type asks for one, and from an older dtc-mm-form
+   * (CLAUDE.md §5.30l). The second key a booking links to a chart by.
+   */
+  phone?: string;
   timezone: string;
   rescheduleUrl: string;
 }

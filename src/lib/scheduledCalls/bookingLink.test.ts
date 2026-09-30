@@ -6,6 +6,24 @@ import { bookingLinkFor, bookingMessage, BOOKING_URLS } from "./bookingLink";
 
 const URL_ = "https://calendly.com/records-medicallymodern/medically-modern-intake-call";
 
+describe("bookingLinkFor — the phone (§5.30l)", () => {
+  it("prefills the phone into location= only when the event type's one location is Phone call", () => {
+    expect(bookingLinkFor(URL_, { name: "Jane Doe", phone: "(917) 555-0142" }, "location"))
+      .toBe(`${URL_}?name=Jane%20Doe&location=9175550142`);
+  });
+
+  it("sends no phone for any other setup — there is no documented parameter to put it in", () => {
+    expect(bookingLinkFor(URL_, { name: "Jane Doe", phone: "9175550142" })).toBe(`${URL_}?name=Jane%20Doe`);
+    expect(bookingLinkFor(URL_, { phone: "9175550142" }, "")).toBe(URL_);
+  });
+
+  it("never prefills a number that is not ten digits", () => {
+    expect(bookingLinkFor(URL_, { phone: "917-555-014" }, "location")).toBe(URL_);
+    expect(bookingLinkFor(URL_, { phone: "917-555-0142 x12" }, "location")).toBe(URL_);
+    expect(bookingLinkFor(URL_, { phone: "+1 917 555 0142" }, "location")).toBe(`${URL_}?location=9175550142`);
+  });
+});
+
 describe("bookingLinkFor", () => {
   it("adds the two parameters the mirror depends on", () => {
     expect(bookingLinkFor(URL_, { name: "Jane Doe", email: "jane@example.com" }))

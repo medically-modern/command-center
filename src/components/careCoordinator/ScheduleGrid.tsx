@@ -43,7 +43,7 @@ import {
   type ScheduledCall,
 } from "@/lib/scheduledCalls/workflow";
 import {
-  bookingLinker, calendlyEntry, emailIndex, eventUriIndex, intakeEntry, mergeSchedule, nameIndex,
+  bookingLinker, calendlyEntry, emailIndex, eventUriIndex, intakeEntry, mergeSchedule, nameIndex, phoneIndex,
   welcomeNameSuggester, type ScheduleEntry,
 } from "@/lib/careCoordinator/scheduleEntries";
 import { useCalendlyDay } from "@/hooks/careCoordinator/useCalendlyDay";
@@ -129,9 +129,9 @@ export function ScheduleGrid({
   calls: ScheduledCall[];
   /**
    * The Welcome Call queue, for linking a Calendly welcome booking back to a
-   * chart. Matched on the invitee's EMAIL — a patient who booked with a
-   * different address simply doesn't link, and the block renders without an
-   * Open.
+   * chart. Matched on the invitee's EMAIL, then the PHONE the booking page
+   * collected (§5.30l) — a booking neither key finds simply doesn't link, and
+   * the block renders without an Open.
    */
   welcomeItems: { id: string; email: string; name?: string; phone?: string; groupId?: string }[];
   /** Minutes past ET midnight — the page owns the one ticker. */
@@ -153,14 +153,18 @@ export function ScheduleGrid({
   const day = useCalendlyDay(viewDate, true);
 
   /**
-   * Calendly booking → monday item, by event URI first and email second.
+   * Calendly booking → monday item, by event URI first, then email and phone.
    * The URI join is exact, so it survives a patient who books under a second
-   * address; email is the fallback for a mirror row whose URI never landed.
+   * address; email is the fallback for a mirror row whose URI never landed,
+   * and the phone (§5.30l) for a patient whose email the board doesn't hold —
+   * most Welcome Call patients.
    */
   const linker = useMemo(() => bookingLinker({
     intakeByUri: eventUriIndex(calls),
     intakeByEmail: emailIndex(calls),
     welcomeByEmail: emailIndex(welcomeItems),
+    intakeByPhone: phoneIndex(calls),
+    welcomeByPhone: phoneIndex(welcomeItems),
   }), [calls, welcomeItems]);
 
   /** An unmatched welcome booking's "possible match" by name — a hint in the

@@ -6,9 +6,10 @@
  * same guards `usePatientActivity` and `useFaxOutcomes` do:
  *
  *  · reads **on patient open, never on a timer**. No polling at all;
- *  · a module-scope cache keyed by the patient's address, so paging back to a
- *    patient is free and two mounts share one answer;
- *  · one in-flight request per address, coalesced;
+ *  · a module-scope cache keyed by the patient's address AND phone (§5.30l —
+ *    the gateway falls back to the phone), so paging back to a patient is
+ *    free and two mounts share one answer;
+ *  · one in-flight request per key, coalesced;
  *  · a stable returned identity, so putting it in a dependency array is safe
  *    (incident rule 2);
  *  · a FAILURE is not cached, so re-opening the patient retries.
@@ -24,6 +25,7 @@ import {
   welcomeCallBookingAvailable,
   type WelcomeCallBooking,
 } from "@/lib/welcomeCall/calendlyBooking";
+import { bookingPhoneKey } from "@/lib/shared/phoneCell";
 
 /** Bookings are rare and the gateway caches its own index for far longer than
  *  this; the browser copy exists only so clicking between patients is free. */
@@ -34,17 +36,18 @@ interface Entry {
   booking: WelcomeCallBooking | null;
   error: string | null;
   through: string | null;
+  matchedBy: "email" | "phone" | null;
 }
 
 const cache = new Map<string, Entry>();
 const inflight = new Map<string, Promise<Entry>>();
 
-function keyFor(email: string): string {
-  return (email ?? "").trim().toLowerCase();
+function keyFor(email: string, phone: string): string {
+  return `${(email ?? "").trim().toLowerCase()}|${phone}`;
 }
 
-async function load(email: string): Promise<Entry> {
-  const key = keyFor(email);
+async function load(email: string, phone: string): Promise<Entry> {
+  const key = keyFor(email, phone);
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit;
 
@@ -52,12 +55,13 @@ async function load(email: string): Promise<Entry> {
   if (running) return running;
 
   const p = (async () => {
-    const res = await fetchWelcomeCallBooking(email);
+    const res = await fetchWelcomeCallBooking(email, phone);
     const entry: Entry = {
       at: Date.now(),
       booking: res.booking,
       error: res.error,
       through: res.through,
+      matchedBy: res.matchedBy ?? null,
     };
     // ⚠️ Only a good read is cached. Caching a failure pins the chip at
     // "couldn't check" for two minutes after a blip, on every patient.
@@ -76,20 +80,30 @@ export interface WelcomeCallBookingState {
   /** Set when the lookup FAILED. `booking: null` with no error means the
    *  patient genuinely has nothing booked in the window. */
   error: string | null;
-  /** True when the patient has no email on the board, so nothing was asked.
-   *  ⚠️ Distinct from "not booked" — email is the only join Calendly gives us
-   *  (`calendlyPatientRules.normalizeEmail` says why a name cannot be one), so
-   *  an emailless patient is UNANSWERABLE rather than unbooked. */
+  /** True when the patient has no email on the board. */
   noEmail: boolean;
+  /** True when the patient has NEITHER an email nor a usable phone, so nothing
+   *  was asked. ⚠️ Distinct from "not booked" — those are the only joins
+   *  Calendly gives us (`calendlyPatientRules.normalizeEmail` says why a name
+   *  cannot be one), so such a patient is UNANSWERABLE rather than unbooked. */
+  noContact: boolean;
+  /** Which key found the booking. A phone match can be a household's shared
+   *  number, so the chip says so (§5.30l). */
+  matchedBy: "email" | "phone" | null;
   /** False in a build with no gateway. */
   available: boolean;
   through: string | null;
 }
 
-export function useWelcomeCallBooking(email: string | undefined | null): WelcomeCallBookingState {
+export function useWelcomeCallBooking(
+  email: string | undefined | null,
+  phone?: string | null,
+): WelcomeCallBookingState {
   const addr = (email ?? "").trim();
+  const tel = bookingPhoneKey(phone);
+  const ask = keyFor(addr, tel);
   const [state, setState] = useState<Omit<Entry, "at">>(
-    () => ({ booking: null, error: null, through: null }),
+    () => ({ booking: null, error: null, through: null, matchedBy: null }),
   );
   const [loading, setLoading] = useState(false);
   /** Binds a slow answer to the patient who was open when it was asked for —
@@ -99,28 +113,29 @@ export function useWelcomeCallBooking(email: string | undefined | null): Welcome
   const want = useRef("");
 
   useEffect(() => {
-    if (!addr || !welcomeCallBookingAvailable()) {
+    if ((!addr && !tel) || !welcomeCallBookingAvailable()) {
       want.current = "";
-      setState({ booking: null, error: null, through: null });
+      setState({ booking: null, error: null, through: null, matchedBy: null });
       setLoading(false);
       return;
     }
-    want.current = addr;
+    want.current = ask;
     setLoading(true);
-    void load(addr).then((entry) => {
-      if (want.current !== addr) return;
-      setState({ booking: entry.booking, error: entry.error, through: entry.through });
+    void load(addr, tel).then((entry) => {
+      if (want.current !== ask) return;
+      setState({ booking: entry.booking, error: entry.error, through: entry.through, matchedBy: entry.matchedBy });
       setLoading(false);
     });
-  }, [addr]);
-
-  const noEmail = !addr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `ask` is addr + tel, the whole identity of the read
+  }, [ask]);
 
   return {
     booking: state.booking,
     loading,
     error: state.error,
-    noEmail,
+    noEmail: !addr,
+    noContact: !addr && !tel,
+    matchedBy: state.matchedBy,
     available: welcomeCallBookingAvailable(),
     through: state.through,
   };

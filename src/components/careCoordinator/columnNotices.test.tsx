@@ -51,9 +51,19 @@ describe("the columns' booking notices", () => {
   it("asks Calendly for BOTH kinds, and names the kind at each call site", () => {
     // One index, two columns. An unnamed kind would put one column's
     // appointments in the other's Scheduled list.
-    expect(page).toMatch(/useCalendlyBookings\(welcomeEmails, "welcome"\)/);
-    expect(page).toMatch(/useCalendlyBookings\(intakeEmails, "intake"\)/);
+    expect(page).toMatch(/useCalendlyBookings\(welcomeEmails, "welcome", welcomePhones\)/);
+    expect(page).toMatch(/useCalendlyBookings\(intakeEmails, "intake", intakePhones\)/);
     expect(page).toMatch(/calendly: intakeCalendly/);
+  });
+
+  it("asks by PHONE too, and every phone answer reaches the column that asked (§5.30l)", () => {
+    // Only 10 of 32 Welcome Call patients had an email on 2026-09-30; all 32
+    // had a phone. A phone list that is asked for and never read is the
+    // "code nothing calls" trap (§5.31b) — the column would still read email only.
+    expect(page).toMatch(/welcomePhones = useMemo\(\(\) => phonesHeldOnce\(welcomeRows\)/);
+    expect(page).toMatch(/intakePhones = useMemo\(\(\) => phonesHeldOnce\(intake\.data/);
+    expect(page).toMatch(/welcomeCallBuckets\(welcomeRows, ctx, bookings\.byEmail, bookings\.byPhone\)/);
+    expect(page).toMatch(/byPhone: intakeBookings\.byPhone/);
   });
 });
 

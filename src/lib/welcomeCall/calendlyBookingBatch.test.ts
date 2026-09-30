@@ -15,7 +15,10 @@ vi.mock("@/lib/shared/mondayEndpoint", () => ({
   mondayIdentityHeaders: () => ({}),
 }));
 
-import { fetchPatientBookings } from "./calendlyBooking";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { fetchPatientBookings, fetchWelcomeCallBooking } from "./calendlyBooking";
 
 const addresses = (n: number) => Array.from({ length: n }, (_, i) => `p${i}@example.com`);
 
@@ -91,5 +94,78 @@ describe("fetchPatientBookings", () => {
     expect(calls).toHaveLength(0);
     expect(res.ok).toBe(true);
     expect(res.bookings.size).toBe(0);
+  });
+});
+
+/**
+ * PHONES ride in the same requests (CLAUDE.md §5.30l) — only 10 of 32 Welcome
+ * Call patients had an email on 2026-09-30, all 32 a phone.
+ */
+describe("fetchPatientBookings — phones", () => {
+  const numbers = (n: number) => Array.from({ length: n }, (_, i) => `917${String(1000000 + i)}`);
+
+  it("sends ten-digit keys, deduped, beside the emails — and a phone-only column still asks", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init: { body: string }) => {
+      const body = JSON.parse(init.body) as { emails: string[]; phones: string[]; kind: string };
+      calls.push(body);
+      return { ok: true, status: 200, json: async () => ({
+        ok: true, bookings: {}, through: "2026-10-20",
+        byPhone: Object.fromEntries(body.phones.map((p) => [p, p === "9175550142" ? booking("") : null])),
+      }) };
+    }));
+    const res = await fetchPatientBookings([], "welcome", ["(917) 555-0142", "+1 917 555 0142", "123", ""]);
+    expect(calls).toHaveLength(1);
+    expect((calls[0] as unknown as { phones: string[] }).phones).toEqual(["9175550142"]);
+    expect(res.ok).toBe(true);
+    expect(res.byPhone.get("9175550142")).not.toBeNull();
+  });
+
+  it("chunks the phones with the emails — request N carries the Nth slice of each", async () => {
+    await fetchPatientBookings(addresses(600), "intake", numbers(1200));
+    const sent = calls as unknown as { emails: string[]; phones: string[] }[];
+    expect(sent.map((c) => c.emails.length)).toEqual([500, 100, 0]);
+    expect(sent.map((c) => c.phones.length)).toEqual([500, 500, 200]);
+  });
+
+  it("an older gateway that ignores phones leaves byPhone EMPTY — not asked, never 'not booked'", async () => {
+    const res = await fetchPatientBookings(addresses(3), "welcome", ["9175550142"]);
+    expect(res.ok).toBe(true);
+    expect(res.byPhone.size).toBe(0);
+    expect(res.bookings.size).toBe(3);
+  });
+});
+
+/** The Welcome Call chip asks by phone too (§5.30l). */
+describe("fetchWelcomeCallBooking — email and phone", () => {
+  let urls: string[] = [];
+  beforeEach(() => {
+    urls = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => ({ ok: true, booking: null, through: "2026-10-20", matchedBy: null }) };
+    }));
+  });
+
+  it("sends both keys, the phone as ten digits, and always names the kind", async () => {
+    await fetchWelcomeCallBooking("Pat@Example.com", "+1 (917) 555-0142");
+    expect(urls[0]).toBe("https://gw.test/calendly/patient?email=Pat%40Example.com&phone=9175550142&kind=welcome");
+  });
+
+  it("asks by phone alone for a patient with no email — most Welcome Call patients", async () => {
+    const res = await fetchWelcomeCallBooking("", "917-555-0142");
+    expect(urls[0]).toBe("https://gw.test/calendly/patient?phone=9175550142&kind=welcome");
+    expect(res.ok).toBe(true);
+  });
+
+  it("asks nothing, and says why, when there is neither", async () => {
+    const res = await fetchWelcomeCallBooking("", "123");
+    expect(urls).toHaveLength(0);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/No email or phone/);
+  });
+
+  it("the patient header hands the chip the phone, not just the email", () => {
+    const card = readFileSync(resolve(__dirname, "../../components/welcomeCall/PatientInfoCard.tsx"), "utf8");
+    expect(card).toMatch(/<CallScheduledChip email=\{patient\.email\} phone=\{patient\.phone\} \/>/);
   });
 });

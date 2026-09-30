@@ -74,11 +74,12 @@ export function windowDates(from, days = DEFAULT_WINDOW_DAYS) {
 }
 
 /**
- * The join key.
+ * The join keys: EMAIL, and — since 2026-09-30 — PHONE (below).
  *
- * ⚠️ **EMAIL, AND ONLY EMAIL.** Calendly hands us an invitee's name and email
- * and nothing else that identifies anybody (the day route drops everything
- * else, and that service is not ours to widen). A NAME IS NOT AN IDENTITY —
+ * ⚠️ **NEVER A NAME.** Until 2026-09-30 Calendly handed us an invitee's name
+ * and email and nothing else that identifies anybody; the day route now also
+ * carries the invitee's phone (`phoneKey`, CLAUDE.md §5.30l). A NAME IS NOT AN
+ * IDENTITY —
  * two patients called Maria Garcia is ordinary at this size, and the codebase
  * already has this rule written down, in `commsHub/dossier.nameMatchAccepted`,
  * where a name match must carry a second signal (phone, or blank-phone + DOB)
@@ -102,6 +103,25 @@ export function looksLikeEmail(raw) {
 }
 
 /**
+ * The PHONE join key: ten US digits, or "" when there aren't exactly ten.
+ *
+ * ⚠️ **Why a second key at all** (CLAUDE.md §5.30l): on 2026-09-30 only 10 of
+ * the 32 Welcome Call patients had an email on the board and all 32 had a
+ * phone, so an email-only join left most welcome bookings linked to nobody.
+ * dtc-mm-form now hands on the phone the booking page collected (its
+ * `calendly.inviteePhone`, already validated there as a real US number).
+ *
+ * A country code is dropped and nothing else is guessed at: an extension or a
+ * short number gives "" rather than a truncation that could equal somebody
+ * else's ten digits (the same refusal `lib/shared/phoneCell` makes).
+ */
+export function phoneKey(raw) {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("1")) return d.slice(1);
+  return d.length === 10 ? d : "";
+}
+
+/**
  * `email -> bookings[]`, each list sorted earliest first.
  *
  * A booking with no invitee email is DROPPED rather than bucketed under `""` —
@@ -112,6 +132,25 @@ export function indexByEmail(bookings) {
   const out = new Map();
   for (const b of bookings ?? []) {
     const key = normalizeEmail(b?.email);
+    if (!key) continue;
+    if (!out.has(key)) out.set(key, []);
+    out.get(key).push(b);
+  }
+  for (const list of out.values()) {
+    list.sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)));
+  }
+  return out;
+}
+
+/**
+ * `phone -> bookings[]` — `indexByEmail`'s twin on the phone key, with the
+ * same rule: a booking with no usable phone is DROPPED, never bucketed under
+ * "" (which would hand every phoneless patient the same booking).
+ */
+export function indexByPhone(bookings) {
+  const out = new Map();
+  for (const b of bookings ?? []) {
+    const key = phoneKey(b?.phone);
     if (!key) continue;
     if (!out.has(key)) out.set(key, []);
     out.get(key).push(b);
@@ -190,6 +229,29 @@ export function lookupMany(byEmail, emails, kind, nowIso = new Date().toISOStrin
     if (!looksLikeEmail(key) || key in out) continue;
     if (n >= cap) break;
     out[key] = pickBooking(byEmail.get(key) ?? [], k, nowIso);
+    n += 1;
+  }
+  return out;
+}
+
+/** The same cap for phones — the SPA chunks both lists by one batch size. */
+export const MAX_LOOKUP_PHONES = MAX_LOOKUP_EMAILS;
+
+/**
+ * `lookupMany` on the phone key: one answer per distinct ten-digit number,
+ * null for nothing booked, and a value that is not ten digits SKIPPED — "we
+ * have no usable number" and "nothing booked" are different facts, and the
+ * caller only ever reads the answer for a number it could ask about.
+ */
+export function lookupManyPhones(byPhone, phones, kind, nowIso = new Date().toISOString(), cap = MAX_LOOKUP_PHONES) {
+  const k = requireKind(kind);
+  const out = {};
+  let n = 0;
+  for (const raw of Array.isArray(phones) ? phones : []) {
+    const key = phoneKey(raw);
+    if (!key || key in out) continue;
+    if (n >= cap) break;
+    out[key] = pickBooking(byPhone.get(key) ?? [], k, nowIso);
     n += 1;
   }
   return out;

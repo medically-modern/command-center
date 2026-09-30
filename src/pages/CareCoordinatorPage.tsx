@@ -66,7 +66,7 @@ import {
   WELCOME_GROUP_IDS,
 } from "@/lib/careCoordinator/mondayApi";
 import {
-  bucketedLeads, intakeBuckets, nextUp, restMorningAttempts, summarize, toScheduledCall, welcomeCallBuckets,
+  bucketedLeads, intakeBuckets, nextUp, phonesHeldOnce, restMorningAttempts, summarize, toScheduledCall, welcomeCallBuckets,
   type CalendlyLookup, type Horizon, type IntakeLead, type WelcomeCallItem,
 } from "@/lib/careCoordinator/workflow";
 import { EMPTY_SELECTION, matchesFacets, type FacetSelection } from "@/lib/careCoordinator/intakeFilter";
@@ -154,13 +154,22 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
     () => applyPendingAdvances(welcome.data ?? [], sharedPendingAdvances, (w) => columnScopes(w.groupId, WELCOME_GROUP_IDS)),
     [welcome.data],
   );
+  /* ⚠️ PHONES TOO since 2026-09-30 (§5.30l): only 10 of 32 Welcome Call
+     patients had an email that day, and all 32 had a phone. `phonesHeldOnce`
+     leaves out a number two rows share, so one household line can't mark two
+     patients booked off one appointment. */
   const welcomeEmails = useMemo(() => welcomeRows.map((w) => w.email), [welcomeRows]);
-  const bookings = useCalendlyBookings(welcomeEmails, "welcome");
+  const welcomePhones = useMemo(() => phonesHeldOnce(welcomeRows), [welcomeRows]);
+  const bookings = useCalendlyBookings(welcomeEmails, "welcome", welcomePhones);
   const intakeEmails = useMemo(() => (intake.data ?? []).map((l) => l.email), [intake.data]);
-  const intakeBookings = useCalendlyBookings(intakeEmails, "intake");
+  const intakePhones = useMemo(() => phonesHeldOnce(intake.data ?? []), [intake.data]);
+  const intakeBookings = useCalendlyBookings(intakeEmails, "intake", intakePhones);
   const intakeCalendly = useMemo<CalendlyLookup>(
-    () => ({ ready: intakeBookings.ready, byEmail: intakeBookings.byEmail, through: intakeBookings.through }),
-    [intakeBookings.ready, intakeBookings.byEmail, intakeBookings.through],
+    () => ({
+      ready: intakeBookings.ready, byEmail: intakeBookings.byEmail, byPhone: intakeBookings.byPhone,
+      through: intakeBookings.through,
+    }),
+    [intakeBookings.ready, intakeBookings.byEmail, intakeBookings.byPhone, intakeBookings.through],
   );
 
   /**
@@ -270,8 +279,8 @@ export default function CareCoordinatorPage({ homeView = false }: { homeView?: b
     [allIntakeLeads, ctx, intakeCalendly],
   );
   const welcomeB = useMemo(
-    () => welcomeCallBuckets(welcomeRows, ctx, bookings.byEmail),
-    [welcomeRows, ctx, bookings.byEmail],
+    () => welcomeCallBuckets(welcomeRows, ctx, bookings.byEmail, bookings.byPhone),
+    [welcomeRows, ctx, bookings.byEmail, bookings.byPhone],
   );
 
   /**

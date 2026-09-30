@@ -33,6 +33,7 @@
  * promising one (§5.15: "fix the copy, not the gate").
  */
 import { intakeProfileHref } from "@/lib/profile/intakeLink";
+import { bookingPhoneKey } from "@/lib/shared/phoneCell";
 import type { BookedSlot, ScheduledCall } from "@/lib/scheduledCalls/workflow";
 import type { CalendlyBooking } from "./calendlyDay";
 
@@ -87,15 +88,23 @@ export interface ScheduleEntry extends BookedSlot {
    */
   phone: string;
   /**
+   * The phone the invitee typed on the Calendly booking page, as ten digits —
+   * "" when the page collected none, and always "" for a mirror row (§5.30l).
+   *
+   * Kept apart from `phone` on purpose: `phone` is the MATCHED ROW's number
+   * and is what the popup dials; this is only ever shown, for a booking that
+   * matched nobody, so the coordinator still has the number the patient gave.
+   */
+  bookedPhone: string;
+  /**
    * Where "Open" goes, or null when we cannot say WHICH patient this is.
    *
    * ⚠️ Null is a real and expected state: a booking is matched back to a board
-   * item by its Calendly event URI or the invitee's email, and a booking made
-   * under an address the board does not hold matches neither — which is the
-   * same single join the mirror itself depends on, and the reason this grid
-   * stopped depending on the mirror. A block with no link is still worth
-   * rendering: the coordinator can see the call is happening. Guessing a
-   * patient would be worse than not linking.
+   * item by its Calendly event URI, the invitee's email, or — since 2026-09-30
+   * — the phone the booking page collected (§5.30l), and a booking whose keys
+   * the board does not hold matches none of them. A block with no link is
+   * still worth rendering: the coordinator can see the call is happening.
+   * Guessing a patient would be worse than not linking.
    */
   href: string | null;
   /**
@@ -140,6 +149,7 @@ export function intakeEntry(c: ScheduledCall): ScheduleEntry {
     durationMin: ASSUMED_DURATION_MIN,
     email: c.email,
     phone: c.phone,
+    bookedPhone: "",
     href: hrefFor("intake", c.id, c.groupId),
     itemId: c.id,
   };
@@ -227,6 +237,7 @@ export function calendlyEntry(
     durationMin: durationOf(b.startTime, b.endTime),
     email: b.email,
     phone: linked?.phone ?? "",
+    bookedPhone: bookingPhoneKey(b.phone),
     href: linked ? hrefFor(kind, linked.id, linked.groupId) : null,
     itemId: linked?.id ?? null,
     suggested: (() => {
@@ -307,6 +318,39 @@ export function emailIndex(items: { id: string; email: string; phone?: string; g
 }
 
 /**
+ * Ten-digit phone → board row — the second join (§5.30l), with `indexBy`'s
+ * rule: a number two rows share (a household line, a duplicate lead) links
+ * neither of them.
+ */
+export function phoneIndex(items: { id: string; phone?: string; groupId?: string }[]): Map<string, LinkedPatient | null> {
+  return indexBy(items, (i) => bookingPhoneKey(i.phone), (i) => ({ id: i.id, phone: i.phone ?? "", groupId: i.groupId }));
+}
+
+/**
+ * One booking → one row, by the invitee's email and phone together.
+ *
+ * ⚠️ The email join behaves EXACTLY as it did before phones existed — a
+ * unique email links, a shared one links nobody — and the phone only ever
+ * adds a link where the email found no row at all. The one thing the phone
+ * can take away: when the email names one patient and the phone names a
+ * DIFFERENT one, nobody is linked, because the booking is then evidence for
+ * two people and "Open" would be a coin toss on a live call (§5.28's rule).
+ */
+function byContact(
+  byEmail: Map<string, LinkedPatient | null>,
+  byPhone: Map<string, LinkedPatient | null> | undefined,
+  b: CalendlyBooking,
+): LinkedPatient | null {
+  const email = (b.email || "").trim().toLowerCase();
+  const phone = bookingPhoneKey(b.phone);
+  const e = email && byEmail.has(email) ? byEmail.get(email) ?? null : undefined;
+  const p = phone && byPhone?.has(phone) ? byPhone.get(phone) ?? null : undefined;
+  if (e === null) return null;
+  if (e && p && p.id !== e.id) return null;
+  return e ?? p ?? null;
+}
+
+/**
  * Calendly event URI → monday item id, off the mirror's own Event URI column.
  *
  * This is the BETTER of the two intake joins and is tried first: it is the
@@ -326,24 +370,27 @@ export function normalizeEventUri(uri: string): string {
 }
 
 /**
- * The resolver the grid hands `calendlyEntry` — URI first, then email, per kind.
+ * The resolver the grid hands `calendlyEntry` — URI first, then email and
+ * phone together (`byContact`), per kind.
  *
- * Welcome bookings have only the email join (their board carries no URI
- * column, because it carries no booking columns at all).
+ * Welcome bookings have no URI join (their board carries no URI column,
+ * because it carries no booking columns at all). The phone indexes are
+ * optional so a caller built before §5.30l links exactly as it did.
  */
 export function bookingLinker(indexes: {
   intakeByUri: Map<string, LinkedPatient | null>;
   intakeByEmail: Map<string, LinkedPatient | null>;
   welcomeByEmail: Map<string, LinkedPatient | null>;
+  intakeByPhone?: Map<string, LinkedPatient | null>;
+  welcomeByPhone?: Map<string, LinkedPatient | null>;
 }): (b: CalendlyBooking) => LinkedPatient | null {
   return (b) => {
-    const email = (b.email || "").trim().toLowerCase();
     if (b.kind === "intake") {
       const byUri = indexes.intakeByUri.get(normalizeEventUri(b.eventUri));
       if (byUri) return byUri;
-      return indexes.intakeByEmail.get(email) ?? null;
+      return byContact(indexes.intakeByEmail, indexes.intakeByPhone, b);
     }
-    return indexes.welcomeByEmail.get(email) ?? null;
+    return byContact(indexes.welcomeByEmail, indexes.welcomeByPhone, b);
   };
 }
 

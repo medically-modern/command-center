@@ -44,6 +44,7 @@ import { parseAttemptValue } from "@/lib/masheke/attemptLog";
 import { isCrossSell, isFirstTimePumpUser } from "@/lib/welcomeCall/workflow";
 import { minutesOfDay, type ScheduledCall } from "@/lib/scheduledCalls/workflow";
 import type { WelcomeCallBooking } from "@/lib/welcomeCall/calendlyBooking";
+import { bookingPhoneKey } from "@/lib/shared/phoneCell";
 import { etPartsOf } from "./scheduleEntries";
 import { BACK_AT_LABEL, attemptSlot, restsUntilNoon } from "./followUp";
 
@@ -532,10 +533,58 @@ export interface CalendlyLookup {
   ready: boolean;
   /** Normalised email → booking, or null for "asked, nothing booked". */
   byEmail: WelcomeBookingMap;
+  /**
+   * Ten-digit phone → booking, the same way (§5.30l). A number ABSENT from the
+   * map was never asked about — shared by two rows (`phonesHeldOnce`), or an
+   * older gateway — and counts as no evidence either way.
+   */
+  byPhone?: WelcomeBookingMap;
   through: string | null;
 }
 
-export const NO_CALENDLY: CalendlyLookup = { ready: false, byEmail: new Map(), through: null };
+export const NO_CALENDLY: CalendlyLookup = { ready: false, byEmail: new Map(), byPhone: new Map(), through: null };
+
+/**
+ * The phones a column may ask Calendly about: every ten-digit number held by
+ * EXACTLY ONE row of that column (§5.30l).
+ *
+ * ⚠️ A number two rows share is left out, so it is never asked and never
+ * matches. Two patients on one household line would otherwise BOTH read as
+ * Scheduled off one booking — and the one who is not booked drops out of the
+ * Unscheduled list, which is the call nobody makes. The same positive-evidence
+ * rule `scheduleEntries.indexBy` applies to the strip. Email is not filtered
+ * this way, to keep that join exactly what it was before phones existed.
+ */
+export function phonesHeldOnce(rows: { phone?: string | null }[]): string[] {
+  const seen = new Map<string, number>();
+  for (const r of rows) {
+    const k = bookingPhoneKey(r.phone);
+    if (k) seen.set(k, (seen.get(k) ?? 0) + 1);
+  }
+  return [...seen].filter(([, n]) => n === 1).map(([k]) => k);
+}
+
+/**
+ * What Calendly said about ONE patient, by email first and phone second.
+ *
+ * `asked` is false when neither key was in the answer — the patient has
+ * neither, or neither was asked — which is NOT "not booked" (§5.31e). Email
+ * wins when both found a booking: it is the key the booking link prefills and
+ * the one this screen has always trusted.
+ */
+export function calendlyAnswerFor(
+  row: { email?: string | null; phone?: string | null },
+  lookup: Pick<CalendlyLookup, "byEmail" | "byPhone">,
+): { asked: boolean; booking: WelcomeCallBooking | null } {
+  const email = emailKey(row.email ?? "");
+  const phone = bookingPhoneKey(row.phone);
+  const askedEmail = !!email && lookup.byEmail.has(email);
+  const askedPhone = !!phone && !!lookup.byPhone?.has(phone);
+  const booking = (askedEmail ? lookup.byEmail.get(email) : null)
+    ?? (askedPhone ? lookup.byPhone?.get(phone) : null)
+    ?? null;
+  return { asked: askedEmail || askedPhone, booking };
+}
 
 /** Which source decided a lead's booking — for the card and for the tests. */
 export type BookingSource = "calendly" | "mirror";
@@ -575,26 +624,26 @@ export function liveBooking(lead: Pick<IntakeLead, "scheduledCallTime" | "bookin
  *
  *  1. the read has not come back ⇒ **mirror** (an unfinished read is not "not
  *     booked", and the column must still show something);
- *  2. the lead has no email ⇒ **mirror** — email is the ONLY join Calendly
- *     gives us, so it was never asked about this patient (§5.31e);
- *  3. the address is not in the answer at all ⇒ **mirror**, same reason;
+ *  2. the lead has neither an email nor a phone Calendly was asked about ⇒
+ *     **mirror** — those are the only joins Calendly gives us (email always;
+ *     phone since 2026-09-30, §5.30l), so it was never asked about this
+ *     patient (§5.31e);
+ *  3. neither key is in the answer at all ⇒ **mirror**, same reason;
  *  4. Calendly has a booking ⇒ **Calendly**, and the mirror is ignored;
  *  5. Calendly says nothing ⇒ unbooked — UNLESS the mirror's booking is past
  *     the last day the window covered, which is outside what was looked at
  *     rather than absent from it.
  */
 export function intakeBooking(
-  lead: Pick<IntakeLead, "email" | "scheduledCallTime" | "bookingStatus">,
+  lead: Pick<IntakeLead, "email" | "scheduledCallTime" | "bookingStatus"> & { phone?: string },
   calendly: CalendlyLookup = NO_CALENDLY,
 ): { booking: Booking | null; source: BookingSource; calendlyBooking?: WelcomeCallBooking } {
   const mirror = () => ({ booking: liveBooking(lead), source: "mirror" as const });
   if (!calendly.ready) return mirror();
 
-  const email = emailKey(lead.email);
-  if (!email) return mirror();
-  if (!calendly.byEmail.has(email)) return mirror();
+  const { asked, booking: hit } = calendlyAnswerFor(lead, calendly);
+  if (!asked) return mirror();
 
-  const hit = calendly.byEmail.get(email) ?? null;
   if (hit) {
     const { date, time } = etPartsOf(hit.startTime);
     return date
@@ -1099,6 +1148,9 @@ export function welcomeCallBuckets(
   items: WelcomeCallItem[],
   ctx: BucketContext,
   bookings: WelcomeBookingMap = new Map(),
+  /** Ten-digit phone → booking, the second key (§5.30l). Only numbers held by
+   *  one row should have been asked (`phonesHeldOnce`). */
+  byPhone: WelcomeBookingMap = new Map(),
 ): WelcomeCallBuckets {
   const scheduledToday: ScheduledEntry<WelcomeCallItem>[] = [];
   const scheduledFuture: ScheduledEntry<WelcomeCallItem>[] = [];
@@ -1111,7 +1163,7 @@ export function welcomeCallBuckets(
     if (isWelcomeCallProposedStuck(item)) { proposedStuck++; continue; }
     if (isWelcomeCallEscalated(item)) { withManager++; continue; }
 
-    const booking = bookings.get(emailKey(item.email)) ?? null;
+    const { booking } = calendlyAnswerFor(item, { byEmail: bookings, byPhone });
     if (booking) {
       // Calendly gives a real UTC instant; the grid and the lists are naive
       // Eastern, so convert ONCE here (§5.15's inversion — see scheduleEntries).

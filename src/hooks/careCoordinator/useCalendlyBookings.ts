@@ -32,6 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchPatientBookings, welcomeCallBookingAvailable, type WelcomeCallBooking,
 } from "@/lib/welcomeCall/calendlyBooking";
+import { bookingPhoneKey } from "@/lib/shared/phoneCell";
 import type { BookingKind } from "@/lib/scheduledCalls/bookingLink";
 
 /** The gateway rebuilds its window index every ten minutes; asking sooner
@@ -54,6 +55,9 @@ let inflight: { key: string; p: Promise<void> } | null = null;
 
 export interface CalendlyBookingsState {
   byEmail: ReadonlyMap<string, WelcomeCallBooking | null>;
+  /** Ten-digit phone → booking (§5.30l). A number absent from the map was not
+   *  asked about — see `fetchPatientBookings`. */
+  byPhone: ReadonlyMap<string, WelcomeCallBooking | null>;
   loading: boolean;
   /** Set when the LAST read failed. The map is then stale or empty. */
   error: string | null;
@@ -79,13 +83,19 @@ export interface CalendlyBookingsState {
   refetch: () => void;
 }
 
-export function useCalendlyBookings(emails: string[], kind: BookingKind): CalendlyBookingsState {
+export function useCalendlyBookings(emails: string[], kind: BookingKind, phones: string[] = []): CalendlyBookingsState {
   /** The addresses, normalised, deduped and SORTED — a poll returning the same
    *  patients in a different order is not a new set (incident rule 2). */
   const addresses = useMemo(
     () => Array.from(new Set(emails.map((e) => (e ?? "").trim().toLowerCase()).filter((e) => e.includes("@")))).sort().join(","),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the STRING is the dependency, by design
     [emails.join(SEP)],
+  );
+  /** The phones, the same way — ten-digit keys, deduped and sorted (§5.30l). */
+  const numbers = useMemo(
+    () => Array.from(new Set(phones.map(bookingPhoneKey).filter(Boolean))).sort().join(","),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the STRING is the dependency, by design
+    [phones.join(SEP)],
   );
   /**
    * What is being asked, in full — the kind AND the addresses.
@@ -95,8 +105,9 @@ export function useCalendlyBookings(emails: string[], kind: BookingKind): Calend
    * in-flight request satisfy the welcome column's and leave each rendering the
    * other's appointments.
    */
-  const key = `${kind}|${addresses}`;
+  const key = `${kind}|${addresses}|${numbers}`;
   const [byEmail, setByEmail] = useState<ReadonlyMap<string, WelcomeCallBooking | null>>(EMPTY);
+  const [byPhone, setByPhone] = useState<ReadonlyMap<string, WelcomeCallBooking | null>>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -117,17 +128,21 @@ export function useCalendlyBookings(emails: string[], kind: BookingKind): Calend
   const run = useCallback(() => {
     if (!welcomeCallBookingAvailable()) return;
     want.current = key;
-    if (!addresses) { setByEmail(EMPTY); setError(null); setReadyKey(key); setLoading(false); return; }
+    if (!addresses && !numbers) {
+      setByEmail(EMPTY); setByPhone(EMPTY); setError(null); setReadyKey(key); setLoading(false); return;
+    }
     if (inflight && inflight.key === key) return;
     setLoading(true);
-    const p = fetchPatientBookings(addresses.split(","), kind).then((res) => {
+    const split = (s: string) => (s ? s.split(",") : []);
+    const p = fetchPatientBookings(split(addresses), kind, split(numbers)).then((res) => {
       if (want.current !== key) return;
-      if (res.ok) { setByEmail(res.bookings); setThrough(res.through); setError(null); setReadyKey(key); }
-      else setError(res.error);
+      if (res.ok) {
+        setByEmail(res.bookings); setByPhone(res.byPhone ?? EMPTY); setThrough(res.through); setError(null); setReadyKey(key);
+      } else setError(res.error);
       setLoading(false);
     }).finally(() => { if (inflight?.key === key) inflight = null; });
     inflight = { key, p };
-  }, [key, addresses, kind]);
+  }, [key, addresses, numbers, kind]);
 
   useEffect(() => {
     run();
@@ -135,5 +150,5 @@ export function useCalendlyBookings(emails: string[], kind: BookingKind): Calend
     return () => clearInterval(id);
   }, [run]);
 
-  return { byEmail, loading, error, available: welcomeCallBookingAvailable(), ready: readyKey === key, through, refetch: run };
+  return { byEmail, byPhone, loading, error, available: welcomeCallBookingAvailable(), ready: readyKey === key, through, refetch: run };
 }

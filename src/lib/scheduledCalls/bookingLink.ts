@@ -19,7 +19,18 @@
  * It narrows the failure rather than closing it: Calendly lets the invitee edit
  * a prefilled field, and a patient with no email on the board has nothing to
  * prefill. `BookingLinkDialog` says so on screen in that second case.
+ *
+ * **The PHONE rides along too since 2026-09-30** (CLAUDE.md §5.30l) — the
+ * Command Center links a booking to a chart by it when the email is missing,
+ * which is most Welcome Call patients. It goes in `location=`, the parameter
+ * Calendly documents for a "Phone call" location, and ONLY when dtc-mm-form
+ * reports that the event type's one location is exactly that
+ * (`/api/intake/scheduling` → `phone_prefill: "location"`): on any other setup
+ * there is no documented parameter, and a guessed one could put the number in
+ * front of the patient under somebody else's question.
  */
+
+import { phoneDigits } from "@/lib/shared/phoneCell";
 
 /** Split on the FIRST `#` only — everything after it is the fragment. */
 function splitFragment(url: string): [string, string] {
@@ -28,7 +39,8 @@ function splitFragment(url: string): [string, string] {
 }
 
 /**
- * `url` with Calendly's `name` / `email` prefill applied.
+ * `url` with Calendly's `name` / `email` prefill applied — and the phone, in
+ * `phoneParam`, when that is `"location"` (see the header).
  *
  * Blank values are omitted rather than sent empty — a bare `&email=` is noise
  * in a link the patient reads on a phone, and it prefills nothing either way.
@@ -37,13 +49,17 @@ function splitFragment(url: string): [string, string] {
  */
 export function bookingLinkFor(
   url: string | undefined,
-  patient: { name?: string; email?: string },
+  patient: { name?: string; email?: string; phone?: string },
+  phoneParam = "",
 ): string {
   const base = (url ?? "").trim();
   if (!base) return "";
 
   const name = (patient.name ?? "").trim();
   const email = (patient.email ?? "").trim();
+  // Ten digits or nothing — the form's own embed sends the same shape.
+  const tel = phoneDigits(patient.phone);
+  const phone = phoneParam === "location" && tel.length === 10 ? tel : "";
 
   const params: string[] = [];
   // encodeURIComponent, not URLSearchParams: the latter serialises a space as
@@ -51,6 +67,7 @@ export function bookingLinkFor(
   // paths can't behave differently on a name with a space in it.
   if (name) params.push(`name=${encodeURIComponent(name)}`);
   if (email) params.push(`email=${encodeURIComponent(email)}`);
+  if (phone) params.push(`location=${phone}`);
   if (!params.length) return base;
 
   // Append to the QUERY, never after the fragment — `…#x?name=` is part of the

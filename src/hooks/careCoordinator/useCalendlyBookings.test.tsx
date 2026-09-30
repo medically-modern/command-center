@@ -99,3 +99,25 @@ describe("useCalendlyBookings — the kind is part of the read", () => {
     expect(result.current.through).toBe("2026-10-06");
   });
 });
+
+/** Phones are part of what is asked (§5.30l). */
+describe("useCalendlyBookings — phones", () => {
+  beforeEach(() => { fetchPatientBookings.mockReset(); });
+
+  it("asks a phone-only column, passing ten-digit keys sorted and deduped", async () => {
+    fetchPatientBookings.mockResolvedValue({
+      ok: true, bookings: new Map(), byPhone: new Map([["9175550142", booking("")]]), error: null, through: "2026-10-20",
+    });
+    const { result } = renderHook(() => useCalendlyBookings([], "welcome", ["(917) 555-0142", "2125550199", "9175550142", "12"]));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(fetchPatientBookings).toHaveBeenCalledWith([], "welcome", ["2125550199", "9175550142"]);
+    expect(result.current.byPhone.get("9175550142")).not.toBeNull();
+  });
+
+  it("an answer with no byPhone (an older gateway) reads as an EMPTY map, never undefined", async () => {
+    fetchPatientBookings.mockResolvedValue({ ok: true, bookings: new Map(), error: null, through: null });
+    const { result } = renderHook(() => useCalendlyBookings(["a@example.com"], "welcome", ["9175550142"]));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.byPhone.size).toBe(0);
+  });
+});

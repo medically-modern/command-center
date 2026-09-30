@@ -120,7 +120,12 @@ export function BookingDetailsDialog({
                       {formatPhoneNice(entry.phone)}
                     </button>
                   )
-                  : <Missing>Not on file</Missing>}
+                  : entry.bookedPhone
+                    /* Matched nobody, but the booking page collected a number
+                       (§5.30l): shown so the coordinator has it, not dialled
+                       from here — there is no chart to log the call against. */
+                    ? <span>{formatPhoneNice(entry.bookedPhone)} <Missing>(given on the booking)</Missing></span>
+                    : <Missing>Not on file</Missing>}
               </Row>
 
               <Row icon={<Mail className="h-4 w-4" />} label="Email">
@@ -177,10 +182,10 @@ export function BookingDetailsDialog({
             {!entry.href && (
               <p className="text-center text-[11px] leading-snug text-muted-foreground">
                 {entry.suggested
-                  ? "Not linked: the booking's email isn't on any Welcome Call record."
+                  ? "Not linked: the booking's email and phone aren't on any Welcome Call record."
                   : entry.kind === "welcome"
-                    ? "No one on the Welcome Call queue has this booking's email or name — they may have booked with details we don't hold (a caregiver's email, a different name). Search for them by name."
-                    : "This booking isn't matched to a patient on the board — usually because it was made under an email address we don't hold for them."}
+                    ? "No one on the Welcome Call queue has this booking's email, phone or name — they may have booked with details we don't hold (a caregiver's email or number, a different name). Search for them by name."
+                    : "This booking isn't matched to a patient on the board — usually because it was made under an email address and phone number we don't hold for them."}
               </p>
             )}
             {dialing && (

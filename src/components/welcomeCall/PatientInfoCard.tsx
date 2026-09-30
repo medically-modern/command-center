@@ -215,7 +215,7 @@ export function PatientInfoCard({ patient, onFieldChange, onSaveSecondaryInsuran
                 from Calendly rather than from the INTAKE mirror that got the
                 first attempt reverted. Silent for a patient with nothing
                 booked, which is most of them. */}
-            <CallScheduledChip email={patient.email} />
+            <CallScheduledChip email={patient.email} phone={patient.phone} />
           </div>
         </div>
 

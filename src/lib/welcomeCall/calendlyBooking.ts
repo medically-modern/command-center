@@ -18,6 +18,7 @@
  * from that shared index.
  */
 import { MONDAY_GATEWAY_BASE, mondayIdentityHeaders } from "@/lib/shared/mondayEndpoint";
+import { bookingPhoneKey } from "@/lib/shared/phoneCell";
 import type { BookingKind } from "@/lib/scheduledCalls/bookingLink";
 
 export interface WelcomeCallBooking {
@@ -28,6 +29,8 @@ export interface WelcomeCallBooking {
   endTime: string;
   name: string;
   email: string;
+  /** Ten digits the booking page collected, or blank/absent (§5.30l). */
+  phone?: string;
   timezone: string;
   /** Calendly's own per-invitee page. ⚠️ The only browser-openable link there
    *  is — `eventUri` is an API URL that answers 401 JSON to a person (§5.31b),
@@ -43,6 +46,8 @@ export interface BookingLookup {
   /** The last day actually looked at, so the caller can say "through the 30th"
    *  rather than implying we checked forever. */
   through: string | null;
+  /** Which key found the booking — the phone fallback is worth saying out loud. */
+  matchedBy?: "email" | "phone" | null;
 }
 
 /** Is there a gateway to ask at all? False in a direct (no-gateway) build. */
@@ -61,15 +66,18 @@ export function welcomeCallBookingAvailable(): boolean {
  * patient who is, which is the one wrong answer that gets acted on. Same
  * contract `directoryApi.lookupDirectory` and `fetchCalendlyDay` carry.
  *
- * A patient with no email on file never gets here — see `useWelcomeCallBooking`.
+ * Asked by EMAIL and PHONE (§5.30l): the gateway answers on the email first
+ * and falls back to the phone. A patient with neither never gets here — see
+ * `useWelcomeCallBooking`.
  */
-export async function fetchWelcomeCallBooking(email: string): Promise<BookingLookup> {
+export async function fetchWelcomeCallBooking(email: string, phone = ""): Promise<BookingLookup> {
   if (!welcomeCallBookingAvailable()) {
     return { ok: false, booking: null, error: "No gateway is configured in this build.", through: null };
   }
   const addr = (email ?? "").trim();
-  if (!addr) {
-    return { ok: false, booking: null, error: "No email on file for this patient.", through: null };
+  const tel = bookingPhoneKey(phone);
+  if (!addr && !tel) {
+    return { ok: false, booking: null, error: "No email or phone on file for this patient.", through: null };
   }
 
   try {
@@ -79,13 +87,19 @@ export async function fetchWelcomeCallBooking(email: string): Promise<BookingLoo
     // the WELCOME CALL page: a kind-blind answer would put a patient's intake
     // appointment under "Call scheduled" there — a different call, at a
     // different stage, with a different person on the phone.
-    const url = `${MONDAY_GATEWAY_BASE}/calendly/patient?email=${encodeURIComponent(addr)}&kind=welcome`;
+    const params = [
+      addr ? `email=${encodeURIComponent(addr)}` : "",
+      tel ? `phone=${tel}` : "",
+      "kind=welcome",
+    ].filter(Boolean).join("&");
+    const url = `${MONDAY_GATEWAY_BASE}/calendly/patient?${params}`;
     const res = await fetch(url, { headers: { ...mondayIdentityHeaders() } });
     const json = (await res.json().catch(() => null)) as {
       ok?: boolean;
       booking?: WelcomeCallBooking | null;
       through?: string;
       error?: string;
+      matchedBy?: "email" | "phone" | null;
     } | null;
 
     if (!res.ok || !json?.ok) {
@@ -96,7 +110,10 @@ export async function fetchWelcomeCallBooking(email: string): Promise<BookingLoo
         through: null,
       };
     }
-    return { ok: true, booking: json.booking ?? null, error: null, through: json.through ?? null };
+    return {
+      ok: true, booking: json.booking ?? null, error: null, through: json.through ?? null,
+      matchedBy: json.matchedBy ?? null,
+    };
   } catch (e) {
     return { ok: false, booking: null, error: e instanceof Error ? e.message : String(e), through: null };
   }
@@ -108,6 +125,12 @@ export interface BookingsLookup {
   ok: boolean;
   /** Normalised email → booking, or null for nothing booked in the window. */
   bookings: Map<string, WelcomeCallBooking | null>;
+  /**
+   * Ten-digit phone → booking, or null for nothing booked (§5.30l). A number
+   * ABSENT from this map was never answered for — an older gateway ignores
+   * `phones` — and must be read as "not asked", never as "not booked".
+   */
+  byPhone: Map<string, WelcomeCallBooking | null>;
   error: string | null;
   through: string | null;
 }
@@ -147,19 +170,29 @@ const BATCH_CONCURRENCY = 3;
  * partial answer is indistinguishable from "those patients have nothing
  * booked", which is the answer a coordinator acts on by not ringing anybody —
  * the same rule the gateway applies to a partial window (§5.31e).
+ *
+ * `phones` is the second key (§5.30l), chunked alongside the emails at the
+ * same batch size — request N carries the Nth slice of each list.
  */
-export async function fetchPatientBookings(emails: string[], kind: BookingKind): Promise<BookingsLookup> {
-  const empty = new Map<string, WelcomeCallBooking | null>();
+export async function fetchPatientBookings(
+  emails: string[], kind: BookingKind, phones: string[] = [],
+): Promise<BookingsLookup> {
+  const empty = () => new Map<string, WelcomeCallBooking | null>();
   if (!welcomeCallBookingAvailable()) {
-    return { ok: false, bookings: empty, error: "No gateway is configured in this build.", through: null };
+    return { ok: false, bookings: empty(), byPhone: empty(), error: "No gateway is configured in this build.", through: null };
   }
   const list = Array.from(new Set(emails.map((e) => (e ?? "").trim().toLowerCase()).filter((e) => e.includes("@"))));
-  if (!list.length) return { ok: true, bookings: empty, error: null, through: null };
+  const numbers = Array.from(new Set(phones.map(bookingPhoneKey).filter(Boolean)));
+  if (!list.length && !numbers.length) return { ok: true, bookings: empty(), byPhone: empty(), error: null, through: null };
 
-  const chunks: string[][] = [];
-  for (let i = 0; i < list.length; i += BATCH) chunks.push(list.slice(i, i + BATCH));
+  const chunks: { emails: string[]; phones: string[] }[] = [];
+  const n = Math.max(Math.ceil(list.length / BATCH), Math.ceil(numbers.length / BATCH));
+  for (let i = 0; i < n; i += 1) {
+    chunks.push({ emails: list.slice(i * BATCH, (i + 1) * BATCH), phones: numbers.slice(i * BATCH, (i + 1) * BATCH) });
+  }
 
-  const merged = new Map<string, WelcomeCallBooking | null>();
+  const merged = empty();
+  const mergedPhones = empty();
   let through: string | null = null;
 
   for (let i = 0; i < chunks.length; i += BATCH_CONCURRENCY) {
@@ -167,38 +200,46 @@ export async function fetchPatientBookings(emails: string[], kind: BookingKind):
       chunks.slice(i, i + BATCH_CONCURRENCY).map((c) => fetchOneBatch(c, kind)),
     );
     for (const res of wave) {
-      if (!res.ok) return { ok: false, bookings: empty, error: res.error, through: null };
+      if (!res.ok) return { ok: false, bookings: empty(), byPhone: empty(), error: res.error, through: null };
       for (const [k, v] of res.bookings) merged.set(k, v);
+      for (const [k, v] of res.byPhone) mergedPhones.set(k, v);
       // Every chunk is answered from ONE index build, so these agree; taking
       // the first non-null is enough and cannot mix two windows.
       through = through ?? res.through;
     }
   }
-  return { ok: true, bookings: merged, error: null, through };
+  return { ok: true, bookings: merged, byPhone: mergedPhones, error: null, through };
 }
 
-async function fetchOneBatch(list: string[], kind: BookingKind): Promise<BookingsLookup> {
-  const empty = new Map<string, WelcomeCallBooking | null>();
+async function fetchOneBatch(
+  chunk: { emails: string[]; phones: string[] }, kind: BookingKind,
+): Promise<BookingsLookup> {
+  const empty = () => new Map<string, WelcomeCallBooking | null>();
   try {
     const res = await fetch(`${MONDAY_GATEWAY_BASE}/calendly/patients`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...mondayIdentityHeaders() },
-      body: JSON.stringify({ emails: list, kind }),
+      body: JSON.stringify({ emails: chunk.emails, phones: chunk.phones, kind }),
     });
     const json = (await res.json().catch(() => null)) as {
       ok?: boolean;
       bookings?: Record<string, WelcomeCallBooking | null>;
+      byPhone?: Record<string, WelcomeCallBooking | null>;
       through?: string;
       error?: string;
     } | null;
     if (!res.ok || !json?.ok) {
-      return { ok: false, bookings: empty, error: json?.error || `Calendly lookup failed (HTTP ${res.status}).`, through: null };
+      return { ok: false, bookings: empty(), byPhone: empty(), error: json?.error || `Calendly lookup failed (HTTP ${res.status}).`, through: null };
     }
-    const map = new Map<string, WelcomeCallBooking | null>();
+    const map = empty();
     for (const [k, v] of Object.entries(json.bookings ?? {})) map.set(k, v ?? null);
-    return { ok: true, bookings: map, error: null, through: json.through ?? null };
+    // ⚠️ An older gateway sends no `byPhone`: the numbers were never asked
+    // about, so the map stays EMPTY rather than filling with nulls.
+    const phoneMap = empty();
+    for (const [k, v] of Object.entries(json.byPhone ?? {})) phoneMap.set(k, v ?? null);
+    return { ok: true, bookings: map, byPhone: phoneMap, error: null, through: json.through ?? null };
   } catch (e) {
-    return { ok: false, bookings: empty, error: e instanceof Error ? e.message : String(e), through: null };
+    return { ok: false, bookings: empty(), byPhone: empty(), error: e instanceof Error ? e.message : String(e), through: null };
   }
 }
 

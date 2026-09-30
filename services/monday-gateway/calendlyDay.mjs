@@ -16,9 +16,10 @@
  *    Giving this gateway its own copy of the credential would be the
  *    hand-synced-config hazard the SPA already carries in two places
  *    (CLAUDE.md §5.7, §5.29) — in credential form, which is worse.
- *  · The response is PHI (patient names and emails), so it needs a real caller
- *    identity. That is this gateway's job and nothing else in the stack does
- *    it: the form service has no notion of a signed-in employee.
+ *  · The response is PHI (patient names, emails and — since 2026-09-30 —
+ *    phones), so it needs a real caller identity. That is this gateway's job
+ *    and nothing else in the stack does it: the form service has no notion of
+ *    a signed-in employee.
  *
  * So: the browser authenticates to us as an employee, and we authenticate to
  * the form service as a service. The bearer token never reaches a browser —
@@ -126,7 +127,8 @@ export function registerCalendlyDay({ app }) {
 
   app.get("/calendly/day", async (req, res) => {
     // Blocking identity, exactly as /calls/* does: this hands back patient
-    // names and email addresses, so an anonymous caller has no business here.
+    // names, email addresses and phone numbers, so an anonymous caller has no
+    // business here.
     // verifyGoogleIdentity (not verifyGoogleToken) because the ID token is
     // never refreshed — sign-in is the durable gate and a stale token must not
     // lock a coordinator out mid-shift (§5.4).
