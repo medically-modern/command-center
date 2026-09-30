@@ -4,6 +4,7 @@
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
+import { EXPEDITED_COL } from "../shared/expedited";
 const MONDAY_API_VERSION = "2024-10";
 
 export const BOARD_ID = 18410601299;
@@ -60,6 +61,11 @@ export const COL = {
   // Follow Up
   followUp: "color_mm34jz1x",
   followUpDate: "date_mm34m2dz",
+
+  // Expedited (§5.56) — copied here by hop 7918295320 (Medical Evaluation) and
+  // on to Welcome Call by 7918324247. Read by the Submit Auth send, which dates
+  // an expedited patient due in Auth Outstanding TODAY instead of tomorrow.
+  expedited: EXPEDITED_COL.insurance,
 
   // Escalation + stage flow
   escalation: "color_mm2vsh2f",
@@ -281,6 +287,9 @@ export const READ_COLUMN_IDS = [
     COL.mnWorkflowNotes,
   COL.followUp,
   COL.followUpDate,
+  // Read by the Submit Auth send (§5.56) — absent here, every patient reads as
+  // not expedited and waits a day in Auth Outstanding.
+  COL.expedited,
   // Never Billed (Medicare A&B)
   COL.neverBilledIsCar,
   COL.neverBilledCgm,

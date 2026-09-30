@@ -38,6 +38,7 @@ import { warningConditions } from "@/lib/profile/intakeWarnings";
 import { CHECK_MANUALLY_HINT } from "@/lib/profile/networkVerdict";
 import { useIntakeWarnings, type IntakeWarningsState } from "@/hooks/profile/useIntakeWarnings";
 import { IntakeWarningsPanel } from "@/components/profile/IntakeWarnings";
+import { ExpediteToggle } from "@/components/profile/ExpediteToggle";
 import type { Patient } from "@/lib/profile/workflow";
 import {
   hasValidZip, formatPhone, crossSellReason, canCrossSellCgm, deriveServing, addressWarning,
@@ -341,6 +342,13 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   const onUpdate = useCallback((patch: Partial<Patient>) => {
     if (selected) updateLocal(selected.id, cashPayMirrorEdit(patch, selected.primaryInsurance));
   }, [selected, updateLocal]);
+
+  /** The Expedited tick landed on the board (§5.56): stop masking it with the
+   *  overlay, and read the board so the value shown is Monday's own. */
+  const settleExpedited = useCallback((id: string) => {
+    removeOverlayKeys(id, ["expedited"]);
+    void refetch(true);
+  }, [removeOverlayKeys, refetch]);
 
   const suggestion = useMemo(() => selected ? suggestPrimary(buildSuggestionInputs(selected)) : null, [selected]);
   const secondarySuggestion = useMemo(() => selected ? suggestSecondary(buildSuggestionInputs(selected)) : "", [selected]);
@@ -874,6 +882,20 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 onMoveToPipeline={selectedInSystem ? () => setMoveOpen(true) : undefined}
                 movingToPipeline={movingToPipeline}
                 intakeWarnings={intakeWarnings}
+                expedite={
+                  // The PATIENT's queue decides, like the exits above: a
+                  // Referral Intake patient gets it on either URL, an Already
+                  // In System one on neither (§5.56).
+                  !selectedInSystem && (
+                    <ExpediteToggle
+                      key={selected.id}
+                      patient={selected}
+                      onLocal={updateLocal}
+                      onSettled={settleExpedited}
+                      disabled={submitting || reviewMode}
+                    />
+                  )
+                }
               />
             )}
           </main>
@@ -1079,6 +1101,9 @@ interface BodyProps {
   onAddNote: (fullText: string) => Promise<void>;
   /** The benefits check's verdict + warnings for this patient (§5.20b). */
   intakeWarnings: IntakeWarningsState;
+  /** The Expedited tick (§5.56), rendered just above the exits. Absent on
+   *  Already In System — Josh: "only in those intake stages". */
+  expedite?: ReactNode;
 }
 
 function Field({ label, required, children, warn }: { label: string; required?: boolean; children: ReactNode; warn?: string }) {
@@ -1960,6 +1985,11 @@ function ProfileBody(p: BodyProps) {
                     </span>
                   </div>
                 )}
+                {/* Expedited (§5.56) — the last decision before the patient
+                    leaves, so it sits at the foot of the list, right above the
+                    button that hands them on. Outside the collapsible
+                    checklist: a manager must not have to open it to see it. */}
+                {p.expedite}
                 <div className="route-grid">
                   {p.onMoveToPipeline ? (
                     <div className="route adv on">

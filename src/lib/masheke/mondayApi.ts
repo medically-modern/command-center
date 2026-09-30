@@ -5,6 +5,7 @@ import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 import { faxEditToColumnValue } from "../shared/faxAddress";
 import { DOCTOR_EDIT_FIELDS, DOCTOR_FIELD_LABEL, type DoctorDraft, type DoctorEditField } from "./doctorEdits";
+import { EXPEDITED_COL } from "../shared/expedited";
 const MONDAY_API_VERSION = "2024-10";
 export const BOARD_ID = "18406060017";
 
@@ -150,6 +151,10 @@ export const COL = {
 
   // Profile Send Off Notes (mirrored from Profile Send Off Board)
   profileSendOffNotes: "text_mm3xdze1",
+
+  // Expedited (§5.56) — copied here by hop 7917676280; read by the arrival
+  // stamp, which dates an expedited arrival TODAY instead of tomorrow.
+  expedited: EXPEDITED_COL.medicalEvaluation,
 } as const;
 
 // Columns to read on load — keep small to avoid 503
@@ -196,6 +201,8 @@ export const READ_COLUMN_IDS: string[] = [
   // Doctor Appointments — MUST stay here or the whole feature reads blank
   // (every masheke query fetches column_values(ids: READ_COLUMN_IDS) only).
   COL.appointmentDate,
+  // Same rule: without it every arrival reads as not expedited (§5.56).
+  COL.expedited,
 ];
 
 export interface MondayColumnValue {

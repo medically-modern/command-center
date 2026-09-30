@@ -108,6 +108,7 @@ export function mondayItemToPatient(
 
     // Status
     alreadyInSystem: col(item, COL.alreadyInSystem),
+    expedited: col(item, COL.expedited),
     moveToOnboarding: col(item, COL.moveToOnboarding),
 
     // Stedi

@@ -5,6 +5,7 @@ import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint"
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 import type { DtcFormLead } from "./dtcFormFlag";
+import { EXPEDITED_COL } from "../shared/expedited";
 const MONDAY_API_VERSION = "2024-10";
 
 export const BOARD_ID = 18406352652;
@@ -245,6 +246,9 @@ export const COL = {
   // ── Status / Workflow ──
   alreadyInSystem: "color_mm2xe7r8",
   moveToOnboarding: "color_mm1zmeb3",
+  /** Manager-only "due the same day at the next stage" mark (§5.56). The hops
+   *  copy it forward, so it must be indexed before Move to Onboarding fires. */
+  expedited: EXPEDITED_COL.profileSendOff,
 
   // ── Debug ──
   joshDebug: "text_mm2nfwjs",
@@ -255,7 +259,7 @@ export const READ_COLUMN_IDS: string[] = [
   // Demographics
   COL.dob, COL.ptPhone, COL.email, COL.gender, COL.dateOfIntake, COL.patientAddress,
   // Status
-  COL.alreadyInSystem, COL.moveToOnboarding,
+  COL.alreadyInSystem, COL.moveToOnboarding, COL.expedited,
   // Stedi
   COL.runStediEligibility, COL.stediEligibilityActive, COL.stediCoverageType,
   COL.stediPayerName, COL.stediPlanName, COL.stediMedicareAdvantage,

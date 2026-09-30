@@ -205,6 +205,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     chaseRecipientName: col(item, "text_mm1wabj9") || undefined,
     mnAttempts: col(item, "color_mm1wz0vg") || undefined,
     nextActionDate: col(item, "date_mm1wadgs") || undefined,
+    expedited: col(item, COL.expedited) || undefined,
     escalation: col(item, "color_mm1x7997") || undefined,
     escalationIndex: colIndex(item, "color_mm1x7997") ?? undefined,
     advancer2a: col(item, "color_mm1w73jx") || undefined,

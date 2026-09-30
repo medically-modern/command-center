@@ -7,6 +7,7 @@ import {
   sharedPendingAdvances,
 } from "@/lib/shared/pendingAdvance";
 import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
+import { isExpedited } from "@/lib/shared/expedited";
 
 const POLL_MS = 30_000;
 
@@ -151,12 +152,18 @@ export function useMondayPatients(
       // ⚠️ Fires on a BLANK date only, so it can never move a date a rep or
       // the +1 button chose. On the day this shipped that was the 5 live
       // patients carrying no date at all; they slide one day, once.
+      //
+      // ⚠️ EXPEDITED ARRIVALS ARE DUE TODAY (§5.56) — a manager's mark from
+      // Profile Send Off, copied forward by the hops. Skipping this very wait
+      // is what the mark is for.
       const arrivalStr = addBusinessDaysIso(etToday(), 1);
+      const sameDayStr = etToday();
       for (const p of ps) {
         if (!p.followUpDate && !stampedRef.current.has(p.id)) {
           stampedRef.current.add(p.id);
-          p.followUpDate = arrivalStr; // reflect locally right away
-          writeDate(p.id, COL.followUpDate, arrivalStr).catch(() => {
+          const dueStr = isExpedited(p.expedited) ? sameDayStr : arrivalStr;
+          p.followUpDate = dueStr; // reflect locally right away
+          writeDate(p.id, COL.followUpDate, dueStr).catch(() => {
             stampedRef.current.delete(p.id); // retry on the next poll
           });
         }

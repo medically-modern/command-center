@@ -4,6 +4,7 @@
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { POS_COLUMN_ID } from "../shared/pos";
 import { planPhoneWrite } from "../shared/phoneCell";
+import { EXPEDITED_COL } from "../shared/expedited";
 const MONDAY_API_VERSION = "2024-10";
 
 export const BOARD_ID = 18410804557;
@@ -200,6 +201,11 @@ export const COL = {
   followUp: "color_mm38w2tk",
   followUpDate: "date_mm38a7k7",
 
+  // Expedited (§5.56) — copied here by hops 7918324247 (Insurance) and
+  // 7923595946 (cash pay, straight from Profile Send Off). Read by the arrival
+  // stamp, which dates an expedited arrival TODAY instead of tomorrow.
+  expedited: EXPEDITED_COL.welcomeCall,
+
   // Never Billed (Medicare A&B — mirrored from Samantha board)
   neverBilledIsCar: "color_mm3zn2qy",
   neverBilledCgm: "color_mm3z8rw0",
@@ -291,6 +297,9 @@ export const READ_COLUMN_IDS = [
   COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining, COL.stediCoinsurance, COL.stediQmb,
   COL.ipNextOrderDate, COL.sensorsNextOrderDate, COL.suppliesNextOrderDate,
   COL.followUp, COL.followUpDate,
+  // Read by the arrival stamp (§5.56) — absent here, every arrival reads as
+  // not expedited and waits a day.
+  COL.expedited,
   // Escalation STATUS (read-only). ⚠️ Deliberately NOT wired into `escalated`:
   // this stage's escalation is write-only and needs a rewrite, not a piecemeal
   // patch (CLAUDE.md §10). It is read purely so Profile Status can report the

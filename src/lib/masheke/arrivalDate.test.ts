@@ -41,7 +41,13 @@ describe("Evaluate (and every masheke sub-stage) — the blank-NAD arrival stamp
 
   it("stamps the next business day, not today", () => {
     expect(src).toMatch(/const arrivalStr = addBusinessDaysIso\(todayStr, 1\)/);
-    expect(src).toMatch(/writeDate\(p\.id, COL\.nextActionDate, arrivalStr\)/);
+    expect(src).toMatch(/writeDate\(p\.id, COL\.nextActionDate, dueStr\)/);
+  });
+
+  it("…unless a manager EXPEDITED them — then it is today (§5.56)", () => {
+    // Decided per PATIENT from the column hop 7917676280 copies forward; the
+    // next-day wait above is exactly what the mark exists to skip.
+    expect(src).toMatch(/const dueStr = isExpedited\(p\.expedited\) \? todayStr : arrivalStr/);
   });
 
   it("only ever fills a BLANK Next Action Date", () => {

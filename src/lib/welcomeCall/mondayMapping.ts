@@ -117,6 +117,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     callAttempts: txt(COL.callAttempts),
     followUp: txt(COL.followUp),
     followUpDate: txt(COL.followUpDate),
+    expedited: txt(COL.expedited),
     cgmAuthResult: txt(COL.cgmAuthResult),
     cgmAuthStart: txt(COL.cgmAuthStart),
     cgmAuthEnd: txt(COL.cgmAuthEnd),

@@ -94,8 +94,15 @@ describe("a new arrival comes back TOMORROW, not today", () => {
   const src = read("../../hooks/welcomeCall/useMondayPatients.ts");
 
   it("stamps a blank Follow Up Date with the next business day", () => {
-    expect(src).toMatch(/addBusinessDaysIso\(etToday\(\), 1\)/);
-    expect(src).toMatch(/writeDate\(p\.id, COL\.followUpDate, arrivalStr\)/);
+    expect(src).toMatch(/const arrivalStr = addBusinessDaysIso\(etToday\(\), 1\)/);
+    expect(src).toMatch(/writeDate\(p\.id, COL\.followUpDate, dueStr\)/);
+  });
+
+  it("…unless a manager EXPEDITED them — then it is today (§5.56)", () => {
+    // The only exception, and it is the whole point of the mark. It must be
+    // decided per PATIENT, from the column the hops copy forward.
+    expect(src).toMatch(/const sameDayStr = etToday\(\)/);
+    expect(src).toMatch(/const dueStr = isExpedited\(p\.expedited\) \? sameDayStr : arrivalStr/);
   });
 
   it("⚠️ THE DATE ONLY — it must never write the Follow Up STATUS", () => {

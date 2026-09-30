@@ -100,6 +100,9 @@ export interface Patient {
    *  decided by `groupId` (lib/profile/intakeSubStage.ts), so a failed group
    *  move can't hide a patient from the role that can retry it. */
   intakeSubStage: string;
+  /** "Expedited" or blank (§5.56). A manager's mark that the patient is due the
+   *  SAME day at each next stage; the hops copy it forward. Blank = normal. */
+  expedited?: string;
 
   // ── Follow Up ──
   followUp: string;

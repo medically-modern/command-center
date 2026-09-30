@@ -843,3 +843,14 @@ documented here rather than by re-pulling the whole board.
 - **Type:** `date`
 - Copied from Insurance `date_mm59tx2g` by the same automation. Input to
   Monitor Purchase Date.
+
+### Expedited
+- **ID:** `color_mm7p9hm0`
+- **Type:** `status`
+- **Values:**
+  - `2` → Expedited (blank = normal)
+- Added 2026-09-30. A manager's mark set on Profile Send Off
+  (`color_mm7pywyh`), copied here by create-item automations `7918324247`
+  (from Insurance `color_mm7ppqbn`) and `7923595946` (cash pay, straight from
+  Profile Send Off). An expedited arrival's blank Follow Up Date is stamped
+  TODAY instead of the next business day. CLAUDE.md §5.56.

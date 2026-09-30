@@ -26,6 +26,7 @@ import {
   ALREADY_IN_SYSTEM_INDEX,
 } from "./mondayMapping";
 import { advanceWriteForLive } from "./cashPayIntake";
+import { expeditedAdvanceTask } from "./expedite";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -372,6 +373,12 @@ export async function sendPatientToMonday(
       fn: () => writeDropdownLabels(p.id, COL.insurancePlan, [planLabel]),
     });
   }
+
+  // ── Expedited (§5.56) — read back BEFORE the hop copies it ──
+  // Only ever the mark itself, never a clear: this page can be a poll behind a
+  // manager's tick, and a clear from that stale copy would silently undo it.
+  const expeditedTask = expeditedAdvanceTask(p);
+  if (expeditedTask) tasks.push(expeditedTask);
 
   // ── Move to Onboarding (stage advancer — written LAST after verification) ──
   // `expectedText` lets verifiedWrite catch a column already sitting at the

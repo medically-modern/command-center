@@ -28,8 +28,17 @@ const src = readFileSync(resolve(__dirname, "./mondayWrite.ts"), "utf8");
 describe("the Submit Auth send stamps the NEXT BUSINESS DAY", () => {
   it("writes Follow Up Date from addBusinessDaysIso(today, 1)", () => {
     expect(src).toMatch(/import \{ addBusinessDaysIso \} from "@\/lib\/masheke\/etDate"/);
-    expect(src).toMatch(/const authFollowUpEt = todayEt \? addBusinessDaysIso\(todayEt, 1\) : todayEt/);
+    expect(src).toMatch(
+      /const authFollowUpEt = todayEt\s*\?\s*\(isExpedited\(p\.expedited\) \? todayEt : addBusinessDaysIso\(todayEt, 1\)\)\s*:\s*todayEt/,
+    );
     expect(src).toMatch(/fn: \(\) => writeDate\(p\.id, COL\.followUpDate, authFollowUpEt\)/);
+  });
+
+  it("…unless a manager EXPEDITED them — then it is today (§5.56)", () => {
+    // Josh, 2026-09-30: "same day for auth outstanding". Read off the patient's
+    // own Insurance column, which hop 7918295320 copies forward.
+    expect(src).toMatch(/import \{ isExpedited \} from "@\/lib\/shared\/expedited"/);
+    expect(src).toMatch(/isExpedited\(p\.expedited\) \? todayEt :/);
   });
 
   it("the declared task value matches what the client path writes", () => {

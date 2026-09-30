@@ -68,6 +68,7 @@ import {
 import { CHECK_MANUALLY_HINT } from "@/lib/profile/networkVerdict";
 import { useIntakeWarnings } from "@/hooks/profile/useIntakeWarnings";
 import { IntakeWarningsPanel } from "@/components/profile/IntakeWarnings";
+import { ExpediteToggle } from "@/components/profile/ExpediteToggle";
 import {
   applyCashPayReadiness, benefitCheckApplies, cashPayMirrorEdit, verifiedInsuranceStepApplies,
   advanceLabelForLive, ADVANCE_TO_MN,
@@ -819,7 +820,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const hookOptions = useMemo(() => ({ ...LIST_FETCH_OPTIONS, pinnedId }), [pinnedId]);
   const {
     patients, loading, initialLoading, error, refetch, updateLocal, markAdvanced, hasOverlay, getReceived,
-    saveOverlay, clearOverlay,
+    saveOverlay, clearOverlay, removeOverlayKeys,
     // `detailLoading` is deliberately not taken: the pane keys off "a row is
     // selected but has no usable record yet", which also covers the frame
     // before the load has even started. See the render branch.
@@ -1296,6 +1297,13 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
       setVerified((v) => (v.primaryInsurance === mirrored ? v : { ...v, primaryInsurance: mirrored }));
     }
   }, [selected, updateLocal]);
+
+  /** The Expedited tick landed on the board (§5.56): stop masking it with the
+   *  overlay, and read the board so the value shown is Monday's own. */
+  const settleExpedited = useCallback((id: string) => {
+    removeOverlayKeys(id, ["expedited"]);
+    void refetch(true);
+  }, [removeOverlayKeys, refetch]);
 
   /**
    * §5.2 — the four product dropdowns AND the two insurance pickers read their
@@ -3725,6 +3733,20 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       )} */}
                     </div>
 
+                    {/* Expedited (§5.56) — Info Collection's copy, at the foot of
+                        its checklist and above its Advance. Clean-Up has its own
+                        at the foot of Ready to Send Off?, beside the advance that
+                        leaves the board, so one screen never shows two. */}
+                    {!isCleanUp && (
+                      <ExpediteToggle
+                        key={selected.id}
+                        patient={selected}
+                        onLocal={updateLocal}
+                        onSettled={settleExpedited}
+                        disabled={saving}
+                      />
+                    )}
+
                     {/* ── The actions, one even row ──
                         Equal widths, side by side, nothing interleaved between
                         them: the captions that used to sit inline are collected
@@ -4255,6 +4277,17 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                         </div>
                       </div>
                     )}
+
+                    {/* Expedited (§5.56) — Clean-Up's copy, the last thing
+                        above the advance that hands the patient to the next
+                        board, which is what the mark changes. */}
+                    <ExpediteToggle
+                      key={selected.id}
+                      patient={selected}
+                      onLocal={updateLocal}
+                      onSettled={settleExpedited}
+                      disabled={saving}
+                    />
 
                     {/* THE advance — the only one on the page (Josh,
                         2026-08-13). It lives here because this is where the

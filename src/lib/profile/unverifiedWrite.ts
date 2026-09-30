@@ -37,6 +37,7 @@ import {
   CGM_TYPE_INDEX, PUMP_TYPE_INDEX, INTAKE_SUB_STAGE_INDEX,
 } from "./mondayMapping";
 import { advanceWriteForLive } from "./cashPayIntake";
+import { expeditedAdvanceTask } from "./expedite";
 
 /** label → index for every status column this stage writes.
  *  Indices are the ones the columns were created with; they are stable across
@@ -777,6 +778,11 @@ export function buildAdvanceTasks(p: Patient, opts: AdvanceInput): WriteTask[] {
     ...buildCostSharingTasks(p),
     ...buildDoctorTasks(p, opts.clinicLabelId ?? null),
   ];
+  // Expedited (§5.56) — the hop copies it the moment the advancer flips, so it
+  // is read back here first. Only ever the mark, never a clear (lib/profile/
+  // expedite.ts says why).
+  const expedited = expeditedAdvanceTask(p);
+  if (expedited) all.push(expedited);
 
   // One task per column, LAST wins.
   //

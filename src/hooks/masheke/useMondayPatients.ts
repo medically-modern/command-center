@@ -5,6 +5,7 @@ import { fetchGroupItems, fetchItemById, writeDate, writeStatusIndex, COL, GROUP
 import { mondayItemToPatient, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { hasStaleEvaluateEscalation } from "@/lib/masheke/evaluateReentry";
 import { addBusinessDaysIso, etToday } from "@/lib/masheke/etDate";
+import { isExpedited } from "@/lib/shared/expedited";
 import {
   applyPendingAdvances, hasPendingAdvance, markPendingAdvance, scopeExceptPinned, sharedPendingAdvances,
   stageScope,
@@ -186,6 +187,10 @@ export function useMondayPatients(
       // clinicals — that should show up same day") and the stale-escalation
       // self-heal below both write today, and neither reaches this branch
       // because the patient already has a date. Do not "unify" them.
+      //
+      // ⚠️ EXPEDITED ARRIVALS ARE DUE TODAY (§5.56). A manager marked them on
+      // Profile Send Off and hop 7917676280 copied the mark here; the whole
+      // point of the mark is to skip the next-day wait this stamp adds.
       const todayStr = etToday();
       const arrivalStr = addBusinessDaysIso(todayStr, 1);
       const activeStages = new Set(Object.values(SUB_STAGE_FILTER));
@@ -197,8 +202,9 @@ export function useMondayPatients(
           !stampedRef.current.has(p.id)
         ) {
           stampedRef.current.add(p.id);
-          p.nextActionDate = arrivalStr; // reflect locally right away
-          writeDate(p.id, COL.nextActionDate, arrivalStr).catch(() => {
+          const dueStr = isExpedited(p.expedited) ? todayStr : arrivalStr;
+          p.nextActionDate = dueStr; // reflect locally right away
+          writeDate(p.id, COL.nextActionDate, dueStr).catch(() => {
             stampedRef.current.delete(p.id); // retry on next poll
           });
         }

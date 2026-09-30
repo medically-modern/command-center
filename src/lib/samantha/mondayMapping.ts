@@ -495,6 +495,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     ipClaimsError: cv(COL.ipClaimsError)?.text || undefined,
     followUp: followUpText,
     followUpDate,
+    expedited: cv(COL.expedited)?.text || undefined,
     planName: cv(COL.planName)?.text || undefined,
     homePlan: cv(COL.homePlan)?.text || undefined,
     stediQmb: cv(COL.stediQmb)?.text || undefined,

@@ -367,6 +367,25 @@
 .pf-root .sms-fail strong { font-weight:800 }
 .pf-root .sms-fail-icon { flex-shrink:0;width:13px;height:13px;margin-top:1px }
 
+/* Expedited tick (§5.56, components/profile/ExpediteToggle) — the foot of each
+   intake stage's readiness list, just above the button that hands the patient
+   on. Here, not in intake.css, because /profile loads only this file. Tokens
+   only, so the dark block below re-points it with no rule of its own. Amber,
+   not rose: rose on these pages means "missing", and this is a choice. */
+.pf-root .xp-line { display:flex;align-items:flex-start;gap:11px;margin-top:16px;cursor:pointer;
+  border:1.5px solid var(--border);border-radius:11px;padding:12px 15px;background:var(--card) }
+.pf-root .xp-line:hover { border-color:var(--amber-ring) }
+.pf-root .xp-line input { width:18px;height:18px;margin-top:2px;flex:none;accent-color:var(--amber);cursor:pointer }
+.pf-root .xp-line input:disabled { cursor:not-allowed }
+.pf-root .xp-line .xp-body { display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 }
+.pf-root .xp-line .xp-title { display:flex;align-items:center;gap:6px;font-size:.92rem;font-weight:800 }
+.pf-root .xp-line .xp-title svg { width:15px;height:15px;flex:none;color:var(--amber) }
+.pf-root .xp-line .xp-note { font-size:.8rem;color:var(--muted-foreground) }
+.pf-root .xp-line .xp-busy { margin-left:auto;font-size:.75rem;font-weight:700;color:var(--muted-foreground) }
+.pf-root .xp-line.on { border-color:var(--amber-ring);background:var(--amber-soft) }
+.pf-root .xp-line.on .xp-title { color:var(--amber) }
+.pf-root .xp-line.ro { cursor:default }
+
 /* deploy bump 7126c6b */
 
 /* ══════════════════════════════════════════════════════════════════════════

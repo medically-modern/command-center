@@ -44,6 +44,7 @@ import {
   type AuthOutstandingEscalation,
 } from "./authOutstandingReview";
 import { addBusinessDaysIso } from "@/lib/masheke/etDate";
+import { isExpedited } from "@/lib/shared/expedited";
 import { isMedicarePrimary } from "./medicareJurisdiction";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
 import { etNow } from "../masheke/etDate";
@@ -601,9 +602,15 @@ export async function sendPatientToMonday(
     //
     // ⚠️ Nothing in the counting contract moved — this writes a board value,
     // so useRoleCounts and both baseline generators read it unchanged (§5.8).
-    const authFollowUpEt = todayEt ? addBusinessDaysIso(todayEt, 1) : todayEt;
+    //
+    // ⚠️ EXPEDITED → TODAY (§5.56, Josh 2026-09-30: "same day for auth
+    // outstanding"). A manager's mark from Profile Send Off, copied forward by
+    // the hops; it exists to skip exactly this next-day wait.
+    const authFollowUpEt = todayEt
+      ? (isExpedited(p.expedited) ? todayEt : addBusinessDaysIso(todayEt, 1))
+      : todayEt;
     tasks.push({
-      label: "Follow Up Date (next business day)",
+      label: isExpedited(p.expedited) ? "Follow Up Date (expedited: today)" : "Follow Up Date (next business day)",
       columnId: COL.followUpDate,
       value: authFollowUpEt ? { date: authFollowUpEt } : {},
       fn: () => writeDate(p.id, COL.followUpDate, authFollowUpEt),

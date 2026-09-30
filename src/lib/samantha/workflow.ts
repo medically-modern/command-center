@@ -509,6 +509,9 @@ export interface Patient {
   followUp?: string;
   /** Follow Up date — YYYY-MM-DD. */
   followUpDate?: string;
+  /** "Expedited" or blank (§5.56), copied from Medical Evaluation by the hop.
+   *  Submit Auth dates an expedited patient due TODAY in Auth Outstanding. */
+  expedited?: string;
   // Doctor info — surfaced in the collapsible Doctor Info row of the
   // patient profile across every tab.
   doctorPhone?: string;

@@ -129,6 +129,9 @@ export interface Patient {
   // Follow up
   followUp: string;
   followUpDate: string;
+  /** "Expedited" or blank (§5.56), copied forward by the hops. An expedited
+   *  arrival is stamped due TODAY rather than tomorrow. */
+  expedited?: string;
   // Auth Results (read-only)
   cgmAuthResult: string;
   sensorsAuthResult: string;

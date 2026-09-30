@@ -116,6 +116,9 @@ export interface Patient {
   chaseRecipientName?: string;
   mnAttempts?: string;
   nextActionDate?: string;
+  /** "Expedited" or blank (§5.56), copied from Profile Send Off by the hop.
+   *  An expedited arrival is stamped due TODAY rather than tomorrow. */
+  expedited?: string;
   /** Escalation status label text (display only — e.g. "Manager Escalation
    *  Required" / "Final Escalation Required" / "Done"). Detection uses
    *  escalationIndex, not this string (labels can be renamed on the board). */
