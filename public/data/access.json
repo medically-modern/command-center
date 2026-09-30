@@ -164,7 +164,8 @@
       "name": "Victor",
       "roles": [
         "profile",
-        "intakeCleanup"
+        "intakeCleanup",
+        "unverifiedReferrals"
       ]
     }
   },
