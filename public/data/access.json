@@ -163,7 +163,8 @@
     "victor@medicallymodern.com": {
       "name": "Victor",
       "roles": [
-        "profile"
+        "profile",
+        "intakeCleanup"
       ]
     }
   },
