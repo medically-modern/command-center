@@ -178,6 +178,26 @@ export function callLine(e: CallEntry): string {
   return `Answered call · ${formatDuration(e.durationSec)}`;
 }
 
+/**
+ * "Victor Guerra (ext 13)" — who picked up an inbound call, or "" when we
+ * don't know (§5.47d). The extension alone when RingCentral's list had no
+ * name for it; never anything on an outbound call, nor on one nobody answered.
+ *
+ * Its own line under `callLine` in the timeline, not appended to it: in the
+ * popup's width "Answered by Victor Guerra (ext 13) · 2:03" wrapped the
+ * duration onto a line by itself (rendered 2026-09-30).
+ */
+export function answeredByLabel(
+  e: Pick<CallEntry, "dir" | "answeredExt" | "answeredName"> & Partial<Pick<CallEntry, "connected" | "missed">>,
+): string {
+  if (e.dir !== "in" || e.missed || e.connected === false) return "";
+  const name = (e.answeredName ?? "").trim();
+  const ext = (e.answeredExt ?? "").trim();
+  if (name && ext) return `${name} (ext ${ext})`;
+  if (ext) return `ext ${ext}`;
+  return name;
+}
+
 /** Which of the patient's numbers, when they have more than one. */
 export function numberHint(last4: string, numbers: { last4: string }[]): string {
   return numbers.length > 1 && last4 ? `on ···${last4}` : "";

@@ -61,6 +61,7 @@ import { rcConfigured, rcMediaFetch, rcApiFetch } from "./ringcentral.mjs";
 import { shedWaitMs } from "./rcLimiter.mjs";
 import { authEnforced } from "./auth.mjs";
 import { phoneHmac } from "./phoneHash.mjs";
+import { directoryHealth, getExtensionDirectory } from "./rcDirectory.mjs";
 import {
   getObjectStream,
   objectExists,
@@ -169,6 +170,12 @@ ALTER TABLE call_archive_runs ADD COLUMN IF NOT EXISTS shed BOOLEAN DEFAULT fals
 -- this table as a list of phone calls, so it has to be able to leave the
 -- faxes out. Nullable and default-free, so adding it is metadata-only.
 ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS call_type TEXT;
+-- Who picked up an INBOUND call: the extension NUMBER that answered and that
+-- extension's person, as RingCentral named them when the call was archived
+-- (callArchiveRules.answeredByOf, CLAUDE.md §5.47d). Staff, not patients.
+-- Nullable and default-free, so adding them is metadata-only.
+ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS answered_ext TEXT;
+ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS answered_name TEXT;
 CREATE INDEX IF NOT EXISTS call_archive_runs_ok_idx   ON call_archive_runs (ok, finished_at DESC);
 CREATE INDEX IF NOT EXISTS call_archive_runs_deep_idx ON call_archive_runs (deep, ok, finished_at DESC);
 
@@ -201,18 +208,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SHED_RETRIES = Math.max(Number(process.env.CALL_ARCHIVE_SHED_RETRIES) || 5, 1);
 const SHED_PAUSE_MS = Math.max(Number(process.env.CALL_ARCHIVE_SHED_PAUSE_MS) || 30_000, 1_000);
 
-/** Rows per INSERT. 14 columns, so 100 rows is 1,400 bind parameters — well
+/** Rows per INSERT. 17 columns, so 100 rows is 1,700 bind parameters — well
  *  under Postgres' 65535 cap, and one round trip instead of a hundred. */
 const CHUNK = 100;
 
 function upsertSql(count) {
-  const cols = 15;
+  const cols = 17;
   const tuples = [];
   for (let i = 0; i < count; i++) {
     const b = i * cols;
     tuples.push(
       `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6}::jsonb,$${b + 7},$${b + 8},` +
-        `$${b + 9},$${b + 10}::timestamptz,$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15})`,
+        `$${b + 9},$${b + 10}::timestamptz,$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15},` +
+        `$${b + 16},$${b + 17})`,
     );
   }
   // ⚠️⚠️ THE SCAN MAY ONLY EVER MOVE `none` → `pending`. Every other transition
@@ -239,12 +247,18 @@ function upsertSql(count) {
   return (
     `INSERT INTO call_archive
        (rc_call_id, rc_session_id, rc_recording_id, direction, result, leg_results,
-        phone_hmac, last4, duration_sec, started_at, audio_state, content_uri, attempts, first_seen_at, call_type)
+        phone_hmac, last4, duration_sec, started_at, audio_state, content_uri, attempts, first_seen_at, call_type,
+        answered_ext, answered_name)
      VALUES ${tuples.join(",")}
      ON CONFLICT (rc_call_id) DO UPDATE SET
        direction       = EXCLUDED.direction,
        rc_session_id   = COALESCE(EXCLUDED.rc_session_id,   call_archive.rc_session_id),
        call_type       = COALESCE(EXCLUDED.call_type,       call_archive.call_type),
+       -- Who picked up (§5.47d): filled when a read can say, never blanked by
+       -- one that cannot (a scan while the extension list was unreadable
+       -- carries the number and no name).
+       answered_ext    = COALESCE(EXCLUDED.answered_ext,    call_archive.answered_ext),
+       answered_name   = COALESCE(EXCLUDED.answered_name,   call_archive.answered_name),
        rc_recording_id = COALESCE(EXCLUDED.rc_recording_id, call_archive.rc_recording_id),
        result          = COALESCE(EXCLUDED.result,          call_archive.result),
        leg_results     = COALESCE(EXCLUDED.leg_results,     call_archive.leg_results),
@@ -282,6 +296,8 @@ async function upsertRows(pool, rows) {
         0,
         new Date().toISOString(),
         r.callType ?? null,
+        r.answeredExt ?? null,
+        r.answeredName ?? null,
       );
     }
     const res = await pool.query(upsertSql(slice.length), args);
@@ -302,10 +318,13 @@ async function upsertRows(pool, rows) {
  * @returns {Promise<{written: number, rows: object[]}>} `rows` carry the
  *   counterparty in the clear for the caller's in-memory use only.
  */
-export async function archiveCallRecords({ pool, records }) {
+export async function archiveCallRecords({ pool, records, directory }) {
+  // Names the extension that picked up an inbound call (§5.47d). Cached for
+  // hours and never throws — an unreadable list still saves the number.
+  const extensions = directory ?? (records?.length ? await getExtensionDirectory() : null);
   const rows = [];
   for (const rec of records ?? []) {
-    const row = toCallRow(rec);
+    const row = toCallRow(rec, extensions ?? undefined);
     if (!row) continue;
     // A blank or unhashable number is not a reason to drop the call — an
     // internal or blocked-caller row is still a call somebody may ask about.
@@ -740,6 +759,9 @@ function publicRow(r) {
     bytes: r.bytes === null || r.bytes === undefined ? null : Number(r.bytes),
     contentType: r.content_type || null,
     storedAt: r.stored_at ? new Date(r.stored_at).toISOString() : null,
+    // Who picked up an inbound call (§5.47d) — staff, not the patient.
+    answeredExt: r.answered_ext ?? null,
+    answeredName: r.answered_name ?? null,
   };
 }
 
@@ -857,6 +879,9 @@ export function registerCallArchive({ app, pool, requireCaller }) {
         enabled: true,
         storeConfigured: storeConfigured(),
         bucket: storeConfigured() ? storeName() : null,
+        // Who-picked-up names (§5.47d): how many extensions are known, and
+        // when the list was read. Counts and timestamps only, never a name.
+        extensionDirectory: directoryHealth(),
       });
     } catch (e) {
       res.status(500).json({ ok: false, error: String((e && e.message) || e) });
@@ -1070,7 +1095,7 @@ export function registerCallArchive({ app, pool, requireCaller }) {
       args.push(limit);
       const q = await pool.query(
         `SELECT rc_call_id, rc_session_id, direction, result, leg_results, last4, duration_sec,
-                started_at, audio_state, bytes, content_type, stored_at
+                started_at, audio_state, bytes, content_type, stored_at, answered_ext, answered_name
            FROM call_archive
           WHERE ${where.join(" AND ")}
           ORDER BY started_at DESC

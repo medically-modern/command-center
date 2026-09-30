@@ -185,6 +185,14 @@ export type TimelineEntry =
       pickedUp?: boolean;
       audioState: string;
       dialedBy: string;
+      /**
+       * Who picked up an INBOUND call: the RingCentral extension that answered
+       * and its person's name, saved on the archived call (§5.47d). Blank when
+       * unknown, and always blank on an outbound call — those all leave from
+       * the one shared extension, so they would all name its owner.
+       */
+      answeredExt?: string;
+      answeredName?: string;
       /** RingCentral's own recording uri, for a call our archive has not got yet. */
       recordingUri: string;
       voicemail: {

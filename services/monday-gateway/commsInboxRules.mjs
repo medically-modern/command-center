@@ -316,6 +316,10 @@ export function callEvent(row, dialedBy = "") {
     // before the column existed; see `isFaxCall`.
     callType: String(row?.call_type ?? ""),
     dialedBy: dialedBy || "",
+    // Who picked up an INBOUND call — the extension and its person, from the
+    // archive (§5.47d). Blank when unknown and on every outbound call.
+    answeredExt: row?.answered_ext ? String(row.answered_ext) : "",
+    answeredName: row?.answered_name ? String(row.answered_name) : "",
   };
 }
 
@@ -1427,6 +1431,9 @@ export function buildTimeline({ events = [], resolutions = [] } = {}) {
         pickedUp: !!e.pickedUp,
         audioState: e.audioState,
         dialedBy: e.dialedBy,
+        // "Answered by Victor Guerra (ext 13)" — inbound calls only (§5.47d).
+        answeredExt: e.dir === "in" ? e.answeredExt || "" : "",
+        answeredName: e.dir === "in" ? e.answeredName || "" : "",
         voicemail: vm
           ? { id: vm.id, at: vm.at, durationSec: vm.durationSec, transcript: vm.transcript, audioState: vm.audioState }
           : null,

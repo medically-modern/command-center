@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationMessage } from "@/lib/assignedPatients/messagingApi";
 import type { ItemNumber, ItemState, TimelineEntry } from "./rules";
-import { callLine, defaultNumber, fillNumbers, formatDuration, liveSuggestion, mergeLiveTexts, numberHint, seenThroughFor } from "./timeline";
+import { answeredByLabel, callLine, defaultNumber, fillNumbers, formatDuration, liveSuggestion, mergeLiveTexts, numberHint, seenThroughFor } from "./timeline";
 
 const T = Date.parse("2026-09-23T15:00:00Z");
 
@@ -125,6 +125,24 @@ describe("numbers", () => {
   it("numberHint names the number only when there are several", () => {
     expect(numberHint("1111", [{ last4: "1111" }])).toBe("");
     expect(numberHint("1111", [{ last4: "1111" }, { last4: "2222" }])).toBe("on ···1111");
+  });
+});
+
+describe("answeredByLabel — who picked up (§5.47d)", () => {
+  it("names the extension that answered an inbound call", () => {
+    expect(answeredByLabel(call({ connected: true, missed: false, answeredExt: "13", answeredName: "Test Rep" }))).toBe("Test Rep (ext 13)");
+    // RingCentral's list had no name for it: the extension alone.
+    expect(answeredByLabel(call({ connected: true, missed: false, answeredExt: "13", answeredName: "" }))).toBe("ext 13");
+    expect(answeredByLabel(call({ connected: true, missed: false }))).toBe("");
+  });
+  it("⚠️ never names anyone on an outbound call — they all leave from the one shared extension", () => {
+    expect(answeredByLabel({ dir: "out", answeredExt: "2", answeredName: "Shared Owner" })).toBe("");
+  });
+  it("never on a call nobody answered, whatever the row says", () => {
+    expect(answeredByLabel(call({ answeredExt: "13", answeredName: "Test Rep" }))).toBe("");
+  });
+  it("leaves the headline as it was — the name is its own line", () => {
+    expect(callLine(call({ connected: true, missed: false, answeredExt: "13", answeredName: "Test Rep" }))).toBe("Answered call · 3:12");
   });
 });
 

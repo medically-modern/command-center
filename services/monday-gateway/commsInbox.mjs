@@ -310,10 +310,18 @@ async function archivesPresent(pool) {
   const q = await pool.query(
     `SELECT to_regclass('sms_archive') IS NOT NULL AS texts,
             to_regclass('call_archive') IS NOT NULL AS calls,
-            to_regclass('voicemail_archive') IS NOT NULL AS voicemails`,
+            to_regclass('voicemail_archive') IS NOT NULL AS voicemails,
+            -- Who-picked-up columns (§5.47d). The archive adds them at boot,
+            -- but not while it is switched off (CALL_ARCHIVE_ENABLED=0), and
+            -- a timeline that selected a missing column would fail outright.
+            EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_name = 'call_archive' AND column_name = 'answered_name') AS answered`,
   );
   const r = q.rows[0] || {};
-  presence = { at: Date.now(), texts: r.texts !== false, calls: r.calls !== false, voicemails: r.voicemails !== false };
+  presence = {
+    at: Date.now(), texts: r.texts !== false, calls: r.calls !== false, voicemails: r.voicemails !== false,
+    answered: r.answered === true,
+  };
   return presence;
 }
 const NONE = Promise.resolve({ rows: [] });
@@ -837,7 +845,8 @@ async function loadGroupAll(pool, hmacs) {
     ),
     !has.calls ? NONE : pool.query(
       `SELECT rc_call_id, rc_session_id, phone_hmac, last4, direction, result, leg_results, duration_sec, started_at,
-              audio_state, content_uri, call_type
+              audio_state, content_uri, call_type,
+              ${has.answered ? "answered_ext, answered_name" : "NULL AS answered_ext, NULL AS answered_name"}
          FROM call_archive WHERE phone_hmac = ANY($1) AND call_type IS DISTINCT FROM 'Fax'
         ORDER BY started_at DESC LIMIT 3000`,
       [hmacs],

@@ -462,11 +462,12 @@ describe("callArchive.mjs invariants", () => {
   // which must not erase the fact that a recording existed.
   it("writes the call type, and never lets a re-scan with no type blank a known one", () => {
     const sql = src.slice(src.indexOf("function upsertSql"), src.indexOf("async function upsertRows"));
-    expect(sql).toMatch(/const cols = 15;/);
-    expect(sql).toMatch(/first_seen_at, call_type\)/);
+    // 17 since 2026-09-30: answered_ext + answered_name follow call_type (§5.47d).
+    expect(sql).toMatch(/const cols = 17;/);
+    expect(sql).toMatch(/first_seen_at, call_type,\s*answered_ext, answered_name\)/);
     expect(sql).toMatch(/call_type\s*=\s*COALESCE\(EXCLUDED\.call_type,\s*call_archive\.call_type\)/);
     const rows = src.slice(src.indexOf("async function upsertRows"), src.indexOf("export async function archiveCallRecords"));
-    expect(rows).toMatch(/r\.callType \?\? null,\s*\);/);
+    expect(rows).toMatch(/r\.callType \?\? null,\s*r\.answeredExt \?\? null,/);
     expect(src).toMatch(/ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS call_type TEXT;/);
   });
 

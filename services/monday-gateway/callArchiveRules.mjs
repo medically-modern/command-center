@@ -330,6 +330,114 @@ export function isUnfinished(record) {
   return record?.finished === false || String(record?.result ?? "").trim() === "In Progress";
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Who picked up — the EXTENSION that answered an inbound call (§5.47d)
+ *
+ * Josh, 2026-09-30, after the forwarded-lines setup went live: *"we need to
+ * save who picked up into the database so the calls are saved with his name
+ * and ext number"* — then, narrowed: *"only which ext picked up"*, inbound
+ * only, because every outbound call leaves from the one shared extension and
+ * would all read as that extension's owner.
+ *
+ * Measured on a real call that day (Detailed view): the shared line's record
+ * has a MASTER leg ("Accepted", to the line's own extension) and one fan-out
+ * leg per extension it rang — to ext 2, 13, 8 and 7 at once, each "Stopped" or
+ * "IP Phone Offline" except the one that answered, "Call connected", whose
+ * `to.extensionNumber` was 13. Those fan-out legs carry the extension NUMBER
+ * but no name, so the name comes from the account's extension list
+ * (`extensionDirectory`).
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** An empty directory — what a call is resolved against when the extension
+ *  list could not be read. The number is still saved; the name fills in on a
+ *  later scan (the upsert never blanks a known one). */
+export const EMPTY_DIRECTORY = Object.freeze({ byExt: new Map(), byId: new Map() });
+
+/**
+ * `GET /account/~/extension` records → lookups by extension NUMBER and by id.
+ * The name is the person's (contact first + last), else the extension's own
+ * name — the rule `rcSetup.describeRcSetup` already logs the account with.
+ */
+export function extensionDirectory(records) {
+  const byExt = new Map();
+  const byId = new Map();
+  for (const r of Array.isArray(records) ? records : []) {
+    const id = r?.id !== undefined && r?.id !== null ? String(r.id) : "";
+    const ext = String(r?.extensionNumber ?? "").trim();
+    const first = String(r?.contact?.firstName ?? "").trim();
+    const name = first
+      ? `${first} ${String(r?.contact?.lastName ?? "").trim()}`.trim()
+      : String(r?.name ?? "").trim();
+    const entry = { id, ext, name, type: String(r?.type ?? "") };
+    if (ext) byExt.set(ext, entry);
+    if (id) byId.set(id, entry);
+  }
+  return { byExt, byId };
+}
+
+const lc = (v) => String(v ?? "").trim().toLowerCase();
+
+/** A party on a leg → the extension it names, or null when it names none. */
+function extensionParty(party, directory) {
+  const extNum = String(party?.extensionNumber ?? "").trim();
+  const id = party?.extensionId !== undefined && party?.extensionId !== null ? String(party.extensionId) : "";
+  const hit = (extNum && directory.byExt.get(extNum)) || (id && directory.byId.get(id)) || null;
+  const ext = extNum || hit?.ext || "";
+  if (!ext && !hit) return null;
+  return { ext, name: hit?.name || "", type: hit?.type || "" };
+}
+
+/**
+ * The extension that picked up an INBOUND call, as `{ ext, name }` — or null
+ * when nobody did, when we cannot say, or when the call was outbound.
+ *
+ * In order:
+ *  1. A fan-out leg that "Call connected" to an extension → that extension.
+ *     The longest one if more than one (a transfer rings on).
+ *  2. ⚠️ A leg that connected to something that is NOT a person's extension —
+ *     the old "Take it" forward to a rep's cell (§5.13), an IVR menu, a queue —
+ *     with no person's leg connected: null, never the line's own owner.
+ *  3. Otherwise, an answered call ("Accepted" / "Call connected") that did not
+ *     go to voicemail was picked up on the line the log belongs to — the
+ *     master leg's `to`.
+ * ⚠️ Only a USER extension counts as "who": an IVR menu or a department queue
+ * "connecting" is routing, not a person. With no directory (the list could not
+ * be read) the type is unknown and the extension is taken as it stands.
+ */
+export function answeredByOf(record, directory = EMPTY_DIRECTORY) {
+  if (record?.direction !== "Inbound") return null;
+  const dir = directory && directory.byExt ? directory : EMPTY_DIRECTORY;
+  const legs = Array.isArray(record?.legs) ? record.legs : [];
+  const isPerson = (who) => !who.type || who.type === "User";
+
+  let best = null;
+  let connectedElsewhere = false;
+  for (const leg of legs) {
+    if (leg?.master) continue;
+    if (lc(leg?.result) !== "call connected") continue;
+    const who = extensionParty(leg?.to, dir);
+    // Connected to something that is not a person's extension — a cell phone,
+    // an IVR menu, a queue. Unless a person's leg also connected, nobody we
+    // can name picked up, and the line's own owner certainly did not.
+    if (!who || !who.ext || !isPerson(who)) {
+      connectedElsewhere = true;
+      continue;
+    }
+    const dur = Number(leg?.duration ?? 0) || 0;
+    if (!best || dur > best.dur) best = { ...who, dur };
+  }
+  if (best) return { ext: best.ext, name: best.name || null };
+  if (connectedElsewhere) return null;
+
+  const answered = ["accepted", "call connected"].includes(lc(record?.result));
+  const voicemail = lc(record?.result).includes("voicemail") || legs.some((l) => lc(l?.result).includes("voicemail"));
+  if (!answered || voicemail) return null;
+  const master = legs.find((l) => l?.master) ?? legs[0] ?? null;
+  const who = extensionParty(master?.to ?? record?.to, dir);
+  if (!who || !who.ext || !isPerson(who)) return null;
+  return { ext: who.ext, name: who.name || null };
+}
+
 /**
  * One call-log record → the row we keep, or null if it is not a call we can key
  * (or not over yet — `isUnfinished`).
@@ -342,7 +450,7 @@ export function isUnfinished(record) {
  * multi-megabyte object. `audioState` is `none` for a call that was never
  * recorded, which is a different fact from `pending`.
  */
-export function toCallRow(record) {
+export function toCallRow(record, directory = EMPTY_DIRECTORY) {
   const rcCallId = String(record?.id ?? "").trim();
   const startedAt = String(record?.startTime ?? "").trim();
   if (!rcCallId || !startedAt || Number.isNaN(new Date(startedAt).getTime())) return null;
@@ -351,6 +459,7 @@ export function toCallRow(record) {
   const rec = recordingOf(record);
   const phone = counterpartyNumber(record);
   const legs = Array.isArray(record?.legs) ? record.legs : [];
+  const answeredBy = answeredByOf(record, directory);
 
   return {
     rcCallId,
@@ -377,6 +486,11 @@ export function toCallRow(record) {
     // inbox — can leave the faxes out (commsInboxRules.isFaxCall). Blank when
     // RingCentral does not say.
     callType: String(record?.type ?? "").trim() || null,
+    // Who picked up an INBOUND call: the extension number and its person's
+    // name (§5.47d). Null on outbound calls, missed calls, and whenever it
+    // cannot be said; the upsert never blanks a known value with a null.
+    answeredExt: answeredBy?.ext || null,
+    answeredName: answeredBy?.name || null,
   };
 }
 

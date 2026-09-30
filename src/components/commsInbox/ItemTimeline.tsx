@@ -43,7 +43,7 @@ import {
   type TimelineAttachment,
   type TimelineEntry,
 } from "@/lib/commsInbox/rules";
-import { callLine, formatDuration, liveSuggestion, mergeLiveTexts, numberHint, seenThroughFor } from "@/lib/commsInbox/timeline";
+import { answeredByLabel, callLine, formatDuration, liveSuggestion, mergeLiveTexts, numberHint, seenThroughFor } from "@/lib/commsInbox/timeline";
 import ResolveBar, { type StickyResolution } from "./ResolveBar";
 import { StagePill } from "./pills";
 import { cn } from "@/lib/utils";
@@ -412,6 +412,12 @@ function Entry({ e, entries, numbers }: { e: TimelineEntry; entries: TimelineEnt
       }
     >
       <b className="font-semibold">{callLine(e)}</b>
+      {/* Who picked up an inbound call — the extension that answered (§5.47d). */}
+      {answeredByLabel(e) && (
+        <div className="text-xs">
+          Picked up by <span className="font-medium">{answeredByLabel(e)}</span>
+        </div>
+      )}
       <div className="text-[11px] text-muted-foreground">
         {formatWhen(e.at)}
         {numberHint(e.last4, numbers) ? ` · ${numberHint(e.last4, numbers)}` : ""}
