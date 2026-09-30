@@ -174,6 +174,21 @@ describe("wiring", () => {
     expect(read("inboundCalls.mjs")).toContain("pickInboundParty(body, SELF_NUMBERS)");
   });
 
+  it("⚠️ a connection to the SHARED extension itself is provisioned on the shared path, not a second credential", () => {
+    const src = read("rcUserAuth.mjs");
+    const own = src.slice(src.indexOf("export async function provisionOwnLine"));
+    const shared = own.indexOf("if (await isSharedExtension(link.rows[0].extension_id)) return null;");
+    expect(shared).toBeGreaterThan(0);
+    expect(own.indexOf("token = await accessTokenFor(email);")).toBeGreaterThan(shared);
+    // …and the browser is told, so it asks for the shared line in the first place.
+    expect(src).toContain("sharedLine: await isSharedExtension(row.extension_id),");
+  });
+
+  it("⚠️ the sip-provision floor is per line — an outgoing call's shared provision is not a repeat of the own one", () => {
+    const msg = read("messaging.mjs");
+    expect(msg).toMatch(/const floorKey = `\$\{who \|\| req\.ip \|\| "\?"\}\|[^`]*\|\$\{req\.query\?\.line === "own" \? "own" : "shared"\}`;/);
+  });
+
   it("⚠️ everyone on their own line shows on the phone-health board, assigned or not", () => {
     const src = read("inboundCalls.mjs");
     expect(src).toContain("const answerers = [...new Set([...assigned, ...(await connectedEmails())])];");

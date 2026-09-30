@@ -10,6 +10,7 @@ const base: RcLineState = {
   configured: true,
   connected: false,
   broken: false,
+  sharedLine: false,
   extension: null,
   notice: null,
 };
@@ -29,6 +30,12 @@ describe("phoneLine (§5.13c) — connecting your own login IS being a call answ
 
   it("⚠️ a dead grant stays on 'own' (provisioning says connect again) — never quietly onto Katie's line", () => {
     expect(phoneLine(false, { ...base, connected: true, broken: true })).toEqual({ enabled: true, line: "own" });
+  });
+
+  it("⚠️ connected to the SHARED extension itself (Katie, or her login): rung on the shared line — never a second set of credentials", () => {
+    // Josh 2026-09-30: connected with Katie's login, the browser swapped between
+    // two credentials on one extension and ended refused, looping and silent.
+    expect(phoneLine(false, { ...base, connected: true, sharedLine: true })).toEqual({ enabled: true, line: "shared" });
   });
 
   it("a build without Google sign-in (local dev) rings everyone on the shared line, as before", () => {
@@ -135,5 +142,17 @@ describe("wiring", () => {
   it("⚠️ rcLine asks the gateway on load and on change, never on a timer (INCIDENT_2026-08-20)", () => {
     const src = read("lib/softphone/rcLine.ts");
     expect(src).not.toMatch(/setInterval|setTimeout/);
+  });
+});
+
+describe("the auth refusal names RingCentral's code", () => {
+  it("says which SIP status refused the credentials, when it has one", async () => {
+    const { describeRegistrationFailure } = await import("./registration");
+    expect(describeRegistrationFailure("auth", new Error("SIP/2.0 403 Forbidden"))).toBe(
+      "RingCentral rejected this browser's phone credentials (SIP 403). Fetching fresh ones…",
+    );
+    expect(describeRegistrationFailure("auth", new Error("unauthorized"))).toBe(
+      "RingCentral rejected this browser's phone credentials. Fetching fresh ones…",
+    );
   });
 });

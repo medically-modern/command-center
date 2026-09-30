@@ -35,6 +35,9 @@ export interface RcLineState {
   connected: boolean;
   /** Connected, but the grant died — the person has to connect again. */
   broken: boolean;
+  /** Their line IS the shared extension (Katie's, or somebody using her
+   *  login): they stay on the shared line for everything, as before. */
+  sharedLine: boolean;
   extension: { number: string; name: string } | null;
   /** The outcome of a Connect that just came back, for one toast. */
   notice: { kind: "connected" | "error"; reason: string } | null;
@@ -45,6 +48,7 @@ const INITIAL: RcLineState = {
   configured: false,
   connected: false,
   broken: false,
+  sharedLine: false,
   extension: null,
   notice: null,
 };
@@ -70,7 +74,9 @@ const INITIAL: RcLineState = {
 export function phoneLine(authOff: boolean, s: RcLineState): { enabled: boolean; line: SipLine | null } {
   if (authOff) return { enabled: true, line: "shared" };
   if (!s.loaded) return { enabled: false, line: null };
-  if (s.connected) return { enabled: true, line: "own" };
+  // ⚠️ Connected to the shared extension itself: rung, on the shared line — never
+  // a second set of credentials for the same extension (rcUserAuth.mjs).
+  if (s.connected) return { enabled: true, line: s.sharedLine ? "shared" : "own" };
   return { enabled: false, line: null };
 }
 
@@ -107,7 +113,7 @@ function announceChange(): void {
   }
 }
 
-type KnownStatus = Pick<RcLineState, "configured" | "connected" | "broken" | "extension">;
+type KnownStatus = Pick<RcLineState, "configured" | "connected" | "broken" | "sharedLine" | "extension">;
 
 function myEmail(): string {
   return (getUser()?.email || "").toLowerCase();
@@ -130,6 +136,7 @@ export function lastKnownStatus(raw: string | null, email: string): KnownStatus 
       configured: !!j.configured,
       connected: !!j.connected,
       broken: !!j.broken,
+      sharedLine: !!j.sharedLine,
       extension: j.connected ? j.extension ?? null : null,
     };
   } catch {
@@ -153,7 +160,7 @@ function onStatusFailure(): void {
   }
   const known = state.loaded ? null : lastKnownStatus(raw, myEmail());
   if (state.loaded) return; // keep the answer already on screen
-  set({ loaded: true, ...(known ?? { connected: false, broken: false, extension: null }) });
+  set({ loaded: true, ...(known ?? { connected: false, broken: false, sharedLine: false, extension: null }) });
 }
 
 /** Re-read the status. One request at a time. */
@@ -174,12 +181,14 @@ export function refreshRcLine(): Promise<void> {
         configured?: boolean;
         connected?: boolean;
         broken?: boolean;
+        sharedLine?: boolean;
         extension?: { number?: string; name?: string };
       };
       const st: KnownStatus = {
         configured: !!j.configured,
         connected: !!j.connected,
         broken: !!j.broken,
+        sharedLine: !!j.connected && !!j.sharedLine,
         extension: j.connected ? { number: j.extension?.number || "", name: j.extension?.name || "" } : null,
       };
       rememberStatus(st);

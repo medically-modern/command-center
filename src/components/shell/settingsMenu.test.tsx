@@ -53,6 +53,7 @@ const line = {
   configured: true,
   connected: true,
   broken: false,
+  sharedLine: false,
   extension: { number: "13", name: "Me" } as { number: string; name: string } | null,
   notice: null,
 };

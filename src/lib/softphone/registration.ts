@@ -173,8 +173,12 @@ export function describeRegistrationFailure(kind: RegistrationFailure, raw: unkn
   switch (kind) {
     case "full":
       return "The line already has five devices registered, so this browser can't ring right now. It retries every minute — quitting a RingCentral app or a spare Command Center browser frees a slot.";
-    case "auth":
-      return "RingCentral rejected this browser's phone credentials. Fetching fresh ones…";
+    case "auth": {
+      // RingCentral's own status code, so a refusal can be told from another
+      // without a browser console (2026-09-30: "rejected" alone left us guessing).
+      const code = /\b(401|403|407)\b/.exec(messageOf(raw))?.[1];
+      return `RingCentral rejected this browser's phone credentials${code ? ` (SIP ${code})` : ""}. Fetching fresh ones…`;
+    }
     case "gateway":
       // Names the half that is actually down. "Can't reach RingCentral" sent
       // everyone to look at RingCentral for a gateway that wasn't answering.

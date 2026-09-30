@@ -169,7 +169,9 @@ export function useCallStatus() {
   const ext = rcLine.extension;
   // Only said once somebody HAS connected: for everyone else the status reads
   // exactly as it did before §5.13c.
-  const lineLabel = line === "own" ? `Your own line${ext?.number ? ` · Ext. ${ext.number}` : ""}` : null;
+  const extNote = ext?.number ? ` · Ext. ${ext.number}` : "";
+  const lineLabel =
+    line === "own" ? `Your own line${extNote}` : rcLine.connected && rcLine.sharedLine ? `Main line${extNote}` : null;
 
   return {
     phone,

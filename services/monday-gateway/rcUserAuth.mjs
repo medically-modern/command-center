@@ -216,6 +216,10 @@ export async function provisionOwnLine(email) {
   if (!rcUserConfigured() || !email) return null;
   let token;
   try {
+    const link = await _pool.query(`SELECT extension_id FROM rc_user_links WHERE email = $1`, [email]);
+    if (!link.rows[0]) return null;
+    // Their line IS the shared extension: the shared path, as before.
+    if (await isSharedExtension(link.rows[0].extension_id)) return null;
     token = await accessTokenFor(email);
   } catch (e) {
     if (e instanceof ReconnectNeeded) return { status: 409, body: { error: e.message, reconnect: true } };
@@ -272,11 +276,39 @@ async function keepAlive() {
 
 /** The account the gateway's JWT belongs to — a person may only connect a
  *  login from the SAME RingCentral account. */
-async function companyAccountId() {
+let _company = null;
+/** The account AND extension the gateway's JWT belongs to (the shared line,
+ *  Katie's). Read once; both are fixed for the life of the JWT. */
+async function companyLine() {
+  if (_company) return _company;
   const res = await rcApiFetch("/restapi/v1.0/account/~/extension/~", {}, { caller: "rc-user-connect" });
   if (!res.ok) throw new Error(`could not read the company account (${res.status})`);
   const j = await res.json();
-  return String((j.account && j.account.id) || "");
+  _company = { accountId: String((j.account && j.account.id) || ""), extensionId: String(j.id || "") };
+  return _company;
+}
+
+async function companyAccountId() {
+  return (await companyLine()).accountId;
+}
+
+/**
+ * ⚠️ Is this person's "own" line the SHARED extension itself? Katie connecting
+ * her own login — or anyone connecting with hers — lands on the very extension
+ * the gateway's JWT provisions. Giving that a second set of SIP credentials
+ * from the other app, on the same extension and the same browser instanceId,
+ * and swapping between the two for every outgoing call, is what left Josh
+ * refused, re-provisioning in a loop and with silent calls (2026-09-30). For
+ * them the shared line IS their line: provision it exactly as before.
+ * False when it cannot be told — the own-line path then runs as normal.
+ */
+async function isSharedExtension(extensionId) {
+  try {
+    const c = await companyLine();
+    return !!extensionId && !!c.extensionId && String(extensionId) === c.extensionId;
+  } catch {
+    return false;
+  }
 }
 
 export function registerRcUserAuth({ app, pool, allowedOrigins }) {
@@ -373,7 +405,7 @@ export function registerRcUserAuth({ app, pool, allowedOrigins }) {
     if (!rcUserConfigured()) return res.json({ configured: false, connected: false });
     try {
       const r = await _pool.query(
-        `SELECT extension_number, extension_name, broken_at, connected_at FROM rc_user_links WHERE email = $1`,
+        `SELECT extension_id, extension_number, extension_name, broken_at, connected_at FROM rc_user_links WHERE email = $1`,
         [email],
       );
       const row = r.rows[0];
@@ -382,6 +414,9 @@ export function registerRcUserAuth({ app, pool, allowedOrigins }) {
         configured: true,
         connected: true,
         broken: !!row.broken_at,
+        // Their line is the shared extension itself — the browser then stays on
+        // the shared line for everything (see isSharedExtension).
+        sharedLine: await isSharedExtension(row.extension_id),
         extension: { number: row.extension_number || "", name: row.extension_name || "" },
       });
     } catch (e) {

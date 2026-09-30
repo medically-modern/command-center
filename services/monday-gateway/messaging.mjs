@@ -461,7 +461,10 @@ export function registerMessaging({ app }) {
     // not each other's floor; a loop is one tab, so it always keys the same.
     // The floor sits BELOW the client ladder's first auth rung (10s), so a
     // genuine credential recovery is never refused.
-    const floorKey = `${who || req.ip || "?"}|${String(req.headers["user-agent"] || "")}`;
+    // ⚠️ And by LINE (§5.13c): a connected person's browser provisions its own
+    // line for answering and the shared one for an outgoing call, and the
+    // second must not be refused as a repeat of the first.
+    const floorKey = `${who || req.ip || "?"}|${String(req.headers["user-agent"] || "")}|${req.query?.line === "own" ? "own" : "shared"}`;
     const lastAt = sipProvisionLast.get(floorKey) || 0;
     if (Date.now() - lastAt < SIP_PROVISION_FLOOR_MS) {
       res.set("Retry-After", String(Math.ceil(SIP_PROVISION_FLOOR_MS / 1000)));
