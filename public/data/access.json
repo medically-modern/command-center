@@ -162,7 +162,9 @@
     },
     "victor@medicallymodern.com": {
       "name": "Victor",
-      "roles": []
+      "roles": [
+        "profile"
+      ]
     }
   },
   "callAnswerers": [
