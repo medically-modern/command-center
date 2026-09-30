@@ -15,7 +15,7 @@
  * dependency arrays (the incident's rule 2).
  */
 import { useEffect, useSyncExternalStore } from "react";
-import { getIdToken, onAuthChange } from "@/lib/shared/auth";
+import { getIdToken, getUser, onAuthChange } from "@/lib/shared/auth";
 import { clearCachedSipInfo, type SipLine } from "./registration";
 
 const GATEWAY =
@@ -24,6 +24,8 @@ const GATEWAY =
 /** Written by the tab that connected or disconnected; every other tab of the
  *  browser re-reads the status when it changes. */
 export const LINE_CHANGED_KEY = "mm-rc-line-changed";
+/** The last status the gateway gave this browser, per person. */
+export const LINE_STATUS_KEY = "mm-rc-line-status";
 
 export interface RcLineState {
   /** The status has been asked (or there is nothing to ask). */
@@ -48,21 +50,28 @@ const INITIAL: RcLineState = {
 };
 
 /**
- * Whether this browser's phone should be on, and on which line.
+ * Whether this browser answers incoming calls, and on which line.
  *
- * ⚠️ Nothing registers until the status is in: an answerer who has connected
- * must not first register on the shared line, spending one of Katie's five for
- * the second it takes to learn otherwise. A failed status read counts as "not
- * connected", so an answerer is never left without a phone by it.
+ * ⚠️ **Connecting your own RingCentral login IS being a call answerer** (Josh,
+ * 2026-09-30: *"assigned answerers now shifts to whos logged in on rc"*). The
+ * manager-assigned list on /access (`callAnswerers`, five at most on Katie's
+ * extension, §5.13b) no longer decides anything. Nobody is rung on the shared
+ * line; outgoing calls still go out on it exactly as before (softphone.ts
+ * `dialingShared`).
+ *
+ * `authOff` is a build without Google sign-in (local dev): nobody can connect
+ * there, so everyone rings on the shared line, as before, or nothing could be
+ * tried locally.
  *
  * ⚠️ A connected person whose grant died stays on "own" — provisioning then
- * says "connect again" — rather than dropping back to the shared line, which
- * would quietly take one of Katie's five (rcUserAuth.mjs says the same).
+ * says "connect again" and the badge turns red — rather than silently going
+ * quiet or dropping onto Katie's line (rcUserAuth.mjs says the same).
  */
-export function phoneLine(answerer: boolean, s: RcLineState): { enabled: boolean; line: SipLine | null } {
+export function phoneLine(authOff: boolean, s: RcLineState): { enabled: boolean; line: SipLine | null } {
+  if (authOff) return { enabled: true, line: "shared" };
   if (!s.loaded) return { enabled: false, line: null };
   if (s.connected) return { enabled: true, line: "own" };
-  return answerer ? { enabled: true, line: "shared" } : { enabled: false, line: null };
+  return { enabled: false, line: null };
 }
 
 let state: RcLineState = INITIAL;
@@ -98,6 +107,55 @@ function announceChange(): void {
   }
 }
 
+type KnownStatus = Pick<RcLineState, "configured" | "connected" | "broken" | "extension">;
+
+function myEmail(): string {
+  return (getUser()?.email || "").toLowerCase();
+}
+
+function rememberStatus(st: KnownStatus): void {
+  try {
+    storage()?.setItem(LINE_STATUS_KEY, JSON.stringify({ email: myEmail(), ...st }));
+  } catch {
+    /* storage disabled */
+  }
+}
+
+/** The last status this browser was told for the signed-in person, if any. */
+export function lastKnownStatus(raw: string | null, email: string): KnownStatus | null {
+  try {
+    const j = JSON.parse(raw || "null") as (KnownStatus & { email?: string }) | null;
+    if (!j || !email || j.email !== email) return null;
+    return {
+      configured: !!j.configured,
+      connected: !!j.connected,
+      broken: !!j.broken,
+      extension: j.connected ? j.extension ?? null : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A status read that FAILED is not an answer. ⚠️ Treating it as "not
+ * connected" would put a connected person back on Katie's line — spending one
+ * of her five, the thing this exists to stop. So a failure keeps what this
+ * browser last heard for this person; only somebody it has never heard about
+ * is treated as not connected (which is where everybody was before §5.13c).
+ */
+function onStatusFailure(): void {
+  let raw: string | null = null;
+  try {
+    raw = storage()?.getItem(LINE_STATUS_KEY) ?? null;
+  } catch {
+    /* storage disabled */
+  }
+  const known = state.loaded ? null : lastKnownStatus(raw, myEmail());
+  if (state.loaded) return; // keep the answer already on screen
+  set({ loaded: true, ...(known ?? { connected: false, broken: false, extension: null }) });
+}
+
 /** Re-read the status. One request at a time. */
 export function refreshRcLine(): Promise<void> {
   if (inFlight) return inFlight;
@@ -109,7 +167,7 @@ export function refreshRcLine(): Promise<void> {
     try {
       const res = await fetch(`${GATEWAY}/rc/user/status`, { headers: authHeaders() });
       if (!res.ok) {
-        set({ loaded: true, connected: false, broken: false, extension: null });
+        onStatusFailure();
         return;
       }
       const j = (await res.json()) as {
@@ -118,15 +176,16 @@ export function refreshRcLine(): Promise<void> {
         broken?: boolean;
         extension?: { number?: string; name?: string };
       };
-      set({
-        loaded: true,
+      const st: KnownStatus = {
         configured: !!j.configured,
         connected: !!j.connected,
         broken: !!j.broken,
         extension: j.connected ? { number: j.extension?.number || "", name: j.extension?.name || "" } : null,
-      });
+      };
+      rememberStatus(st);
+      set({ loaded: true, ...st });
     } catch {
-      set({ loaded: true, connected: false, broken: false, extension: null });
+      onStatusFailure();
     } finally {
       inFlight = null;
     }

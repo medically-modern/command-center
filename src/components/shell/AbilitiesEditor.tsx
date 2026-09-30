@@ -4,10 +4,9 @@
  * 2026-09-25). It renders inside `AccessAdminPage`'s `.cc-us` scope, which is
  * where its classes are styled (`pages/access/users.css`).
  *
- * ⚠️ **"Answers calls" lives ONLY here** since 2026-09-23 — the page's
- * separate "Answer calls in the browser" roster was a second control onto the
- * same `callAnswerers[]` list and was removed (Josh). The N-of-5 count moved
- * onto the chip. The role grid is untouched.
+ * ⚠️ **There is no "Answers calls" control any more** (Josh, 2026-09-30).
+ * Whoever connects their own RingCentral login in the settings menu is rung
+ * (§5.13c); `callAnswerers[]` is no longer read. The role grid is untouched.
  *
  * ⚠️ **Every ability renders ON until somebody turns it off**, because that is
  * what the config means (§5.39c): absent is granted. A chip that started off
@@ -25,7 +24,7 @@
  * too, which is a page describing a rule it no longer implements.
  */
 import {
-  ArrowLeftRight, BarChart3, Check, Eye, KeyRound, LayoutGrid, MessageSquare, Package, Pencil, Phone,
+  ArrowLeftRight, BarChart3, Eye, KeyRound, LayoutGrid, MessageSquare, Package, Pencil,
   Route, Shield, Users,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
@@ -41,7 +40,7 @@ import {
   isAdmin,
   OPT_IN_ABILITIES,
 } from "@/lib/shell/abilities";
-import { ABILITIES, HOME_VIEWS, MAX_CALL_ANSWERERS, type AccessConfig, type Ability, type HomeView } from "@/lib/accessStore";
+import { ABILITIES, HOME_VIEWS, type AccessConfig, type Ability, type HomeView } from "@/lib/accessStore";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 const ICON = { width: 12, height: 12 } as const;
@@ -58,30 +57,20 @@ export function AbilitiesEditor({
   config,
   isManager,
   isSelf,
-  answersCalls,
-  answerSlotsFull,
-  answerCount,
   onAbility,
   onHomeView,
   onAdmin,
   onManager,
-  onAnswersCalls,
 }: {
   email: string;
   config: AccessConfig;
   isManager: boolean;
   /** You cannot demote or un-admin yourself — the self-lockout guard. */
   isSelf: boolean;
-  answersCalls: boolean;
-  /** All five RingCentral slots are taken and this person holds none (§5.13b). */
-  answerSlotsFull: boolean;
-  /** How many of the MAX_CALL_ANSWERERS slots are taken, company-wide. */
-  answerCount: number;
   onAbility: (ability: Ability, on: boolean) => void;
   onHomeView: (view: HomeView, on: boolean) => void;
   onAdmin: (on: boolean) => void;
   onManager: (on: boolean) => void;
-  onAnswersCalls: (on: boolean) => void;
 }) {
   const views = homeViewsOf(email, config);
   const admin = isAdmin(email, config);
@@ -168,36 +157,14 @@ export function AbilitiesEditor({
             );
           })}
 
-          {/* ⚠️⚠️ **"Answers calls" and "Manager" are on this row because
-              Brandon's own card has them there**, and Josh sent that card with
-              *"i want everything on this list functional"* (2026-09-19). They
-              are NOT `perms` keys — they write `callAnswerers[]` and
-              `managers[]` — so they take their own handlers rather than
-              widening `Ability`, and they go through the SAME writers the
-              sections above use. A second door onto one writer is fine; a
-              second opinion about one value is not (§5.31c), and both of these
-              render straight from the config. */}
-          <button
-            type="button"
-            // ⚠️ aria-disabled, not disabled: a disabled button shows no tooltip
-            // in most browsers, and the tooltip is the only thing saying WHY.
-            onClick={() => {
-              if (!answerSlotsFull) onAnswersCalls(!answersCalls);
-            }}
-            aria-disabled={answerSlotsFull}
-            aria-pressed={answersCalls}
-            title={
-              answerSlotsFull
-                ? `All ${MAX_CALL_ANSWERERS} browser-answering slots are taken — turn somebody else off first`
-                : "Only people with this on are shown incoming patient calls, and they answer them in the browser. RingCentral allows five devices on the main line, and every browser this person opens counts as one."
-            }
-            className={cn("mgr-toggle", answersCalls && "on")}
-          >
-            {answersCalls && <Check style={ICON} />}
-            <Phone style={ICON} /> Answers calls
-            <span className="cnt">{answerCount}/{MAX_CALL_ANSWERERS}</span>
-          </button>
-
+          {/* ⚠️ **"Manager" is on this row because Brandon's own card has it
+              there**, and Josh sent that card with *"i want everything on this
+              list functional"* (2026-09-19). It is NOT a `perms` key — it
+              writes `managers[]` — so it takes its own handler rather than
+              widening `Ability`, through the same writer the sections above
+              use. The "Answers calls" chip that sat beside it was removed on
+              2026-09-30: connecting your own RingCentral login in the settings
+              menu is what makes calls ring you now (§5.13c). */}
           <button
             type="button"
             onClick={() => onManager(!isManager)}

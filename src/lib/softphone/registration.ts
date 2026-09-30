@@ -247,17 +247,19 @@ interface CachedSipInfo {
   email: string;
   at: number;
   sipInfo: SipInfo;
-  /** Absent on entries written before §5.13c — those were all shared. */
-  line?: SipLine;
+}
+
+/** ⚠️ The shared line keeps the key it has always had, so nothing about how
+ *  the shared line is cached changes; a person's own line (§5.13c) is kept
+ *  beside it under its own key, so neither ever overwrites the other. */
+export function sipInfoKeyFor(line: SipLine): string {
+  return line === "own" ? `${SIP_INFO_KEY}:own` : SIP_INFO_KEY;
 }
 
 /**
- * The cached provision, if it is this person's, for this line, and younger
- * than the TTL. Scoped to the signed-in email so a shared machine handed to
- * somebody else re-provisions rather than reusing a device record minted for
- * the last user — and to the LINE, so a person who connects their own login on
- * another machine does not keep registering on the shared line here for the
- * rest of the week.
+ * The cached provision, if it is this person's and younger than the TTL.
+ * Scoped to the signed-in email so a shared machine handed to somebody else
+ * re-provisions rather than reusing a device record minted for the last user.
  */
 export function readCachedSipInfo(
   storage: StorageLike,
@@ -266,11 +268,10 @@ export function readCachedSipInfo(
   line: SipLine = "shared",
 ): SipInfo | null {
   try {
-    const raw = storage.getItem(SIP_INFO_KEY);
+    const raw = storage.getItem(sipInfoKeyFor(line));
     if (!raw) return null;
     const c = JSON.parse(raw) as Partial<CachedSipInfo>;
     if (!c || c.email !== email.toLowerCase()) return null;
-    if ((c.line ?? "shared") !== line) return null;
     if (typeof c.at !== "number" || now - c.at > SIP_INFO_TTL_MS || now < c.at) return null;
     const s = c.sipInfo;
     if (!s || !s.username || !s.domain || !s.outboundProxy) return null;
@@ -287,9 +288,9 @@ export function writeCachedSipInfo(
   now: number,
   line: SipLine = "shared",
 ): void {
-  const c: CachedSipInfo = { email: email.toLowerCase(), at: now, sipInfo, line };
+  const c: CachedSipInfo = { email: email.toLowerCase(), at: now, sipInfo };
   try {
-    storage.setItem(SIP_INFO_KEY, JSON.stringify(c));
+    storage.setItem(sipInfoKeyFor(line), JSON.stringify(c));
   } catch {
     /* storage disabled */
   }
@@ -298,6 +299,7 @@ export function writeCachedSipInfo(
 export function clearCachedSipInfo(storage: StorageLike): void {
   try {
     storage.removeItem(SIP_INFO_KEY);
+    storage.removeItem(sipInfoKeyFor("own"));
   } catch {
     /* storage disabled */
   }

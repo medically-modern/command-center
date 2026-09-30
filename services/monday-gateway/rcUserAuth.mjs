@@ -36,7 +36,6 @@ import {
   authorizeUrl,
   deriveKey,
   dueForKeepAlive,
-  extensionNumbers,
   grantIsDead,
   openToken,
   parseTokenResponse,
@@ -64,7 +63,6 @@ CREATE TABLE IF NOT EXISTS rc_user_links (
   extension_id      TEXT NOT NULL,
   extension_number  TEXT,
   extension_name    TEXT,
-  staff_numbers     TEXT[] NOT NULL DEFAULT '{}', -- the extension's own DIDs (staff, not patients)
   refresh_sealed    TEXT NOT NULL,           -- AES-GCM; never the plain token
   refresh_expires_at TIMESTAMPTZ NOT NULL,
   broken_at         TIMESTAMPTZ,             -- the grant died; the person must connect again
@@ -73,29 +71,37 @@ CREATE TABLE IF NOT EXISTS rc_user_links (
 );
 `;
 
+/**
+ * Everyone who has connected their own line (§5.13c). They ring without being
+ * an assigned answerer, so the phone-health board has to be told about them —
+ * it would otherwise never list them, and a connected person whose browser
+ * stopped ringing would show nowhere. [] when unavailable.
+ */
+export async function connectedEmails() {
+  if (!_pool || !_schemaReady) return [];
+  try {
+    const r = await _pool.query(`SELECT email FROM rc_user_links ORDER BY email`);
+    return r.rows.map((row) => String(row.email));
+  } catch {
+    return [];
+  }
+}
+
 /** Thrown when a connected person's grant is gone. */
 export class ReconnectNeeded extends Error {}
 
 let _pool = null;
+/** The links table exists. Until it does, nobody has an own line and every
+ *  provision takes the shared path exactly as before — a table that could not
+ *  be created must never take the shared line down with it. */
+let _schemaReady = false;
 const _access = new Map(); // email → { token, expiresAt }
-const _refreshing = new Map(); // email → Promise<string>
-let _staffNumbers = new Set();
+const _refreshing = new Map(); // email → Promise<string | null>
 
 export function rcUserConfigured() {
-  return !!(_pool && RC_USER_CLIENT_ID && RC_USER_CLIENT_SECRET && REDIRECT_URI && SEAL_KEY && STATE_KEY);
-}
-
-/** Every connected person's own numbers. inboundCalls.mjs treats a call FROM
- *  one of these as ours, as it does the main line — a rep dialling out from
- *  their own extension must not pop a card on everybody's screen. */
-export function staffNumbers() {
-  return [..._staffNumbers];
-}
-
-async function loadStaffNumbers() {
-  if (!_pool) return;
-  const r = await _pool.query(`SELECT staff_numbers FROM rc_user_links`);
-  _staffNumbers = new Set(r.rows.flatMap((row) => row.staff_numbers || []));
+  return !!(
+    _pool && _schemaReady && RC_USER_CLIENT_ID && RC_USER_CLIENT_SECRET && REDIRECT_URI && SEAL_KEY && STATE_KEY
+  );
 }
 
 function basicAuth() {
@@ -124,37 +130,64 @@ async function rcAs(token, path, init = {}) {
   });
 }
 
-async function markBroken(email) {
+/**
+ * Mark the grant this refresh STARTED from as dead. Conditional on the sealed
+ * value, so a refresh that lost a race to a reconnect cannot break the NEW
+ * grant. True when it was still the current one.
+ */
+async function markBroken(email, sealedAtStart) {
+  const r = await _pool.query(
+    `UPDATE rc_user_links SET broken_at = now(), updated_at = now() WHERE email = $1 AND refresh_sealed = $2`,
+    [email, sealedAtStart],
+  );
+  if (r.rowCount === 0) return false;
   _access.delete(email);
-  await _pool.query(`UPDATE rc_user_links SET broken_at = now(), updated_at = now() WHERE email = $1`, [email]);
+  return true;
 }
 
-/** Refresh one person's grant. One at a time per person: RingCentral ROTATES
- *  the refresh token, so two refreshes racing would leave one of them holding
- *  a token that no longer works. */
+/** The link changed under a refresh (reconnected or disconnected meanwhile):
+ *  whatever the NEW state holds — the reconnect's token, or none. */
+function afterLostRace(email) {
+  const cur = _access.get(email);
+  return cur && Date.now() < cur.expiresAt ? cur.token : null;
+}
+
+/**
+ * Refresh one person's grant. One at a time per person: RingCentral ROTATES
+ * the refresh token, so two refreshes racing would leave one of them holding
+ * a token that no longer works.
+ *
+ * ⚠️ Every write is conditional on the sealed token the refresh started from.
+ * A reconnect or disconnect can land while RingCentral is answering; without
+ * the condition an older refresh would overwrite the new grant, mark it
+ * broken, or cache a token for a link that was just deleted.
+ *
+ * @returns the access token, or null when the link is gone.
+ */
 function refreshGrant(email, row) {
   const running = _refreshing.get(email);
   if (running) return running;
   const p = (async () => {
     const refreshToken = openToken(SEAL_KEY, row.refresh_sealed);
     if (!refreshToken) {
-      await markBroken(email);
+      if (!(await markBroken(email, row.refresh_sealed))) return afterLostRace(email);
       throw new ReconnectNeeded("Your RingCentral connection can't be read — connect again");
     }
     const r = await tokenCall({ grant_type: "refresh_token", refresh_token: refreshToken });
     if (!r.ok) {
       if (grantIsDead(r.status, r.body)) {
-        await markBroken(email);
+        if (!(await markBroken(email, row.refresh_sealed))) return afterLostRace(email);
         throw new ReconnectNeeded("Your RingCentral connection has expired — connect again");
       }
       throw new Error(`RingCentral sign-in refresh failed (${r.status})`);
     }
     const g = parseTokenResponse(r.body, Date.now());
-    await _pool.query(
+    const upd = await _pool.query(
       `UPDATE rc_user_links SET refresh_sealed = $2, refresh_expires_at = $3, broken_at = NULL, updated_at = now()
-        WHERE email = $1`,
-      [email, sealToken(SEAL_KEY, g.refreshToken), new Date(g.refreshExpiresAt)],
+        WHERE email = $1 AND refresh_sealed = $4`,
+      [email, sealToken(SEAL_KEY, g.refreshToken), new Date(g.refreshExpiresAt), row.refresh_sealed],
     );
+    if (upd.rowCount === 0) return afterLostRace(email);
     _access.set(email, { token: g.accessToken, expiresAt: g.accessExpiresAt });
     return g.accessToken;
   })();
@@ -186,7 +219,10 @@ export async function provisionOwnLine(email) {
     token = await accessTokenFor(email);
   } catch (e) {
     if (e instanceof ReconnectNeeded) return { status: 409, body: { error: e.message, reconnect: true } };
-    throw e;
+    // ⚠️ A database or RingCentral fault here must not take the SHARED line
+    // down for everybody: log it and let the caller provision as before.
+    console.warn(`rc_user own-line lookup failed for ${email}: ${(e && e.message) || e}`);
+    return null;
   }
   if (!token) return null;
   const go = (t) =>
@@ -201,7 +237,9 @@ export async function provisionOwnLine(email) {
     const r = await _pool.query(`SELECT * FROM rc_user_links WHERE email = $1`, [email]);
     if (!r.rows[0]) return null;
     try {
-      up = await go(await refreshGrant(email, r.rows[0]));
+      const fresh = await refreshGrant(email, r.rows[0]);
+      if (!fresh) return null;
+      up = await go(fresh);
     } catch (e) {
       if (e instanceof ReconnectNeeded) return { status: 409, body: { error: e.message, reconnect: true } };
       throw e;
@@ -248,7 +286,9 @@ export function registerRcUserAuth({ app, pool, allowedOrigins }) {
   } else {
     pool
       .query(SCHEMA)
-      .then(loadStaffNumbers)
+      .then(() => {
+        _schemaReady = true;
+      })
       .catch((e) => console.error("rc_user_links schema failed:", e.message));
     if (!RC_USER_CLIENT_ID || !RC_USER_CLIENT_SECRET) {
       console.warn("WARN: RC_USER_CLIENT_ID / RC_USER_CLIENT_SECRET not set — per-person RingCentral lines are OFF");
@@ -298,21 +338,14 @@ export function registerRcUserAuth({ app, pool, allowedOrigins }) {
       if (!accountId || accountId !== (await companyAccountId())) {
         return fail("That RingCentral login belongs to a different company account");
       }
-      let numbers = [];
-      try {
-        const nr = await rcAs(g.accessToken, "/restapi/v1.0/account/~/extension/~/phone-number?perPage=100");
-        if (nr.ok) numbers = extensionNumbers(await nr.json());
-      } catch {
-        /* best effort — only used to recognise our own outbound calls */
-      }
       await _pool.query(
         `INSERT INTO rc_user_links
-           (email, account_id, extension_id, extension_number, extension_name, staff_numbers, refresh_sealed, refresh_expires_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           (email, account_id, extension_id, extension_number, extension_name, refresh_sealed, refresh_expires_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT (email) DO UPDATE SET
            account_id = EXCLUDED.account_id, extension_id = EXCLUDED.extension_id,
            extension_number = EXCLUDED.extension_number, extension_name = EXCLUDED.extension_name,
-           staff_numbers = EXCLUDED.staff_numbers, refresh_sealed = EXCLUDED.refresh_sealed,
+           refresh_sealed = EXCLUDED.refresh_sealed,
            refresh_expires_at = EXCLUDED.refresh_expires_at, broken_at = NULL,
            connected_at = now(), updated_at = now()`,
         [
@@ -321,13 +354,11 @@ export function registerRcUserAuth({ app, pool, allowedOrigins }) {
           String(ext.id || g.ownerId),
           String(ext.extensionNumber || ""),
           String(ext.name || ""),
-          numbers,
           sealToken(SEAL_KEY, g.refreshToken),
           new Date(g.refreshExpiresAt),
         ],
       );
       _access.set(st.email, { token: g.accessToken, expiresAt: g.accessExpiresAt });
-      await loadStaffNumbers().catch(() => {});
       console.log(`rc_user connected: ${st.email} → ext ${ext.extensionNumber || "?"}`);
       res.redirect(302, withOutcome(back, "connected"));
     } catch (e) {
@@ -365,7 +396,6 @@ export function registerRcUserAuth({ app, pool, allowedOrigins }) {
     try {
       const r = await _pool.query(`DELETE FROM rc_user_links WHERE email = $1 RETURNING refresh_sealed`, [email]);
       _access.delete(email);
-      await loadStaffNumbers().catch(() => {});
       const token = r.rows[0] && openToken(SEAL_KEY, r.rows[0].refresh_sealed);
       // Best effort: the row is already gone, which is what stops us using it.
       if (token && RC_USER_CLIENT_ID) {

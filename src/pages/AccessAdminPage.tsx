@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccessContext } from "@/components/AccessProvider";
 import { ROLES } from "@/lib/config";
-import { MAX_CALL_ANSWERERS, type RoleFilter } from "@/lib/accessStore";
+import { type RoleFilter } from "@/lib/accessStore";
 import PhoneLineHealth from "@/components/inboundCalls/PhoneLineHealth";
 import { AbilitiesEditor } from "@/components/shell/AbilitiesEditor";
 import { HOME_VIEW_TAB, homeViewsOf } from "@/lib/shell/abilities";
@@ -72,7 +72,6 @@ export default function AccessAdminPage() {
     toggleProcessorRole,
     setRoleFilter,
     setRoleOrder,
-    setCallAnswerer,
     setAbility,
     setHomeView,
     setAdmin,
@@ -116,7 +115,6 @@ export default function AccessAdminPage() {
     new Set([...config.managers.map(norm), ...Object.keys(config.processors).map(norm)]),
   ).sort();
 
-  const answerers = (config.callAnswerers || []).map(norm);
   const admins = (config.admins ?? []).map(norm);
 
   const onAddManager = () => {
@@ -146,9 +144,6 @@ export default function AccessAdminPage() {
             <b>abilities</b> that unlock actions. Managers can open this page. Changes sync across devices.
           </div>
         </div>
-        <span className="xs muted" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
-          {answerers.length} of {MAX_CALL_ANSWERERS} call-answering devices in use
-        </span>
       </header>
 
       <div className="acc-body">
@@ -194,7 +189,9 @@ export default function AccessAdminPage() {
             assigning somebody is not the same as their browser actually being
             registered, and until now nothing anywhere showed the difference —
             not the page, not the gateway (§5.13b). */}
-        <PhoneLineHealth answerers={answerers} />
+        {/* Everyone who connected their own RingCentral line (§5.13c) — the
+            gateway adds them itself; there is no assigned list to pass now. */}
+        <PhoneLineHealth answerers={[]} />
 
         {allEmails.length === 0 ? (
           <p className="small muted">No one added yet. Add a person above.</p>
@@ -220,7 +217,6 @@ export default function AccessAdminPage() {
                   <span className="chips">
                     {admins.includes(pe) && <span className="chip navy">Admin</span>}
                     {isManager && <span className="chip amber">Manager</span>}
-                    {answerers.includes(pe) && <span className="chip green">Answers calls</span>}
                     <span className="chip">{viewLabel}</span>
                   </span>
                   {profile ? (
@@ -270,18 +266,10 @@ export default function AccessAdminPage() {
                   config={config}
                   isManager={isManager}
                   isSelf={isSelf}
-                  answersCalls={answerers.includes(pe)}
-                  answerSlotsFull={!answerers.includes(pe) && answerers.length >= MAX_CALL_ANSWERERS}
-                  answerCount={answerers.length}
                   onAbility={(a, on) => setAbility(pe, a, on)}
                   onHomeView={(v, on) => setHomeView(pe, v, on)}
                   onAdmin={(on) => setAdmin(pe, on)}
                   onManager={(on) => setManager(pe, on)}
-                  onAnswersCalls={(on) => {
-                    if (!setCallAnswerer(pe, on)) {
-                      toast.error(`All ${MAX_CALL_ANSWERERS} browser-answering slots are taken. Turn somebody else off first.`);
-                    }
-                  }}
                 />
 
                 {/* Bars: checkbox + filter + SOP order */}

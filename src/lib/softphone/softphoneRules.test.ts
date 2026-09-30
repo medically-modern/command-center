@@ -77,10 +77,12 @@ describe("one registration per browser, no surprises from the SDK", () => {
   });
 });
 
-describe("only assigned answerers are rung — and a tab can take the phone over", () => {
-  it("the host reads the assignment from access.json and gates the stream, the cards and the store on it", () => {
+describe("only people on their own RingCentral line are rung — and a tab can take the phone over", () => {
+  it("the host gates the stream, the cards and the store on the person's OWN connected line (§5.13c)", () => {
     const host = codeOnly(read("src/components/inboundCalls/IncomingCallHost.tsx"));
-    expect(host).toMatch(/canAnswerCalls\(email, config\)/);
+    // Since 2026-09-30 connecting IS being a call answerer; the /access list no longer decides.
+    expect(host).toMatch(/phoneLine\(!authRequired\(\), rcLine\)/);
+    expect(host).not.toMatch(/canAnswerCalls\(/);
     expect(host).toMatch(/useInboundCalls\(enabled\)/);
     expect(host).toMatch(/setEnabled\(enabled\)/);
     expect(host).toMatch(/enabled && merged\.map/);
@@ -93,12 +95,11 @@ describe("only assigned answerers are rung — and a tab can take the phone over
     expect(reg).not.toMatch(/BROWSER_RING_KEY/);
   });
 
-  it("the admin page and the store share one cap, RingCentral's five", () => {
+  it("⚠️ the admin page has no answering assignment any more — no cap, no chip, no count (§5.13c)", () => {
     const admin = codeOnly(read("src/pages/AccessAdminPage.tsx"));
-    expect(admin).toMatch(/MAX_CALL_ANSWERERS/);
-    expect(admin).not.toMatch(/of 5\b/);
-    const store = codeOnly(read("src/lib/accessStore.ts"));
-    expect(store).toMatch(/MAX_CALL_ANSWERERS = 5/);
+    expect(admin).not.toMatch(/MAX_CALL_ANSWERERS|setCallAnswerer|callAnswerers/);
+    const editor = codeOnly(read("src/components/shell/AbilitiesEditor.tsx"));
+    expect(editor).not.toMatch(/Answers calls|onAnswersCalls|MAX_CALL_ANSWERERS/);
   });
 
   it("takeover steals the Web Lock and the losing tab demotes on AbortError", () => {
@@ -210,7 +211,8 @@ describe("every browser reports whether it is actually on the line", () => {
 
   it("the readout is mounted on /access and reads the gateway's verdicts, not its own", () => {
     const page = codeOnly(read("src/pages/AccessAdminPage.tsx"));
-    expect(page).toMatch(/<PhoneLineHealth answerers=\{answerers\}/);
+    // The gateway lists everyone on their own line itself (connectedEmails).
+    expect(page).toMatch(/<PhoneLineHealth answerers=\{\[\]\}/);
     const panel = codeOnly(read("src/components/inboundCalls/PhoneLineHealth.tsx"));
     // It renders `state`/`label` as given. A second opinion on "healthy" is
     // how a board ends up disagreeing with the alert that wakes somebody.

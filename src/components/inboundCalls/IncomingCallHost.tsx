@@ -33,13 +33,12 @@
  * device can shorten the window in which a colleague, or Take it, can still
  * pick up (see softphone.ts). `softphoneRules.test.ts` pins this.
  *
- * ⚠️ ONLY the manager-assigned call answerers (accessStore `callAnswerers`,
- * at most five) get any of this — the stream, the cards, the registration.
- * Everyone else sees nothing, by design (Josh, 2026-09-14). The one thing that
- * renders for everybody is the overlay for a call THEY placed from the hub.
- * Since §5.13c a person who connected their OWN RingCentral login gets all of
- * it too, on their own extension, without the assignment or the cap
- * (`phoneLine` in lib/softphone/rcLine.ts).
+ * ⚠️ ONLY people who connected their own RingCentral login get any of this —
+ * the stream, the cards, the registration (§5.13c; until 2026-09-30 it was the
+ * manager-assigned `callAnswerers`, five at most on Katie's line). Everyone
+ * else sees nothing, by design. The one thing that renders for everybody is
+ * the overlay for a call THEY placed from the hub, which still goes out on the
+ * shared line as before (`phoneLine` in lib/softphone/rcLine.ts).
  *
  * Cards come in top-right, deliberately away from the CallOverlay at
  * bottom-right — "a call is arriving" and "you are on a call" must never be
@@ -61,8 +60,6 @@ import SoftphoneStatus from "@/components/inboundCalls/SoftphoneStatus";
 import CallOverlay from "@/components/assignedPatients/CallOverlay";
 import { fmtPhone, senderName } from "@/lib/assignedPatients/format";
 import { authRequired, getUser } from "@/lib/shared/auth";
-import { useAccessContext } from "@/components/AccessProvider";
-import { canAnswerCalls } from "@/lib/accessStore";
 import { clearRcLineNotice, phoneLine, useRcLine } from "@/lib/softphone/rcLine";
 import { cn } from "@/lib/utils";
 
@@ -286,14 +283,12 @@ function useNames(numbers: string[]): Map<string, PatientRef | null> {
 }
 
 export default function IncomingCallHost() {
-  const { email, config } = useAccessContext();
-  // With Google sign-in off (a dev build) everyone is a manager and, by the
-  // same token, an answerer — otherwise nothing could be tried locally.
-  const answerer = !authRequired() || canAnswerCalls(email, config);
-  // Or they connected their OWN RingCentral login (§5.13c): then they ring on
-  // their own extension, assigned or not, and spend none of Katie's five.
+  // ⚠️ Rung = connected their OWN RingCentral login (§5.13c). The /access
+  // assignment no longer decides this (Josh, 2026-09-30). With Google sign-in
+  // off (a dev build) nobody can connect, so everyone rings on the shared line
+  // — otherwise nothing could be tried locally.
   const rcLine = useRcLine();
-  const { enabled, line } = phoneLine(answerer, rcLine);
+  const { enabled, line } = phoneLine(!authRequired(), rcLine);
   const { calls, dismiss, connected, error } = useInboundCalls(enabled);
   const phone = useSoftphone();
   // The store registers (or lets go) within a poll of the assignment changing.

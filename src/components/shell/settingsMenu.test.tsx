@@ -46,6 +46,20 @@ vi.mock("@/lib/shared/auth", () => ({
   getIdToken: () => null,
   onAuthChange: () => () => {},
 }));
+// Rung = connected their own RingCentral line (§5.13c). The real `phoneLine`
+// decides; only the status read is stubbed.
+const line = {
+  loaded: true,
+  configured: true,
+  connected: true,
+  broken: false,
+  extension: { number: "13", name: "Me" } as { number: string; name: string } | null,
+  notice: null,
+};
+vi.mock("@/lib/softphone/rcLine", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/softphone/rcLine")>("@/lib/softphone/rcLine");
+  return { ...actual, useRcLine: () => line, connectRcLine: vi.fn(), disconnectRcLine: vi.fn() };
+});
 // Radix, portals and a fetch of its own — not what this test is about.
 vi.mock("@/components/inboundCalls/RingPreferencesDialog", () => ({
   default: () => null,
@@ -60,7 +74,8 @@ beforeEach(() => {
   saveRingPrefs.mockReset();
   saveRingPrefs.mockResolvedValue(undefined);
   fetchRingPrefs.mockResolvedValue({ mode: "all", forwardNumber: "5555550100", allow: [] });
-  access.config.callAnswerers = ["me@medicallymodern.com"];
+  line.connected = true;
+  line.extension = { number: "13", name: "Me" };
   phone.ringMuted = false;
   phone.setRingMuted.mockReset();
 });
@@ -85,11 +100,18 @@ describe("the menu's shape", () => {
     expect(calls).not.toContain("Texts");
   });
 
-  it("⚠️ the Calls section reads the badge's ONE status, never `canAnswerCalls` itself", () => {
+  it("⚠️ the Calls section reads the badge's ONE status, never the gate itself", () => {
     expect(calls).toContain("useCallStatus");
     expect(calls).not.toContain("canAnswerCalls");
+    expect(calls).not.toContain("phoneLine(");
     expect(badge).toContain("export function useCallStatus");
-    expect(badge.split("canAnswerCalls(").length - 1).toBe(1);
+    expect(badge.split("phoneLine(").length - 1).toBe(1);
+    expect(badge).not.toContain("canAnswerCalls(");
+  });
+
+  it("⚠️ anyone signed in can connect their own RingCentral line here (§5.13c)", () => {
+    expect(calls).toContain("Connect my own RingCentral line…");
+    expect(calls).toContain("Disconnect my RingCentral line");
   });
 
   it("⚠️ the ring-mode controls are GONE and stay gone (Josh, 2026-09-25)", () => {
@@ -110,16 +132,18 @@ describe("the menu's shape", () => {
 
 describe("the status sentence", () => {
   it("is his three, and the badge's own when ringing", () => {
-    expect(callStatusLine(false, true, "x")).toBe("Calls don't ring you — you're not a call answerer");
+    expect(callStatusLine(false, true, "x")).toBe(
+      "Calls don't ring you — connect your RingCentral line to take them here",
+    );
     expect(callStatusLine(true, false, "x")).toBe("Ringing is paused for you");
     expect(callStatusLine(true, true, "Connected — calls ring in this tab")).toBe("Connected — calls ring in this tab");
   });
 });
 
 describe("the Calls section, rendered", () => {
-  it("an answerer: the line's status, the ringtone on, and the alerts opt-in", async () => {
+  it("connected: the line's status, the ringtone on, and the alerts opt-in", async () => {
     render(<CallSettings />);
-    expect(await screen.findByText("Connected — calls ring in this tab")).toBeTruthy();
+    expect(await screen.findByText(/Connected — calls ring in this tab · Your own line · Ext\. 13/)).toBeTruthy();
     const rows = screen.getAllByRole("switch");
     expect(rows).toHaveLength(1); // the ringtone — the mode rows are gone
     expect(rows[0].getAttribute("aria-checked")).toBe("true");
@@ -130,19 +154,21 @@ describe("the Calls section, rendered", () => {
 
   it("the ringtone row is the per-browser mute, not a prefs write", async () => {
     render(<CallSettings />);
-    await screen.findByText("Connected — calls ring in this tab");
+    await screen.findByText(/Connected — calls ring in this tab/);
     fireEvent.click(screen.getAllByRole("switch")[0]);
     expect(phone.setRingMuted).toHaveBeenCalledWith(true);
     expect(saveRingPrefs).not.toHaveBeenCalled();
   });
 
-  it("⚠️ a non-answerer sees the ringtone DISABLED with his sentence — and no dialog opener", () => {
-    access.config.callAnswerers = [];
+  it("⚠️ not connected: the ringtone DISABLED, the sentence says how to fix it, and Connect is offered", () => {
+    line.connected = false;
+    line.extension = null;
     render(<CallSettings />);
-    expect(screen.getByText("Calls don't ring you — you're not a call answerer")).toBeTruthy();
+    expect(screen.getByText("Calls don't ring you — connect your RingCentral line to take them here")).toBeTruthy();
+    expect(screen.getByText("Connect my own RingCentral line…")).toBeTruthy();
     for (const row of screen.getAllByRole("switch")) {
       expect(row.getAttribute("aria-disabled")).toBe("true");
-      expect(row.getAttribute("title")).toBe("Ask an admin to make you a call answerer");
+      expect(row.getAttribute("title")).toBe("Connect your RingCentral line to take calls here");
     }
     expect(fetchRingPrefs).not.toHaveBeenCalled();
     fireEvent.click(screen.getAllByRole("switch")[0]);

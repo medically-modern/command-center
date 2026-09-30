@@ -51,8 +51,12 @@ export function openToken(key, sealed) {
   try {
     const [v, iv, tag, ct] = String(sealed || "").split(".");
     if (v !== "v1" || !iv || !tag || !ct) return null;
-    const d = crypto.createDecipheriv("aes-256-gcm", key, fromB64url(iv));
-    d.setAuthTag(fromB64url(tag));
+    // ⚠️ The FULL 16-byte tag, fixed here rather than taken from the stored
+    // value: GCM accepts shorter tags, and a truncated one is easier to forge.
+    const t = fromB64url(tag);
+    if (t.length !== 16) return null;
+    const d = crypto.createDecipheriv("aes-256-gcm", key, fromB64url(iv), { authTagLength: 16 });
+    d.setAuthTag(t);
     return Buffer.concat([d.update(fromB64url(ct)), d.final()]).toString("utf8");
   } catch {
     return null;
@@ -157,10 +161,4 @@ export function grantIsDead(status, body) {
 export function dueForKeepAlive(refreshExpiresAt, now) {
   const at = refreshExpiresAt instanceof Date ? refreshExpiresAt.getTime() : Number(refreshExpiresAt);
   return Number.isFinite(at) && at - now < REFRESH_WHEN_LEFT_MS;
-}
-
-/** The E.164 numbers on an extension's phone-number list. */
-export function extensionNumbers(j) {
-  const records = Array.isArray(j && j.records) ? j.records : [];
-  return [...new Set(records.map((r) => String((r && r.phoneNumber) || "").trim()).filter((n) => /^\+\d{8,15}$/.test(n)))];
 }

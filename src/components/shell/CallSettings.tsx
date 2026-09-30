@@ -12,11 +12,10 @@
  * `RingPreferencesDialog`.
  *
  * ⚠️ **The status sentence is `useCallStatus`'s**, the ONE reading of the line
- * the badge uses; this file never asks `canAnswerCalls` itself
- * (`shellRemovals.test.ts`). A non-answerer sees the ringtone row disabled
- * with "Ask an admin to make you a call answerer" — nothing rings them and
- * nothing here can change that (§5.13b: the assignment is a manager's, on
- * /access).
+ * the badge uses; this file never asks the gate itself
+ * (`shellRemovals.test.ts`). Somebody not connected sees the ringtone row
+ * disabled and "Connect my own RingCentral line…" — connecting IS what makes
+ * calls ring them (§5.13c); there is no manager assignment any more.
  */
 import { toast } from "sonner";
 import { startRcConnect, useCallStatus } from "@/components/inboundCalls/CallConnectionBadge";
@@ -44,7 +43,7 @@ function TogRow({
       role="switch"
       aria-checked={on && !disabled}
       aria-disabled={disabled || undefined}
-      title={disabled ? "Ask an admin to make you a call answerer" : undefined}
+      title={disabled ? "Connect your RingCentral line to take calls here" : undefined}
       onClick={disabled ? undefined : onToggle}
     >
       <span>

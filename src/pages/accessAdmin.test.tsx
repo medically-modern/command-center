@@ -58,10 +58,11 @@ const mount = () => render(<MemoryRouter><AccessAdminPage /></MemoryRouter>);
 const card = (email: string) => document.querySelector(`[data-person="${email}"]`) as HTMLElement;
 
 describe("User management", () => {
-  it("is Brandon's page: the header with the devices count, an Add card, and a card per person", () => {
+  it("is Brandon's page: the header, an Add card, and a card per person — no answering count (§5.13c)", () => {
     mount();
     expect(screen.getByRole("heading", { name: "User management" })).toBeTruthy();
-    expect(screen.getByText("1 of 5 call-answering devices in use")).toBeTruthy();
+    // Retired 2026-09-30: connecting your own RingCentral line is what rings you.
+    expect(screen.queryByText(/call-answering devices in use/)).toBeNull();
     expect(screen.getByText("+ Add a person")).toBeTruthy();
     expect(document.querySelectorAll(".ucard")).toHaveLength(3);
     // The header row: avatar initial, name, email, chips.
@@ -71,7 +72,7 @@ describe("User management", () => {
     expect(within(c).getByText(MASANI)).toBeTruthy();
     expect([...c.querySelectorAll(".chips .chip")].map((x) => x.textContent)).toEqual(["Stages"]);
     const mine = card(ME);
-    expect([...mine.querySelectorAll(".chips .chip")].map((x) => x.textContent)).toEqual(["Manager", "Answers calls", "Oversight | Stages"]);
+    expect([...mine.querySelectorAll(".chips .chip")].map((x) => x.textContent)).toEqual(["Manager", "Oversight | Stages"]);
     expect(within(mine).getByText("(you)")).toBeTruthy();
   });
 
@@ -152,13 +153,10 @@ describe("User management", () => {
     expect(within(card(ME)).getByRole("button", { name: /View others' views/ }).className).toContain("on");
   });
 
-  it("Answers calls, Manager and Admin are on the abilities row, in his colours, on their own writers", () => {
+  it("Manager and Admin are on the abilities row, in his colours, on their own writers — and Answers calls is gone", () => {
     mount();
     const c = card(MASANI);
-    const ans = within(c).getByRole("button", { name: /Answers calls/ });
-    expect(ans.textContent).toContain("1/5");
-    fireEvent.click(ans);
-    expect(w.setCallAnswerer).toHaveBeenCalledWith(MASANI, true);
+    expect(within(c).queryByRole("button", { name: /Answers calls/ })).toBeNull();
     const mgr = within(c).getByRole("button", { name: /^Manager$/ });
     expect(mgr.className).toContain("warn");
     expect(mgr.className).not.toContain("on");
@@ -173,22 +171,6 @@ describe("User management", () => {
     const mine = within(card(ME)).getByRole("button", { name: /^Manager$/ }) as HTMLButtonElement;
     expect(mine.className).toContain("on");
     expect(mine.disabled).toBe(true);
-  });
-
-  it("a full answering roster refuses the sixth with a toast, and the chip says why", () => {
-    (state.config as AccessConfig).callAnswerers = ["a@x", "b@x", "c@x", "d@x", "e@x"];
-    w.setCallAnswerer.mockReturnValue(false);
-    mount();
-    const ans = within(card(MASANI)).getByRole("button", { name: /Answers calls/ });
-    expect(ans.getAttribute("aria-disabled")).toBe("true");
-    expect(ans.getAttribute("title")).toMatch(/slots are taken/);
-    fireEvent.click(ans);
-    expect(w.setCallAnswerer).not.toHaveBeenCalled();
-    // And the writer refusing (another admin filled the slot) toasts.
-    (state.config as AccessConfig).callAnswerers = [];
-    mount();
-    fireEvent.click(within(document.querySelectorAll(`[data-person="${MASANI}"]`)[1] as HTMLElement).getByRole("button", { name: /Answers calls/ }));
-    expect(toast.error).toHaveBeenCalled();
   });
 
   it("the bars: his role-cell grid, the filter and the order on a role that is on", () => {
@@ -238,7 +220,7 @@ describe("scans", () => {
     const page = src("AccessAdminPage.tsx").replace(/\/\*[\s\S]*?\*\//g, "");
     for (const fn of [
       "addManager(", "setManager(", "removeEmail(", "addProcessor(", "setProcessorName(", "setProcessorPhone(",
-      "toggleProcessorRole(", "setRoleFilter(", "setRoleOrder(", "setCallAnswerer(", "setAbility(", "setHomeView(", "setAdmin(",
+      "toggleProcessorRole(", "setRoleFilter(", "setRoleOrder(", "setAbility(", "setHomeView(", "setAdmin(",
     ]) {
       expect(page, `the page stopped calling ${fn}`).toContain(fn);
     }

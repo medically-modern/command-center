@@ -62,7 +62,7 @@ import {
 import { buildHistoryQuery } from "./callHistoryQuery.mjs";
 import { RETRY_STEPS_MS, retryAfterMs, retryDelayMs } from "./reconcileBackoff.mjs";
 import { normalizeReport, presenceFaults, summarize, verdictFor } from "./phonePresenceRules.mjs";
-import { staffNumbers } from "./rcUserAuth.mjs";
+import { connectedEmails } from "./rcUserAuth.mjs";
 
 const { ASSIGNMENTS_DATABASE_URL } = process.env;
 
@@ -478,9 +478,7 @@ async function handleEvent(payload) {
     void recordEvent({ kind: "end_unseen", sessionId, state: outcome });
     return;
   }
-  // Plus every connected person's own extension numbers (§5.13c): a rep who
-  // dials out on their own line raises the same self-shaped leg.
-  const party = pickInboundParty(body, [...SELF_NUMBERS, ...staffNumbers()]);
+  const party = pickInboundParty(body, SELF_NUMBERS);
   if (!party) {
     // Was it OUR OWN outbound leg? Asking the same pure function again without
     // the self list is cheaper than duplicating its matching rules here, and it
@@ -1245,11 +1243,14 @@ export function registerInboundCalls({ app }) {
         at: Number(r.at),
         ...verdictFor({ ...r, since: Number(r.since), at: Number(r.at) }, now),
       }));
-      const answerers = String(req.query?.answerers || "")
+      const assigned = String(req.query?.answerers || "")
         .split(",")
         .map((e) => e.trim().toLowerCase())
         .filter(Boolean)
         .slice(0, 50);
+      // Plus everyone on their OWN line (§5.13c): they ring without being
+      // assigned, and must show here — and turn red here — like anyone else.
+      const answerers = [...new Set([...assigned, ...(await connectedEmails())])];
       res.json({
         configured: true,
         now,

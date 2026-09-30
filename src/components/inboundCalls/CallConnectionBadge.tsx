@@ -1,7 +1,7 @@
 /**
  * "Connected for incoming calls on this tab" — the home-page badge
- * (Josh, 2026-09-14). Renders NOTHING for anyone who is not an assigned call
- * answerer: they are not rung, so there is no connection to report.
+ * (Josh, 2026-09-14). For anyone not rung — who has not connected their own
+ * RingCentral login (§5.13c) — it is only the "Connect RingCentral" button.
  *
  * Per TAB, as asked, which the leader model (tabProtocol.ts) makes honest:
  *   · this tab holds the browser's registration and it is up  → connected;
@@ -20,7 +20,7 @@
  * button that moves to this tab, show it with an icon instead of explaining").
  * It is the global header's version: two icon buttons, the sentence in the
  * tooltip instead of on screen. A separate header component would be a second
- * copy of the `canAnswerCalls` gate and the tone rules — and those decide
+ * copy of the gate (`phoneLine`) and the tone rules — and those decide
  * whether somebody's phone rings, so a copy that drifts is a rep who never
  * learns they are offline. Everything above the `return` is shared.
  *
@@ -41,10 +41,8 @@
  */
 import { useEffect, useState } from "react";
 import { Loader2, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
-import { useAccessContext } from "@/components/AccessProvider";
 import { useSoftphone } from "@/hooks/softphone/useSoftphone";
 import { toast } from "sonner";
-import { canAnswerCalls } from "@/lib/accessStore";
 import { authRequired } from "@/lib/shared/auth";
 import { connectRcLine, phoneLine, useRcLine } from "@/lib/softphone/rcLine";
 import { cn } from "@/lib/utils";
@@ -61,20 +59,19 @@ export type CallTone = "green" | "amber" | "red" | "grey";
  * badge forms and by the settings menu's Calls section (§5.52, Brandon's
  * `.status` line and the dot on the gear).
  *
- * ⚠️ **This is the one place `canAnswerCalls` is asked** (`shellRemovals.test.ts`
- * pins it): a second copy is how somebody who was never assigned gets a phone
- * icon, or how an assigned person stops getting one and never learns their
- * line is down. The settings menu imports THIS rather than re-deriving it.
+ * ⚠️ **This is the one place the gate (`phoneLine`) is asked for the badge**
+ * (`shellRemovals.test.ts` pins it): a second copy is how somebody who is not
+ * connected gets a phone icon, or how a connected person stops getting one and
+ * never learns their line is down. The settings menu imports THIS rather than
+ * re-deriving it.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the gate must live beside the badge (shellRemovals.test.ts)
 export function useCallStatus() {
-  const { email, config } = useAccessContext();
   const phone = useSoftphone();
-  const answerer = !authRequired() || canAnswerCalls(email, config);
-  // Connected their own RingCentral login → rings on their own extension,
-  // assigned or not (§5.13c). The same `phoneLine` IncomingCallHost uses.
+  // Rung = connected their own RingCentral login (§5.13c) — the same
+  // `phoneLine` IncomingCallHost uses. The /access assignment no longer decides.
   const rcLine = useRcLine();
-  const { enabled, line } = phoneLine(answerer, rcLine);
+  const { enabled, line } = phoneLine(!authRequired(), rcLine);
   // Offer "Connect" to a signed-in person who is not on their own line yet,
   // once the gateway says the second RingCentral app is set up.
   const canConnect = authRequired() && rcLine.loaded && rcLine.configured && (!rcLine.connected || rcLine.broken);

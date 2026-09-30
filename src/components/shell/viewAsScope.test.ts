@@ -14,11 +14,10 @@
  * two write guards ask *may I do this*, and borrowing somebody's view must
  * never hand me their access — nor take away my own.
  *
- * ⚠️⚠️ **THE SOFTPHONE IS NEVER BORROWED.** `canAnswerCalls` drives a real SIP
- * registration on a shared RingCentral extension capped at five devices
- * (§5.13b). Borrowing an answerer's view would register THIS browser, take a
- * slot from somebody who is actually on the rota, and ring a phone nobody is
- * sitting at. `CallConnectionBadge` owns that gate and the header must not
+ * ⚠️⚠️ **THE SOFTPHONE IS NEVER BORROWED.** `phoneLine` drives a real SIP
+ * registration on the person's own RingCentral line (§5.13c). Borrowing an
+ * answerer's view would register THIS browser as them and ring a phone nobody
+ * is sitting at. `CallConnectionBadge` owns that gate and the header must not
  * re-answer it.
  *
  * Source scans (the `listColumns.test.ts` convention): each one is verified to
@@ -61,7 +60,8 @@ describe("⚠️ the borrow reaches the header", () => {
     // A second copy of the rota check in the header is how an unassigned
     // person gets a phone icon, or an assigned one silently loses theirs.
     expect(header).not.toContain("canAnswerCalls");
-    expect(live(read("components/inboundCalls/CallConnectionBadge.tsx"))).toContain("canAnswerCalls");
+    expect(header).not.toContain("phoneLine");
+    expect(live(read("components/inboundCalls/CallConnectionBadge.tsx"))).toContain("phoneLine(");
   });
 });
 
@@ -114,7 +114,7 @@ describe("⚠️⚠️ the borrow does NOT reach anything that writes", () => {
   it("the viewAs store says all of this in place", () => {
     const store = read("lib/shell/viewAs.ts");
     expect(store).toMatch(/never|NEVER/);
-    expect(store).toContain("canAnswerCalls");
+    expect(store).toContain("phoneLine");
   });
 });
 

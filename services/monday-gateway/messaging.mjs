@@ -475,11 +475,13 @@ export function registerMessaging({ app }) {
       for (const [k, at] of sipProvisionLast) if (Date.now() - at >= SIP_PROVISION_FLOOR_MS) sipProvisionLast.delete(k);
     }
     try {
-      // A person who connected their own RingCentral login rings on THEIR
-      // extension (§5.13c). Everybody else is provisioned on the shared line
-      // exactly as before. `mmLine` tells the browser which one it got, so its
-      // cached credentials are never reused for the other.
-      const own = await provisionOwnLine(who);
+      // A person who connected their own RingCentral login ANSWERS on their
+      // extension (§5.13c) — only when the browser asks for it (`?line=own`).
+      // ⚠️ Anything else gets the shared line exactly as before: outgoing
+      // calls always go out on it (Josh, 2026-09-30: only incoming changes),
+      // and so does every browser still running an app that predates this,
+      // which sends no `line` at all. `mmLine` says which one was handed out.
+      const own = req.query?.line === "own" ? await provisionOwnLine(who) : null;
       if (own) {
         const body = own.status === 200 ? { ...own.body, mmLine: "own" } : own.body;
         return res.status(own.status).json(body);

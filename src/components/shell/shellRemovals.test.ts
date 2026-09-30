@@ -46,11 +46,12 @@ describe("⚠️ the softphone is ONE component, in two forms", () => {
     expect(header).toContain("<CallConnectionBadge compact />");
   });
 
-  it("⚠️ the `canAnswerCalls` gate lives in ONE place", () => {
-    // A second copy in the header is how somebody who was never assigned gets a
-    // phone icon — or, worse, how an assigned person stops getting one and
-    // never learns their line is down (§5.13b).
-    expect(badge).toContain("canAnswerCalls");
+  it("⚠️ the call gate (`phoneLine`) lives in ONE place", () => {
+    // A second copy in the header is how somebody who is not connected gets a
+    // phone icon — or, worse, how a connected person stops getting one and
+    // never learns their line is down (§5.13c).
+    expect(badge).toContain("phoneLine(");
+    expect(header).not.toContain("phoneLine");
     expect(header).not.toContain("canAnswerCalls");
   });
 

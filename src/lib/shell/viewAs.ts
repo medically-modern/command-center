@@ -18,12 +18,13 @@
  * one. So a borrow is a PREVIEW. If an ability is ever made to guard a write,
  * that write must read the SIGNED-IN identity and not this.
  *
- * ⚠️⚠️ **CALL ANSWERING IS NEVER BORROWED.** `canAnswerCalls` drives a real SIP
- * registration on a shared RingCentral extension (§5.13b): borrowing it would
- * either register this browser as somebody else or — worse — stop MY phone
- * ringing while I look at their screen. `CallConnectionBadge` and
- * `IncomingCallHost` read `useAccessContext().email` directly and must keep
- * doing so. `viewAsScope.test.ts` scans for it.
+ * ⚠️⚠️ **CALL ANSWERING IS NEVER BORROWED.** `phoneLine` (the person's own
+ * connected RingCentral line, §5.13c) drives a real SIP registration: borrowing
+ * it would either register this browser as somebody else or — worse — stop MY
+ * phone ringing while I look at their screen. `CallConnectionBadge` and
+ * `IncomingCallHost` ask the gateway with the SIGNED-IN Google token
+ * (lib/softphone/rcLine.ts) and must keep doing so; nothing here reaches it.
+ * `viewAsScope.test.ts` scans for it.
  *
  * ⚠️ **Module scope, never localStorage.** A borrowed identity that survives a
  * reload is how somebody forgets they are in one. The `?viewing=` param on the

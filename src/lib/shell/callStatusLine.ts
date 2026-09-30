@@ -5,7 +5,7 @@
  * gear cannot disagree about the line.
  */
 export function callStatusLine(enabled: boolean, ringing: boolean, badgeLabel: string): string {
-  if (!enabled) return "Calls don't ring you — you're not a call answerer";
+  if (!enabled) return "Calls don't ring you — connect your RingCentral line to take them here";
   if (!ringing) return "Ringing is paused for you";
   return badgeLabel;
 }

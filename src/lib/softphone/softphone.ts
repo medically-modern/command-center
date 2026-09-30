@@ -72,6 +72,7 @@ import {
 import { CHANNEL_NAME, LOCK_NAME, followerView, isTabMessage, type TabCommand, type TabMessage } from "./tabProtocol";
 import { audibleRings, nextExpiryMs, sameRings, type RingLike } from "./ringRules";
 import { Ringtone } from "./ringtone";
+import { refreshRcLine } from "./rcLine";
 import type { ActiveCall, PhoneSnapshot, RegistrationStatus, SipRing } from "./types";
 
 const GATEWAY =
@@ -279,6 +280,12 @@ class Softphone {
    *  the person connected or disconnected since — re-register, once no call
    *  is in the way (`reconcile`). */
   private wpLine: SipLine | null = null;
+  /** ⚠️ A person on their own line is placing an OUTGOING call. Only answering
+   *  moved to their own line (§5.13c, Josh 2026-09-30: *"nothing in command
+   *  center should change accept the incoming call"*), so the call goes out on
+   *  the shared line exactly as it did before — same caller ID, same call log
+   *  the archive and history read. Cleared when the call ends (`endActive`). */
+  private dialingShared = false;
   /** Ringtone muted in this browser (localStorage, shared by every tab of it).
    *  Distinct from `active.call.muted`, which is the microphone on a live call. */
   private ringMuted = readMuted(storage() ?? NO_STORAGE);
@@ -603,6 +610,11 @@ class Softphone {
     return isAuthed() && (this.enabled || !!this.active);
   }
 
+  /** The line the registration should be on right now. */
+  private effectiveLine(): SipLine {
+    return this.dialingShared ? "shared" : this.line;
+  }
+
   private reconcile(): void {
     if (!this.isLeader) return;
     if (this.wanted()) {
@@ -613,7 +625,7 @@ class Softphone {
       // Registered on the other line (the person connected or disconnected
       // their own login): drop it and register on the right one — but never
       // under a live call, which would cut the audio. `endActive` reconciles.
-      if (this.wp && this.wpLine !== this.line && !this.active) this.release();
+      if (this.wp && this.wpLine !== this.effectiveLine() && !this.active) this.release();
       if (!this.wp && !this.registering) void this.ensureRegistered();
       return;
     }
@@ -649,7 +661,9 @@ class Softphone {
     const ctrl = new AbortController();
     const provisioned = await withDeadline(
       (async () => {
-        const res = await fetch(`${GATEWAY}/messaging/sip-provision`, {
+        // `line` tells the gateway which one: it never hands out a person's
+        // own line for the shared registration outgoing calls use.
+        const res = await fetch(`${GATEWAY}/messaging/sip-provision?line=${line}`, {
           headers: token ? { "X-MM-Auth": token } : {},
           signal: ctrl.signal,
         });
@@ -670,9 +684,21 @@ class Softphone {
     ).finally(() => ctrl.abort());
     const sipInfo = Array.isArray(provisioned.sipInfo) ? provisioned.sipInfo[0] : provisioned.sipInfo;
     if (!sipInfo) throw new Error("RingCentral returned no SIP credentials for this extension.");
-    // Cached under the line the GATEWAY says it provisioned, which is the
-    // truth; an older gateway that does not say was always the shared line.
-    writeCachedSipInfo(store, email, sipInfo, Date.now(), provisioned.mmLine === "own" ? "own" : "shared");
+    const got: SipLine = provisioned.mmLine === "own" ? "own" : "shared";
+    // ⚠️ Asked for the person's OWN line and handed the shared one: the link
+    // was removed (another browser disconnected, or the gateway lost it). Never
+    // register on it — that spends one of Katie's five on somebody who may not
+    // even be an answerer — and re-read the status, which re-decides the line.
+    if (line === "own" && got !== "own") {
+      void refreshRcLine();
+      throw new Error("Your own RingCentral line isn't connected any more — checking again");
+    }
+    // Asked for the shared line: it is the shared line, whatever the gateway
+    // labels it (an older gateway does not label it at all).
+    if (line === "shared" && got !== "shared") {
+      throw new Error("Couldn't set up calling on the shared line — try again");
+    }
+    writeCachedSipInfo(store, email, sipInfo, Date.now(), line);
     return sipInfo;
   }
 
@@ -685,7 +711,7 @@ class Softphone {
       // ⚠️ The line ASKED for, not the one the gateway answered with: keyed on
       // the answer, a gateway that says "shared" to someone the page believes
       // is connected would re-register them on every reconcile.
-      const line = this.line;
+      const line = this.effectiveLine();
       try {
         const sipInfo = await this.provision(line);
         wp = new WebPhone({ sipInfo, instanceId: this.instanceId, autoAnswer: false });
@@ -708,8 +734,7 @@ class Softphone {
         this.setRegistration("registered", null);
         // Nothing may want it any more (un-assigned mid-REGISTER): hand it to
         // the ordinary release timer rather than holding a slot for nobody.
-        // Or the line changed while this was registering: move to the new one.
-        if (!this.wanted() || this.line !== line) this.reconcile();
+        if (!this.wanted()) this.reconcile();
       } catch (err) {
         abandon(wp);
         if (!this.isLeader) return;
@@ -717,6 +742,12 @@ class Softphone {
       } finally {
         this.registering = null;
       }
+      // ⚠️ The line changed while this was registering (connect/disconnect).
+      // Reconciled HERE, after `registering` is cleared: inside the try,
+      // reconcile would release the new phone but could not start the
+      // replacement, leaving the person unregistered until something else
+      // happened to reconcile.
+      if (this.isLeader && this.effectiveLine() !== line) this.reconcile();
     })();
     return this.registering;
   }
@@ -989,6 +1020,14 @@ class Softphone {
     const token = Symbol("dial");
     this.dialToken = token;
     this.lastError = null;
+    // ⚠️ Outgoing calls ALWAYS go out on the shared line (see `dialingShared`).
+    // A person registered on their own line drops that registration for the
+    // length of the call — they are on the phone anyway — and gets it back
+    // when the call ends.
+    if (this.line === "own") {
+      this.dialingShared = true;
+      if (this.wp && this.wpLine !== "shared") this.release();
+    }
     this.active = {
       session: null,
       call: { callId: "", phone, direction: "outbound", status: "connecting", connectedAt: null, muted: false },
@@ -996,6 +1035,12 @@ class Softphone {
     this.publish();
     try {
       await this.ensureRegistered();
+      // A registration that was already under way was for the own line; the
+      // call must not go out on it.
+      if (this.wp && this.wpLine !== this.effectiveLine()) {
+        this.release();
+        await this.ensureRegistered();
+      }
       // A reconnect in flight owns the socket this call would go out on.
       if (this.recovering && this.recovering.wp === this.wp) await this.recovering.p;
       // Hung up while we were still registering.
@@ -1137,6 +1182,8 @@ class Softphone {
   private endActive(): void {
     this.active = null;
     this.dialToken = null;
+    // Back to the person's own line for answering (reconcile, below).
+    this.dialingShared = false;
     this.syncRingtone();
     this.publish();
     this.reconcile();

@@ -15,7 +15,6 @@ import {
   parseTokenResponse,
   grantIsDead,
   dueForKeepAlive,
-  extensionNumbers,
 } from "./rcUserAuthRules.mjs";
 
 const read = (f) => readFileSync(resolve(process.cwd(), "services/monday-gateway", f), "utf8");
@@ -36,6 +35,13 @@ describe("rcUserAuthRules — keys and sealed tokens", () => {
     const sealed = sealToken(key, "refresh-abc");
     expect(sealed).not.toContain("refresh-abc");
     expect(openToken(key, sealed)).toBe("refresh-abc");
+  });
+
+  it("⚠️ refuses a shortened authentication tag", () => {
+    const key = deriveKey("pepper", "t");
+    const [v, iv, tag, ct] = sealToken(key, "refresh-abc").split(".");
+    const short = Buffer.from(tag, "base64url").subarray(0, 4).toString("base64url");
+    expect(openToken(key, [v, iv, short, ct].join("."))).toBeNull();
   });
 
   it("refuses a tampered value or the wrong key", () => {
@@ -126,12 +132,6 @@ describe("rcUserAuthRules — grants", () => {
     expect(dueForKeepAlive(new Date(NOW + 7 * 24 * 60 * 60_000), NOW)).toBe(false);
   });
 
-  it("reads an extension's own numbers, de-duplicated, E.164 only", () => {
-    expect(
-      extensionNumbers({ records: [{ phoneNumber: "+19145372231" }, { phoneNumber: "+19145372231" }, { phoneNumber: "ext" }, {}] }),
-    ).toEqual(["+19145372231"]);
-    expect(extensionNumbers(null)).toEqual([]);
-  });
 });
 
 describe("wiring", () => {
@@ -150,6 +150,15 @@ describe("wiring", () => {
     expect(src).not.toMatch(/process\.env\.RC_CLIENT_ID|process\.env\.RC_JWT/);
   });
 
+  it("⚠️ hands out a person's own line ONLY when the browser asks for it for answering", () => {
+    // Outgoing calls, and every browser on an app that predates this (no
+    // `line` at all), get the shared line exactly as before (Josh 2026-09-30:
+    // only incoming changes).
+    const msg = read("messaging.mjs");
+    const route = msg.slice(msg.indexOf(`app.get("/messaging/sip-provision"`));
+    expect(route).toContain(`const own = req.query?.line === "own" ? await provisionOwnLine(who) : null;`);
+  });
+
   it("provisioning asks for the person's own line first, and a dead grant is NOT put back on the shared line", () => {
     const msg = read("messaging.mjs");
     const route = msg.slice(msg.indexOf(`app.get("/messaging/sip-provision"`));
@@ -161,8 +170,28 @@ describe("wiring", () => {
     expect(read("rcUserAuth.mjs")).toMatch(/status: 409, body: \{ error: e\.message, reconnect: true \}/);
   });
 
-  it("a connected rep's own numbers count as ours for the incoming-call cards", () => {
-    expect(read("inboundCalls.mjs")).toContain("pickInboundParty(body, [...SELF_NUMBERS, ...staffNumbers()])");
+  it("the incoming-call cards are untouched — self numbers are the main line, as before", () => {
+    expect(read("inboundCalls.mjs")).toContain("pickInboundParty(body, SELF_NUMBERS)");
+  });
+
+  it("⚠️ everyone on their own line shows on the phone-health board, assigned or not", () => {
+    const src = read("inboundCalls.mjs");
+    expect(src).toContain("const answerers = [...new Set([...assigned, ...(await connectedEmails())])];");
+  });
+
+  it("⚠️ a refresh can never undo a reconnect or disconnect that landed meanwhile", () => {
+    const src = read("rcUserAuth.mjs");
+    // Both the grant write and the broken mark are conditional on the grant it started from.
+    expect(src).toMatch(/WHERE email = \$1 AND refresh_sealed = \$4/);
+    expect(src).toMatch(/WHERE email = \$1 AND refresh_sealed = \$2/);
+    expect(src).toContain("if (upd.rowCount === 0) return afterLostRace(email);");
+  });
+
+  it("⚠️ a missing links table or a failed lookup never takes the SHARED line down", () => {
+    const src = read("rcUserAuth.mjs");
+    expect(src).toMatch(/_pool && _schemaReady && RC_USER_CLIENT_ID/);
+    const own = src.slice(src.indexOf("export async function provisionOwnLine"));
+    expect(own.slice(0, own.indexOf("if (!token) return null;"))).toMatch(/console\.warn\(`rc_user own-line lookup failed[^]*return null;/);
   });
 
   it("⚠️ refresh tokens are sealed before they are written", () => {
