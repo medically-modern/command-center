@@ -28,7 +28,7 @@ vi.mock("@/components/AccessProvider", () => ({
 // No sign-in gate in tests: the badge treats everyone as an assigned answerer.
 vi.mock("@/lib/shared/auth", () => ({ authRequired: () => false, getIdToken: () => null, onAuthChange: () => () => {} }));
 
-import CallConnectionBadge, { STUCK_ELSEWHERE_MS } from "./CallConnectionBadge";
+import CallConnectionBadge, { OFF_ELSEWHERE_MS, STUCK_ELSEWHERE_MS } from "./CallConnectionBadge";
 
 function snap(over: Partial<PhoneSnapshot>): PhoneSnapshot {
   return {
@@ -118,5 +118,52 @@ describe("a tab stuck behind another tab's registration", () => {
       vi.advanceTimersByTime(STUCK_ELSEWHERE_MS);
     });
     expect(phoneButton()).toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+describe("⚠️ a connected tab behind a tab that has NO phone at all (§5.13c)", () => {
+  // Josh, 2026-09-30: connected, yet "Not connected for calls" — the tab holding
+  // the phone was on a build from before he connected, and every tab mirrored it.
+  it("is offered the phone after OFF_ELSEWHERE_MS instead of sitting on 'Not connected'", () => {
+    state.snap = snap({ registration: "off", registrationError: null });
+    render(<CallConnectionBadge />);
+    expect(screen.queryByText("Use this tab")).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(OFF_ELSEWHERE_MS);
+    });
+    expect(screen.getByText("Another tab has the phone but isn't connected")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Use this tab"));
+    expect(state.takeOver).toHaveBeenCalledTimes(1);
+  });
+
+  it("the header's phone icon becomes the takeover too", () => {
+    state.snap = snap({ registration: "off", registrationError: null });
+    render(<CallConnectionBadge compact />);
+    act(() => {
+      vi.advanceTimersByTime(OFF_ELSEWHERE_MS);
+    });
+    expect(phoneButton()).toHaveAttribute("aria-disabled", "false");
+    fireEvent.click(phoneButton());
+    expect(state.takeOver).toHaveBeenCalledTimes(1);
+  });
+
+  it("never offered by the tab that IS the phone, or mid-call", () => {
+    state.snap = snap({ leader: true, registration: "off", registrationError: null });
+    const { unmount } = render(<CallConnectionBadge compact />);
+    act(() => {
+      vi.advanceTimersByTime(OFF_ELSEWHERE_MS * 3);
+    });
+    expect(phoneButton()).toHaveAttribute("aria-disabled", "true");
+    unmount();
+    state.snap = snap({
+      registration: "off",
+      registrationError: null,
+      call: { callId: "c1", phone: "5555550123", direction: "outbound", status: "connected", connectedAt: 1, muted: false },
+    });
+    render(<CallConnectionBadge compact />);
+    act(() => {
+      vi.advanceTimersByTime(OFF_ELSEWHERE_MS * 3);
+    });
+    expect(state.takeOver).not.toHaveBeenCalled();
   });
 });

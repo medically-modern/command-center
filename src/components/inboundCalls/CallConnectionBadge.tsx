@@ -52,6 +52,12 @@ import { cn } from "@/lib/utils";
  *  spend there in one go: the provision deadline plus the start deadline. */
 export const STUCK_ELSEWHERE_MS = 45_000;
 
+/** How long this tab — which WANTS the phone — watches the tab holding it sit
+ *  with no phone at all before offering to take it (§5.13c). Short: an "off"
+ *  leader is not retrying anything, it simply does not think this person is
+ *  rung (typically a tab still on a build from before they connected). */
+export const OFF_ELSEWHERE_MS = 5_000;
+
 export type CallTone = "green" | "amber" | "red" | "grey";
 
 /**
@@ -95,11 +101,28 @@ export function useCallStatus() {
     return () => clearTimeout(id);
   }, [followerWaiting]);
 
+  // ⚠️ This tab wants the phone, but the tab HOLDING it has none at all
+  // ("off") — it does not think this person is rung: a tab left open on a build
+  // from before they connected their own line, or one whose status has not
+  // caught up. Every tab of the browser mirrors it, so without this the person
+  // sits on "Not connected for calls" until they find and close that tab
+  // (Josh, 2026-09-30). Offered after OFF_ELSEWHERE_MS so a leader that is just
+  // about to register is not raced.
+  const followerOff = enabled && !phone.leader && phone.registration === "off" && !phone.call;
+  const [offElsewhere, setOffElsewhere] = useState(false);
+  useEffect(() => {
+    setOffElsewhere(false);
+    if (!followerOff) return;
+    const id = setTimeout(() => setOffElsewhere(true), OFF_ELSEWHERE_MS);
+    return () => clearTimeout(id);
+  }, [followerOff]);
+
   const reg = phone.registration;
   const connected = reg === "registered";
   const here = connected && phone.leader;
   const elsewhere = connected && !phone.leader;
-  const stuck = stuckElsewhere && followerWaiting;
+  const offHere = offElsewhere && followerOff;
+  const stuck = (stuckElsewhere && followerWaiting) || offHere;
   const pending = !stuck && (reg === "registering" || (reg === "off" && !settled));
 
   let tone: CallTone = "grey";
@@ -113,6 +136,10 @@ export function useCallStatus() {
     tone = "amber";
     label = "Calls ring in another tab";
     detail = phone.call ? "That tab is on a call" : null;
+  } else if (offHere) {
+    tone = "amber";
+    label = "Another tab has the phone but isn't connected";
+    detail = "Use this tab to connect from here instead";
   } else if (stuck) {
     tone = "amber";
     label = "Another tab is stuck connecting";
@@ -219,7 +246,7 @@ export default function CallConnectionBadge({
                 ? "Calls ring in another tab — wait for that call to finish"
                 : "Calls ring in another tab — click to ring in this one"
               : stuck
-                ? "Another tab is stuck connecting — click to connect from this tab"
+                ? `${label} — click to connect from this tab`
                 : detail
                 ? `${label} — ${detail}${lineNote}`
                 : `${label}${lineNote}`
