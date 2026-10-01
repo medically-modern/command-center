@@ -32,6 +32,8 @@ describe("call transcription rules (§5.47e)", () => {
     expect(MODEL).toBe("chirp_3");
     expect(LOCATION).toBe("us");
     const b = batchRequestBody("gs://x/calls/1.mp3");
+    // Cheaper by ~5× and slower (≤ 24 h) — Josh's choice, measured accepted.
+    expect(b.processingStrategy).toBe("DYNAMIC_BATCHING");
     expect(b.config.features.diarizationConfig).toEqual({ minSpeakerCount: 2, maxSpeakerCount: 2 });
     expect(b.files).toEqual([{ uri: "gs://x/calls/1.mp3" }]);
     expect(b.recognitionOutputConfig).toEqual({ inlineResponseConfig: {} });
@@ -157,6 +159,21 @@ describe("long calls are split under Google's 20-minute limit (§5.47e)", () => 
     const op = { response: { results: { "gs://b/p1": { transcript: { results: [1] } }, "gs://b/p2": { transcript: { results: [2] } } } } };
     expect(fileResult(op, "gs://b/p2").results).toEqual([2]);
     expect(fileResult(op, "gs://b/p3").results).toEqual([]);
+  });
+});
+
+describe("dynamic batching settings (§5.47e)", () => {
+  it("⚠️ waits long enough for a 24-hour job, and lets many wait at once", async () => {
+    const r = await import("./callTranscribeRules.mjs");
+    expect(r.JOB_TIMEOUT_MS).toBeGreaterThan(24 * 60 * 60_000);
+    expect(r.MAX_RUNNING).toBeGreaterThanOrEqual(200);
+    expect(r.MIN_DURATION_SEC).toBe(15);
+  });
+
+  it("a quota refusal leaves the call queued instead of counting a failed attempt", () => {
+    const src = read("callTranscribe.mjs");
+    expect(src).toMatch(/RESOURCE_EXHAUSTED[\s\S]*return "throttled"/);
+    expect(src).toMatch(/=== "throttled"\) break/);
   });
 });
 

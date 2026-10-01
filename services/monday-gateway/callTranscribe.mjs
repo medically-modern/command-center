@@ -181,6 +181,11 @@ async function startJob(pool, row) {
     stats.started++;
   } catch (e) {
     for (const n of names) await gcsDelete(n);
+    if (/\b429\b|RESOURCE_EXHAUSTED|quota/i.test(errorText(e))) {
+      // A quota/rate refusal is not this call's failure: leave it queued.
+      stats.lastError = errorText(e);
+      return "throttled";
+    }
     const attempts = Number(row.transcript_attempts || 0) + 1;
     await pool.query(
       `UPDATE call_archive SET transcript_attempts = $2, transcript_error = $3,
@@ -255,13 +260,17 @@ export async function transcribeTick(pool) {
   ticking = true;
   try {
     stats.lastTickAt = new Date().toISOString();
+    // Poll the jobs checked least recently (by start time, oldest first), a
+    // bounded number per tick — with dynamic batching hundreds can be waiting
+    // at Google for hours, and each is one GET.
     const running = await pool.query(
       `SELECT rc_call_id, transcript_op, transcript_started_at, transcript_parts FROM call_archive
-        WHERE transcript_state = 'running' AND transcript_op IS NOT NULL ORDER BY transcript_started_at LIMIT 50`,
+        WHERE transcript_state = 'running' AND transcript_op IS NOT NULL ORDER BY transcript_started_at LIMIT 60`,
     );
     for (const row of running.rows) await pollJob(pool, row);
 
-    const room = Math.min(START_PER_TICK, MAX_RUNNING - running.rows.length);
+    const inFlight = await pool.query(`SELECT count(*)::int AS n FROM call_archive WHERE transcript_state = 'running'`);
+    const room = Math.min(START_PER_TICK, MAX_RUNNING - Number(inFlight.rows[0]?.n || 0));
     if (room <= 0) return;
     const fresh = await pool.query(
       `SELECT rc_call_id, object_key, content_type, transcript_attempts FROM call_archive
@@ -273,7 +282,10 @@ export async function transcribeTick(pool) {
         ORDER BY started_at DESC LIMIT $3`,
       [MIN_DURATION_SEC, String(LOOKBACK_HOURS), room],
     );
-    for (const row of fresh.rows) await startJob(pool, row);
+    for (const row of fresh.rows) {
+      // Google said "too many" — stop starting for this tick; nobody's fault.
+      if ((await startJob(pool, row)) === "throttled") break;
+    }
   } catch (e) {
     stats.lastError = errorText(e);
     console.warn("call transcribe tick failed:", errorText(e));

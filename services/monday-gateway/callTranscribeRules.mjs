@@ -21,16 +21,17 @@ export const LOCATION = "us";
 export const SPEECH_HOST = "us-speech.googleapis.com";
 export const MODEL = "chirp_3";
 
-/** Calls shorter than this aren't worth a transcript (rings, hang-ups). */
-export const MIN_DURATION_SEC = Math.max(Number(process.env.GOOGLE_STT_MIN_SEC) || 10, 1);
+/** Calls shorter than this aren't transcribed (Josh: "any call over 15 seconds"). */
+export const MIN_DURATION_SEC = Math.max(Number(process.env.GOOGLE_STT_MIN_SEC) || 15, 1);
 /** New jobs started per tick, and the most running at once. */
-export const START_PER_TICK = Math.max(Number(process.env.GOOGLE_STT_PER_TICK) || 4, 1);
-export const MAX_RUNNING = Math.max(Number(process.env.GOOGLE_STT_MAX_RUNNING) || 12, 1);
+export const START_PER_TICK = Math.max(Number(process.env.GOOGLE_STT_PER_TICK) || 10, 1);
+export const MAX_RUNNING = Math.max(Number(process.env.GOOGLE_STT_MAX_RUNNING) || 400, 1);
 /** Only calls this recent are picked up — the last 3 days (Josh, 2026-10-01). */
 export const LOOKBACK_HOURS = Math.max(Number(process.env.GOOGLE_STT_LOOKBACK_HOURS) || 72, 1);
 export const TICK_MS = 2 * 60_000;
-/** A job still not done after this is abandoned (and its audio copy deleted). */
-export const JOB_TIMEOUT_MS = 3 * 60 * 60_000;
+/** A job still not done after this is abandoned (and its audio copy deleted).
+ *  Dynamic batching promises results within 24 hours. */
+export const JOB_TIMEOUT_MS = 30 * 60 * 60_000;
 export const MAX_ATTEMPTS = 3;
 
 /**
@@ -53,8 +54,17 @@ export function gcsObjectName(callId, part = 0) {
   return part ? `calls/${id}-p${part}.mp3` : `calls/${id}.mp3`;
 }
 
+/**
+ * ⚠️ DYNAMIC BATCHING (Josh, 2026-10-01: "we definitely want it way cheaper
+ * and there's no rush"): $0.003/min instead of $0.016/min on Google's price
+ * page, in exchange for results "within 24 hours". Measured accepted with
+ * chirp_3 + diarization + inline results in `us` (2026-10-01, silence).
+ */
+export const PROCESSING_STRATEGY = "DYNAMIC_BATCHING";
+
 export function batchRequestBody(gcsUri) {
   return {
+    processingStrategy: PROCESSING_STRATEGY,
     config: {
       autoDecodingConfig: {},
       model: MODEL,
