@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   isRinging,
   last4,
@@ -10,6 +12,7 @@ import {
   unwrapEvent,
   claimRefusal,
   CLAIM_GONE_MESSAGE,
+  ringsSharedExtension,
 } from "./callRules.mjs";
 
 /** A telephony-session notification shaped like RingCentral's, trimmed to the
@@ -286,5 +289,37 @@ describe("staleRings — the stuck-card sweep", () => {
     // Sweeping early would pull a card while somebody could still take the
     // call — worse than one that lingers a few seconds.
     expect(MAX_RING_MS).toBeGreaterThanOrEqual(90_000);
+  });
+});
+
+describe("ringsSharedExtension — only the main line's calls are everyone's card (§5.13c)", () => {
+  const KATIE = "63007214012";
+  const ev = (...owners) => ({ parties: owners.map((o) => (o === null ? {} : { extensionId: o })) });
+
+  it("a call with a party on the shared extension is everyone's", () => {
+    expect(ringsSharedExtension(ev(KATIE), KATIE)).toBe(true);
+    expect(ringsSharedExtension(ev("13", KATIE), KATIE)).toBe(true);
+  });
+
+  it("⚠️ a call that never reaches the shared extension is not (someone's own line, a queue, a fax line)", () => {
+    expect(ringsSharedExtension(ev("63099999999"), KATIE)).toBe(false);
+  });
+
+  it("reads the extension off `to` when the party does not carry it", () => {
+    expect(ringsSharedExtension({ parties: [{ to: { extensionId: KATIE } }] }, KATIE)).toBe(true);
+    expect(ringsSharedExtension({ parties: [{ to: { extensionId: "1" } }] }, KATIE)).toBe(false);
+  });
+
+  it("⚠️ blank means unknown, never 'no': no id to compare, or no party saying, shows the call", () => {
+    expect(ringsSharedExtension(ev("63099999999"), "")).toBe(true);
+    expect(ringsSharedExtension(ev(null), KATIE)).toBe(true);
+    expect(ringsSharedExtension({}, KATIE)).toBe(true);
+  });
+
+  it("is wired in before a card is made", () => {
+    const src = readFileSync(resolve(process.cwd(), "services/monday-gateway/inboundCalls.mjs"), "utf8");
+    const gate = src.indexOf("if (!ringsSharedExtension(body, await sharedExtensionId()))");
+    expect(gate).toBeGreaterThan(0);
+    expect(src.indexOf("const party = pickInboundParty(body, SELF_NUMBERS);")).toBeGreaterThan(gate);
   });
 });

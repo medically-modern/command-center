@@ -119,6 +119,33 @@ export function pickInboundParty(event, selfNumbers = []) {
 }
 
 /**
+ * Does this call ring the SHARED extension (Katie's — the main line)?
+ *
+ * ⚠️ The webhook is ACCOUNT-wide, so it carries every call on the account:
+ * somebody's own direct line, a phone-tree number, a fax line. Since people
+ * answer on their own lines (§5.13c) a card for those popped on everyone's
+ * screen with no Answer — the call was not ringing them (Josh, 2026-09-30: a
+ * call that never reached ext 2 showed "ringing on another registered device").
+ * Only a call with a party on the shared extension is one everybody is rung
+ * for. A call to a person's own line still rings them, through their own SIP
+ * registration, which makes its own card (ringMerge's SIP-only ring).
+ *
+ * ⚠️ BLANK MEANS UNKNOWN, NOT "NO": with no extension id to compare against, or
+ * no party that says which extension it is on, the call is shown — hiding a
+ * real main-line call because a field was missing is the worse failure.
+ */
+export function ringsSharedExtension(event, sharedExtensionId) {
+  const want = String(sharedExtensionId || "");
+  if (!want) return true;
+  const parties = Array.isArray(event?.parties) ? event.parties : [];
+  const owners = parties
+    .map((p) => String(p?.extensionId ?? p?.to?.extensionId ?? ""))
+    .filter(Boolean);
+  if (!owners.length) return true;
+  return owners.includes(want);
+}
+
+/**
  * The state a session has moved to, for a call we are already showing.
  *
  * Returned separately from pickInboundParty because the interesting transition

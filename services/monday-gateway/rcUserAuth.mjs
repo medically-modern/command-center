@@ -279,13 +279,39 @@ async function keepAlive() {
 let _company = null;
 /** The account AND extension the gateway's JWT belongs to (the shared line,
  *  Katie's). Read once; both are fixed for the life of the JWT. */
+let _companyInFlight = null;
 async function companyLine() {
   if (_company) return _company;
-  const res = await rcApiFetch("/restapi/v1.0/account/~/extension/~", {}, { caller: "rc-user-connect" });
-  if (!res.ok) throw new Error(`could not read the company account (${res.status})`);
-  const j = await res.json();
-  _company = { accountId: String((j.account && j.account.id) || ""), extensionId: String(j.id || "") };
-  return _company;
+  // One request in flight: the call webhook asks on every event, and a burst
+  // of them before the first answer must not become a burst of reads.
+  if (!_companyInFlight) {
+    _companyInFlight = (async () => {
+      const res = await rcApiFetch("/restapi/v1.0/account/~/extension/~", {}, { caller: "rc-user-connect" });
+      if (!res.ok) throw new Error(`could not read the company account (${res.status})`);
+      const j = await res.json();
+      _company = { accountId: String((j.account && j.account.id) || ""), extensionId: String(j.id || "") };
+      return _company;
+    })().finally(() => {
+      _companyInFlight = null;
+    });
+  }
+  return _companyInFlight;
+}
+
+/** The shared extension's id (Katie's), or "" when it cannot be read — the
+ *  caller then treats every call as the shared line's (blank = unknown). */
+let _companyFailedAt = 0;
+export async function sharedExtensionId() {
+  if (_company) return _company.extensionId;
+  // ⚠️ Asked on EVERY call event: a failed read must not become a RingCentral
+  // request per event (INCIDENT_2026-08-20). Retried at most every 5 minutes.
+  if (Date.now() - _companyFailedAt < 5 * 60_000) return "";
+  try {
+    return (await companyLine()).extensionId;
+  } catch {
+    _companyFailedAt = Date.now();
+    return "";
+  }
 }
 
 async function companyAccountId() {

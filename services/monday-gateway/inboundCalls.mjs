@@ -58,11 +58,12 @@ import {
   staleRings,
   claimRefusal,
   unwrapEvent,
+  ringsSharedExtension,
 } from "./callRules.mjs";
 import { buildHistoryQuery } from "./callHistoryQuery.mjs";
 import { RETRY_STEPS_MS, retryAfterMs, retryDelayMs } from "./reconcileBackoff.mjs";
 import { normalizeReport, presenceFaults, summarize, verdictFor } from "./phonePresenceRules.mjs";
-import { connectedEmails } from "./rcUserAuth.mjs";
+import { connectedEmails, sharedExtensionId } from "./rcUserAuth.mjs";
 
 const { ASSIGNMENTS_DATABASE_URL } = process.env;
 
@@ -476,6 +477,13 @@ async function handleEvent(payload) {
     // a delayed or partially-delivered webhook stream looks like from here, and
     // it is otherwise indistinguishable from a quiet afternoon.
     void recordEvent({ kind: "end_unseen", sessionId, state: outcome });
+    return;
+  }
+  // Only calls that ring the shared extension (the main line) are everyone's
+  // card — see ringsSharedExtension. A call to someone's own line rings them
+  // through their own registration instead.
+  if (!ringsSharedExtension(body, await sharedExtensionId())) {
+    void recordEvent({ kind: "other_line", sessionId });
     return;
   }
   const party = pickInboundParty(body, SELF_NUMBERS);
