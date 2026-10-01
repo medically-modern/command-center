@@ -889,6 +889,31 @@ export function registerCallArchive({ app, pool, requireCaller }) {
           insights: counts,
         };
       };
+      // The extension's AI features (names + availability only).
+      const feat = await rcApiFetch("/restapi/v1.0/account/~/extension/~/features", {}, {
+        tier: "background",
+        caller: "ringsense-probe",
+        ttlMs: 0,
+      });
+      const fj = await feat.json().catch(() => null);
+      body.aiFeatures = (Array.isArray(fj?.records) ? fj.records : [])
+        .filter((f) => /ai|note|transcri|ringsense|caption/i.test(String(f?.id || "")))
+        .map((f) => ({ id: f.id, available: !!f.available }));
+      const askNotes = async (sessionId) => {
+        const r = await rcApiFetch(
+          `/ai/copilot/v1/accounts/~/extensions/~/ai-notes/${encodeURIComponent(sessionId)}`,
+          {},
+          { tier: "background", caller: "ringsense-probe", ttlMs: 0 },
+        );
+        const j = await r.json().catch(() => null);
+        return {
+          status: r.status,
+          errorCode: j?.errorCode || j?.errors?.[0]?.errorCode || null,
+          message: String(j?.message || j?.errors?.[0]?.message || "").slice(0, 200) || null,
+          hasNote: !!j?.callNote?.content,
+          transcriptLines: Array.isArray(j?.callTranscripts?.transcripts) ? j.callTranscripts.transcripts.length : 0,
+        };
+      };
       for (const row of q.rows) {
         const base = "/ai/ringsense/v1/public/accounts/~/domains/pbx";
         body.calls.push({
@@ -899,6 +924,10 @@ export function registerCallArchive({ app, pool, requireCaller }) {
           bySession: row.rc_session_id
             ? await ask(`${base}/sessions/${encodeURIComponent(row.rc_session_id)}/insights`)
             : null,
+          // ⚠️ UNDOCUMENTED: the AI Notes endpoint RingCentral's own App
+          // Connect reads (rc-unified-crm-extension backfillCallLogAiNotes).
+          // Status and whether a note/transcript came back — never its text.
+          aiNotes: row.rc_session_id ? await askNotes(row.rc_session_id) : null,
         });
       }
     } catch (e) {
