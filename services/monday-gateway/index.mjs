@@ -37,9 +37,6 @@
  *                      Note: what a mutation CHANGED is captured separately in
  *                      the `columns` field and does not require this flag.
  *   GATEWAY_CLIENT_KEY if set, requests must send a matching X-MM-Key header
- *   SUPABASE_DB_URL    the Supabase copy of the boards (mirrorBoard.mjs, §5.55);
- *                      a reference to supabase-mirror's variable. Unset → the
- *                      board page's route answers 503 and never connects.
  *   PORT               set by Railway
  */
 
@@ -54,7 +51,6 @@ import { registerInboundCalls } from "./inboundCalls.mjs";
 import { logRcSetup, registerRcSetup } from "./rcSetup.mjs";
 import { registerCalendlyDay } from "./calendlyDay.mjs";
 import { registerCalendlyPatient } from "./calendlyPatient.mjs";
-import { registerMirrorBoard } from "./mirrorBoard.mjs";
 import { registerStageActor } from "./stageActor.mjs";
 import {
   SCHEMA as REQUEST_LOG_SCHEMA,
@@ -813,11 +809,6 @@ logRcSetup();
 // behind a verified employee identity. See calendlyDay.mjs.
 registerCalendlyDay({ app });
 registerCalendlyPatient({ app });
-
-// The Supabase copy of a monday board, for the Monday-style board page
-// (docs/claude/5.55). READ ONLY inside Postgres; blocking employee identity;
-// 503 and no connection at all while SUPABASE_DB_URL is unset. See mirrorBoard.mjs.
-registerMirrorBoard({ app });
 
 ensureSchema().finally(() => {
   // Retention. Once at boot, then daily — the table is the one durable log here
