@@ -313,10 +313,17 @@ describe("ringsSharedExtension — only the main line's calls are everyone's car
     expect(ringsSharedExtension({ parties: [{ to: { extensionId: "1" } }] }, KATIE)).toBe(false);
   });
 
-  it("⚠️ blank means unknown, never 'no': no id to compare, or no party saying, shows the call", () => {
+  it("no shared id to compare (it could not be read) shows the call", () => {
     expect(ringsSharedExtension(ev("63099999999"), "")).toBe(true);
-    expect(ringsSharedExtension(ev(null), KATIE)).toBe(true);
-    expect(ringsSharedExtension({}, KATIE)).toBe(true);
+  });
+
+  it("⚠️ a party naming no extension is NOT shown — a coworker's outgoing call starts that way", () => {
+    // Measured 2026-10-01: an own-line outbound call's first event is a blank
+    // Inbound "Proceeding" party, which made a card on everyone's screen.
+    const outgoingFarEnd = { parties: [{ direction: "Inbound", status: { code: "Proceeding" }, from: { phoneNumber: "+13475550199" } }] };
+    expect(ringsSharedExtension(outgoingFarEnd, KATIE)).toBe(false);
+    expect(ringsSharedExtension(ev(null), KATIE)).toBe(false);
+    expect(ringsSharedExtension({}, KATIE)).toBe(false);
   });
 
   it("is wired in before a card is made", () => {

@@ -32,7 +32,8 @@
 export const RINGING_STATES = ["Setup", "Proceeding"];
 
 /** Statuses that end a call's life on screen. */
-export const TERMINAL_STATES = ["Disconnected", "Gone", "VoiceMail", "VoiceMailScreening"];
+// "Voicemail" is how live events spell it (seen 2026-10-01); "VoiceMail" is the docs'.
+export const TERMINAL_STATES = ["Disconnected", "Gone", "VoiceMail", "Voicemail", "VoiceMailScreening"];
 
 export function isRinging(status) {
   return RINGING_STATES.includes(String(status || ""));
@@ -130,12 +131,19 @@ export function pickInboundParty(event, selfNumbers = []) {
  * for. A call to a person's own line still rings them, through their own SIP
  * registration, which makes its own card (ringMerge's SIP-only ring).
  *
- * ⚠️ BLANK MEANS UNKNOWN, NOT "NO": with no extension id to compare against, or
- * no party that says which extension it is on, the call is shown — hiding a
- * real main-line call because a field was missing is the worse failure.
+ * With no shared id to compare against (it could not be read) every call is
+ * shown. A party that names no extension is NOT shown — see below.
  */
 export function ringsSharedExtension(event, sharedExtensionId) {
-  return lineVerdict(event, sharedExtensionId) !== "other";
+  const verdict = lineVerdict(event, sharedExtensionId);
+  // ⚠️ "blank" is NOT shown (2026-10-01, measured): every main-line call's
+  // first Inbound event names the shared extension (10 of 10 on live traffic),
+  // while a coworker dialing OUT from their own line starts with a blank
+  // Inbound "Proceeding" party (the far end) — that put a card on screens for
+  // two outgoing calls at 16:48 and 16:50 UTC. Nothing is stored for a blank
+  // event, so a later event that does name the shared extension still makes
+  // the card. Only an unknown shared id ("no-id") still shows everything.
+  return verdict === "shared" || verdict === "no-id";
 }
 
 /**
