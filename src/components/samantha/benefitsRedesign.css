@@ -333,6 +333,50 @@
 .bnr .gate-note svg{flex-shrink:0;margin-top:2px}
 .bnr .gate-note b{font-weight:800}
 
+/* ============ who-to-call suggestion pills (profile-sendoff sugg-chip2 style) ============ */
+/* HANDOFF-Josh-Who-To-Call §3 (Brandon, 2026-10-01). One colour meaning
+   everywhere: MINT = our side (the plan we bill, or CareCentrix); DARK
+   MM-TEAL, white text = the member's own plan when it is a different party.
+   No phone numbers — the payer name only.
+   ⚠️ `--bnr-foreground` / `--bnr-muted-foreground`, NOT the handoff's bare
+   `--foreground`: index.css stores that as an HSL TRIPLET for Tailwind, so
+   `color: var(--foreground)` is an invalid colour here. */
+.bnr .sugg-lead2{font-size:.8rem;font-weight:800;color:var(--bnr-foreground)}
+.bnr .sugg-chip2{display:inline-flex;align-items:center;gap:7px;font-size:.8rem;font-weight:700;
+  border-radius:999px;padding:5px 12px;background:var(--mm-green-12);color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring)}
+.bnr .sugg-chip2 svg{flex-shrink:0}
+.bnr .sugg-chip2 .pfx{font-weight:800;opacity:.85}
+.bnr .sugg-chip2.member{background:var(--mm-teal);color:#fff;box-shadow:none}
+.bnr .head-pills{display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.bnr .uc-pill{margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bnr .uc-note{margin-top:6px;font-size:.8rem;line-height:1.45;color:var(--bnr-muted-foreground)}
+/* With pills, the three check cards share their row tracks (subgrid), so the
+   Yes/No rows and the Call: pills line up across cards even though only DME
+   Benefits carries the in-network note — the `.seg{margin-top:auto}` rule
+   would otherwise push the two shorter cards' buttons lower (found by
+   rendering). Opt-in via `.with-pills`, so a patient without pills renders
+   exactly as before; single-column (≤960px) needs no alignment. */
+@media (min-width:961px){
+  .bnr .uc-grid.with-pills{grid-template-rows:repeat(4,auto);row-gap:0}
+  .bnr .uc-grid.with-pills .subcard{display:grid;grid-row:span 4;grid-template-rows:subgrid;align-content:start}
+  .bnr .uc-grid.with-pills .seg{margin-top:0}
+}
+/* Step 2's header wraps once it has pills: the title keeps one line and the
+   chips drop beneath it, right-aligned, rather than squeezing the title. */
+.bnr .step-head.has-pills{flex-wrap:wrap;row-gap:8px}
+.bnr .head-pills{justify-content:flex-end}
+
+/* ============ POS 11 banner (handoff §4) — amber, the missing-box family ============ */
+.bnr .pos11-note{
+  margin-top:12px;display:flex;align-items:flex-start;gap:10px;
+  border:1px solid oklch(0.66 0.12 75 / 0.45);border-left:4px solid var(--mm-amber);border-radius:10px;
+  background:oklch(0.96 0.04 90 / 0.5);padding:10px 14px;
+  font-size:.875rem;line-height:1.5;color:oklch(0.45 0.1 75);
+}
+.bnr .pos11-note svg{flex-shrink:0;margin-top:2px}
+.bnr .pos11-note b{font-weight:800}
+
 /* ============ responsive ============ */
 @media (max-width:960px){
   .bnr .ph-groups,.bnr .uc-grid{grid-template-columns:1fr}
@@ -376,3 +420,9 @@
 
 .dark .bnr .dvs-note { background: oklch(0.50 0.07 175 / 0.24); }
 .dark .bnr .missing-box { background: oklch(0.50 0.09 85 / 0.26); }
+
+/* Who-to-call + POS 11 (2026-10-01). Dark `--mm-teal` is a LIGHT teal, so the
+   member chip's white text would vanish — dark text on it instead. The POS 11
+   note takes the missing-box wash and a light amber text. */
+.dark .bnr .sugg-chip2.member { color: var(--bnr-background); }
+.dark .bnr .pos11-note { background: oklch(0.50 0.09 85 / 0.26); color: oklch(0.88 0.09 85); }

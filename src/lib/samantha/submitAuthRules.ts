@@ -15,6 +15,7 @@ import {
 } from "./hcpcRules";
 import type { Patient, ProductCodeId } from "./workflow";
 import { EMPTY_INSURANCE } from "./workflow";
+import { whoToCall } from "./whoToCall";
 
 const PRODUCT_TO_CODE_ID: Record<ProductId, ProductCodeId> = {
   monitor: "cgm-monitor",
@@ -137,14 +138,20 @@ const ANTHEM_803: RouteTable = {
 /** Route-specific overrides. HCPCs absent from a route fall through to defaults. */
 const ROUTE_MODIFIERS: Record<ModifierRoute, RouteTable> = {
   "anthem-803": ANTHEM_803,
-  // BCBS Florida — BlueCard, so every SUPPLY line is still Anthem 803's and
-  // is spread from it verbatim. The PUMP alone differs: E0784 bills NU SQ
-  // (Brandon, 2026-09-21; he is making the matching claims-ui-tool change).
-  // ⚠️ Spread, never re-typed — a second copy of the 803 supply lines would
-  // drift from the route it is supposed to follow, silently.
+  // BCBS Florida (Florida Blue) — billed to CareCentrix 11345 at POS 12,
+  // with its OWN line set (Brandon, 2026-10-01, HANDOFF-Josh-Who-To-Call §9).
+  // NOT the carecentrix table: A4230 is NU alone (no SC) and the pump bills
+  // NU SQ. Only these five codes — BCBS FL always bills A4230 / A4232, never
+  // the A4231 / A4224 / A4225 aliases, so those fall through to the defaults.
+  // ⚠️ Until 2026-10-01 this route SPREAD Anthem 803's supply lines with only
+  // the pump overridden; Florida Blue is not billed through 803.
+  // Hand-synced with claims-ui-tool's BCBS FL table — update both.
   "bcbs-fl": {
-    ...ANTHEM_803,
-    label: "BCBS FL via Anthem 803",
+    label: "BCBS FL via CareCentrix 11345",
+    A4230: ["NU"],
+    A4232: ["NU", "SC"],
+    A4239: ["NU"],
+    E2103: ["NU"],
     E0784: ["NU", "SQ"],
   },
   // Horizon NJ via CareCentrix 11348 — NJ residents.
@@ -186,7 +193,7 @@ export function modifierRoute(primaryInsurance: string): ModifierRoute | null {
 
 export interface ModifierInfo {
   mods: string[];
-  /** Route label ("Anthem NY 803" / "CareCentrix 11348" / "BCBS TN direct") or "default". */
+  /** Route label ("Anthem NY 803" / "CareCentrix 11348" / "BCBS FL via CareCentrix 11345" / "BCBS TN direct") or "default". */
   source: string;
 }
 
@@ -236,8 +243,17 @@ export interface HomePlanInfo {
  * bill, auths go through the home plan. Compare on the first word
  * ("Horizon BCBSNJ" vs "Horizon BCBS" → same family → no banner).
  * Phone numbers are deliberately absent — no payer-phone source yet.
+ *
+ * ⚠️ **Never on the CareCentrix route** (NJ / FL address,
+ * `whoToCall.ts`, 2026-10-01). There CareCentrix issues the auth whatever
+ * the card says — a Florida Blue member living in NJ goes to CareCentrix, not
+ * Florida Blue — so "auths go through the home plan" would send the rep to
+ * the wrong party. Submit Auth and Auth Outstanding show the CareCentrix
+ * banner (`carecentrixAuthNote`) instead, and the Benefits header's
+ * "HANDLES AUTHS" tag, which follows this, switches off with it.
  */
 export function authHomePlan(patient: Patient): HomePlanInfo | null {
+  if (whoToCall(patient)?.route === "carecentrix") return null;
   const home = (patient.homePlan ?? "").trim();
   const host = (patient.primaryInsurance ?? "").trim();
   if (!home || !host || !isBcbsFamily(host)) return null;

@@ -44,6 +44,8 @@ import {
   ymdToUs,
 } from "@/lib/samantha/benefitsDerive";
 import "./benefitsRedesign.css";
+import { step2Suggestion, whoToCall } from "@/lib/samantha/whoToCall";
+import { CallChip } from "./CallChip";
 
 const PRODUCT_TO_CODE_ID: Record<ResolvedProduct["product"], ProductCodeId> = {
   monitor: "cgm-monitor",
@@ -400,6 +402,10 @@ export function BenefitsPanel({
   }, [patient.primaryInsurance, patient.serving, pumpAuth, onCodeChange]);
 
   const preview = useMemo(() => deriveBenefitsPreview(patient, todayYmd), [patient, todayYmd]);
+  // Who to call per check (HANDOFF-Josh-Who-To-Call): Blue family + a
+  // resolved address state + not FEP, else null and no pills at all. The
+  // ADDRESS decides the route (NJ/FL → CareCentrix), never the card.
+  const who = whoToCall(patient);
 
   const billedFacts = visibleResolved
     .map((r) => {
@@ -450,7 +456,7 @@ export function BenefitsPanel({
             {universalCount}/3 confirmed
           </span>
         </header>
-        <div className="uc-grid" style={{ marginTop: 14 }}>
+        <div className={`uc-grid${who ? " with-pills" : ""}`} style={{ marginTop: 14 }}>
           {UNIVERSAL_META.map((meta, i) => {
             const v = ins.universal[meta.id];
             // Medicare A&B only: In-Network swaps its "no" answer for
@@ -508,6 +514,18 @@ export function BenefitsPanel({
                     </button>
                   )}
                 </div>
+                {who && (
+                  <div className="uc-pill">
+                    <span className="sugg-lead2">Call:</span>
+                    <CallChip target={who.byCheck[meta.id]} />
+                  </div>
+                )}
+                {who?.dmeInNetworkOnly && meta.id === "dme-benefits" && (
+                  <p className="uc-note">
+                    Ask for <b>in-network benefits only</b> — out-of-network on an EPO always comes
+                    back "not covered" and doesn't apply here.
+                  </p>
+                )}
                 {medNP && v === "medicare-not-primary" && (
                   <p className="uc-hint">
                     Record <strong>who the primary payer is</strong> in the call notes below — the
@@ -527,9 +545,17 @@ export function BenefitsPanel({
 
       {/* ============ step 2 — product cards ============ */}
       <section className="card step-card">
-        <header className="step-head">
+        <header className={`step-head${who ? " has-pills" : ""}`}>
           <span className={`step-num ${step2Done ? "done" : ""}`}>{step2Done ? "✓" : "2"}</span>
           <h2>Product-Specific SoS &amp; Auth Requirements</h2>
+          {who && (
+            <span className="head-pills">
+              <span className="sugg-lead2">Suggestion:</span>
+              {step2Suggestion(who).map(({ prefix, target }) => (
+                <CallChip key={`${prefix}${target.name}`} prefix={prefix} target={target} />
+              ))}
+            </span>
+          )}
         </header>
         <p className="step-sub">For each product, select Auth Requirements and record billing history.</p>
 

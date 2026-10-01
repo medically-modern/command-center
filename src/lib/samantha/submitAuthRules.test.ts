@@ -172,25 +172,24 @@ describe("modifiers (handoff §4 — hand-synced from claims-ui-tool)", () => {
     expect(modifiersFor("E0784", "Horizon BCBS")).toEqual({ mods: ["NU"], source: "CareCentrix 11348" });
   });
 
-  it("BCBS FL: pump is NU+SQ; every other line still Anthem 803's", () => {
-    // The pump is the whole reason this route exists (Brandon, 2026-09-21).
-    expect(modifiersFor("E0784", "BCBS FL")).toEqual({
-      mods: ["NU", "SQ"],
-      source: "BCBS FL via Anthem 803",
-    });
-    // ⚠️ The supply lines are SPREAD from anthem-803 and must stay identical to
-    // it — only the source label differs. A hand-retyped table would drift here.
-    for (const hcpc of ["A4230", "A4231", "A4224", "A4232", "A4225", "A4239"]) {
-      expect(modifiersFor(hcpc, "BCBS FL")!.mods).toEqual(
-        modifiersFor(hcpc, "Anthem BCBS Commercial")!.mods,
-      );
-    }
-    // E2103 is in neither table, so it still falls through to the defaults.
-    expect(modifiersFor("E2103", "BCBS FL")).toEqual({ mods: ["KX", "NU"], source: "default" });
+  it("BCBS FL: its own CareCentrix 11345 line set (Brandon, 2026-10-01)", () => {
+    const src = "BCBS FL via CareCentrix 11345";
+    expect(modifiersFor("A4230", "BCBS FL")).toEqual({ mods: ["NU"], source: src });
+    expect(modifiersFor("A4232", "BCBS FL")).toEqual({ mods: ["NU", "SC"], source: src });
+    expect(modifiersFor("A4239", "BCBS FL")).toEqual({ mods: ["NU"], source: src });
+    expect(modifiersFor("E2103", "BCBS FL")).toEqual({ mods: ["NU"], source: src });
+    expect(modifiersFor("E0784", "BCBS FL")).toEqual({ mods: ["NU", "SQ"], source: src });
   });
 
-  it("BCBS FL's pump rule does NOT leak onto the other Anthem 803 payers", () => {
+  it("BCBS FL is NOT the Horizon CareCentrix table — A4230 has no SC", () => {
+    expect(modifiersFor("A4230", "BCBS FL")!.mods).not.toEqual(modifiersFor("A4230", "Horizon BCBS")!.mods);
+    expect(modifiersFor("A4230", "Horizon BCBS")!.mods).toEqual(["NU", "SC"]);
+  });
+
+  it("Anthem BCBS Commercial / Low-Cost (JLJ) / BCBS WY are unchanged by BCBS FL's table", () => {
     for (const payer of ["Anthem BCBS Commercial", "Anthem BCBS Low-Cost (JLJ)", "BCBS WY"]) {
+      expect(modifiersFor("A4230", payer)).toEqual({ mods: ["KX"], source: "Anthem NY 803" });
+      expect(modifiersFor("A4239", payer)).toEqual({ mods: ["KF", "KX", "CG"], source: "Anthem NY 803" });
       expect(modifiersFor("E0784", payer)).toEqual({ mods: ["KX", "NU"], source: "default" });
     }
   });
@@ -222,6 +221,30 @@ describe("home plan (handoff §8)", () => {
   it("same family (Horizon BCBSNJ vs Horizon BCBS) → no banner", () => {
     const p = makePatient({ primaryInsurance: "Horizon BCBS", homePlan: "Horizon BCBSNJ" });
     expect(authHomePlan(p)).toBeNull();
+  });
+  it("NJ address, Horizon host, BCBS Florida home → null: CareCentrix issues the auth (handoff #12)", () => {
+    const p = makePatient({
+      primaryInsurance: "Horizon BCBS",
+      homePlan: "BCBS Florida",
+      patientAddress: "1 Main St, Summit, NJ 07901",
+    });
+    expect(authHomePlan(p)).toBeNull();
+  });
+  it("FL address, BCBS FL host, Anthem home → null (handoff #13)", () => {
+    const p = makePatient({
+      primaryInsurance: "BCBS FL",
+      homePlan: "Anthem BCBS",
+      patientAddress: "1 Main St, Tampa, FL 33602",
+    });
+    expect(authHomePlan(p)).toBeNull();
+  });
+  it("NY address keeps the home-plan banner", () => {
+    const p = makePatient({
+      primaryInsurance: "Anthem BCBS Commercial",
+      homePlan: "BCBS Connecticut",
+      patientAddress: "1 Main St, Albany, NY 12207",
+    });
+    expect(authHomePlan(p)).toEqual({ home: "BCBS Connecticut", host: "Anthem BCBS Commercial" });
   });
   it("non-BCBS payer or missing home plan → no banner", () => {
     expect(authHomePlan(makePatient({ primaryInsurance: "Cigna", homePlan: "BCBS Connecticut" }))).toBeNull();

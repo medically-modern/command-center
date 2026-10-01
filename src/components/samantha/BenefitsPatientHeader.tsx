@@ -37,12 +37,13 @@
  * Deductible / OOP Max remaining).
  */
 import { useState } from "react";
-import { Check, ChevronDown, Loader2, Pencil, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Loader2, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import type { Patient } from "@/lib/samantha/workflow";
 import { authHomePlan } from "@/lib/samantha/submitAuthRules";
+import { expectedPos } from "@/lib/shared/pos";
 import { PatientContact } from "@/components/masheke/mmKit";
 import "./benefitsRedesign.css";
 import { InsuranceProfileStatus } from "@/components/shared/PatientProfileStatus";
@@ -189,9 +190,18 @@ interface Props {
    * this file before passing it from a new page.
    */
   onSavePhone?: (phone: string) => Promise<void>;
+  /**
+   * Show the amber POS 11 banner when the POS rule says Office
+   * (HANDOFF-Josh-Who-To-Call §4). ⚠️ Opt-in, and only the Benefits page
+   * passes it: the handoff asked for it in front of the Benefits rep, and this
+   * header is shared with Submit Auth and Auth Outstanding (§9 "name the
+   * screen, not the data"). The fact is `lib/shared/pos.ts`'s `expectedPos`,
+   * never re-derived here.
+   */
+  showPos11?: boolean;
 }
 
-export function BenefitsPatientHeader({ patient, onSavePhone }: Props) {
+export function BenefitsPatientHeader({ patient, onSavePhone, showPos11 }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const isMedicarePayer = /medicare/i.test(patient.primaryInsurance ?? "");
@@ -200,6 +210,8 @@ export function BenefitsPatientHeader({ patient, onSavePhone }: Props) {
   // "HANDLES AUTHS" when a BCBS-family member's home plan differs from the
   // host plan we bill (Submit Auth redesign §8).
   const homePlanDiffers = authHomePlan(patient);
+  const pos11 =
+    !!showPos11 && expectedPos(patient.primaryInsurance ?? "", patient.patientAddress ?? "") === "Office";
 
   return (
     <section className="card header-card">
@@ -284,6 +296,15 @@ export function BenefitsPatientHeader({ patient, onSavePhone }: Props) {
           <SBox label="Deductible Remaining" value={patient.deductibleRemaining ?? ""} />
           <SBox label="OOP Max Remaining" value={patient.oopMaxRemaining ?? ""} />
         </div>
+        {pos11 && (
+          <div className="pos11-note" role="note">
+            <AlertTriangle size={18} aria-hidden="true" />
+            <span>
+              <b>POS 11 situation</b> — out-of-state Blue billed through Anthem NY (803) BlueCard.
+              Place of Service <b>11 (Office)</b>, not 12 (Home).
+            </span>
+          </div>
+        )}
       </div>
 
       <button

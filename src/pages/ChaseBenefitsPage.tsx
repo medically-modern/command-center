@@ -321,7 +321,7 @@ const ChaseBenefitsPage = () => {
                 {selected && (
                   <div className="layout">
                     <div className="main-col">
-                      <BenefitsPatientHeader patient={selected} />
+                      <BenefitsPatientHeader patient={selected} showPos11 />
 
                       {selected.id === lastSentId ? (
                         <section className="card step-card">

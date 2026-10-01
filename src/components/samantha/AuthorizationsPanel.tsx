@@ -41,6 +41,7 @@ import {
   productCodeId,
   submitAuthCards,
 } from "@/lib/samantha/submitAuthRules";
+import { carecentrixAuthNote } from "@/lib/samantha/whoToCall";
 import { etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
 import { Repeat, Package } from "lucide-react";
 import "./benefitsRedesign.css";
@@ -302,6 +303,9 @@ export function AuthorizationsPanel({
   const isCarecentrix = (patient.referralSource || "").toLowerCase().includes("carecentrix");
   const mltc = isMltcPlan(patient.planName);
   const homePlan = authHomePlan(patient);
+  // NJ / FL address → CareCentrix issues the auth (whoToCall.ts). Exclusive
+  // with `homePlan`: authHomePlan is null on that route.
+  const ccNote = carecentrixAuthNote(patient);
   const allComplete =
     cards.length > 0 && cards.every((r) => cardComplete(ins.codes[productCodeId(r.product)]));
 
@@ -420,7 +424,16 @@ export function AuthorizationsPanel({
                     </span>
                   </div>
                 )}
-                <div className="prod-list" style={{ marginTop: homePlan || mltc ? 0 : 14 }}>
+                {ccNote && (
+                  <div className="homeplan-note" style={{ marginTop: 14 }}>
+                    <Info size={20} />
+                    <span>
+                      Auths go through <b>CareCentrix</b> — they manage DME for {ccNote.host} members —
+                      not {ccNote.member}.
+                    </span>
+                  </div>
+                )}
+                <div className="prod-list" style={{ marginTop: homePlan || ccNote || mltc ? 0 : 14 }}>
                   {cards.map((r) => (
                     <SubmissionCard
                       key={r.product}

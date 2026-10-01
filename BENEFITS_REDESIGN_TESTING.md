@@ -83,9 +83,11 @@ The Medicaid special cases:
 
 ### Tabs 4–5 — BlueCard · CT Home Plan / Out-of-State · POS 11
 Standard commercial derivations (same as Tab 1). Their *special* behavior — the
-who-to-call pills and the "probably out of network / POS 11" flag — is **not built
-yet**: it's blocked on the Anthem rulebook (D7), which doesn't exist. The tabs are
-here so the flows are ready to verify the moment that ships.
+who-to-call pills and the POS 11 flag — **shipped 2026-10-01** from Brandon's
+`HANDOFF-Josh-Who-To-Call.md` (the D7 blocker is resolved): `Call:` pills per check,
+`Suggestion:` pills on step 2, and the amber POS 11 note in the header. The address
+decides the route (NJ/FL → CareCentrix). Rules and test cases: CLAUDE.md §5.58
+(`docs/claude/5.58-benefits-who-to-call.md`).
 
 ## 4. How to test — one real patient, end to end
 

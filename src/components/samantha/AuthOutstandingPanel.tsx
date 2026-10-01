@@ -51,6 +51,7 @@ import {
   type AuthOutstandingResult,
 } from "@/lib/samantha/authOutstandingReview";
 import { authHomePlan, modifiersFor } from "@/lib/samantha/submitAuthRules";
+import { carecentrixAuthNote } from "@/lib/samantha/whoToCall";
 import { sosLookbackLabel, ymdToUs } from "@/lib/samantha/benefitsDerive";
 import { isMedicarePrimary } from "@/lib/samantha/medicareJurisdiction";
 import { Input } from "@/components/ui/input";
@@ -115,6 +116,9 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onS
   const dvsProducts = new Set(dvsRoutedProducts(patient).map((r) => r.product));
   const hasMedicaid = reviewHasMedicaid(patient);
   const homePlan = authHomePlan(patient);
+  // NJ / FL address → CareCentrix issues the auth (whoToCall.ts). Exclusive
+  // with `homePlan`: authHomePlan is null on that route.
+  const ccNote = carecentrixAuthNote(patient);
 
   return (
     <section className="rounded-xl border bg-card p-5 shadow-card space-y-6">
@@ -142,6 +146,16 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onS
           <p className="text-sm text-[#0F4C5C] dark:text-teal-200">
             Auth status checks go through the member's <b>home plan — {homePlan.home}</b> — not{" "}
             {homePlan.host}, the host plan we bill.
+          </p>
+        </div>
+      )}
+
+      {dropdownsReady && ccNote && (
+        <div className="flex items-start gap-3 rounded-xl border border-l-4 border-[#0F4C5C]/30 border-l-[#0F4C5C] bg-[#0F4C5C]/5 px-4 py-3">
+          <Info className="h-4 w-4 mt-0.5 shrink-0 text-[#0F4C5C]" />
+          <p className="text-sm text-[#0F4C5C] dark:text-teal-200">
+            Auths go through <b>CareCentrix</b> — they manage DME for {ccNote.host} members — not{" "}
+            {ccNote.member}.
           </p>
         </div>
       )}
