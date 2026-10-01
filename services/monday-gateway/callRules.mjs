@@ -135,14 +135,38 @@ export function pickInboundParty(event, selfNumbers = []) {
  * real main-line call because a field was missing is the worse failure.
  */
 export function ringsSharedExtension(event, sharedExtensionId) {
+  return lineVerdict(event, sharedExtensionId) !== "other";
+}
+
+/**
+ * Why ringsSharedExtension decided as it did: "shared" (a party is on the
+ * shared extension), "other" (parties name extensions, none of them it),
+ * "blank" (no party names an extension) or "no-id" (the shared id is unknown).
+ */
+export function lineVerdict(event, sharedExtensionId) {
   const want = String(sharedExtensionId || "");
-  if (!want) return true;
-  const parties = Array.isArray(event?.parties) ? event.parties : [];
-  const owners = parties
+  if (!want) return "no-id";
+  const owners = partiesOf(event)
     .map((p) => String(p?.extensionId ?? p?.to?.extensionId ?? ""))
     .filter(Boolean);
-  if (!owners.length) return true;
-  return owners.includes(want);
+  if (!owners.length) return "blank";
+  return owners.includes(want) ? "shared" : "other";
+}
+
+/** The shape of an event's parties for /calls/health: statuses, and how many
+ *  name an extension. ⚠️ No numbers, names or ids — that route is public. */
+export function lineShape(event) {
+  const parties = partiesOf(event);
+  return {
+    parties: parties.length,
+    owned: parties.filter((p) => p?.extensionId ?? p?.to?.extensionId).length,
+    statuses: parties.map((p) => String(p?.status?.code || "?")),
+    directions: parties.map((p) => String(p?.direction || "?")),
+  };
+}
+
+function partiesOf(event) {
+  return Array.isArray(event?.parties) ? event.parties : [];
 }
 
 /**

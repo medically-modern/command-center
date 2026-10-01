@@ -13,6 +13,8 @@ import {
   claimRefusal,
   CLAIM_GONE_MESSAGE,
   ringsSharedExtension,
+  lineVerdict,
+  lineShape,
 } from "./callRules.mjs";
 
 /** A telephony-session notification shaped like RingCentral's, trimmed to the
@@ -318,8 +320,29 @@ describe("ringsSharedExtension — only the main line's calls are everyone's car
 
   it("is wired in before a card is made", () => {
     const src = readFileSync(resolve(process.cwd(), "services/monday-gateway/inboundCalls.mjs"), "utf8");
-    const gate = src.indexOf("if (!ringsSharedExtension(body, await sharedExtensionId()))");
+    const gate = src.indexOf("if (!ringsSharedExtension(body, sharedId))");
     expect(gate).toBeGreaterThan(0);
     expect(src.indexOf("const party = pickInboundParty(body, SELF_NUMBERS);")).toBeGreaterThan(gate);
+  });
+
+  it("⚠️ the shared id is awaited BEFORE the calls map is read (no double ring)", () => {
+    const src = readFileSync(resolve(process.cwd(), "services/monday-gateway/inboundCalls.mjs"), "utf8");
+    const fn = src.slice(src.indexOf("async function handleEvent"), src.indexOf("/* ── subscription lifecycle"));
+    const awaited = fn.indexOf("const sharedId = await sharedExtensionId();");
+    expect(awaited).toBeGreaterThan(0);
+    expect(fn.indexOf("const existing = calls.get(sessionId);")).toBeGreaterThan(awaited);
+    // Nothing awaited between reading the map and writing it.
+    const between = fn.slice(fn.indexOf("const existing = calls.get(sessionId);"), fn.indexOf("calls.set(sessionId, call);"));
+    expect(between).not.toMatch(/\bawait\b/);
+  });
+
+  it("lineVerdict says why, and lineShape carries no numbers", () => {
+    expect(lineVerdict(ev(KATIE), KATIE)).toBe("shared");
+    expect(lineVerdict(ev("1"), KATIE)).toBe("other");
+    expect(lineVerdict(ev(null), KATIE)).toBe("blank");
+    expect(lineVerdict(ev(KATIE), "")).toBe("no-id");
+    const shape = lineShape({ parties: [{ extensionId: KATIE, direction: "Inbound", status: { code: "Setup" }, from: { phoneNumber: "+14125550000" } }] });
+    expect(shape).toEqual({ parties: 1, owned: 1, statuses: ["Setup"], directions: ["Inbound"] });
+    expect(JSON.stringify(shape)).not.toMatch(/\d{4}/);
   });
 });

@@ -59,6 +59,8 @@ import {
   claimRefusal,
   unwrapEvent,
   ringsSharedExtension,
+  lineVerdict,
+  lineShape,
 } from "./callRules.mjs";
 import { buildHistoryQuery } from "./callHistoryQuery.mjs";
 import { RETRY_STEPS_MS, retryAfterMs, retryDelayMs } from "./reconcileBackoff.mjs";
@@ -381,6 +383,18 @@ function broadcastUpdate(call) {
 const eventStats = { seen: 0, rings: 0, unparsed: 0, selfCalls: 0, lastAt: 0 };
 
 /**
+ * The last few line decisions (ringsSharedExtension), for /calls/health: what
+ * a new session's first event looked like, and what later events on a shown
+ * card said. ⚠️ Public route: verdicts, statuses and counts only, and the
+ * session's last four characters to pair the rows. No numbers, names or ids.
+ */
+const lineLog = [];
+function noteLine(entry) {
+  lineLog.push({ at: new Date().toISOString(), ...entry });
+  if (lineLog.length > 40) lineLog.shift();
+}
+
+/**
  * Append one row to call_events — the durable half of the counters above.
  *
  * ⚠️ Fire-and-forget, and every caller uses `void`. This runs AFTER the webhook
@@ -439,10 +453,20 @@ async function handleEvent(payload) {
     return;
   }
 
+  // ⚠️ Awaited BEFORE the calls map is read: an await between `calls.get` and
+  // `calls.set` lets two events of one session both see "new" and ring twice.
+  const sharedId = await sharedExtensionId();
   const existing = calls.get(sessionId);
   const outcome = sessionOutcome(body);
 
   if (existing) {
+    // What later events on a card say about its line, once per new verdict.
+    const later = lineVerdict(body, sharedId);
+    existing.lineVerdicts = existing.lineVerdicts || new Set();
+    if (!existing.lineVerdicts.has(later)) {
+      existing.lineVerdicts.add(later);
+      noteLine({ session: sessionId.slice(-4), stage: "later", verdict: later, ...lineShape(body) });
+    }
     // A call we are already showing. The interesting transition is the one away
     // from ringing — a card left up after the caller hung up is worse than none.
     if (outcome && existing.state === "ringing") {
@@ -482,7 +506,8 @@ async function handleEvent(payload) {
   // Only calls that ring the shared extension (the main line) are everyone's
   // card — see ringsSharedExtension. A call to someone's own line rings them
   // through their own registration instead.
-  if (!ringsSharedExtension(body, await sharedExtensionId())) {
+  noteLine({ session: sessionId.slice(-4), stage: "new", verdict: lineVerdict(body, sharedId), ...lineShape(body) });
+  if (!ringsSharedExtension(body, sharedId)) {
     void recordEvent({ kind: "other_line", sessionId });
     return;
   }
@@ -1307,6 +1332,9 @@ export function registerInboundCalls({ app }) {
         selfCalls: eventStats.selfCalls,
         lastAt: eventStats.lastAt ? new Date(eventStats.lastAt).toISOString() : null,
       },
+      // ringsSharedExtension's recent decisions (§5.13c): which calls were
+      // kept off everyone's screen, and what a shown card's events said.
+      lines: lineLog,
     });
   });
 }
