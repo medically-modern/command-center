@@ -30,7 +30,7 @@ import {
   SPEECH_HOST,
   START_PER_TICK,
   TICK_MS,
-  batchRequestBodyFor,
+  batchRequestBody,
   fileResult,
   splitMp3,
   stitchTurns,
@@ -52,7 +52,8 @@ ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS transcript_parts      INT NOT 
 CREATE INDEX IF NOT EXISTS call_archive_transcript_state_idx ON call_archive (transcript_state);
 -- Calls refused as "too long" before long calls were split: try them again.
 UPDATE call_archive SET transcript_state = NULL, transcript_attempts = 0, transcript_error = NULL
- WHERE transcript_state = 'failed' AND transcript_error LIKE '%too long%';
+ WHERE (transcript_state = 'failed' OR transcript_state IS NULL)
+   AND (transcript_error LIKE '%too long%' OR transcript_error LIKE '%Inline response config%');
 `;
 
 const stats = { lastTickAt: null, lastError: null, started: 0, done: 0, empty: 0, failed: 0 };
@@ -126,6 +127,23 @@ function errorText(e) {
 
 /* ── the job ─────────────────────────────────────────────────────────────── */
 
+/** transcript_op holds one operation name, or a JSON list of them (one per piece). */
+function encodeOps(ops) {
+  return ops.length === 1 ? ops[0] : JSON.stringify(ops);
+}
+function decodeOps(v) {
+  const s = String(v || "");
+  if (s.startsWith("[")) {
+    try {
+      const a = JSON.parse(s);
+      return Array.isArray(a) ? a.map(String) : [];
+    } catch {
+      return [];
+    }
+  }
+  return s ? [s] : [];
+}
+
 /** The drop-box object names of a call cut into `parts` pieces. */
 function partNames(callId, parts) {
   return parts > 1 ? Array.from({ length: parts }, (_, i) => gcsObjectName(callId, i + 1)) : [gcsObjectName(callId)];
@@ -140,20 +158,25 @@ async function startJob(pool, row) {
     // ⚠️ chirp_3 batch refuses audio over 20 minutes — long calls go in pieces.
     const pieces = splitMp3(audio);
     names = partNames(row.rc_call_id, pieces.length);
+    // ⚠️ ONE job per piece: Google refuses inline results for a job with more
+    // than one file ("Inline response config can only be used for
+    // BatchRecognize requests that specify only one audio file", 2026-10-01).
+    const ops = [];
     for (let i = 0; i < pieces.length; i++) {
       await gcsPut(names[i], pieces[i].buf, obj.contentType || row.content_type || "audio/mpeg");
+      const res = await google(
+        `https://${SPEECH_HOST}/v2/projects/${encodeURIComponent(project())}/locations/${LOCATION}/recognizers/_:batchRecognize`,
+        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(batchRequestBody(uriOf(names[i]))) },
+      );
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.name) throw new Error(`batchRecognize ${res.status}: ${j.error?.message || "no operation"}`);
+      ops.push(j.name);
     }
-    const res = await google(
-      `https://${SPEECH_HOST}/v2/projects/${encodeURIComponent(project())}/locations/${LOCATION}/recognizers/_:batchRecognize`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(batchRequestBodyFor(names.map(uriOf))) },
-    );
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok || !j.name) throw new Error(`batchRecognize ${res.status}: ${j.error?.message || "no operation"}`);
     await pool.query(
       `UPDATE call_archive SET transcript_state = 'running', transcript_op = $2, transcript_started_at = now(),
               transcript_attempts = transcript_attempts + 1, transcript_error = NULL, transcript_parts = $3
         WHERE rc_call_id = $1`,
-      [row.rc_call_id, j.name, names.length],
+      [row.rc_call_id, encodeOps(ops), names.length],
     );
     stats.started++;
   } catch (e) {
@@ -177,10 +200,15 @@ async function pollJob(pool, row) {
     for (const n of names) await gcsDelete(n);
   };
   try {
-    const res = await google(`https://${SPEECH_HOST}/v2/${row.transcript_op}`);
-    const op = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(`operation ${res.status}: ${op.error?.message || ""}`);
-    if (!op.done) {
+    const opNames = decodeOps(row.transcript_op);
+    const ops = [];
+    for (const name of opNames) {
+      const res = await google(`https://${SPEECH_HOST}/v2/${name}`);
+      const op = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(`operation ${res.status}: ${op.error?.message || ""}`);
+      ops.push(op);
+    }
+    if (!ops.length || ops.some((o) => !o.done)) {
       const started = row.transcript_started_at ? new Date(row.transcript_started_at).getTime() : 0;
       if (started && Date.now() - started > JOB_TIMEOUT_MS) {
         await dropAll();
@@ -189,10 +217,12 @@ async function pollJob(pool, row) {
       return;
     }
     await dropAll();
-    if (op.error) return finish(pool, row.rc_call_id, "failed", null, op.error.message || `code ${op.error.code}`);
+    const bad = ops.find((o) => o.error);
+    if (bad) return finish(pool, row.rc_call_id, "failed", null, bad.error.message || `code ${bad.error.code}`);
     const pieces = [];
     for (let i = 0; i < names.length; i++) {
-      const { error, results } = fileResult(op, uriOf(names[i]));
+      // One operation per piece; an older multi-file job (one op) is read by uri.
+      const { error, results } = fileResult(ops[ops.length === names.length ? i : 0], uriOf(names[i]));
       if (error) return finish(pool, row.rc_call_id, "failed", null, error);
       pieces.push({ startSec: i * CHUNK_SEC, results });
     }

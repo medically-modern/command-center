@@ -6,7 +6,6 @@ import {
   LOCATION,
   CHUNK_SEC,
   batchRequestBody,
-  batchRequestBodyFor,
   fileResult,
   mp3Frame,
   splitMp3,
@@ -143,11 +142,10 @@ describe("long calls are split under Google's 20-minute limit (§5.47e)", () => 
     expect(splitMp3(junk)).toEqual([{ buf: junk, startSec: 0 }]);
   });
 
-  it("sends every piece in one job and stitches the turns with each piece's offset", () => {
-    expect(batchRequestBodyFor(["gs://b/1-p1.mp3", "gs://b/1-p2.mp3"]).files).toEqual([
-      { uri: "gs://b/1-p1.mp3" },
-      { uri: "gs://b/1-p2.mp3" },
-    ]);
+  it("⚠️ sends each piece as its own job (inline results allow one file per job), stitched by offset", () => {
+    const src = read("callTranscribe.mjs");
+    expect(src).toMatch(/JSON\.stringify\(batchRequestBody\(uriOf\(names\[i\]\)\)\)/);
+    expect(src).not.toMatch(/files: uris|batchRequestBodyFor/);
     const piece = (label) => [{ alternatives: [{ transcript: "x", words: [w("hi", label, "2s")] }] }];
     expect(stitchTurns([{ startSec: 0, results: piece("1") }, { startSec: 900, results: piece("2") }])).toEqual([
       { speaker: "1", start: 2, text: "hi" },

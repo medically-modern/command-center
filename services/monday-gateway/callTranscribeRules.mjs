@@ -160,8 +160,9 @@ export function transcriptRecord(turns) {
 /**
  * ⚠️ BatchRecognize with chirp_3 refuses audio over 20 minutes ("Only audio
  * files up to 20 minutes long are supported", the first long call, 2026-10-01).
- * A long call is split into pieces of at most CHUNK_SEC, sent as several files
- * in ONE job, and the turns stitched back with each piece's start offset.
+ * A long call is split into pieces of at most CHUNK_SEC, each sent as its OWN
+ * job (Google refuses inline results for a multi-file job), and the turns
+ * stitched back with each piece's start offset.
  * MP3 is a sequence of self-contained frames, so cutting between frames needs
  * no re-encoding. Speaker labels are per piece: "Speaker 1" in one piece is not
  * guaranteed to be the same voice in the next.
@@ -233,13 +234,6 @@ export function splitMp3(buf, maxSec = CHUNK_SEC) {
   if (!pieces.length) return [{ buf, startSec: 0 }];
   pieces.push({ buf: buf.subarray(pieceStart), startSec: pieceAt });
   return pieces;
-}
-
-/** The request for several pieces of one call. */
-export function batchRequestBodyFor(uris) {
-  const body = batchRequestBody(uris[0]);
-  body.files = uris.map((uri) => ({ uri }));
-  return body;
 }
 
 /** Turns from every piece, in order, with each piece's start added. */
