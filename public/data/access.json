@@ -76,7 +76,7 @@
       },
       "perms": {
         "viewOthers": true,
-        "stageManager": false,
+        "stageManager": true,
         "editProfile": true
       },
       "homeView": [
