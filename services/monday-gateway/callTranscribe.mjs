@@ -309,6 +309,22 @@ export function registerCallTranscribe({ app, pool, requireCaller }) {
              FROM call_archive WHERE transcript_state = 'done' AND started_at >= now() - interval '7 days'`,
         );
         body.shape = d.rows[0] || null;
+        // How far through the window the queue is (newest first). Counts and
+        // times only.
+        const w = await pool.query(
+          `SELECT count(*)::int AS eligible,
+                  count(*) FILTER (WHERE transcript_state IS NULL)::int AS waiting,
+                  count(*) FILTER (WHERE transcript_state = 'running')::int AS running,
+                  count(*) FILTER (WHERE transcript_state IN ('done','empty'))::int AS finished,
+                  count(*) FILTER (WHERE transcript_state = 'failed')::int AS failed,
+                  max(started_at) FILTER (WHERE transcript_state IS NULL) AS newest_waiting,
+                  min(started_at) FILTER (WHERE transcript_state IN ('done','empty')) AS oldest_finished
+             FROM call_archive
+            WHERE audio_state = 'stored' AND object_key IS NOT NULL AND call_type IS DISTINCT FROM 'Fax'
+              AND duration_sec >= $1 AND started_at >= now() - ($2 || ' hours')::interval`,
+          [MIN_DURATION_SEC, String(LOOKBACK_HOURS)],
+        );
+        body.window = w.rows[0] || null;
       }
     } catch (e) {
       body.error = errorText(e);
