@@ -127,8 +127,9 @@ function CallCard({
   busy: boolean;
   onAnswer: (() => void) | null;
   /** Why Answer is missing, when it is — the registration state, in the same
-   *  words the badge uses. The card must never be a dead end with no story. */
-  noAnswerReason: string;
+   *  words the badge uses, given how long the card has been up. The card must
+   *  never be a dead end with no story. */
+  noAnswerReason: (seconds: number) => string;
   onDismiss: () => void;
 }) {
   const ringing = ring.state === "ringing";
@@ -222,7 +223,7 @@ function CallCard({
                  costing. The call keeps ringing every registered device and
                  the RingCentral app regardless. */
               <p className="flex-1 text-[11px] leading-snug text-muted-foreground">
-                {noAnswerReason}
+                {noAnswerReason(seconds)}
               </p>
             )}
             <button
@@ -239,18 +240,29 @@ function CallCard({
   );
 }
 
+/** How long a registered browser waits for its SIP leg before the card says
+ *  the call went to another device: the greeting plays before anyone rings. */
+const FIRST_RING_GRACE_S = 15;
+
 /**
  * Why a ringing card has no Answer button, in the badge's own voice (§5.13b).
  * The registration state is the whole story: Answer exists exactly when this
  * browser holds the call's SIP leg, and it holds legs exactly when registered.
  */
-function reasonForNoAnswer(registration: RegistrationStatus, error: string | null): string {
+function reasonForNoAnswer(registration: RegistrationStatus, error: string | null, seconds: number): string {
   switch (registration) {
     case "full":
       return "The line is full, so this browser can't answer — quit RingCentral apps or spare Command Center tabs to free a slot. It retries every minute.";
     case "registering":
       return "Connecting this browser to the line — Answer appears when it's registered.";
     case "registered":
+      // ⚠️ Not yet rung is NOT "rung elsewhere". The main line answers to play
+      // Katie's greeting first, and only then rings anyone: measured 7.3s from
+      // the card to the first device leg on 2026-10-01 (§5.13c). Saying "another
+      // device" during the greeting told Josh his own test call wasn't his.
+      if (seconds < FIRST_RING_GRACE_S) {
+        return "The caller is hearing the greeting — Answer appears when RingCentral rings this browser.";
+      }
       // Registered, and still no leg for THIS call: RingCentral delivered it
       // to a more recently registered device (§5.13b's instanceId rule).
       return "This call is ringing on another registered device, not this browser.";
@@ -388,7 +400,7 @@ export default function IncomingCallHost() {
             patient={u.patient ?? names.get(digitsKey(u.from)) ?? null}
             busy={!!phone.call}
             onAnswer={u.sip ? () => phone.answer(u.sip!.id) : null}
-            noAnswerReason={reasonForNoAnswer(phone.registration, phone.registrationError)}
+            noAnswerReason={(seconds) => reasonForNoAnswer(phone.registration, phone.registrationError, seconds)}
             onDismiss={() => {
               // ⚠️ `dismiss` drops the card from THIS tab's list; `ignore` is
               // what reaches the tab making the sound. The card half needs

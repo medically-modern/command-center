@@ -250,7 +250,9 @@ describe("a ringing call is never forwarded to a personal phone", () => {
 
   it("a card with no SIP leg explains WHY it can't be answered", () => {
     const host = codeOnly(read("src/components/inboundCalls/IncomingCallHost.tsx"));
-    expect(host).toMatch(/reasonForNoAnswer\(phone\.registration, phone\.registrationError\)/);
+    expect(host).toMatch(/reasonForNoAnswer\(phone\.registration, phone\.registrationError, seconds\)/);
+    // ⚠️ During the greeting nobody is rung yet: "another device" must wait.
+    expect(host).toMatch(/seconds < FIRST_RING_GRACE_S/);
     // Every registration state has a sentence — a silent dead-end card is the
     // failure this replaced.
     for (const state of ['case "full"', 'case "registering"', 'case "registered"', 'case "error"']) {
