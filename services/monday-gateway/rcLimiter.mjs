@@ -86,6 +86,15 @@ export const DEFAULTS = {
   /** Ceiling per caller (signed-in email, else client IP) per window. One
    *  conversation read can page 10 deep, so this is several threads' worth. */
   maxPerCallerPerWindow: 40,
+  /** ⚠️ Ceiling per caller per window on RingCentral's `heavy` group (call log,
+   *  recordings, sip-provision), for callers that ask for it (`capHeavy`: the
+   *  /rc passthrough). RingCentral allows ~10 heavy calls per minute for the
+   *  WHOLE account; stedi-monday-integration's 15-minute job sent ~20 call-log
+   *  reads in seconds through /rc, every run since 2026-09-28, and each burst
+   *  paused the call log, call history and browser-phone sign-in for everyone
+   *  for a minute. One caller may now spend at most this many; the rest are
+   *  refused HERE (429 + Retry-After), so RingCentral never sees them. */
+  maxHeavyPerCallerPerWindow: 4,
   /** Breaker cooldowns while RingCentral keeps saying 429, in order. */
   cooldownsMs: [30_000, 120_000, 300_000],
   /** Never sit out longer than this, even if RingCentral asks for more.
@@ -187,6 +196,8 @@ export function createRcGuard(cfg = {}, now = () => Date.now()) {
   let calls = [];
   /** caller → timestamps. */
   const byCaller = new Map();
+  /** caller → timestamps of their HEAVY-group calls (capHeavy callers only). */
+  const heavyByCaller = new Map();
   /** shape → RingCentral rate-limit group, learned from X-Rate-Limit-Group. */
   const groupOf = new Map();
   /** breaker key (`group:heavy`, `shape:GET …`, or ALL) → { openUntil, consecutive429s } */
@@ -216,10 +227,12 @@ export function createRcGuard(cfg = {}, now = () => Date.now()) {
   const prune = (t) => {
     const floor = t - c.windowMs;
     calls = calls.filter((x) => x > floor);
-    for (const [k, list] of byCaller) {
-      const kept = list.filter((x) => x > floor);
-      if (kept.length) byCaller.set(k, kept);
-      else byCaller.delete(k);
+    for (const map of [byCaller, heavyByCaller]) {
+      for (const [k, list] of map) {
+        const kept = list.filter((x) => x > floor);
+        if (kept.length) map.set(k, kept);
+        else map.delete(k);
+      }
     }
   };
 
@@ -231,7 +244,7 @@ export function createRcGuard(cfg = {}, now = () => Date.now()) {
      * still RECORDED, so the budget reflects real load and a flood of critical
      * work is visible in the snapshot rather than invisible.
      */
-    check({ tier = "background", caller = "anon", shape = "" } = {}) {
+    check({ tier = "background", caller = "anon", shape = "", capHeavy = false } = {}) {
       const t = now();
       prune(t);
 
@@ -288,8 +301,21 @@ export function createRcGuard(cfg = {}, now = () => Date.now()) {
         };
       }
 
+      const heavy = capHeavy && shape && groupOf.get(shape) === "heavy";
+      const mineHeavy = heavy ? heavyByCaller.get(caller) || [] : null;
+      if (heavy && mineHeavy.length >= c.maxHeavyPerCallerPerWindow) {
+        shed += 1;
+        return {
+          ok: false,
+          reason: "caller-heavy",
+          retryAfterMs: Math.max(0, mineHeavy[0] + c.windowMs - t),
+          message: "Too many call-log requests from this caller — RingCentral allows only a few per minute for the whole account.",
+        };
+      }
+
       calls.push(t);
       byCaller.set(caller, [...mine, t]);
+      if (heavy) heavyByCaller.set(caller, [...mineHeavy, t]);
       return { ok: true, tier };
     },
 

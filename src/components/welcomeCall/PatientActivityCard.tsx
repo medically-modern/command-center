@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import RcBusyCountdown from "@/components/shared/RcBusyCountdown";
 import { MessageSquare, Phone, PhoneIncoming, PhoneOutgoing, Voicemail, RefreshCw, ChevronRight, Loader2, Play } from "lucide-react";
 import { AudioPlayer } from "@/components/shared/AudioPlayer";
 import { PatientContact } from "@/components/masheke/mmKit";
@@ -86,7 +87,7 @@ export function PatientActivityCard({
   const active =
     numbers.find((n) => n.number === selected) ?? numbers[0] ?? null;
   const phone = active?.number ?? "";
-  const { data, loading, error, reload } = usePatientActivity(phone, tab, open);
+  const { data, loading, error, busyUntil, reload } = usePatientActivity(phone, tab, open);
 
   if (!phone.trim()) return null;
 
@@ -192,7 +193,8 @@ export function PatientActivityCard({
             {/* A failed read says so rather than rendering an empty list — an
                 empty list and "we could not look" are different answers, and
                 the silent version is what §5.27 records costing real time. */}
-            {!loading && error && (
+            {!loading && busyUntil && <RcBusyCountdown retryAt={busyUntil} onRetry={reload} />}
+            {!loading && error && !busyUntil && (
               <p className="text-sm text-amber-700 dark:text-amber-400">
                 Couldn&apos;t read RingCentral: {error}
               </p>

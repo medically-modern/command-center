@@ -160,6 +160,16 @@
   callers (CORS stops only browsers) and the per-caller budget (40/min) is four times the heavy
   group's allowance, so a server-side caller can still exhaust the call log for everyone; the
   gateway HTTP log's `srcIp` / `clientUa` is how to find it.
+  ⚠️ **Still happening on 2026-10-01** (every :00/:15/:30/:45, 8am–11pm ET, from `152.55.178.91`,
+  `python-requests/2.31.0`, ~20 call-log + ~20 message-store reads per run) — so the `/rc`
+  passthrough now caps **each caller at 4 heavy-group calls per minute**
+  (`rcLimiter` `maxHeavyPerCallerPerWindow`, `capHeavy: true` on the proxy only; gateway-internal
+  jobs are not capped by it). The rest are refused by the gateway with 429 + `retryAfterMs`, and
+  RingCentral never sees them, so the account's 10/min stays available to everyone else. The
+  real fix is in stedi (one `dateFrom` call-log query per run, honouring Retry-After) — Josh is
+  handing that off. In the SPA, a call-history 429 is an `RcBusyError` and shows
+  `RcBusyCountdown` ("RingCentral is busy … Trying again in 0:42"), which retries once by itself
+  (`CallHistoryList`, `PatientActivityCard`).
 - **A completed patient can still be re-advanced from Patient Intake — KNOWN, deliberately left**
   (Josh, 2026-09-01: detection only for now). `UnverifiedReferralsPage` is the only intake-family
   page with no `useCompletedStageReview` / `reviewMode` gate, and `useMondayPatients` injects a

@@ -31,6 +31,7 @@ import {
   RC_VIA_GATEWAY,
   fetchVoicemails,
   fetchPatientCallHistory,
+  RcBusyError,
   type VoicemailRecord,
 } from "@/lib/fax/ringcentralApi";
 import { fetchConversation, type ConversationMessage } from "@/lib/assignedPatients/messagingApi";
@@ -50,6 +51,8 @@ export interface ActivityState {
   data: Partial<ActivityData>;
   loading: boolean;
   error: string | null;
+  /** RingCentral said "wait" (429): when to try again. The card counts down. */
+  busyUntil: number | null;
   /** Re-read this tab now, ignoring the cache. */
   reload: () => void;
 }
@@ -61,6 +64,7 @@ const keyOf = (phone: string, tab: ActivityTab): Key => `${phoneIdentity(phone)}
 
 let cache = new Map<Key, unknown>();
 const errors = new Map<Key, string>();
+const busy = new Map<Key, number>();
 const inflight = new Map<Key, Promise<void>>();
 const listeners = new Set<() => void>();
 
@@ -106,6 +110,7 @@ function load(phone: string, tab: ActivityTab, force: boolean): Promise<void> {
   if (running) return running;
 
   errors.delete(k);
+  busy.delete(k);
   const p = loadTab(phone, tab)
     .then((rows) => {
       const next = new Map(cache);
@@ -115,6 +120,7 @@ function load(phone: string, tab: ActivityTab, force: boolean): Promise<void> {
     .catch((e: unknown) => {
       // NOT cached — see rule 4. Recorded only so the box can say what failed.
       errors.set(k, e instanceof Error ? e.message : String(e));
+      if (e instanceof RcBusyError) busy.set(k, e.retryAt);
       emit(new Map(cache));
     })
     .finally(() => {
@@ -170,6 +176,7 @@ export function usePatientActivity(phone: string, tab: ActivityTab, open: boolea
       data,
       loading: open && !unavailable && rows === undefined && !errors.has(k),
       error: unavailable ?? errors.get(k) ?? null,
+      busyUntil: unavailable ? null : busy.get(k) ?? null,
       reload,
     };
   }, [map, k, tab, open, reload, unavailable]);
@@ -178,6 +185,7 @@ export function usePatientActivity(phone: string, tab: ActivityTab, open: boolea
 /** Test seam — drops the module-scope cache. */
 export function __resetPatientActivity() {
   errors.clear();
+  busy.clear();
   inflight.clear();
   emit(new Map());
 }

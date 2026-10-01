@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   DEFAULTS,
   cooldownFor,
@@ -360,5 +362,46 @@ describe("shedWaitMs", () => {
     expect(shedWaitMs("1800", 30_000)).toBeNull();
     expect(shedWaitMs(String(DEFAULTS.maxShedWaitMs / 1000), 30_000)).toBe(DEFAULTS.maxShedWaitMs);
     expect(shedWaitMs("600", 30_000, 15 * 60_000)).toBe(600_000);
+  });
+});
+
+describe("one passthrough caller can't spend the account's call-log allowance (2026-10-01)", () => {
+  const SHAPE = "GET /restapi/v1.0/account/~/extension/~/call-log";
+  const fresh = () => {
+    let t = 1_000_000;
+    const g = createRcGuard({}, () => t);
+    // RingCentral names the group on its responses; the guard learns it.
+    g.note({ status: 200, shape: SHAPE, group: "heavy" });
+    return { g, tick: (ms) => (t += ms) };
+  };
+
+  it("⚠️ a capHeavy caller gets at most 4 heavy calls a minute; the 5th is refused here, with a wait", () => {
+    const { g } = fresh();
+    for (let i = 0; i < 4; i++) expect(g.check({ tier: "interactive", caller: "1.2.3.4", shape: SHAPE, capHeavy: true }).ok).toBe(true);
+    const v = g.check({ tier: "interactive", caller: "1.2.3.4", shape: SHAPE, capHeavy: true });
+    expect(v.ok).toBe(false);
+    expect(v.reason).toBe("caller-heavy");
+    expect(v.retryAfterMs).toBeGreaterThan(0);
+  });
+
+  it("other callers keep their own allowance, and the cap clears after the window", () => {
+    const { g, tick } = fresh();
+    for (let i = 0; i < 4; i++) g.check({ tier: "interactive", caller: "script", shape: SHAPE, capHeavy: true });
+    expect(g.check({ tier: "interactive", caller: "rep@medicallymodern.com", shape: SHAPE, capHeavy: true }).ok).toBe(true);
+    tick(61_000);
+    expect(g.check({ tier: "interactive", caller: "script", shape: SHAPE, capHeavy: true }).ok).toBe(true);
+  });
+
+  it("gateway-internal work (no capHeavy) and light-group reads are not capped by it", () => {
+    const { g } = fresh();
+    for (let i = 0; i < 8; i++) expect(g.check({ tier: "interactive", caller: "call-archive", shape: SHAPE }).ok).toBe(true);
+    const LIGHT = "GET /restapi/v1.0/account/~/extension/~/message-store";
+    for (let i = 0; i < 8; i++) expect(g.check({ tier: "interactive", caller: "x", shape: LIGHT, capHeavy: true }).ok).toBe(true);
+  });
+
+  it("the /rc passthrough asks for the cap", () => {
+    const src = readFileSync(resolve(process.cwd(), "services/monday-gateway/ringcentral.mjs"), "utf8");
+    expect(src).toMatch(/\{ \.\.\.proxyTier\(rcPath\), caller, capHeavy: true \}/);
+    expect(src).toMatch(/rcGuard\.check\(\{ tier, caller, shape, capHeavy: !!opts\.capHeavy \}\)/);
   });
 });

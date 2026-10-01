@@ -137,7 +137,7 @@ export async function rcApiFetch(path, init = {}, opts = {}) {
   const shape = rcShape(method, path);
 
   const callUpstream = async () => {
-    const verdict = rcGuard.check({ tier, caller, shape });
+    const verdict = rcGuard.check({ tier, caller, shape, capHeavy: !!opts.capHeavy });
     if (!verdict.ok) throw new RcRefused(verdict);
 
     const go = (token) =>
@@ -369,7 +369,9 @@ export function registerRingCentral({ app }) {
           headers: hasBody ? { "Content-Type": "application/json" } : {},
           body: hasBody ? JSON.stringify(req.body) : undefined,
         },
-        { ...proxyTier(rcPath), caller },
+        // capHeavy: one passthrough caller may not spend the account's call-log
+        // allowance (rcLimiter maxHeavyPerCallerPerWindow).
+        { ...proxyTier(rcPath), caller, capHeavy: true },
       );
       const ct = up.headers.get("content-type") || "application/octet-stream";
       const buf = Buffer.from(await up.arrayBuffer());

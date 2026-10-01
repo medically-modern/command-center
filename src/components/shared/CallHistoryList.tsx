@@ -33,7 +33,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { fetchPatientCallHistory, fetchRecordingBlobUrl } from "@/lib/fax/ringcentralApi";
+import { RcBusyError, fetchPatientCallHistory, fetchRecordingBlobUrl } from "@/lib/fax/ringcentralApi";
+import RcBusyCountdown from "@/components/shared/RcBusyCountdown";
 import {
   archivedPlaybackUrl,
   hasPlayableAudio,
@@ -120,12 +121,16 @@ export function CallHistoryList({ phone, display }: {
   const callIds = useMemo(() => calls.map((c) => c.id), [calls]);
   const archived = useArchivedAudio(callIds);
 
+  // RingCentral said "wait": when to try again (a countdown replaces the error).
+  const [busyUntil, setBusyUntil] = useState<number | null>(null);
   const load = async () => {
     setLoading(true);
     setErr(null);
+    setBusyUntil(null);
     try {
       setCalls(await fetchPatientCallHistory(phone ?? ""));
     } catch (e) {
+      if (e instanceof RcBusyError) setBusyUntil(e.retryAt);
       setErr(e instanceof Error ? e.message : String(e));
       // A history we couldn't read is NOT an empty history — clear the list so
       // the error shows instead of a stale "no calls" that reads as fact.
@@ -256,6 +261,8 @@ export function CallHistoryList({ phone, display }: {
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading call history…
           </div>
+        ) : busyUntil ? (
+          <RcBusyCountdown retryAt={busyUntil} onRetry={() => void load()} />
         ) : err ? (
           <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />

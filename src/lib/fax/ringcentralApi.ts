@@ -355,6 +355,36 @@ export function mmPhoneNumber(): string {
 }
 
 /**
+ * RingCentral — or the gateway's guard in front of it — said "wait" (429).
+ * Carries WHEN to try again, so a screen can count down and retry by itself
+ * instead of showing a bare error (Josh, 2026-10-01).
+ */
+export class RcBusyError extends Error {
+  constructor(readonly retryAt: number) {
+    super("RingCentral is busy right now.");
+    this.name = "RcBusyError";
+  }
+}
+
+/** The wait a 429 asked for: the gateway's own `retryAfterMs`, else the
+ *  Retry-After header, else a minute (RingCentral's usual penalty). */
+export async function rcBusyError(res: Response): Promise<RcBusyError> {
+  let ms = 0;
+  try {
+    const j = (await res.clone().json()) as { retryAfterMs?: number };
+    ms = Number(j?.retryAfterMs) || 0;
+  } catch {
+    /* RingCentral's own body, or none */
+  }
+  if (!ms) {
+    const h = Number(res.headers.get("Retry-After"));
+    if (Number.isFinite(h) && h > 0) ms = h * 1000;
+  }
+  const wait = Math.min(Math.max(ms || 60_000, 1_000), 10 * 60_000);
+  return new RcBusyError(Date.now() + wait);
+}
+
+/**
  * Every call between the MM line and one patient, newest first.
  *
  * `view=Detailed` is NOT optional — it is what returns `legs`, and the legs are
@@ -393,6 +423,9 @@ export async function fetchPatientCallHistory(
         "RingCentral rejected the call-log read (403). The app record is probably missing the ReadCallLog permission.",
       );
     }
+    // The call log is RingCentral's tightest limit (10/min for the whole
+    // account); a 429 here is "come back shortly", not a broken history.
+    if (res.status === 429) throw await rcBusyError(res);
     throw new Error(`RingCentral call history failed (${res.status})`);
   }
   const json = (await res.json()) as { records?: RcCallLogRecord[] };
