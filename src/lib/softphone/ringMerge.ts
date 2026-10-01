@@ -110,3 +110,27 @@ export function mergeRings(sse: RingingCall[], sip: SipRing[]): UnifiedRing[] {
 
   return [...out.values()].sort((a, b) => a.startedAt - b.startedAt);
 }
+
+/**
+ * The cards to SHOW.
+ *
+ * ⚠️ A browser that is registered shows a call only once RingCentral rings it
+ * — its SIP leg — and keeps showing it after that (`seen`). The gateway hears
+ * of a main-line call the moment it arrives, but the line answers itself to
+ * play Katie's greeting and rings nobody until that is done (7.3s, measured on
+ * 2026-10-01, §5.13c). A FAX to the main line is answered by that same greeting
+ * and is never rung to anyone: before this, every fax put a card on every
+ * screen with no Answer (Josh: "just not show a card for faxes").
+ *
+ * A browser that is NOT registered (line full, retrying, an error) still shows
+ * every card, with its reason: there the card is how the rep learns calls are
+ * coming in that this browser cannot take.
+ */
+export function shownRings(
+  merged: readonly UnifiedRing[],
+  registered: boolean,
+  seen: ReadonlySet<string>,
+): UnifiedRing[] {
+  if (!registered) return [...merged];
+  return merged.filter((u) => !!u.sip || seen.has(u.key));
+}

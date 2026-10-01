@@ -51,7 +51,7 @@ import { toast } from "sonner";
 import { useInboundCalls } from "@/hooks/inboundCalls/useInboundCalls";
 import { usePhoneStateReport } from "@/hooks/inboundCalls/usePhoneStateReport";
 import { useElapsedSeconds, useSoftphone } from "@/hooks/softphone/useSoftphone";
-import { digitsKey, mergeRings, type UnifiedRing } from "@/lib/softphone/ringMerge";
+import { digitsKey, mergeRings, shownRings, type UnifiedRing } from "@/lib/softphone/ringMerge";
 import type { RegistrationStatus } from "@/lib/softphone/types";
 import { ringingCards } from "@/lib/softphone/ringRules";
 import { findPatientByPhone, type PatientRef } from "@/lib/assignedPatients/patientLookup";
@@ -148,6 +148,9 @@ function CallCard({
     if (ring.state === "answered") return "Answered";
     if (ring.state === "missed") return "Missed";
     if (patient) return `${patient.boardName} · ${fmtPhone(ring.from)}`;
+    // Has faxed us before (the gateway's call_archive): most likely a fax
+    // machine, which the line takes during the greeting (§5.13c).
+    if (ring.sse?.faxLikely) return "Probably a fax — this number has faxed us before";
     // A caller on no board is normal — you can still take the call.
     return ring.callerName || "Not a patient on any board";
   }, [ring, patient]);
@@ -329,15 +332,28 @@ export default function IncomingCallHost() {
   // newest registration. The store de-duplicates against its own legs and
   // decides which tab makes the sound (ringRules.ts), so this only has to say
   // what this tab can see.
+  // ⚠️ Registered ⇒ the SIP leg makes the sound, and a card with no leg is not
+  // shown (shownRings: the greeting, a fax). Ringing for it would chime at a
+  // fax nobody can see.
+  const registered = phone.registration === "registered";
   useEffect(() => {
-    setCardRings(ringingCards(calls));
-  }, [calls, setCardRings]);
+    setCardRings(registered ? [] : ringingCards(calls));
+  }, [calls, registered, setCardRings]);
   // Tell the gateway whether this browser is actually on the line — the one
   // thing it cannot see for itself (§5.13b). Leader tab only, one beat a
   // minute; the readout is on /access.
   usePhoneStateReport(phone, phone.instanceId, enabled);
 
-  const merged = useMemo(() => mergeRings(calls, phone.rings), [calls, phone.rings]);
+  // Keys this browser has shown, so a card that was rung here stays up after
+  // its leg ends (answered elsewhere, missed) — see shownRings.
+  const shownKeys = useRef(new Set<string>());
+  const merged = useMemo(() => {
+    const all = mergeRings(calls, phone.rings);
+    for (const u of all) if (u.sip) shownKeys.current.add(u.key);
+    const live = new Set(all.map((u) => u.key));
+    for (const k of shownKeys.current) if (!live.has(k)) shownKeys.current.delete(k);
+    return shownRings(all, registered, shownKeys.current);
+  }, [calls, phone.rings, registered]);
   const unnamed = useMemo(
     () => [...merged.filter((u) => !u.patient).map((u) => u.from), ...(phone.call ? [phone.call.phone] : [])],
     [merged, phone.call],

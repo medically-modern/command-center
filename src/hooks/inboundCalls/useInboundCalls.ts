@@ -174,6 +174,11 @@ export function useInboundCalls(enabled = true) {
         } catch {
           return;
         }
+        // ⚠️ A fax ends its card at once — there was never anything to take.
+        if (call.fax) {
+          dismiss(call.id);
+          return;
+        }
         setCalls((cur) => cur.map((c) => (c.id === call.id ? { ...c, ...call } : c)));
         if (call.state !== "ringing") scheduleClear(call.id);
       });
@@ -200,7 +205,7 @@ export function useInboundCalls(enabled = true) {
       for (const t of timerMap.values()) clearTimeout(t);
       timerMap.clear();
     };
-  }, [authed, enabled, scheduleClear]);
+  }, [authed, enabled, scheduleClear, dismiss]);
 
   // ⚠️ No `claim` any more (2026-09-28): "Take it" — forwarding the ringing
   // call to a personal phone — left the UI entirely, on the policy stated

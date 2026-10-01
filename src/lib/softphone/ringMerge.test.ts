@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { digitsKey, mergeRings } from "./ringMerge";
+import { digitsKey, mergeRings, shownRings } from "./ringMerge";
 import type { RingingCall } from "@/hooks/inboundCalls/useInboundCalls";
 import type { SipRing } from "./types";
 
@@ -87,5 +87,27 @@ describe("mergeRings", () => {
     const a = mergeRings([sse()], [])[0].key;
     const b = mergeRings([], [sip()])[0].key;
     expect(a).toBe(b);
+  });
+});
+
+describe("shownRings — a registered browser shows a call once it is rung here (§5.13c)", () => {
+  it("⚠️ a gateway card with no SIP leg is held back while registered (the greeting; a fax)", () => {
+    const merged = mergeRings([sse()], []);
+    expect(shownRings(merged, true, new Set())).toEqual([]);
+  });
+
+  it("shows it the moment the leg arrives", () => {
+    const merged = mergeRings([sse()], [sip()]);
+    expect(shownRings(merged, true, new Set()).map((u) => u.canAnswer)).toEqual([true]);
+  });
+
+  it("keeps a card it already showed after the leg goes (answered elsewhere, missed)", () => {
+    const merged = mergeRings([sse({ state: "answered" })], []);
+    expect(shownRings(merged, true, new Set([merged[0].key]))).toHaveLength(1);
+  });
+
+  it("⚠️ a browser that is NOT registered still shows every card, with its reason", () => {
+    const merged = mergeRings([sse()], []);
+    expect(shownRings(merged, false, new Set())).toHaveLength(1);
   });
 });

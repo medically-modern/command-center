@@ -33,6 +33,10 @@ export interface InboundCall {
   startedAt: number;
   state: CallState;
   claimedBy: string | null;
+  /** RingCentral is receiving a FAX on this call: drop the card at once (§5.13c). */
+  fax?: boolean;
+  /** This number has sent us a fax before — the card says "Probably a fax". */
+  faxLikely?: boolean;
 }
 
 export interface RingPrefs {

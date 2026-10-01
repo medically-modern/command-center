@@ -15,6 +15,7 @@ import {
   ringsSharedExtension,
   lineVerdict,
   lineShape,
+  isFaxEvent,
 } from "./callRules.mjs";
 
 /** A telephony-session notification shaped like RingCentral's, trimmed to the
@@ -344,5 +345,29 @@ describe("ringsSharedExtension — only the main line's calls are everyone's car
     const shape = lineShape({ parties: [{ extensionId: KATIE, direction: "Inbound", status: { code: "Setup" }, from: { phoneNumber: "+14125550000" } }] });
     expect(shape).toEqual({ parties: 1, owned: 1, statuses: ["Setup"], directions: ["Inbound"] });
     expect(JSON.stringify(shape)).not.toMatch(/\d{4}/);
+  });
+});
+
+describe("faxes to the main line never become a card (§5.13c)", () => {
+  it("isFaxEvent reads the fax-receiving status on any party", () => {
+    expect(isFaxEvent({ parties: [{ status: { code: "FaxReceive" } }] })).toBe(true);
+    expect(isFaxEvent({ parties: [{ status: { code: "Proceeding" } }] })).toBe(false);
+    expect(isFaxEvent({})).toBe(false);
+  });
+
+  it("is wired: a fax ends a shown card, and never starts one", () => {
+    const src = readFileSync(resolve(process.cwd(), "services/monday-gateway/inboundCalls.mjs"), "utf8");
+    expect(src).toMatch(/existing\.state === "ringing" && isFaxEvent\(body\)/);
+    const gate = src.indexOf("if (isFaxEvent(body)) {");
+    expect(gate).toBeGreaterThan(0);
+    expect(src.indexOf("const party = pickInboundParty(body, SELF_NUMBERS);")).toBeGreaterThan(gate);
+    expect(src).toMatch(/fax: !!c\.fax/);
+  });
+
+  it("the known-fax lookup is after calls.set (no double ring) and only labels", () => {
+    const src = readFileSync(resolve(process.cwd(), "services/monday-gateway/inboundCalls.mjs"), "utf8");
+    const set = src.indexOf("calls.set(sessionId, call);");
+    expect(src.indexOf("call.faxLikely = await hasFaxedBefore(call.hmac);")).toBeGreaterThan(set);
+    expect(src).toMatch(/faxLikely: !!c\.faxLikely/);
   });
 });

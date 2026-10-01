@@ -131,7 +131,10 @@ describe("only people on their own RingCentral line are rung — and a tab can t
     expect(runtime).toMatch(/this\.tabCardRings/);
     expect(runtime).toMatch(/audibleRings\(/);
     const host = codeOnly(read("src/components/inboundCalls/IncomingCallHost.tsx"));
-    expect(host).toMatch(/setCardRings\(ringingCards\(calls\)\)/);
+    // Cards ring whenever this browser is NOT registered (line full, retrying,
+    // error). Registered, the SIP leg rings and a card with no leg is not shown
+    // (shownRings: the greeting, a fax — §5.13c, 2026-10-01).
+    expect(host).toMatch(/setCardRings\(registered \? \[\] : ringingCards\(calls\)\)/);
     // X has to reach the tab making the sound, not just this tab's list.
     expect(host).toMatch(/dismiss\(u\.sse\.id\);\s*phone\.ignore\(u\.sse\.id\);/);
   });

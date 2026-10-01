@@ -170,6 +170,24 @@ function partiesOf(event) {
 }
 
 /**
+ * Party statuses that mean RingCentral is RECEIVING A FAX on the call.
+ *
+ * ⚠️ Faxes come in on the main line ((347) 503-7148). The line answers every
+ * call to play Katie's greeting, hears the fax tone during it, and receives
+ * the fax without ringing anybody — so the card made at Setup is for a call no
+ * one will ever be offered (the (412)…9071 card, 2026-10-01, was a fax).
+ * "FaxReceive" is the status RingCentral documents for this; it had not yet
+ * been seen on a live event here when this shipped — /calls/health → `lines`
+ * shows the statuses each shown card goes through.
+ */
+export const FAX_STATES = ["FaxReceive"];
+
+export function isFaxEvent(event) {
+  const parties = Array.isArray(event?.parties) ? event.parties : [];
+  return parties.some((p) => FAX_STATES.includes(String(p?.status?.code || "")));
+}
+
+/**
  * The state a session has moved to, for a call we are already showing.
  *
  * Returned separately from pickInboundParty because the interesting transition

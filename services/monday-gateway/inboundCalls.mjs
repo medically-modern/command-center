@@ -61,6 +61,7 @@ import {
   ringsSharedExtension,
   lineVerdict,
   lineShape,
+  isFaxEvent,
 } from "./callRules.mjs";
 import { buildHistoryQuery } from "./callHistoryQuery.mjs";
 import { RETRY_STEPS_MS, retryAfterMs, retryDelayMs } from "./reconcileBackoff.mjs";
@@ -346,6 +347,10 @@ function publicCall(c) {
     startedAt: c.startedAt,
     state: c.state,
     claimedBy: c.claimedBy || null,
+    // RingCentral is receiving a fax on it: the browser drops the card at once.
+    fax: !!c.fax,
+    // The number has faxed us before (call_archive): the card says so.
+    faxLikely: !!c.faxLikely,
   };
 }
 
@@ -363,6 +368,29 @@ function publicCall(c) {
  */
 async function audienceFor(_hmac) {
   return [...subscribers.values()];
+}
+
+/**
+ * Has this number sent us a fax before? From call_archive (same database),
+ * whose rows carry RingCentral's call-log type. A label on the card only —
+ * never a reason to hide it: a doctor's office may call by voice from the
+ * number it faxes from. False on any failure, and bounded so a slow database
+ * never delays a ring by more than a moment.
+ */
+async function hasFaxedBefore(hmac) {
+  if (!pool || !hmac) return false;
+  try {
+    const q = pool.query(
+      `SELECT 1 FROM call_archive
+        WHERE phone_hmac = $1 AND call_type = 'Fax' AND direction = 'Inbound' LIMIT 1`,
+      [hmac],
+    );
+    const r = await Promise.race([q, new Promise((res) => setTimeout(() => res(null), 400))]);
+    q.catch(() => {});
+    return !!(r && r.rowCount);
+  } catch {
+    return false;
+  }
 }
 
 /** Tell everyone already watching this call that it changed. */
@@ -470,6 +498,18 @@ async function handleEvent(payload) {
       existing.lineVerdicts.add(key);
       noteLine({ session: sessionId.slice(-10, -4), stage: "later", verdict: later, ...shape });
     }
+    // ⚠️ A FAX: the line took it during the greeting and will ring nobody.
+    // Ended as "answered" (it was received) with `fax`, which the browser
+    // drops at once; an older build shows "Answered" for its linger instead.
+    if (existing.state === "ringing" && isFaxEvent(body)) {
+      existing.state = "answered";
+      existing.fax = true;
+      existing.endedAt = Date.now();
+      broadcastUpdate(existing);
+      void recordEvent({ kind: "fax", sessionId: existing.id, hmac: existing.hmac, from: existing.from });
+      pruneCalls();
+      return;
+    }
     // A call we are already showing. The interesting transition is the one away
     // from ringing — a card left up after the caller hung up is worse than none.
     if (outcome && existing.state === "ringing") {
@@ -514,6 +554,10 @@ async function handleEvent(payload) {
     void recordEvent({ kind: "other_line", sessionId });
     return;
   }
+  if (isFaxEvent(body)) {
+    void recordEvent({ kind: "fax", sessionId });
+    return;
+  }
   const party = pickInboundParty(body, SELF_NUMBERS);
   if (!party) {
     // Was it OUR OWN outbound leg? Asking the same pure function again without
@@ -548,6 +592,9 @@ async function handleEvent(payload) {
   pruneCalls();
 
   eventStats.rings++;
+  // After calls.set, so the lookup's await can't let a second event of this
+  // session ring twice.
+  call.faxLikely = await hasFaxedBefore(call.hmac);
   const audience = await audienceFor(call.hmac);
   call.audience = audience.map((a) => a.email);
   for (const entry of audience) sendTo(entry, "call-ring", publicCall(call));
