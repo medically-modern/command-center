@@ -315,7 +315,13 @@ export function registerRingCentral({ app }) {
     const identity = await verifyGoogleToken(req.headers["x-mm-auth"]);
     // Budgeted per caller, so one bad tab cannot spend everyone's allowance.
     // Falls back to the socket address when there is no signed-in identity.
-    const caller = (identity && (identity.email || identity.sub)) || req.ip || "anon";
+    // ⚠️ NOT req.ip: behind Railway's edge it is the proxy's address, which
+    // changes between requests and is shared by everyone, so the per-caller
+    // budgets never saw a real caller — stedi's 20-call bursts sailed through
+    // the heavy cap on its first live run (2026-10-01). The first hop of
+    // X-Forwarded-For is the client, as the request log reads it (index.mjs).
+    const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    const caller = (identity && (identity.email || identity.sub)) || forwarded || req.ip || "anon";
     if (!rcConfigured()) {
       return res.status(503).json({ error: "RingCentral is not configured on the gateway (missing RC_* env vars)." });
     }

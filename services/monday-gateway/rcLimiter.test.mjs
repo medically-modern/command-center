@@ -402,6 +402,9 @@ describe("one passthrough caller can't spend the account's call-log allowance (2
   it("the /rc passthrough asks for the cap", () => {
     const src = readFileSync(resolve(process.cwd(), "services/monday-gateway/ringcentral.mjs"), "utf8");
     expect(src).toMatch(/\{ \.\.\.proxyTier\(rcPath\), caller, capHeavy: true \}/);
+    // ⚠️ The caller is the CLIENT (first X-Forwarded-For hop), not Railway's
+    // edge proxy — keyed on req.ip, the cap never saw the script.
+    expect(src).toMatch(/const caller = \(identity && \(identity\.email \|\| identity\.sub\)\) \|\| forwarded \|\| req\.ip/);
     expect(src).toMatch(/rcGuard\.check\(\{ tier, caller, shape, capHeavy: !!opts\.capHeavy \}\)/);
   });
 });

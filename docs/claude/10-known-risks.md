@@ -170,6 +170,12 @@
   handing that off. In the SPA, a call-history 429 is an `RcBusyError` and shows
   `RcBusyCountdown` ("RingCentral is busy … Trying again in 0:42"), which retries once by itself
   (`CallHistoryList`, `PatientActivityCard`).
+  ⚠️ **The per-caller budgets keyed on `req.ip`, which behind Railway's edge is the PROXY's address**
+  (shared, and changing between requests), so neither the 40/min budget nor the heavy cap ever saw
+  a real caller — the first live run after the cap shipped (16:00 ET) still got 10 call-log reads
+  through. `/rc` now keys an anonymous caller on the first `X-Forwarded-For` hop, as the request log
+  does. Signed-in browsers are keyed by email; an office's browsers WITHOUT sign-in share one
+  public IP and so one budget.
 - **A completed patient can still be re-advanced from Patient Intake — KNOWN, deliberately left**
   (Josh, 2026-09-01: detection only for now). `UnverifiedReferralsPage` is the only intake-family
   page with no `useCompletedStageReview` / `reviewMode` gate, and `useMondayPatients` injects a
