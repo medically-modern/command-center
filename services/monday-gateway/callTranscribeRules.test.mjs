@@ -91,7 +91,10 @@ describe("call transcription rules (§5.47e)", () => {
     expect(t).toMatch(/app\.get\("\/calls\/transcript"[\s\S]*requireCaller\(req, res\)/);
     // The public health route reports counts only.
     const health = t.slice(t.indexOf('app.get("/calls/transcribe-health"'), t.indexOf('app.get("/calls/transcript"'));
-    expect(health).not.toMatch(/transcript_json/);
+    // Shape counts (array lengths) are fine; the column itself or any text is not.
+    expect(health).not.toMatch(/SELECT[^`]*\btranscript_json\s*(,|FROM)/);
+    expect(health).not.toMatch(/->>|'text'/);
+    expect(health).toMatch(/jsonb_array_length\(coalesce\(transcript_json->'speakers'/);
     expect(read("commsInboxRules.mjs")).toMatch(/hasTranscript: e\.transcriptState === "done"/);
     expect(read("commsInbox.mjs")).toMatch(/has\.transcribed \? "transcript_state" : "NULL AS transcript_state"/);
     expect(read("commsInbox.mjs")).not.toMatch(/transcript_json/);
