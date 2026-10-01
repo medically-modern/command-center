@@ -833,6 +833,58 @@ export function registerCallArchive({ app, pool, requireCaller }) {
    * check has to be reachable by whatever is watching — including the
    * calls-monitor cron, which carries no token.
    */
+  /**
+   * ⚠️ UNAUTHENTICATED PROBE, counts and RingCentral's error codes only — never
+   * a word of a transcript. Can this account read call transcripts through
+   * RingSense (§5.13c, 2026-10-01)? Asks for the newest recorded call's
+   * insights and reports the HTTP status, RingCentral's errorCode/message (its
+   * own words about licensing, no PHI) and how many transcript utterances came
+   * back. Cached 5 minutes so the open route can't become RingCentral traffic.
+   */
+  let ringsenseProbe = null;
+  app.get("/calls/ringsense-probe", async (_req, res) => {
+    if (ringsenseProbe && Date.now() - ringsenseProbe.at < 5 * 60_000) return res.json(ringsenseProbe.body);
+    const body = { at: new Date().toISOString() };
+    try {
+      if (!pool) return res.json({ ...body, error: "no pool" });
+      const q = await pool.query(
+        `SELECT rc_session_id, rc_recording_id, started_at FROM call_archive
+          WHERE rc_recording_id IS NOT NULL AND rc_session_id IS NOT NULL AND audio_state = 'stored'
+          ORDER BY started_at DESC LIMIT 1`,
+      );
+      const row = q.rows[0];
+      if (!row) return res.json({ ...body, error: "no recorded call in the archive" });
+      body.callStartedAt = row.started_at;
+      for (const [kind, path] of [
+        ["record", `/ai/ringsense/v1/public/accounts/~/domains/pbx/records/${encodeURIComponent(row.rc_recording_id)}/insights?insightTypes=Transcript`],
+        ["session", `/ai/ringsense/v1/public/accounts/~/domains/pbx/sessions/${encodeURIComponent(row.rc_session_id)}/insights?insightTypes=Transcript`],
+      ]) {
+        const r = await rcApiFetch(path, {}, { tier: "background", caller: "ringsense-probe", ttlMs: 0 });
+        let j = null;
+        try {
+          j = await r.json();
+        } catch {
+          /* not JSON */
+        }
+        const list = Array.isArray(j?.insights?.Transcript)
+          ? j.insights.Transcript
+          : Array.isArray(j?.records)
+            ? j.records.flatMap((x) => (Array.isArray(x?.insights?.Transcript) ? x.insights.Transcript : []))
+            : [];
+        body[kind] = {
+          status: r.status,
+          errorCode: j?.errorCode || j?.errors?.[0]?.errorCode || null,
+          message: String(j?.message || j?.errors?.[0]?.message || "").slice(0, 300) || null,
+          utterances: list.length,
+        };
+      }
+    } catch (e) {
+      body.error = String((e && e.message) || e).slice(0, 300);
+    }
+    ringsenseProbe = { at: Date.now(), body };
+    res.json(body);
+  });
+
   app.get("/calls/archive-health", async (_req, res) => {
     try {
       if (!pool) return res.json({ ok: false, reason: "messaging Postgres not configured" });
