@@ -844,21 +844,18 @@ export function registerCallArchive({ app, pool, requireCaller }) {
   let ringsenseProbe = null;
   app.get("/calls/ringsense-probe", async (_req, res) => {
     if (ringsenseProbe && Date.now() - ringsenseProbe.at < 5 * 60_000) return res.json(ringsenseProbe.body);
-    const body = { at: new Date().toISOString() };
+    const body = { at: new Date().toISOString(), calls: [] };
     try {
       if (!pool) return res.json({ ...body, error: "no pool" });
+      // The newest recorded calls — a transcript exists only where AI Notes
+      // ran on the call, so one call proves nothing either way.
       const q = await pool.query(
-        `SELECT rc_session_id, rc_recording_id, started_at FROM call_archive
-          WHERE rc_recording_id IS NOT NULL AND rc_session_id IS NOT NULL AND audio_state = 'stored'
-          ORDER BY started_at DESC LIMIT 1`,
+        `SELECT rc_recording_id, started_at, direction, duration_sec FROM call_archive
+          WHERE rc_recording_id IS NOT NULL AND call_type IS DISTINCT FROM 'Fax'
+          ORDER BY started_at DESC LIMIT 15`,
       );
-      const row = q.rows[0];
-      if (!row) return res.json({ ...body, error: "no recorded call in the archive" });
-      body.callStartedAt = row.started_at;
-      for (const [kind, path] of [
-        ["record", `/ai/ringsense/v1/public/accounts/~/domains/pbx/records/${encodeURIComponent(row.rc_recording_id)}/insights?insightTypes=Transcript`],
-        ["session", `/ai/ringsense/v1/public/accounts/~/domains/pbx/sessions/${encodeURIComponent(row.rc_session_id)}/insights?insightTypes=Transcript`],
-      ]) {
+      for (const row of q.rows) {
+        const path = `/ai/ringsense/v1/public/accounts/~/domains/pbx/records/${encodeURIComponent(row.rc_recording_id)}/insights`;
         const r = await rcApiFetch(path, {}, { tier: "background", caller: "ringsense-probe", ttlMs: 0 });
         let j = null;
         try {
@@ -866,17 +863,17 @@ export function registerCallArchive({ app, pool, requireCaller }) {
         } catch {
           /* not JSON */
         }
-        const list = Array.isArray(j?.insights?.Transcript)
-          ? j.insights.Transcript
-          : Array.isArray(j?.records)
-            ? j.records.flatMap((x) => (Array.isArray(x?.insights?.Transcript) ? x.insights.Transcript : []))
-            : [];
-        body[kind] = {
+        const ins = j?.insights && typeof j.insights === "object" ? j.insights : {};
+        body.calls.push({
+          startedAt: row.started_at,
+          direction: row.direction,
+          durationSec: row.duration_sec,
           status: r.status,
           errorCode: j?.errorCode || j?.errors?.[0]?.errorCode || null,
-          message: String(j?.message || j?.errors?.[0]?.message || "").slice(0, 300) || null,
-          utterances: list.length,
-        };
+          message: String(j?.message || j?.errors?.[0]?.message || "").slice(0, 200) || null,
+          // Counts per insight type only — never their text.
+          insights: Object.fromEntries(Object.entries(ins).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])),
+        });
       }
     } catch (e) {
       body.error = String((e && e.message) || e).slice(0, 300);
