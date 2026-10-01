@@ -460,12 +460,15 @@ async function handleEvent(payload) {
   const outcome = sessionOutcome(body);
 
   if (existing) {
-    // What later events on a card say about its line, once per new verdict.
+    // What later events on a card say, once per new verdict + statuses — a
+    // fax to the main line shows here as a status the card never ends on.
     const later = lineVerdict(body, sharedId);
+    const shape = lineShape(body);
+    const key = `${later}|${shape.statuses.join(",")}`;
     existing.lineVerdicts = existing.lineVerdicts || new Set();
-    if (!existing.lineVerdicts.has(later)) {
-      existing.lineVerdicts.add(later);
-      noteLine({ session: sessionId.slice(-4), stage: "later", verdict: later, ...lineShape(body) });
+    if (!existing.lineVerdicts.has(key)) {
+      existing.lineVerdicts.add(key);
+      noteLine({ session: sessionId.slice(-10, -4), stage: "later", verdict: later, ...shape });
     }
     // A call we are already showing. The interesting transition is the one away
     // from ringing — a card left up after the caller hung up is worse than none.
@@ -506,7 +509,7 @@ async function handleEvent(payload) {
   // Only calls that ring the shared extension (the main line) are everyone's
   // card — see ringsSharedExtension. A call to someone's own line rings them
   // through their own registration instead.
-  noteLine({ session: sessionId.slice(-4), stage: "new", verdict: lineVerdict(body, sharedId), ...lineShape(body) });
+  noteLine({ session: sessionId.slice(-10, -4), stage: "new", verdict: lineVerdict(body, sharedId), ...lineShape(body) });
   if (!ringsSharedExtension(body, sharedId)) {
     void recordEvent({ kind: "other_line", sessionId });
     return;
