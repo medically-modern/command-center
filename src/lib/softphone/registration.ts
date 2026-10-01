@@ -223,7 +223,8 @@ export function instanceIdFor(storage: StorageLike, mint: () => string): string 
 /* ── ringtone mute ─────────────────────────────────────────────────────── */
 
 /** Is the ringtone muted in this browser? Cards still show; only the sound
- *  stops. Off by default — a silent ring is a missed call. */
+ *  stops. Off by default — a silent ring is a missed call — and cleared by
+ *  every tab that opens (softphone.ts `start()`, §5.13c). */
 export function readMuted(storage: StorageLike): boolean {
   try {
     return storage.getItem(MUTE_KEY) === "1";

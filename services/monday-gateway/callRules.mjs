@@ -176,9 +176,8 @@ function partiesOf(event) {
  * call to play Katie's greeting, hears the fax tone during it, and receives
  * the fax without ringing anybody — so the card made at Setup is for a call no
  * one will ever be offered (the (412)…9071 card, 2026-10-01, was a fax).
- * "FaxReceive" is the status RingCentral documents for this; it had not yet
- * been seen on a live event here when this shipped — /calls/health → `lines`
- * shows the statuses each shown card goes through.
+ * "FaxReceive" is the status RingCentral documents for this — seen live on
+ * 2026-10-01: an Inbound party went FaxReceive 0.6s after Setup.
  */
 export const FAX_STATES = ["FaxReceive"];
 

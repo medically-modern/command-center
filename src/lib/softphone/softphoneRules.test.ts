@@ -272,3 +272,15 @@ describe("a ringing call is never forwarded to a personal phone", () => {
     expect(status).not.toMatch(/Take it/);
   });
 });
+
+describe("the ringer is always on in a newly opened tab (Josh, 2026-10-01)", () => {
+  it("⚠️ starts unmuted and clears a stored mute for the whole browser on start", () => {
+    const runtime = codeOnly(read("src/lib/softphone/softphone.ts"));
+    expect(runtime).toMatch(/private ringMuted = false;/);
+    expect(runtime).not.toMatch(/private ringMuted = readMuted\(/);
+    const start = runtime.indexOf('this.started = true;');
+    const clear = runtime.indexOf("if (readMuted(storage() ?? NO_STORAGE)) writeMuted(storage() ?? NO_STORAGE, false);");
+    expect(clear).toBeGreaterThan(start);
+  });
+});
+

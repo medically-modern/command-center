@@ -287,8 +287,12 @@ class Softphone {
    *  the archive and history read. Cleared when the call ends (`endActive`). */
   private dialingShared = false;
   /** Ringtone muted in this browser (localStorage, shared by every tab of it).
-   *  Distinct from `active.call.muted`, which is the microphone on a live call. */
-  private ringMuted = readMuted(storage() ?? NO_STORAGE);
+   *  Distinct from `active.call.muted`, which is the microphone on a live call.
+   *  ⚠️ ALWAYS starts unmuted: every tab that opens (or reloads) clears the mute
+   *  for the whole browser in `start()` (Josh, 2026-10-01: "by default speaker
+   *  icon should always be on … a new tab should auto open with ringing
+   *  enabled"). A mute lasts only while the tabs that saw it stay open. */
+  private ringMuted = false;
 
   // Leader-side phone state
   private wp: WebPhone | null = null;
@@ -349,6 +353,10 @@ class Softphone {
       this.channel = new BroadcastChannel(CHANNEL_NAME);
       this.channel.onmessage = (ev: MessageEvent) => this.handleMessage(ev.data);
     }
+    // A new tab opens with the ringer ON, for the whole browser: the stored
+    // mute is cleared, which the other open tabs hear as the storage event
+    // below — the leader making the sound may be another tab.
+    if (readMuted(storage() ?? NO_STORAGE)) writeMuted(storage() ?? NO_STORAGE, false);
     // A mute flipped in ANOTHER tab of this browser reaches the leader — the
     // tab that is actually making the sound — through the storage event.
     window.addEventListener("storage", (e) => {
