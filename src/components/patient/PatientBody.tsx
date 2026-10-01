@@ -16,8 +16,9 @@
  * and neither can drift into a second vocabulary.
  *
  * ⚠️ It WRITES only through writers that already exist, exactly as the page
- * always did: the top bar's two pencils (`updatePatientContact`, §5.46g) and the
- * Subscription Profile tab behind `editProfile` (§5.45b). `patientScreen.test.ts`
+ * always did: the top bar's two pencils (`updatePatientContact`, §5.46g), the
+ * Subscription Profile tab behind `editProfile` (§5.45b), and — managers only —
+ * Remove from Stuck on the Onboarding view (`removeFromStuck`, §5.57). `patientScreen.test.ts`
  * scans this directory for a hand-rolled mutation.
  */
 import { useMemo, type ReactNode } from "react";
@@ -193,6 +194,7 @@ export function PatientBody({
           toolKey={params.get(TOOL_PARAM) || ""}
           onTool={(k) => setParam({ [TOOL_PARAM]: k })}
           embedded={embedded}
+          onChanged={onSaved}
         />
       ) : (
         <SubscriptionView

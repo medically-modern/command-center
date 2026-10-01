@@ -318,8 +318,33 @@ describe("the patient screen is READ-ONLY", () => {
     //    to Cardinal (§5.35), behind `adjustOrders`. The card file holds no
     //    writer of its own; it is listed so the promise above stays true.
     "src/components/patient/PatientOrderCard.tsx",
+    // 5. **Remove from Stuck** (§5.57; Brandon + Josh, 2026-10-01) — managers
+    //    only, beside the red Stuck chip. Calls the oversight module's OWN
+    //    `removeFromStuck`, which holds every Monday write; the component
+    //    holds none. Pinned below.
+    "src/components/patient/RemoveFromStuck.tsx",
   ];
   const files = all.filter((f) => !EDIT_PATH.includes(f));
+
+  it("⚠️⚠️ Remove from Stuck is managers-only, on the SIGNED-IN person, and holds no writer of its own", () => {
+    const code = (t: string) =>
+      t.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+    const c = code(src("src/components/patient/RemoveFromStuck.tsx"));
+    // The one writer, from the one module.
+    expect(c).toMatch(/from "@\/lib\/oversight\/removeFromStuckApi"/);
+    expect(c).toMatch(/removeFromStuck\(\{/);
+    expect(c).not.toMatch(/change_(multiple_)?column_value|move_item_to_group|mondayWrite|executeWritesWithVerification/);
+    // §5.39g-h: a write guard reads the signed-in person — never the borrow.
+    expect(c).toMatch(/useAccessContext\(\)/);
+    expect(c).not.toMatch(/useDisplayAccess/);
+    // Checked on the button AND again in the handler.
+    expect((c.match(/access\.type !== "manager"/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // Drawn in ONE place: the snapshot header, beside the stamp chip.
+    const view = code(src("src/components/patient/OnboardingView.tsx"));
+    expect(view.match(/<RemoveFromStuckButton\b/g) ?? []).toHaveLength(1);
+    expect(view.match(/<RemoveFromStuckPanel\b/g) ?? []).toHaveLength(1);
+    expect(view).toMatch(/\{stamp\.text\}[\s\S]{0,400}<RemoveFromStuckButton/);
+  });
 
   it("⚠️⚠️ the Orders tab's swap is /orders' OWN card, behind Adjust orders", () => {
     // The pick is the send — no draft, no undo (§5.35) — so a second copy of

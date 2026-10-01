@@ -92,6 +92,23 @@ export const SUB_STAGES: Record<number, SubStage[]> = {
   18410804557: WELCOME_CALL,
 };
 
+/**
+ * ⚠️ **Welcome Call's two steps are two GROUPS, so a blank advancer still has
+ * an answer** (§5.57). Its queues read the group (`welcomeCall/mondayApi`
+ * `GROUPS.welcomeCall`, `finalConfirm/mondayApi` `GROUPS.finalProfileConfirmation`),
+ * and Remove from Stuck CLEARS the advancer of a patient it puts back in
+ * Welcome Call rather than re-writing "Welcome Call" (which re-runs the
+ * board's welcome texts). Without this the screen would open that patient on
+ * Final Confirm — the last tab "reached" by an unrecognised advancer.
+ * Consulted ONLY when the advancer names no step: where it does, it wins.
+ * Medical Evaluation is not here because all its steps share one group, and
+ * Insurance's DVS items linger in other groups (§3), so a group proves nothing
+ * on either.
+ */
+const SUB_STAGE_BY_GROUP: Record<number, Record<string, string>> = {
+  18410804557: { group_mm1wvq8p: "Welcome Call", group_mm2x8jtj: "Review Profile" },
+};
+
 export interface SubStageStep extends SubStage {
   /** The patient passed through this tool (or is in it now). */
   reached: boolean;
@@ -114,7 +131,9 @@ export function subStagesFor(item: DossierItem | null): SubStageStep[] {
   if (!defs) return [];
 
   const advancer = (item.stageAdvancerText || "").trim();
-  const at = defs.findIndex((s) => s.key === advancer);
+  const byAdvancer = defs.findIndex((s) => s.key === advancer);
+  const byGroup = SUB_STAGE_BY_GROUP[item.boardId]?.[item.groupId];
+  const at = byAdvancer >= 0 ? byAdvancer : byGroup ? defs.findIndex((s) => s.key === byGroup) : -1;
 
   return defs.map((s, i) => ({
     ...s,

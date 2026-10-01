@@ -47,6 +47,7 @@
  * write guard still reads the signed-in person, so hiding it in a borrow
  * costs no ability and showing it broke the borrow's one promise.
  */
+import { useState } from "react";
 import { Activity, AlertTriangle, ArrowUpRight, Check, ClipboardList, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
@@ -66,6 +67,7 @@ import { STAGE_DAYS_WARN, daysInStage, infoStripFacts } from "@/lib/patient/info
 import { noteEntries } from "@/lib/patient/recentNotes";
 import { defaultSubStage, subStagesFor, type SubStageStep } from "@/lib/patient/stagePanels";
 import { StagePanelEmbed, StagePanelUnavailable } from "@/components/patient/StagePanelEmbed";
+import { RemoveFromStuckButton, RemoveFromStuckPanel, useRemoveFromStuck } from "@/components/patient/RemoveFromStuck";
 
 interface Props {
   dossier: PatientDossier;
@@ -90,6 +92,8 @@ interface Props {
    *     historical step's card still is.
    */
   embedded?: boolean;
+  /** After a write on this view (Remove from Stuck, §5.57) — the host re-reads. */
+  onChanged?: () => void;
 }
 
 export function OnboardingView({
@@ -102,6 +106,7 @@ export function OnboardingView({
   toolKey,
   onTool,
   embedded = false,
+  onChanged,
 }: Props) {
   const facts = infoStripFacts(dossier);
   const step = steps[stepIdx];
@@ -120,6 +125,12 @@ export function OnboardingView({
   /* His "N days here" chip, on the stage the patient is IN — the info strip's
      own Stage start count (`daysInStage`), so the two cannot disagree. */
   const here = step && (step.state === "now" || step.state === "stuck") ? daysInStage(dossier) : null;
+  /* Remove from Stuck (§5.57) — a plan only for a manager looking at a Stuck
+     record. The panel is open for ONE record: switching records closes it,
+     because the stage it would write was read for the other one. */
+  const unstuckPlan = useRemoveFromStuck(snap);
+  const [unstuckFor, setUnstuckFor] = useState<string | null>(null);
+  const unstuckOpen = !!snap && !!unstuckPlan && unstuckFor === snap.itemId;
 
   return (
     <>
@@ -251,6 +262,13 @@ export function OnboardingView({
                     {stamp.text}
                   </span>
                 )}
+                {/* Brandon: *"It should go next to the stuck warning on top"*. */}
+                {snap && unstuckPlan && (
+                  <RemoveFromStuckButton
+                    open={unstuckOpen}
+                    onToggle={() => setUnstuckFor(unstuckOpen ? null : snap.itemId)}
+                  />
+                )}
                 <span
                   className="chip grey"
                   title="Nothing on this panel writes to Monday — it is the record of what the tool saw"
@@ -260,6 +278,17 @@ export function OnboardingView({
                 <OpenTool item={snap} tool={tool} />
               </div>
             </div>
+
+            {unstuckOpen && snap && unstuckPlan && (
+              <RemoveFromStuckPanel
+                key={snap.itemId}
+                item={snap}
+                plan={unstuckPlan}
+                lookupPhone={dossier.phone ?? ""}
+                onClose={() => setUnstuckFor(null)}
+                onDone={() => onChanged?.()}
+              />
+            )}
 
             {/* ⚠️ Not in his mockup, whose sample has one record per stage. Ours
                 does not — a stage run twice, or two intake boards, is two

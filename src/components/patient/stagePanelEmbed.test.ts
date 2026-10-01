@@ -107,6 +107,22 @@ describe("which tools a record has been through", () => {
     expect(hasSubStagePanels(18406352652)).toBe(false);
     expect(hasSubStagePanels(18406060017)).toBe(true);
   });
+
+  it("⚠️ Welcome Call with a blank advancer reads its GROUP (§5.57)", () => {
+    // Remove from Stuck clears the advancer of a patient it puts back in the
+    // Welcome Call group, rather than re-writing "Welcome Call" (welcome texts).
+    const wc = (over: Partial<DossierItem>) => item({ boardId: 18410804557, ...over });
+    const back = subStagesFor(wc({ groupId: "group_mm1wvq8p", stageAdvancerText: "" }));
+    expect(defaultSubStage(back)).toBe("Welcome Call");
+    expect(back.find((s) => s.key === "Welcome Call")!.current).toBe(true);
+    expect(defaultSubStage(subStagesFor(wc({ groupId: "group_mm2x8jtj", stageAdvancerText: "" })))).toBe("Review Profile");
+    // The advancer still wins wherever it names a step.
+    expect(defaultSubStage(subStagesFor(wc({ groupId: "group_mm1wvq8p", stageAdvancerText: "Review Profile" })))).toBe(
+      "Review Profile",
+    );
+    // Still in Stuck: no group answer, so nothing claims to be current.
+    expect(subStagesFor(wc({ groupId: "group_mm1xyczx", stageAdvancerText: "Stuck / Don't Proceed" })).some((s) => s.current)).toBe(false);
+  });
 });
 
 describe("the embed cannot write", () => {

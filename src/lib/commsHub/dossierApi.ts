@@ -1052,6 +1052,37 @@ export async function appendNoteToRecord(opts: {
 }
 
 /**
+ * A record changed GROUP (and maybe its Stage Advancer) — Remove from Stuck
+ * (§5.57). Patches every cached copy the way `updatePatientContact` does, so
+ * BOTH hosts of the patient screen see it on their reload: the page's reload
+ * re-reads through this cache, and the Comms hub's only rebuilds from these
+ * same objects (`useDossier.reload` never re-runs the lookup).
+ *
+ * Every field derived from the group is re-derived with the SAME rules
+ * `toDossierItem` uses — `isCompleted`, `isStuck`, `route` — so a patched
+ * record cannot disagree with a freshly read one.
+ */
+export function patchCachedPlacement(
+  boardId: number,
+  itemId: string,
+  next: { groupId: string; groupTitle: string; stageAdvancerText: string },
+): void {
+  const board = BOARDS.find((b) => b.boardId === boardId);
+  if (!board) return;
+  for (const hit of cachedCopies(boardId, itemId)) {
+    hit.groupId = next.groupId;
+    hit.groupTitle = next.groupTitle;
+    hit.stageAdvancerText = next.stageAdvancerText;
+    hit.isCompleted = completedGroupIds(board).has(next.groupId);
+    hit.isStuck = markStuck(hit);
+    hit.route = routeFor(board, next.groupId);
+    if (board.stageAdvancerColId && board.stageAdvancerColId in hit.cols) {
+      hit.cols = { ...hit.cols, [board.stageAdvancerColId]: next.stageAdvancerText };
+    }
+  }
+}
+
+/**
  * Every cached copy of one Monday record. The same item can be memoised under
  * several lookups — its number, a pick of it (`pick:`), a household member's
  * number — and a pick found through its name search holds its own object, so a

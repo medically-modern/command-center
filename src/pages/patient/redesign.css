@@ -285,6 +285,23 @@
   width: 6px; height: 6px; border-radius: 50%; background: var(--mm-green); flex: none;
 }
 .cc-pt .snap-recs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ── Remove from Stuck (§5.57) — managers only, beside the red Stuck chip ──── */
+/* Red ON the chip's own tokens, so the two read as one control in both themes
+   (`--bad-*` is redefined under `.dark` at the top of this file). */
+.cc-pt .btn.danger-outline { background: var(--cd); border-color: var(--bad-bd); color: var(--bad-fg); outline-style: none; }
+.cc-pt .btn.danger-outline:hover:not(:disabled),
+.cc-pt .btn.danger-outline.on { background: var(--bad-bg); opacity: 1; }
+.cc-pt .btn.danger { background: hsl(0 70% 48%); color: #fff; }
+.cc-pt .unstuck-panel {
+  display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
+  border: 1px solid var(--bad-bd); background: var(--bad-bg); border-radius: 10px;
+}
+.cc-pt .unstuck-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* The select shrinks to the row at phone width rather than pushing it wider. */
+.cc-pt .unstuck-row select.input { width: auto; flex: 1 1 200px; min-width: 0; max-width: 320px; }
+.cc-pt .unstuck-err { color: var(--bad-fg); font-weight: 600; overflow-wrap: anywhere; }
+
 .cc-pt .stage-h { margin: 4px 0 0; align-items: flex-start; }
 .cc-pt .stage-h h2 { font-size: 16px; }
 
