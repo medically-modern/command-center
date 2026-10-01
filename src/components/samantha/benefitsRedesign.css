@@ -422,7 +422,10 @@
 .dark .bnr .missing-box { background: oklch(0.50 0.09 85 / 0.26); }
 
 /* Who-to-call + POS 11 (2026-10-01). Dark `--mm-teal` is a LIGHT teal, so the
-   member chip's white text would vanish — dark text on it instead. The POS 11
+   member chip's white text would vanish — dark text on it instead. The Home
+   Plan box's HANDLES AUTHS tag is the same white-on-teal pattern and had the
+   same unreadable dark mode until this rule covered it too. The POS 11
    note takes the missing-box wash and a light amber text. */
-.dark .bnr .sugg-chip2.member { color: var(--bnr-background); }
+.dark .bnr .sugg-chip2.member,
+.dark .bnr .sbox.auth-plan .auth-tag { color: var(--bnr-background); }
 .dark .bnr .pos11-note { background: oklch(0.50 0.09 85 / 0.26); color: oklch(0.88 0.09 85); }
