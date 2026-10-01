@@ -48,8 +48,9 @@ export function transcribeEnabled(env = process.env) {
 }
 
 /** The GCS object a call's audio is copied to. Call ids carry no PHI. */
-export function gcsObjectName(callId) {
-  return `calls/${String(callId).replace(/[^A-Za-z0-9_-]/g, "_")}.mp3`;
+export function gcsObjectName(callId, part = 0) {
+  const id = String(callId).replace(/[^A-Za-z0-9_-]/g, "_");
+  return part ? `calls/${id}-p${part}.mp3` : `calls/${id}.mp3`;
 }
 
 export function batchRequestBody(gcsUri) {
@@ -84,7 +85,11 @@ export function seconds(d) {
 export function fileResult(operation, gcsUri) {
   const results = operation?.response?.results;
   if (!results || typeof results !== "object") return { error: null, results: [] };
-  const file = results[gcsUri] ?? Object.values(results)[0];
+  // The by-name lookup is the rule; the lone-entry fallback covers a key that
+  // comes back spelled differently. With several pieces, never guess — that
+  // would hand every piece the first piece's words.
+  const entries = Object.values(results);
+  const file = results[gcsUri] ?? (entries.length === 1 ? entries[0] : null);
   if (!file) return { error: null, results: [] };
   if (file.error && (file.error.code || file.error.message)) {
     return { error: String(file.error.message || `code ${file.error.code}`), results: [] };
@@ -148,4 +153,102 @@ export function turnsFrom(results) {
 export function transcriptRecord(turns) {
   const speakers = [...new Set(turns.map((t) => t.speaker).filter(Boolean))];
   return { v: 1, model: MODEL, speakers, turns };
+}
+
+/* ── long calls: split the MP3 at frame boundaries ───────────────────────── */
+
+/**
+ * ⚠️ BatchRecognize with chirp_3 refuses audio over 20 minutes ("Only audio
+ * files up to 20 minutes long are supported", the first long call, 2026-10-01).
+ * A long call is split into pieces of at most CHUNK_SEC, sent as several files
+ * in ONE job, and the turns stitched back with each piece's start offset.
+ * MP3 is a sequence of self-contained frames, so cutting between frames needs
+ * no re-encoding. Speaker labels are per piece: "Speaker 1" in one piece is not
+ * guaranteed to be the same voice in the next.
+ */
+export const CHUNK_SEC = 15 * 60;
+
+const BITRATES = {
+  1: [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320], // MPEG-1 Layer III
+  2: [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160], // MPEG-2/2.5 Layer III
+};
+const RATES = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
+
+/** One Layer III frame header at `i`: { length, seconds }, or null. */
+export function mp3Frame(buf, i) {
+  if (i + 4 > buf.length || buf[i] !== 0xff || (buf[i + 1] & 0xe0) !== 0xe0) return null;
+  const version = (buf[i + 1] >> 3) & 3; // 3 = MPEG-1, 2 = MPEG-2, 0 = MPEG-2.5
+  const layer = (buf[i + 1] >> 1) & 3; // 1 = Layer III
+  if (version === 1 || layer !== 1) return null;
+  const bitrate = BITRATES[version === 3 ? 1 : 2][buf[i + 2] >> 4];
+  const rate = RATES[version]?.[(buf[i + 2] >> 2) & 3];
+  if (!bitrate || !rate) return null;
+  const padding = (buf[i + 2] >> 1) & 1;
+  const mpeg1 = version === 3;
+  const length = Math.floor(((mpeg1 ? 144 : 72) * bitrate * 1000) / rate) + padding;
+  const samples = mpeg1 ? 1152 : 576;
+  return length > 4 ? { length, seconds: samples / rate } : null;
+}
+
+/** Skip an ID3v2 tag at the start, if any. */
+function audioStart(buf) {
+  if (buf.length >= 10 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) {
+    return 10 + ((buf[6] << 21) | (buf[7] << 14) | (buf[8] << 7) | buf[9]);
+  }
+  return 0;
+}
+
+/**
+ * Split an MP3 into pieces of at most `maxSec`: [{ buf, startSec }]. A buffer
+ * that is not parseable MP3, or is already short enough, comes back whole.
+ */
+export function splitMp3(buf, maxSec = CHUNK_SEC) {
+  const start = audioStart(buf);
+  const pieces = [];
+  let i = start;
+  let pieceStart = start;
+  let pieceSec = 0;
+  let total = 0;
+  let pieceAt = 0;
+  while (i < buf.length) {
+    const f = mp3Frame(buf, i);
+    if (!f) {
+      // Resync: scan forward to the next frame header.
+      let j = i + 1;
+      while (j < buf.length && !mp3Frame(buf, j)) j++;
+      if (j >= buf.length) break;
+      i = j;
+      continue;
+    }
+    if (pieceSec + f.seconds > maxSec && i > pieceStart) {
+      pieces.push({ buf: buf.subarray(pieceStart, i), startSec: pieceAt });
+      pieceStart = i;
+      pieceAt = total;
+      pieceSec = 0;
+    }
+    pieceSec += f.seconds;
+    total += f.seconds;
+    i += f.length;
+  }
+  if (!pieces.length) return [{ buf, startSec: 0 }];
+  pieces.push({ buf: buf.subarray(pieceStart), startSec: pieceAt });
+  return pieces;
+}
+
+/** The request for several pieces of one call. */
+export function batchRequestBodyFor(uris) {
+  const body = batchRequestBody(uris[0]);
+  body.files = uris.map((uri) => ({ uri }));
+  return body;
+}
+
+/** Turns from every piece, in order, with each piece's start added. */
+export function stitchTurns(pieces) {
+  const out = [];
+  for (const { startSec, results } of pieces) {
+    for (const t of turnsFrom(results)) {
+      out.push({ ...t, start: t.start == null ? (startSec || null) : Math.round((t.start + startSec) * 100) / 100 });
+    }
+  }
+  return out;
 }

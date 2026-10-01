@@ -23,14 +23,17 @@ import {
   JOB_TIMEOUT_MS,
   LOOKBACK_HOURS,
   MAX_ATTEMPTS,
+  CHUNK_SEC,
   MAX_RUNNING,
   MIN_DURATION_SEC,
   LOCATION,
   SPEECH_HOST,
   START_PER_TICK,
   TICK_MS,
-  batchRequestBody,
+  batchRequestBodyFor,
   fileResult,
+  splitMp3,
+  stitchTurns,
   gcsObjectName,
   transcribeEnabled,
   transcriptRecord,
@@ -45,7 +48,11 @@ ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS transcript_attempts   INT NOT 
 ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS transcript_error      TEXT;
 ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS transcript_started_at TIMESTAMPTZ;
 ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS transcript_done_at    TIMESTAMPTZ;
+ALTER TABLE call_archive ADD COLUMN IF NOT EXISTS transcript_parts      INT NOT NULL DEFAULT 1;
 CREATE INDEX IF NOT EXISTS call_archive_transcript_state_idx ON call_archive (transcript_state);
+-- Calls refused as "too long" before long calls were split: try them again.
+UPDATE call_archive SET transcript_state = NULL, transcript_attempts = 0, transcript_error = NULL
+ WHERE transcript_state = 'failed' AND transcript_error LIKE '%too long%';
 `;
 
 const stats = { lastTickAt: null, lastError: null, started: 0, done: 0, empty: 0, failed: 0 };
@@ -119,28 +126,38 @@ function errorText(e) {
 
 /* ── the job ─────────────────────────────────────────────────────────────── */
 
+/** The drop-box object names of a call cut into `parts` pieces. */
+function partNames(callId, parts) {
+  return parts > 1 ? Array.from({ length: parts }, (_, i) => gcsObjectName(callId, i + 1)) : [gcsObjectName(callId)];
+}
+const uriOf = (name) => `gs://${bucket()}/${name}`;
+
 async function startJob(pool, row) {
-  const name = gcsObjectName(row.rc_call_id);
-  const uri = `gs://${bucket()}/${name}`;
+  let names = [gcsObjectName(row.rc_call_id)];
   try {
     const obj = await getObjectStream(row.object_key);
     const audio = await streamToBuffer(obj.body);
-    await gcsPut(name, audio, obj.contentType || row.content_type || "audio/mpeg");
+    // ⚠️ chirp_3 batch refuses audio over 20 minutes — long calls go in pieces.
+    const pieces = splitMp3(audio);
+    names = partNames(row.rc_call_id, pieces.length);
+    for (let i = 0; i < pieces.length; i++) {
+      await gcsPut(names[i], pieces[i].buf, obj.contentType || row.content_type || "audio/mpeg");
+    }
     const res = await google(
       `https://${SPEECH_HOST}/v2/projects/${encodeURIComponent(project())}/locations/${LOCATION}/recognizers/_:batchRecognize`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(batchRequestBody(uri)) },
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(batchRequestBodyFor(names.map(uriOf))) },
     );
     const j = await res.json().catch(() => ({}));
     if (!res.ok || !j.name) throw new Error(`batchRecognize ${res.status}: ${j.error?.message || "no operation"}`);
     await pool.query(
       `UPDATE call_archive SET transcript_state = 'running', transcript_op = $2, transcript_started_at = now(),
-              transcript_attempts = transcript_attempts + 1, transcript_error = NULL
+              transcript_attempts = transcript_attempts + 1, transcript_error = NULL, transcript_parts = $3
         WHERE rc_call_id = $1`,
-      [row.rc_call_id, j.name],
+      [row.rc_call_id, j.name, names.length],
     );
     stats.started++;
   } catch (e) {
-    await gcsDelete(name);
+    for (const n of names) await gcsDelete(n);
     const attempts = Number(row.transcript_attempts || 0) + 1;
     await pool.query(
       `UPDATE call_archive SET transcript_attempts = $2, transcript_error = $3,
@@ -154,8 +171,11 @@ async function startJob(pool, row) {
 }
 
 async function pollJob(pool, row) {
-  const name = gcsObjectName(row.rc_call_id);
-  const uri = `gs://${bucket()}/${name}`;
+  const parts = Math.max(Number(row.transcript_parts) || 1, 1);
+  const names = partNames(row.rc_call_id, parts);
+  const dropAll = async () => {
+    for (const n of names) await gcsDelete(n);
+  };
   try {
     const res = await google(`https://${SPEECH_HOST}/v2/${row.transcript_op}`);
     const op = await res.json().catch(() => ({}));
@@ -163,16 +183,20 @@ async function pollJob(pool, row) {
     if (!op.done) {
       const started = row.transcript_started_at ? new Date(row.transcript_started_at).getTime() : 0;
       if (started && Date.now() - started > JOB_TIMEOUT_MS) {
-        await gcsDelete(name);
+        await dropAll();
         await finish(pool, row.rc_call_id, "failed", null, "timed out waiting for Google");
       }
       return;
     }
-    await gcsDelete(name);
+    await dropAll();
     if (op.error) return finish(pool, row.rc_call_id, "failed", null, op.error.message || `code ${op.error.code}`);
-    const { error, results } = fileResult(op, uri);
-    if (error) return finish(pool, row.rc_call_id, "failed", null, error);
-    const turns = turnsFrom(results);
+    const pieces = [];
+    for (let i = 0; i < names.length; i++) {
+      const { error, results } = fileResult(op, uriOf(names[i]));
+      if (error) return finish(pool, row.rc_call_id, "failed", null, error);
+      pieces.push({ startSec: i * CHUNK_SEC, results });
+    }
+    const turns = stitchTurns(pieces);
     if (!turns.length) return finish(pool, row.rc_call_id, "empty", null, null);
     return finish(pool, row.rc_call_id, "done", transcriptRecord(turns), null);
   } catch (e) {
@@ -202,7 +226,7 @@ export async function transcribeTick(pool) {
   try {
     stats.lastTickAt = new Date().toISOString();
     const running = await pool.query(
-      `SELECT rc_call_id, transcript_op, transcript_started_at FROM call_archive
+      `SELECT rc_call_id, transcript_op, transcript_started_at, transcript_parts FROM call_archive
         WHERE transcript_state = 'running' AND transcript_op IS NOT NULL ORDER BY transcript_started_at LIMIT 50`,
     );
     for (const row of running.rows) await pollJob(pool, row);

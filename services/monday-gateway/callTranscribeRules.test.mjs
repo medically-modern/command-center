@@ -4,8 +4,13 @@ import { resolve } from "node:path";
 import {
   MODEL,
   LOCATION,
+  CHUNK_SEC,
   batchRequestBody,
+  batchRequestBodyFor,
   fileResult,
+  mp3Frame,
+  splitMp3,
+  stitchTurns,
   gcsObjectName,
   seconds,
   transcribeEnabled,
@@ -100,3 +105,60 @@ describe("call transcription rules (§5.47e)", () => {
     expect(read("commsInbox.mjs")).not.toMatch(/transcript_json/);
   });
 });
+
+describe("long calls are split under Google's 20-minute limit (§5.47e)", () => {
+  // MPEG-1 Layer III, 56 kbps, 32 kHz, mono — the shape of a RingCentral
+  // recording (measured: mono, 32 kHz). 252 bytes and 36 ms per frame.
+  const frame = () => {
+    const f = Buffer.alloc(252);
+    f[0] = 0xff; f[1] = 0xfb; f[2] = 0x48; f[3] = 0xc4;
+    return f;
+  };
+  const mp3 = (frames, id3 = false) => {
+    const body = Buffer.concat(Array.from({ length: frames }, frame));
+    if (!id3) return body;
+    const tag = Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 6, 1, 2, 3, 4, 5, 6]);
+    return Buffer.concat([tag, body]);
+  };
+
+  it("reads a frame header", () => {
+    expect(mp3Frame(frame(), 0)).toEqual({ length: 252, seconds: 0.036 });
+    expect(mp3Frame(Buffer.from([0, 0, 0, 0]), 0)).toBe(null);
+  });
+
+  it("⚠️ pieces stay under the limit, cut on frame boundaries, losing no bytes", () => {
+    expect(CHUNK_SEC).toBeLessThan(20 * 60);
+    const buf = mp3(1000); // 36 s
+    const pieces = splitMp3(buf, 10);
+    expect(pieces.length).toBe(4);
+    expect(pieces.map((p) => p.buf[0])).toEqual([0xff, 0xff, 0xff, 0xff]);
+    expect(pieces.reduce((n, p) => n + p.buf.length, 0)).toBe(buf.length);
+    expect(pieces[1].startSec).toBeCloseTo(9.972, 2);
+  });
+
+  it("skips an ID3 tag, and leaves a short or unparseable file whole", () => {
+    expect(splitMp3(mp3(1000, true), 10).length).toBe(4);
+    expect(splitMp3(mp3(10), 10).length).toBe(1);
+    const junk = Buffer.from("not audio");
+    expect(splitMp3(junk)).toEqual([{ buf: junk, startSec: 0 }]);
+  });
+
+  it("sends every piece in one job and stitches the turns with each piece's offset", () => {
+    expect(batchRequestBodyFor(["gs://b/1-p1.mp3", "gs://b/1-p2.mp3"]).files).toEqual([
+      { uri: "gs://b/1-p1.mp3" },
+      { uri: "gs://b/1-p2.mp3" },
+    ]);
+    const piece = (label) => [{ alternatives: [{ transcript: "x", words: [w("hi", label, "2s")] }] }];
+    expect(stitchTurns([{ startSec: 0, results: piece("1") }, { startSec: 900, results: piece("2") }])).toEqual([
+      { speaker: "1", start: 2, text: "hi" },
+      { speaker: "2", start: 902, text: "hi" },
+    ]);
+  });
+
+  it("⚠️ never hands one piece's words to another when the key doesn't match", () => {
+    const op = { response: { results: { "gs://b/p1": { transcript: { results: [1] } }, "gs://b/p2": { transcript: { results: [2] } } } } };
+    expect(fileResult(op, "gs://b/p2").results).toEqual([2]);
+    expect(fileResult(op, "gs://b/p3").results).toEqual([]);
+  });
+});
+
