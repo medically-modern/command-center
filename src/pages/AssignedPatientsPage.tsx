@@ -61,7 +61,7 @@ import { voicemailForCall, type PickedCall } from "@/lib/commsHub/callVoicemail"
 import PatientDossierPanel from "@/components/commsHub/PatientDossierPanel";
 import HubPatientPane, { HubPatientPaneHeader } from "@/components/commsHub/HubPatientPane";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
-import { PaneResizer, paneWidthCss, usePaneWidth } from "@/components/shared/PaneResizer";
+import { PaneResizer, paneWidthCss, paneWidthCssExpr, usePaneWidth } from "@/components/shared/PaneResizer";
 import { searchPatientsByName, type PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import {
@@ -147,6 +147,18 @@ const INBOX_SEARCH_DEBOUNCE_MS = 300;
 const HUB_PANE_RESERVE_PX = 760;
 /** The narrowest a dragged pane goes — today's own floor, 23.5rem. */
 const HUB_PANE_MIN_PX = 376;
+/**
+ * The LIST pane can be dragged too (Josh, 2026-10-01: *"sliding feature on
+ * comms tab … let's also have between middle and left panel"*). Its floor is
+ * today's own narrowest list, `w-80`.
+ */
+const HUB_LIST_MIN_PX = 320;
+/** The rail (56px) and a thread of ~300px — what neither dragged pane may
+ *  take. `HUB_PANE_RESERVE_PX` is this plus today's widest list (400px). */
+const HUB_RAIL_AND_THREAD_PX = 360;
+/** The profile pane's own undragged width rule, as CSS — what a dragged list
+ *  must leave it. Its `36%` resolves against the same flex row as the list's. */
+const HUB_PROFILE_DEFAULT_CSS = "clamp(23.5rem,36%,34rem)";
 
 /**
  * @param embedded  Rendered INSIDE another page's chrome — System Management's
@@ -194,6 +206,33 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
   /** The profile pane's dragged width, remembered in this browser (null = the layout's own). */
   const profileWidth = usePaneWidth("cc.pane.commsHubProfile");
   const profilePaneRef = useRef<HTMLElement>(null);
+  /** The list pane's dragged width (null = the layout's own). */
+  const listWidth = usePaneWidth("cc.pane.commsHubList");
+  const listPaneRef = useRef<HTMLElement>(null);
+  /* ⚠️ Each dragged pane leaves room for the OTHER one, so the two together can
+     never squeeze the thread under ~300px: the profile keeps the rail, a
+     thread and the list's width (today's widest, 400px, until the list is
+     dragged); the list keeps the rail, a thread and the profile's width (its
+     dragged px, else its own clamp). Undragged, both are what they were. */
+  const profileReservePx =
+    listWidth.width === null ? HUB_PANE_RESERVE_PX : HUB_RAIL_AND_THREAD_PX + listWidth.width;
+  const listReserveCss = `${HUB_RAIL_AND_THREAD_PX}px + ${
+    profileWidth.width !== null ? `${profileWidth.width}px` : HUB_PROFILE_DEFAULT_CSS
+  }`;
+  /**
+   * The same reserve as a NUMBER, read when a list drag starts — the CSS above
+   * computed by hand, so a drag stops exactly where the drawn width does and
+   * the remembered width is never larger than what the rep saw.
+   * ⚠️ Not `getComputedStyle(...).minWidth`: a percentage clamp computes to
+   * the clamp expression itself, which parses as NaN — measured, the list
+   * then remembered 1080px while 562px was drawn.
+   */
+  const listReservePx = useCallback(() => {
+    if (profileWidth.width !== null) return HUB_RAIL_AND_THREAD_PX + profileWidth.width;
+    const row = listPaneRef.current?.parentElement?.getBoundingClientRect().width ?? window.innerWidth;
+    // clamp(23.5rem, 36%, 34rem) — `HUB_PROFILE_DEFAULT_CSS` — at 16px rems.
+    return HUB_RAIL_AND_THREAD_PX + Math.min(544, Math.max(HUB_PANE_MIN_PX, 0.36 * row));
+  }, [profileWidth.width]);
 
   // Per-tab list state, kept separate so switching tabs doesn't clear what the
   // rep had typed or selected in the other two.
@@ -1213,7 +1252,17 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
         </nav>
 
         {/* ── List pane ─────────────────────────────────────── */}
+        {/* ⚠️ Once the rep DRAGS its right edge, the remembered width (an
+            inline style) overrides both class widths below; a double-click on
+            the handle puts them back. The classes themselves are untouched. */}
         <aside
+          ref={listPaneRef}
+          style={
+            listWidth.width !== null
+              ? { width: paneWidthCssExpr(listWidth.width, listReserveCss, HUB_LIST_MIN_PX) }
+              : undefined
+          }
+          data-hub-list-pane
           className={cn(
             "flex w-80 shrink-0 flex-col border-r border-border bg-card",
             // Brandon's grid once the Inbox is on (`.comms.ibcomms`, on EVERY
@@ -1409,6 +1458,22 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
         </aside>
 
         {/* ── Detail pane ───────────────────────────────────── */}
+        {/* The list | thread handle. A zero-width flex item ON the boundary,
+            so the list pane's own markup (and its pinned classes) is
+            untouched and the handle centres on the line between the two. */}
+        <div className="relative w-0 shrink-0" data-hub-list-divider>
+          <PaneResizer
+            pane={listPaneRef}
+            edge="right"
+            width={listWidth.width}
+            onDrag={listWidth.set}
+            onCommit={listWidth.commit}
+            onReset={listWidth.reset}
+            reservePx={listReservePx}
+            minPx={HUB_LIST_MIN_PX}
+            label="Resize the list"
+          />
+        </div>
         <section className="flex min-w-0 flex-1 flex-col border-r border-border">
           {tab === "inbox" &&
             (!selectedKey ? (
@@ -1558,7 +1623,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
           )}
           style={
             profileWidth.width !== null
-              ? { width: paneWidthCss(profileWidth.width, HUB_PANE_RESERVE_PX, HUB_PANE_MIN_PX) }
+              ? { width: paneWidthCss(profileWidth.width, profileReservePx, HUB_PANE_MIN_PX) }
               : undefined
           }
           data-hub-profile-pane
@@ -1569,7 +1634,7 @@ export default function AssignedPatientsPage({ embedded = false }: { embedded?: 
             onDrag={profileWidth.set}
             onCommit={profileWidth.commit}
             onReset={profileWidth.reset}
-            reservePx={HUB_PANE_RESERVE_PX}
+            reservePx={profileReservePx}
             minPx={HUB_PANE_MIN_PX}
           />
           {/* With the Inbox on, the pane is the patient screen itself

@@ -4,8 +4,11 @@
  * slider for comms tab so can control width of comms vs patient profile. make
  * it dynamic and vertically scaleable back and forth"*).
  *
- * Two screens use it, each with its own remembered width:
+ * Three panes use it, each with its own remembered width:
  *  · the Communications hub — thread | patient profile (`AssignedPatientsPage`);
+ *  · the Communications hub — list | thread, the LEFT pane's RIGHT edge
+ *    (`edge="right"`; Josh, 2026-10-01: *"sliding feature on comms tab … let's
+ *    also have between middle and left panel"*);
  *  · the patient screen — patient profile | Texts & Calls (`PatientPage`).
  *
  * The pane follows the pointer while dragging; arrow keys move it 24px;
@@ -67,6 +70,16 @@ export function paneWidthCss(px: number, reservePx: number, minPx = PANE_MIN_PX)
   return `max(${minPx}px, min(${Math.round(px)}px, calc(100% - ${Math.round(reservePx)}px)))`;
 }
 
+/**
+ * `paneWidthCss` with the reserve as a CSS EXPRESSION — for a pane whose
+ * neighbour's width is itself a percentage clamp (the hub's list keeps room
+ * for the profile pane's `clamp(23.5rem,36%,34rem)`, which is only knowable in
+ * CSS). Both percentages resolve against the same flex row.
+ */
+export function paneWidthCssExpr(px: number, reserveCss: string, minPx = PANE_MIN_PX): string {
+  return `max(${minPx}px, min(${Math.round(px)}px, calc(100% - (${reserveCss}))))`;
+}
+
 /** The width a drag asks for, clamped the same way `paneWidthCss` draws it. */
 export function clampPane(px: number, containerPx: number, reservePx: number, minPx = PANE_MIN_PX): number {
   const max = Math.max(minPx, containerPx - reservePx);
@@ -83,35 +96,48 @@ export function PaneResizer({
   minPx = PANE_MIN_PX,
   label = "Resize the patient profile",
   className,
+  edge = "left",
 }: {
-  /** The right-hand pane this handle sits on — measured when a drag starts. */
+  /** The pane this handle resizes — measured when a drag starts. */
   pane: React.RefObject<HTMLElement>;
   width: number | null;
   onDrag: (px: number) => void;
   onCommit: (px: number) => void;
   onReset: () => void;
-  /** What the other side (and anything else in the container) keeps, at least. */
-  reservePx: number;
+  /** What the other side (and anything else in the container) keeps, at least.
+   *  A function is read when a drag or key press STARTS — for a reserve that
+   *  depends on a neighbour's live width. */
+  reservePx: number | (() => number);
   /** The narrowest the pane may be dragged — the screen's own floor. */
   minPx?: number;
   label?: string;
   className?: string;
+  /**
+   * Which edge of `pane` the handle is on. "left" (default): a RIGHT-hand pane,
+   * dragging left widens it. "right": a LEFT-hand pane, dragging right widens
+   * it. The caller places the handle; this only decides the arithmetic.
+   */
+  edge?: "left" | "right";
 }) {
-  const drag = useRef<{ right: number; container: number; last: number } | null>(null);
+  const drag = useRef<{ anchor: number; container: number; reserve: number; last: number } | null>(null);
+  const reserveNow = () => (typeof reservePx === "function" ? reservePx() : reservePx);
 
   const start = (e: PointerEvent<HTMLDivElement>) => {
     const el = pane.current;
     if (!el || e.button !== 0) return;
     const rect = el.getBoundingClientRect();
     const container = el.parentElement?.getBoundingClientRect().width ?? window.innerWidth;
-    drag.current = { right: rect.right, container, last: rect.width };
+    // The FIXED side of the pane: its right edge for a right-hand pane, its
+    // left edge for a left-hand one.
+    drag.current = { anchor: edge === "left" ? rect.right : rect.left, container, reserve: reserveNow(), last: rect.width };
     e.currentTarget.setPointerCapture(e.pointerId);
     e.preventDefault();
   };
   const move = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d) return;
-    d.last = clampPane(d.right - e.clientX, d.container, reservePx, minPx);
+    const px = edge === "left" ? d.anchor - e.clientX : e.clientX - d.anchor;
+    d.last = clampPane(px, d.container, d.reserve, minPx);
     onDrag(d.last);
   };
   const end = (e: PointerEvent<HTMLDivElement>) => {
@@ -128,8 +154,10 @@ export function PaneResizer({
     e.preventDefault();
     const container = el.parentElement?.getBoundingClientRect().width ?? window.innerWidth;
     const now = el.getBoundingClientRect().width;
-    // The handle is on the pane's LEFT edge: left makes the pane wider.
-    onCommit(clampPane(now + (e.key === "ArrowLeft" ? 24 : -24), container, reservePx, minPx));
+    // The arrow pointing AWAY from the pane widens it: left on a left-edge
+    // handle, right on a right-edge one.
+    const wider = edge === "left" ? e.key === "ArrowLeft" : e.key === "ArrowRight";
+    onCommit(clampPane(now + (wider ? 24 : -24), container, reserveNow(), minPx));
   };
 
   return (

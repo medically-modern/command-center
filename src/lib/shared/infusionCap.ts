@@ -6,6 +6,8 @@
  * Brandon, 2026-09-09: *"Only anthem commercial, horizon, cigna can go up to 9
  * for the infusion sets and cartridges. Aetna can go up to 4. All else can only
  * go up to 3."*
+ * Josh, 2026-10-01: Anthem = 9 · Horizon = 9 · Aetna = 4 · everyone else 3,
+ * *"for commercial plans"* — so Aetna's 4 is AETNA COMMERCIAL only (below).
  * Brandon, 2026-09-15: *"it should flag if insuion sets add up to more than 3 as
  * a warning. If it's Aetna, it's ok if it's 4. If it's carecentrix or anthem
  * commercial, it's ok if its 9. Everything else should only be 3 total."*
@@ -74,7 +76,12 @@ export const PAYER_CAP_RULES: CapRule[] = [
   // NOT any more (Josh, above). Falling through to the default is the safe
   // direction — a cap set too high is what lets a rep order sets the payer
   // pays three of — so re-adding it needs a decision, not a tidy-up.
-  { match: /aetna/i, label: "Aetna", cap: 4 },
+  // ⚠️ AETNA COMMERCIAL ONLY from 2026-10-01 (Josh: *"for commercial plans"*,
+  // then asked directly: *"Aetna Commercial only"*). Until then `/aetna/i` also
+  // gave Aetna MEDICARE a 4. Measured the day it changed: no Aetna Medicare row
+  // on the Welcome Call board (8) or the Subscription board orders more than 3,
+  // so nobody moves.
+  { match: /aetna.*commercial/i, label: "Aetna Commercial", cap: 4 },
 ];
 
 /** Referral sources that raise the cap on their own, whatever the payer. */

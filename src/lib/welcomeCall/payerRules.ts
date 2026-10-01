@@ -106,7 +106,61 @@ export function supplyLengthNote(primaryInsurance: string, secondaryInsurance: s
  * labels the Primary Insurance column carries.
  */
 export function payerAllows75Days(primaryInsurance: string): boolean {
-  return /aetna/i.test(primaryInsurance ?? "");
+  // ⚠️ AETNA COMMERCIAL only from 2026-10-01 (Josh: *"for commercial plans"* →
+  // *"Aetna Commercial only"*) — the same narrowing as the infusion cap. No
+  // Aetna Medicare subscriber was on 75 days when it changed.
+  return /aetna.*commercial/i.test(primaryInsurance ?? "");
+}
+
+/**
+ * The Subscription profile's Frequency — how LONG an order may run, per payer
+ * (Josh, 2026-10-01: *"Medicaid and Fidelis → can do 60-days · Aetna → can do
+ * 75-days · All else → 90 days"*, and asked directly: each payer's number is
+ * the MAXIMUM; *"primary insurance is only medicaid or fidelis low cost,
+ * that's it"*; a Medicaid SECONDARY does not count).
+ *
+ * ⚠️ **EXACT Primary Insurance labels, not a /medicaid/ pattern** — Fidelis
+ * Medicaid, United Medicaid and Anthem BCBS Medicaid (JLJ) follow the 90 rule,
+ * by that answer. And it reads the PRIMARY alone, unlike `isMedicaidPlan`
+ * above (Welcome Call's supply default), which also reads the secondary.
+ * ⚠️ Measured the day it shipped (Subscription board, active group): Medicaid
+ * 288 on 60 · 2 on 90; **Fidelis Low-Cost 66 on 90** · 2 on 60. A saved value
+ * above the max is KEPT and shown (the profile never rewrites a frequency on
+ * its own); the max only limits what a rep can newly pick.
+ */
+export const PROFILE_60_DAY_PRIMARIES: readonly string[] = ["Medicaid", "Fidelis Low-Cost"];
+
+export function profileFrequencyMaxDays(primaryInsurance: string): 60 | 75 | 90 {
+  const p = (primaryInsurance ?? "").trim().toLowerCase();
+  if (PROFILE_60_DAY_PRIMARIES.some((l) => l.toLowerCase() === p)) return 60;
+  if (payerAllows75Days(primaryInsurance)) return 75;
+  return 90;
+}
+
+/** The frequencies a rep may pick: 30, 60 and the payer's own max — so 75 is
+ *  offered to Aetna Commercial only, and 90 to everyone but the 60 and 75 payers. */
+export function profileFrequencyDays(primaryInsurance: string): number[] {
+  const max = profileFrequencyMaxDays(primaryInsurance);
+  return [...new Set([30, 60, max])].filter((d) => d <= max);
+}
+
+/**
+ * Why a frequency is NOT offered to this payer, or null when it is. Only two
+ * shapes exist: above the payer's max, or 75 for anyone but Aetna Commercial.
+ */
+export function profileFrequencyRefusal(primaryInsurance: string, days: number): string | null {
+  if (!Number.isFinite(days) || profileFrequencyDays(primaryInsurance).includes(days)) return null;
+  const max = profileFrequencyMaxDays(primaryInsurance);
+  if (days > max) return `${profileFrequencyPayer(primaryInsurance) || "This payer"} goes up to ${max} days.`;
+  return `${days} days is Aetna Commercial only.`;
+}
+
+/** The payer's name for the max, as the note says it ("Fidelis Low-Cost"). */
+export function profileFrequencyPayer(primaryInsurance: string): string {
+  const max = profileFrequencyMaxDays(primaryInsurance);
+  if (max === 60) return (primaryInsurance ?? "").trim();
+  if (max === 75) return "Aetna Commercial";
+  return "";
 }
 
 /**

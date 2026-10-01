@@ -40,7 +40,7 @@ describe("ORDER_FREQUENCY_INDEX", () => {
 });
 
 describe("frequencyState", () => {
-  const args = { boardLabel: "", edited: null as string | null, primaryInsurance: "Aetna", secondaryInsurance: "" };
+  const args = { boardLabel: "", edited: null as string | null, primaryInsurance: "Aetna Commercial", secondaryInsurance: "" };
 
   it("shows OUR guess with a hint when nothing is set", () => {
     const f = frequencyState({ ...args, primaryInsurance: "Fidelis Medicaid" });
@@ -74,7 +74,7 @@ describe("frequencyState", () => {
   });
 
   it("offers 75 only to Aetna", () => {
-    expect(frequencyState({ ...args, primaryInsurance: "Aetna" }).options).toContain("75");
+    expect(frequencyState({ ...args, primaryInsurance: "Aetna Commercial" }).options).toContain("75");
     expect(frequencyState({ ...args, primaryInsurance: "Cigna" }).options).not.toContain("75");
   });
 });
@@ -84,7 +84,7 @@ describe("frequencyInvalidated", () => {
      so the send would write a cadence that payer will not pay for. */
   it("catches a length the new payer doesn't offer", () => {
     expect(frequencyInvalidated("75", "Cigna")).toBe(true);
-    expect(frequencyInvalidated("75", "Aetna")).toBe(false);
+    expect(frequencyInvalidated("75", "Aetna Commercial")).toBe(false);
   });
   it("leaves an ordinary length alone", () => {
     expect(frequencyInvalidated("90", "Cigna")).toBe(false);
@@ -113,7 +113,7 @@ describe("an ineligible cadence is ignored wherever it came from", () => {
     const f = frequencyState({
       boardLabel: "75-Days",
       edited: null,
-      primaryInsurance: "Aetna",
+      primaryInsurance: "Aetna Commercial",
       secondaryInsurance: "",
     });
     expect(f.days).toBe("75");

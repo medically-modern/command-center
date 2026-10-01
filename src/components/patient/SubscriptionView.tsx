@@ -594,6 +594,7 @@ function ProfileTab({
           <div className="grid3">
             <OrderDetailsCard
               patient={merged}
+              saved={patient ? { infusionSet1: patient.infusionSet1, infusionSet2: patient.infusionSet2 } : null}
               extras={extras}
               extrasEdit={extrasEdit}
               onExtras={onExtras}

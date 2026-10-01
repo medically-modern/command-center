@@ -7,6 +7,10 @@ import {
   supplyLengthNote,
   supplyLengthOptions,
   payerAllows75Days,
+  profileFrequencyDays,
+  profileFrequencyMaxDays,
+  profileFrequencyPayer,
+  profileFrequencyRefusal,
   DEFAULT_INFUSION_CAP,
   DEFAULT_INFUSION_QTY,
 } from "./payerRules";
@@ -30,9 +34,9 @@ describe("payerInfusionCap", () => {
     expect(payerInfusionCap("Cigna")).toEqual({ cap: 3, payerLabel: null });
   });
 
-  it("caps Aetna at 4, both board plans", () => {
-    expect(payerInfusionCap("Aetna Commercial")).toEqual({ cap: 4, payerLabel: "Aetna" });
-    expect(payerInfusionCap("Aetna Medicare").cap).toBe(4);
+  it("caps Aetna COMMERCIAL at 4; Aetna Medicare is 3 (2026-10-01)", () => {
+    expect(payerInfusionCap("Aetna Commercial")).toEqual({ cap: 4, payerLabel: "Aetna Commercial" });
+    expect(payerInfusionCap("Aetna Medicare")).toEqual({ cap: 3, payerLabel: null });
   });
 
   it("⚠️ gives only the COMMERCIAL Anthem a 9 — the other three are 3", () => {
@@ -74,7 +78,7 @@ describe("payerInfusionCap", () => {
 
   it("names infusion sets AND cartridges in the note — the cap covers both", () => {
     expect(payerCapNote(payerInfusionCap("Aetna Commercial")))
-      .toBe("Aetna caps infusion sets and cartridges at 4 per order.");
+      .toBe("Aetna Commercial caps infusion sets and cartridges at 4 per order.");
     expect(payerCapNote(payerInfusionCap("Humana"))).toContain("can be lowered, not raised");
   });
 });
@@ -107,11 +111,11 @@ describe("supply length", () => {
   });
 });
 
-describe("75-day supply — Aetna only, never a default", () => {
-  it("offers 75 to both Aetna plans and nobody else", () => {
+describe("75-day supply — Aetna Commercial only, never a default", () => {
+  it("offers 75 to Aetna Commercial and nobody else (Aetna Medicare dropped 2026-10-01)", () => {
     expect(payerAllows75Days("Aetna Commercial")).toBe(true);
-    expect(payerAllows75Days("Aetna Medicare")).toBe(true);
-    for (const p of BOARD_PAYERS.filter((x) => !/aetna/i.test(x))) {
+    expect(payerAllows75Days("Aetna Medicare")).toBe(false);
+    for (const p of BOARD_PAYERS.filter((x) => x !== "Aetna Commercial")) {
       expect(payerAllows75Days(p)).toBe(false);
     }
   });
@@ -143,5 +147,51 @@ describe("DEFAULT_INFUSION_QTY", () => {
     // Josh, 2026-09-09: "medicaid should stick to 3 boxes". Deriving qty from
     // the 60-day Medicaid cadence would have moved ~99 live patients 3 → 2.
     expect(DEFAULT_INFUSION_QTY).toBe(3);
+  });
+});
+
+describe("the Subscription profile's Frequency max (Josh, 2026-10-01)", () => {
+  it("Medicaid and Fidelis Low-Cost — EXACT primary labels — top out at 60", () => {
+    expect(profileFrequencyMaxDays("Medicaid")).toBe(60);
+    expect(profileFrequencyMaxDays("Fidelis Low-Cost")).toBe(60);
+    expect(profileFrequencyDays("Medicaid")).toEqual([30, 60]);
+    expect(profileFrequencyPayer("Fidelis Low-Cost")).toBe("Fidelis Low-Cost");
+  });
+
+  it("⚠️ other Medicaid-named and Fidelis plans follow the 90 rule — \"that's it\"", () => {
+    for (const p of ["Fidelis Medicaid", "United Medicaid", "Anthem BCBS Medicaid (JLJ)", "Fidelis Commercial", "Fidelis Medicare", "Fidelis NJ"]) {
+      expect(profileFrequencyMaxDays(p)).toBe(90);
+      expect(profileFrequencyDays(p)).toEqual([30, 60, 90]);
+    }
+  });
+
+  it("Aetna Commercial tops out at 75 (no 90); Aetna Medicare is 90", () => {
+    expect(profileFrequencyDays("Aetna Commercial")).toEqual([30, 60, 75]);
+    expect(profileFrequencyPayer("Aetna Commercial")).toBe("Aetna Commercial");
+    expect(profileFrequencyDays("Aetna Medicare")).toEqual([30, 60, 90]);
+  });
+
+  it("everyone else: 30, 60 or 90 — never 75", () => {
+    for (const p of BOARD_PAYERS.filter((x) => !["Medicaid", "Fidelis Low-Cost", "Aetna Commercial"].includes(x))) {
+      expect(profileFrequencyDays(p)).toEqual([30, 60, 90]);
+    }
+    expect(profileFrequencyDays("")).toEqual([30, 60, 90]);
+  });
+});
+
+describe("profileFrequencyRefusal — why a saved or picked frequency isn't offered", () => {
+  it("names the payer's max", () => {
+    expect(profileFrequencyRefusal("Fidelis Low-Cost", 90)).toBe("Fidelis Low-Cost goes up to 60 days.");
+    expect(profileFrequencyRefusal("Aetna Commercial", 90)).toBe("Aetna Commercial goes up to 75 days.");
+  });
+  it("75 for anyone but Aetna Commercial", () => {
+    expect(profileFrequencyRefusal("Aetna Medicare", 75)).toBe("75 days is Aetna Commercial only.");
+    expect(profileFrequencyRefusal("Medicaid", 75)).toBe("Medicaid goes up to 60 days.");
+  });
+  it("null for an offered frequency or an unreadable one", () => {
+    expect(profileFrequencyRefusal("Medicaid", 60)).toBeNull();
+    expect(profileFrequencyRefusal("Humana", 90)).toBeNull();
+    expect(profileFrequencyRefusal("Aetna Commercial", 75)).toBeNull();
+    expect(profileFrequencyRefusal("Humana", NaN)).toBeNull();
   });
 });

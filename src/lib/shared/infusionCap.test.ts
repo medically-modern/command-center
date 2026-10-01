@@ -26,9 +26,10 @@ describe("infusionSetCap — the payer half", () => {
     expect(infusionSetCap("Cigna", "")).toEqual({ cap: DEFAULT_INFUSION_CAP, payerLabel: null });
   });
 
-  it("gives Aetna 4", () => {
-    expect(infusionSetCap("Aetna Commercial", "")).toEqual({ cap: 4, payerLabel: "Aetna" });
-    expect(infusionSetCap("Aetna Medicare", "").cap).toBe(4);
+  it("gives Aetna COMMERCIAL 4 — Aetna Medicare is 3 from 2026-10-01", () => {
+    expect(infusionSetCap("Aetna Commercial", "")).toEqual({ cap: 4, payerLabel: "Aetna Commercial" });
+    // Josh, 2026-10-01: "for commercial plans" → "Aetna Commercial only".
+    expect(infusionSetCap("Aetna Medicare", "")).toEqual({ cap: 3, payerLabel: null });
   });
 
   // ⚠️ `anthem.*commercial`, never `anthem` — the other three Anthem plans are 3.

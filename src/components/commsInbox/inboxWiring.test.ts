@@ -370,7 +370,12 @@ describe("the hub's grid is Brandon's once the Inbox is on (Josh, 2026-09-23)", 
 
   it("…until a rep DRAGS the edge: the remembered width replaces both (Brandon, 2026-09-29)", () => {
     expect(PAGE).toContain("profileWidth.width === null &&");
-    expect(PAGE).toContain("paneWidthCss(profileWidth.width, HUB_PANE_RESERVE_PX, HUB_PANE_MIN_PX)");
+    expect(PAGE).toContain("paneWidthCss(profileWidth.width, profileReservePx, HUB_PANE_MIN_PX)");
+    // …whose reserve is today's 760 until the LIST is dragged too (2026-10-01),
+    // and then the rail + thread + the list's own width.
+    expect(PAGE).toContain(
+      "listWidth.width === null ? HUB_PANE_RESERVE_PX : HUB_RAIL_AND_THREAD_PX + listWidth.width",
+    );
   });
 
   it("the list is 400px, 340 at ≤1300 and 320 at ≤1100 — on every rail, and only while the Inbox is on", () => {

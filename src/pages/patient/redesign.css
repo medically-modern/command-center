@@ -286,6 +286,14 @@
 }
 .cc-pt .snap-recs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
+/* ── Profile order rules (§5.59): a refused or out-of-rule value says why, in
+   amber — `--warn-fg` is redefined under `.dark` at the top of this file. */
+.cc-pt .hint-warn { color: var(--warn-fg); font-weight: 600; }
+.cc-pt .cap-warn {
+  margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.45;
+  background: var(--warn-bg); border: 1px solid var(--warn-bd); color: var(--warn-fg);
+}
+
 /* ── Remove from Stuck (§5.57) — managers only, beside the red Stuck chip ──── */
 /* Red ON the chip's own tokens, so the two read as one control in both themes
    (`--bad-*` is redefined under `.dark` at the top of this file). */

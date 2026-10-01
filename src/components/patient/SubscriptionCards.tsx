@@ -57,7 +57,11 @@ import {
 import { EXTRA_COL, type ExtrasEdit, type ProfileExtras } from "@/lib/subscription/profileExtras";
 import { COL, type MondayFileEntry } from "@/lib/subscription/mondayApi";
 import { expiryForVisitDate, mrRungForExpiry } from "@/lib/subscription/mrStatus";
-import { payerAllows75Days } from "@/lib/welcomeCall/payerRules";
+import { profileFrequencyDays, profileFrequencyRefusal } from "@/lib/welcomeCall/payerRules";
+import { infusionSetCap, infusionSetTotal, payerCapNote } from "@/lib/shared/infusionCap";
+import { stockVerdict } from "@/lib/welcomeCall/infusionStock";
+import { useInfusionStock } from "@/hooks/welcomeCall/useInfusionStock";
+import { etTodayYmd } from "@/lib/shared/monitorSale";
 import { usePayerOptions } from "@/hooks/shared/usePayerOptions";
 import { AddressAutocomplete, type AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
@@ -113,6 +117,7 @@ function Sel({
   disabled,
   allowBlank = false,
   hint,
+  hintTone,
 }: {
   label: string;
   value: number | null;
@@ -123,7 +128,9 @@ function Sel({
   /** Offer "—" as a real choice (it CLEARS the column). Otherwise "—" is only
    *  the placeholder shown while the column is blank. */
   allowBlank?: boolean;
-  hint?: string | null;
+  /** A string is drawn muted (or amber with `hintTone="warn"`); a node is drawn as is. */
+  hint?: ReactNode;
+  hintTone?: "warn";
 }) {
   const opts = withCurrent(options, value, currentLabel);
   return (
@@ -147,7 +154,7 @@ function Sel({
           </option>
         ))}
       </select>
-      {hint && <span className="xs muted">{hint}</span>}
+      {hint && (typeof hint === "string" ? <span className={`xs ${hintTone === "warn" ? "hint-warn" : "muted"}`}>{hint}</span> : hint)}
     </label>
   );
 }
@@ -161,6 +168,8 @@ function Inp({
   type = "text",
   mono,
   placeholder,
+  max,
+  hint,
 }: {
   label: string;
   value: string;
@@ -169,6 +178,10 @@ function Inp({
   type?: "text" | "number" | "date" | "tel";
   mono?: boolean;
   placeholder?: string;
+  /** A number box's ceiling (the payer cap on the quantities). */
+  max?: number;
+  /** An amber line under the box — a refused value says why. */
+  hint?: string | null;
 }) {
   return (
     <label className="ef">
@@ -177,13 +190,53 @@ function Inp({
         className={`input sm${mono ? " mono" : ""}`}
         type={type}
         min={type === "number" ? 0 : undefined}
+        max={type === "number" ? max : undefined}
         value={value}
         placeholder={placeholder}
         aria-label={label}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
       />
+      {hint && <span className="xs hint-warn">{hint}</span>}
     </label>
+  );
+}
+
+/**
+ * Cardinal stock for an infusion set a rep has just PICKED on the profile
+ * (Josh, 2026-10-01: *"when changing infusion set on profile view … flag if the
+ * new infusion set selected is not in stock as a warning"*).
+ *
+ * ⚠️ Its own component so the Cardinal SKU Tracker is read only once a set is
+ * actually CHANGED — mounting `useInfusionStock` in the card would read it for
+ * every profile anybody opens. The read itself is Welcome Call's: one shared
+ * module-scope load, 30-minute TTL (INCIDENT_2026-08-20's rules), and the
+ * verdict is `stockVerdict`'s — STATUS decides, so a Backordered set with 220
+ * on hand is still "not in stock", and a set with no tracker row is UNKNOWN,
+ * never in stock (§5.31b / `infusionStock.ts`).
+ */
+function SetStockFlag({ label }: { label: string }) {
+  const stock = useInfusionStock();
+  if (!stock.index) {
+    return (
+      <span className="xs muted">
+        {stock.error ? "Couldn't check Cardinal stock for this set." : "Checking Cardinal stock…"}
+      </span>
+    );
+  }
+  const v = stockVerdict(label, stock.index, etTodayYmd());
+  if (!v.label) return null;
+  if (v.blocked) {
+    return (
+      <span className="xs hint-warn" role="alert">
+        Not in stock — {v.detail}
+      </span>
+    );
+  }
+  return (
+    <span className="xs muted" title={v.detail}>
+      {v.tone === "green" ? `In stock at Cardinal · ${v.label}` : v.tone === "amber" ? `Low stock at Cardinal · ${v.label}` : v.detail}
+    </span>
   );
 }
 
@@ -868,8 +921,12 @@ export function OrderDetailsCard({
   frequencyOpts,
   reorder,
   readOnlyName,
+  saved = null,
 }: {
   patient: SubPatient;
+  /** The infusion sets as the BOARD holds them — a set that differs was just
+   *  picked here, and only that one gets the Cardinal stock check. */
+  saved?: { infusionSet1: string; infusionSet2: string } | null;
   extras: ProfileExtras | null;
   extrasEdit: ExtrasEdit;
   onExtras: (patch: ExtrasEdit) => void;
@@ -903,17 +960,66 @@ export function OrderDetailsCard({
   const inf1 = infusionOpts.options[COL.infusionSet1] ?? [];
   const inf2 = infusionOpts.options[COL.infusionSet2] ?? [];
 
-  /* ⚠️ 75-Days is Aetna-only — the app's existing payer rule for this very
-     cadence (`payerRules.payerAllows75Days`, §5.31). A value the board already
-     holds is always shown. */
-  const freqIdx =
-    extrasEdit.orderFrequencyIndex !== undefined ? extrasEdit.orderFrequencyIndex : extras?.orderFrequencyIndex ?? null;
-  const freqOpts = (frequencyOpts.options[EXTRA_COL.orderFrequency] ?? []).filter(
-    (o) => !/^75/.test(o.label) || payerAllows75Days(patient.primaryInsurance) || o.index === freqIdx,
+  /* ⚠️ THE PAYER'S MAX FREQUENCY (Josh, 2026-10-01, §5.59): Medicaid and
+     Fidelis Low-Cost — those two PRIMARY labels, nothing else — go up to 60;
+     Aetna Commercial up to 75; everyone else up to 90. 30 and 60 are always
+     offered; 75 only to Aetna Commercial (`payerRules.profileFrequencyDays`).
+     ⚠️ The value the BOARD holds is always shown, even above the max — 66
+     Fidelis Low-Cost subscribers were on 90 the day this shipped — and this
+     card never rewrites it on its own; the max only limits a NEW pick. */
+  const boardFreqIdx = extras?.orderFrequencyIndex ?? null;
+  const freqIdx = extrasEdit.orderFrequencyIndex !== undefined ? extrasEdit.orderFrequencyIndex : boardFreqIdx;
+  const allFreq = frequencyOpts.options[EXTRA_COL.orderFrequency] ?? [];
+  const daysOf = (label: string | null | undefined) => Number(/^(\d+)/.exec((label ?? "").trim())?.[1] ?? NaN);
+  const allowedDays = profileFrequencyDays(patient.primaryInsurance);
+  const freqOpts = allFreq.filter(
+    (o) => allowedDays.includes(daysOf(o.label)) || o.index === boardFreqIdx || o.index === freqIdx,
   );
+  const freqLabel =
+    allFreq.find((o) => o.index === freqIdx)?.label ?? (freqIdx === boardFreqIdx ? extras?.orderFrequency : "");
+  const freqRefusal = freqIdx === null ? null : profileFrequencyRefusal(patient.primaryInsurance, daysOf(freqLabel));
+  const freqSaved = freqIdx === boardFreqIdx;
+  const freqHint =
+    !ro && frequencyOpts.error
+      ? "Couldn't load options from Monday"
+      : freqRefusal
+        ? freqSaved
+          ? `${freqRefusal} Saved before this rule — it stays until it's changed.`
+          : `${freqRefusal} Pick ${allowedDays.join(", ")} days.`
+        : null;
   const freqOff = !frequencyOpts.ready || !extras;
   const cgmQty = extrasEdit.cgmQty ?? extras?.cgmQty ?? "";
   const cartQty = extrasEdit.cartridgeQty ?? extras?.cartridgeQty ?? "";
+
+  /* ⚠️ THE PAYER CAP on infusion sets and cartridges — the SAME table Welcome
+     Call and Final Confirm use (`lib/shared/infusionCap.ts`, §5.32g): Anthem
+     BCBS Commercial and Horizon 9, Aetna Commercial 4, everyone else 3. A
+     number above it is REFUSED as typed (Welcome Call's 2026-09-17 rule:
+     "most plans should limit ability to go above 3") and says why; a value
+     the board already holds above it stays shown, and the SETS' total is
+     flagged below as Welcome Call's C31 does.
+     ⚠️ The payer alone: the Subscription board's "Referral" dropdown is rep
+     names, with no CareCentrix label — and every CareCentrix patient is
+     Horizon (already 9), §5.32g. */
+  const cap = infusionSetCap(patient.primaryInsurance, "");
+  const [refused, setRefused] = useState<"" | "infQty1" | "infQty2" | "cartridgeQty">("");
+  const capped = (field: "infQty1" | "infQty2" | "cartridgeQty", v: string, apply: (v: string) => void) => {
+    const n = Number((v ?? "").trim());
+    if ((v ?? "").trim() !== "" && Number.isFinite(n) && n > cap.cap) {
+      setRefused(field);
+      return;
+    }
+    setRefused("");
+    apply(v);
+  };
+  const refusedHint = `Over the cap — ${payerCapNote(cap)}`;
+  const capSuffix = ro ? "" : ` · max ${cap.cap}`;
+  const setsTotal = infusionSetTotal(patient.infQty1, patient.infQty2, patient.primaryInsurance, "");
+  const cartN = Number((cartQty ?? "").trim());
+  const cartOver = Number.isFinite(cartN) && cartN > cap.cap;
+  const capWho = cap.payerLabel ?? "this payer";
+  const set1Changed = !ro && !!saved && !!patient.infusionSet1 && patient.infusionSet1 !== saved.infusionSet1;
+  const set2Changed = !ro && !!saved && !!patient.infusionSet2 && patient.infusionSet2 !== saved.infusionSet2;
 
   return (
     <section className={`card pad${ro ? " readonly" : ""}`}>
@@ -947,7 +1053,8 @@ export function OrderDetailsCard({
           currentLabel={extras?.orderFrequency ?? ""}
           options={freqOpts}
           disabled={ro || freqOff}
-          hint={!ro && frequencyOpts.error ? "Couldn't load options from Monday" : null}
+          hint={freqHint}
+          hintTone={freqRefusal && !freqSaved ? "warn" : undefined}
           onChange={(i) => i !== null && onExtras({ orderFrequencyIndex: i })}
         />
         <div className="ef">
@@ -978,11 +1085,13 @@ export function OrderDetailsCard({
           onChange={(i) => setStatus("suppliesTypeIndex", "suppliesType", SUPPLIES_TYPE_OPTIONS, i)}
         />
         <Inp
-          label="Cartridges qty"
+          label={`Cartridges qty${capSuffix}`}
           type="number"
           value={cartQty}
           disabled={ro || !extras}
-          onChange={(v) => onExtras({ cartridgeQty: v })}
+          max={cap.cap}
+          hint={refused === "cartridgeQty" ? refusedHint : null}
+          onChange={(v) => capped("cartridgeQty", v, (x) => onExtras({ cartridgeQty: x }))}
         />
         <Sel
           label="Infusion set 1"
@@ -990,15 +1099,17 @@ export function OrderDetailsCard({
           currentLabel={patient.infusionSet1}
           options={inf1}
           disabled={ro || infOff}
-          hint={ro ? null : infHint}
+          hint={ro ? null : infHint ?? (set1Changed ? <SetStockFlag label={patient.infusionSet1} /> : null)}
           onChange={(i) => setStatus("infusionSet1Index", "infusionSet1", inf1, i)}
         />
         <Inp
-          label="Inf. qty 1"
+          label={`Inf. qty 1${capSuffix}`}
           type="number"
           value={patient.infQty1}
           disabled={ro}
-          onChange={(v) => onFieldChange("infQty1", v)}
+          max={cap.cap}
+          hint={refused === "infQty1" ? refusedHint : null}
+          onChange={(v) => capped("infQty1", v, (x) => onFieldChange("infQty1", x))}
         />
         <Sel
           label="Infusion set 2"
@@ -1006,16 +1117,36 @@ export function OrderDetailsCard({
           currentLabel={patient.infusionSet2}
           options={inf2}
           disabled={ro || infOff}
+          hint={set2Changed ? <SetStockFlag label={patient.infusionSet2} /> : null}
           onChange={(i) => setStatus("infusionSet2Index", "infusionSet2", inf2, i)}
         />
         <Inp
-          label="Inf. qty 2"
+          label={`Inf. qty 2${capSuffix}`}
           type="number"
           value={patient.infQty2}
           disabled={ro}
-          onChange={(v) => onFieldChange("infQty2", v)}
+          max={cap.cap}
+          hint={refused === "infQty2" ? refusedHint : null}
+          onChange={(v) => capped("infQty2", v, (x) => onFieldChange("infQty2", x))}
         />
       </div>
+      {/* The pair TOTAL, as Welcome Call's C31 checks it — each box can be
+          within the cap while the two add up past it, and a value the board
+          already holds above the cap is shown here rather than hidden. */}
+      {(setsTotal.over || cartOver) && (
+        <div className="cap-warn" role="note">
+          {setsTotal.over && (
+            <div>
+              Infusion sets add up to <b>{setsTotal.total}</b> — over {capWho}'s {setsTotal.cap} per order.
+            </div>
+          )}
+          {cartOver && (
+            <div>
+              Cartridges are <b>{cartN}</b> — over {capWho}'s {cap.cap} per order.
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }
