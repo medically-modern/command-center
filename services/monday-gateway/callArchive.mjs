@@ -847,32 +847,58 @@ export function registerCallArchive({ app, pool, requireCaller }) {
     const body = { at: new Date().toISOString(), calls: [] };
     try {
       if (!pool) return res.json({ ...body, error: "no pool" });
+      // Does the JWT user hold the RingSense read permission? Permission ids
+      // and booleans only.
+      const chk = await rcApiFetch(
+        "/restapi/v1.0/account/~/extension/~/authz-profile/check?permissionId=ReadRingSenseInsights",
+        {},
+        { tier: "background", caller: "ringsense-probe", ttlMs: 0 },
+      );
+      const cj = await chk.json().catch(() => null);
+      body.permissionCheck = { status: chk.status, successful: cj?.successful ?? null, errorCode: cj?.errorCode || null };
+      const prof = await rcApiFetch("/restapi/v1.0/account/~/extension/~/authz-profile", {}, {
+        tier: "background",
+        caller: "ringsense-probe",
+        ttlMs: 0,
+      });
+      const pj = await prof.json().catch(() => null);
+      body.aiPermissions = (Array.isArray(pj?.permissions) ? pj.permissions : [])
+        .map((x) => String(x?.permission?.id || x?.id || ""))
+        .filter((id) => /ring ?sense|insight|\bai|transcri|note/i.test(id));
       // The newest recorded calls — a transcript exists only where AI Notes
       // ran on the call, so one call proves nothing either way.
       const q = await pool.query(
-        `SELECT rc_recording_id, started_at, direction, duration_sec FROM call_archive
+        `SELECT rc_recording_id, rc_session_id, started_at, direction, duration_sec FROM call_archive
           WHERE rc_recording_id IS NOT NULL AND call_type IS DISTINCT FROM 'Fax'
-          ORDER BY started_at DESC LIMIT 15`,
+          ORDER BY started_at DESC LIMIT 8`,
       );
-      for (const row of q.rows) {
-        const path = `/ai/ringsense/v1/public/accounts/~/domains/pbx/records/${encodeURIComponent(row.rc_recording_id)}/insights`;
+      const ask = async (path) => {
         const r = await rcApiFetch(path, {}, { tier: "background", caller: "ringsense-probe", ttlMs: 0 });
-        let j = null;
-        try {
-          j = await r.json();
-        } catch {
-          /* not JSON */
+        const j = await r.json().catch(() => null);
+        const recs = Array.isArray(j?.records) ? j.records : j ? [j] : [];
+        const counts = {};
+        for (const rec of recs) {
+          const ins = rec?.insights && typeof rec.insights === "object" ? rec.insights : {};
+          for (const [k, v] of Object.entries(ins)) counts[k] = (counts[k] || 0) + (Array.isArray(v) ? v.length : 0);
         }
-        const ins = j?.insights && typeof j.insights === "object" ? j.insights : {};
-        body.calls.push({
-          startedAt: row.started_at,
-          direction: row.direction,
-          durationSec: row.duration_sec,
+        return {
           status: r.status,
           errorCode: j?.errorCode || j?.errors?.[0]?.errorCode || null,
           message: String(j?.message || j?.errors?.[0]?.message || "").slice(0, 200) || null,
           // Counts per insight type only — never their text.
-          insights: Object.fromEntries(Object.entries(ins).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])),
+          insights: counts,
+        };
+      };
+      for (const row of q.rows) {
+        const base = "/ai/ringsense/v1/public/accounts/~/domains/pbx";
+        body.calls.push({
+          startedAt: row.started_at,
+          direction: row.direction,
+          durationSec: row.duration_sec,
+          byRecording: await ask(`${base}/records/${encodeURIComponent(row.rc_recording_id)}/insights`),
+          bySession: row.rc_session_id
+            ? await ask(`${base}/sessions/${encodeURIComponent(row.rc_session_id)}/insights`)
+            : null,
         });
       }
     } catch (e) {
