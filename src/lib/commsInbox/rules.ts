@@ -193,6 +193,8 @@ export type TimelineEntry =
        */
       answeredExt?: string;
       answeredName?: string;
+      /** A Google transcript exists for this call (§5.47e); fetched on click. */
+      hasTranscript?: boolean;
       /** RingCentral's own recording uri, for a call our archive has not got yet. */
       recordingUri: string;
       voicemail: {

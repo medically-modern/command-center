@@ -45,6 +45,7 @@ import {
 } from "@/lib/commsInbox/rules";
 import { answeredByLabel, callLine, formatDuration, liveSuggestion, mergeLiveTexts, numberHint, seenThroughFor } from "@/lib/commsInbox/timeline";
 import ResolveBar, { type StickyResolution } from "./ResolveBar";
+import CallTranscript from "./CallTranscript";
 import { StagePill } from "./pills";
 import { cn } from "@/lib/utils";
 
@@ -437,6 +438,8 @@ function Entry({ e, entries, numbers }: { e: TimelineEntry; entries: TimelineEnt
           kindLabel="Call recording"
         />
       )}
+      {/* Google's transcript of the recording (§5.47e), fetched on open. */}
+      {e.hasTranscript && <CallTranscript key={e.id} callId={e.id} />}
       {e.voicemail && (
         <div className="mt-1.5 border-t border-border pt-1.5">
           <span className="inline-flex items-center gap-1 font-semibold">

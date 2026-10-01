@@ -338,3 +338,27 @@ export async function archivedMediaUrl(
   if (!out.url) throw new Error("The archive returned no URL.");
   return out.url;
 }
+
+/* ── call transcripts (Google Speech-to-Text, §5.47e) ───────────────────── */
+
+export interface TranscriptTurn {
+  /** Google's speaker label ("1", "2"), or "" when it could not separate them. */
+  speaker: string;
+  /** Seconds from the start of the recording, when known. */
+  start: number | null;
+  text: string;
+}
+
+export interface CallTranscript {
+  state: string;
+  turns: TranscriptTurn[];
+}
+
+/** One call's transcript, fetched when a rep opens it — never with the timeline. */
+export async function fetchCallTranscript(callId: string): Promise<CallTranscript> {
+  const out = await json<{ state?: string; transcript?: { turns?: TranscriptTurn[] } | null }>(
+    await call(`/calls/transcript?${new URLSearchParams({ callId })}`),
+    "Loading the transcript",
+  );
+  return { state: out.state || "none", turns: Array.isArray(out.transcript?.turns) ? out.transcript.turns : [] };
+}

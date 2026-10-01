@@ -320,6 +320,8 @@ export function callEvent(row, dialedBy = "") {
     // archive (§5.47d). Blank when unknown and on every outbound call.
     answeredExt: row?.answered_ext ? String(row.answered_ext) : "",
     answeredName: row?.answered_name ? String(row.answered_name) : "",
+    // Google transcript state (§5.47e): "done" means one can be opened.
+    transcriptState: row?.transcript_state ? String(row.transcript_state) : "",
   };
 }
 
@@ -1434,6 +1436,9 @@ export function buildTimeline({ events = [], resolutions = [] } = {}) {
         // "Answered by Victor Guerra (ext 13)" — inbound calls only (§5.47d).
         answeredExt: e.dir === "in" ? e.answeredExt || "" : "",
         answeredName: e.dir === "in" ? e.answeredName || "" : "",
+        // A transcript exists for this call (§5.47e); the text is fetched on
+        // click from /calls/transcript, never shipped with the timeline.
+        hasTranscript: e.transcriptState === "done",
         voicemail: vm
           ? { id: vm.id, at: vm.at, durationSec: vm.durationSec, transcript: vm.transcript, audioState: vm.audioState }
           : null,

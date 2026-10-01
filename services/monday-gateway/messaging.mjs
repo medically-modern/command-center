@@ -38,6 +38,7 @@ import { confirmSmsAccepted } from "./smsSend.mjs";
 import { registerSmsArchive, readArchivedConversation } from "./smsArchive.mjs";
 import { registerPatientDirectory } from "./patientDirectory.mjs";
 import { registerCallArchive } from "./callArchive.mjs";
+import { registerCallTranscribe } from "./callTranscribe.mjs";
 import { registerVoicemailArchive } from "./voicemailArchive.mjs";
 import { registerMmsArchive } from "./mmsArchive.mjs";
 import { registerCommsInbox } from "./commsInbox.mjs";
@@ -176,6 +177,9 @@ export function registerMessaging({ app }) {
   // own tables, its own routes, RingCentral read on the `background` tier, and
   // it simply does not run when no bucket is configured. See callArchive.mjs.
   registerCallArchive({ app, pool, requireCaller });
+  // Transcripts of those recordings, via Google Speech-to-Text (§5.47e). Off
+  // unless GOOGLE_STT_ENABLED=1; same pool, same reasons.
+  registerCallTranscribe({ app, pool, requireCaller });
 
   // The same, for VOICEMAIL — which is not in the recording system at all. A
   // voicemail is a message-store record, and this account's message store is a
