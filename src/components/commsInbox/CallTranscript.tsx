@@ -19,7 +19,14 @@ function clock(sec: number | null): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export default function CallTranscript({ callId }: { callId: string }) {
+export default function CallTranscript({
+  callId,
+  answeredBy = "",
+}: {
+  callId: string;
+  /** Who picked up an INBOUND call (§5.47d): names the first voice. Blank otherwise. */
+  answeredBy?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<TranscriptTurn[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +45,8 @@ export default function CallTranscript({ callId }: { callId: string }) {
     }
   };
 
-  const names = speakerNames(turns ?? []);
+  const names = speakerNames(turns ?? [], answeredBy);
+  const guessed = !!answeredBy.trim() && names.size > 0;
   return (
     <div className="mt-1">
       <button
@@ -59,6 +67,9 @@ export default function CallTranscript({ callId }: { callId: string }) {
           )}
           {error && <span className="text-destructive">Couldn't load the transcript. {error}</span>}
           {turns && turns.length === 0 && <span className="text-muted-foreground">No words were recognised on this call.</span>}
+          {guessed && turns && turns.length > 0 && (
+            <p className="mb-1 text-[10px] text-muted-foreground">Names are a best guess from who spoke first.</p>
+          )}
           {turns &&
             turns.map((t, i) => (
               <div key={i} className={cn("py-0.5", i > 0 && "border-t border-border/50")}>

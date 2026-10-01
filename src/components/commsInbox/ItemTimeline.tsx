@@ -439,7 +439,9 @@ function Entry({ e, entries, numbers }: { e: TimelineEntry; entries: TimelineEnt
         />
       )}
       {/* Google's transcript of the recording (§5.47e), fetched on open. */}
-      {e.hasTranscript && <CallTranscript key={e.id} callId={e.id} />}
+      {e.hasTranscript && (
+        <CallTranscript key={e.id} callId={e.id} answeredBy={e.dir === "in" ? e.answeredName ?? "" : ""} />
+      )}
       {e.voicemail && (
         <div className="mt-1.5 border-t border-border pt-1.5">
           <span className="inline-flex items-center gap-1 font-semibold">

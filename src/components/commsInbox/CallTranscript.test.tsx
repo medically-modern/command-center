@@ -41,6 +41,29 @@ describe("CallTranscript (§5.47e)", () => {
 
   it("is shown under a call's recording in the timeline, only when one exists", () => {
     const src = readFileSync(join(process.cwd(), "src/components/commsInbox/ItemTimeline.tsx"), "utf8");
-    expect(src).toMatch(/\{e\.hasTranscript && <CallTranscript key=\{e\.id\} callId=\{e\.id\} \/>\}/);
+    expect(src).toMatch(/e\.hasTranscript && \(\s*<CallTranscript key=\{e\.id\} callId=\{e\.id\} answeredBy=\{e\.dir === "in" \? e\.answeredName \?\? "" : ""\} \/>/);
   });
 });
+
+describe("naming the voices on inbound calls (Josh, 2026-10-01)", () => {
+  const turns = [
+    { speaker: "1", start: 0, text: "Medically Modern, how can I help?" },
+    { speaker: "2", start: 3, text: "Hi" },
+    { speaker: "1", start: 5, text: "Sure" },
+  ];
+  it("⚠️ the first voice is the person who picked up, the second is the caller", () => {
+    expect([...speakerNames(turns, "Victor Guerra").values()]).toEqual(["Victor", "Caller"]);
+  });
+  it("without an answerer (outbound, unknown) it stays Speaker 1/2", () => {
+    expect([...speakerNames(turns, "").values()]).toEqual(["Speaker 1", "Speaker 2"]);
+  });
+  it("says the names are a guess", async () => {
+    fetchCallTranscript.mockResolvedValue({ state: "done", turns });
+    render(<CallTranscript callId="c9" answeredBy="Victor Guerra" />);
+    fireEvent.click(screen.getByText("Transcript"));
+    await waitFor(() => expect(screen.getByTestId("call-transcript").textContent).toContain("Victor"));
+    expect(screen.getByTestId("call-transcript").textContent).toContain("best guess from who spoke first");
+    expect(screen.getByTestId("call-transcript").textContent).toContain("Caller");
+  });
+});
+
