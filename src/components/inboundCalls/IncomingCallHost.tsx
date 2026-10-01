@@ -438,6 +438,7 @@ export default function IncomingCallHost() {
           name={callName}
           onHangup={phone.hangup}
           onToggleMute={phone.toggleMute}
+          onSendDtmf={phone.sendDtmf}
         />
       )}
     </>

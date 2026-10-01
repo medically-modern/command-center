@@ -34,6 +34,8 @@ export type TabCommand =
   | { type: "cmd"; cmd: "ignore"; callId: string }
   | { type: "cmd"; cmd: "hangup" }
   | { type: "cmd"; cmd: "mute"; muted: boolean }
+  /** Keypad tones on the live call (phone trees). */
+  | { type: "cmd"; cmd: "dtmf"; digits: string }
   | { type: "cmd"; cmd: "dial"; phone: string }
   | { type: "cmd"; cmd: "dismissError" }
   /**
@@ -63,7 +65,7 @@ export type TabMessage =
   | { type: "bye"; from: string }
   | TabCommand;
 
-const COMMANDS = new Set(["answer", "ignore", "hangup", "mute", "dial", "dismissError", "cards"]);
+const COMMANDS = new Set(["answer", "ignore", "hangup", "mute", "dtmf", "dial", "dismissError", "cards"]);
 
 /** Runtime guard — BroadcastChannel delivers whatever another tab posted, and a
  *  version skew between tabs after a deploy is the ordinary case, not a rarity. */
@@ -82,6 +84,7 @@ export function isTabMessage(x: unknown): x is TabMessage {
       // shape differently, and the leader iterates it — so it is checked here
       // rather than trusted downstream.
       if (m.cmd === "cards") return typeof m.from === "string" && Array.isArray(m.rings);
+      if (m.cmd === "dtmf") return isDtmf(m.digits);
       return true;
     default:
       return false;
@@ -107,4 +110,9 @@ export function followerView(leaderState: PhoneSnapshot | null, enabled: boolean
     rings: [],
     call: null,
   };
+}
+
+/** Keypad tones the phone will send: digits, * and #, a few at a time. */
+export function isDtmf(x: unknown): x is string {
+  return typeof x === "string" && /^[0-9*#]{1,32}$/.test(x);
 }

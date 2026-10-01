@@ -45,5 +45,6 @@ export function useWebPhone() {
     dial: phone.dial,
     hangup: phone.hangup,
     toggleMute: phone.toggleMute,
+    sendDtmf: phone.sendDtmf,
   };
 }

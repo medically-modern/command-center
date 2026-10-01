@@ -69,7 +69,7 @@ import {
   writeMuted,
   type SipLine,
 } from "./registration";
-import { CHANNEL_NAME, LOCK_NAME, followerView, isTabMessage, type TabCommand, type TabMessage } from "./tabProtocol";
+import { CHANNEL_NAME, LOCK_NAME, followerView, isDtmf, isTabMessage, type TabCommand, type TabMessage } from "./tabProtocol";
 import { audibleRings, nextExpiryMs, sameRings, type RingLike } from "./ringRules";
 import { Ringtone } from "./ringtone";
 import { refreshRcLine } from "./rcLine";
@@ -181,6 +181,8 @@ interface Session {
   reInvite?: () => Promise<void>;
   mute(): void;
   unmute(): void;
+  /** Keypad tones as RTP telephone-events (the SDK's RTCDTMFSender). */
+  sendDtmf?: (tones: string, duration?: number, interToneGap?: number) => void;
   on(event: string, listener: (...args: unknown[]) => void): void;
   once(event: string, listener: (...args: unknown[]) => void): void;
 }
@@ -494,6 +496,14 @@ class Softphone {
     this.setMuted(!(this.active?.call.muted ?? false));
   };
 
+  /** Send keypad tones on the live call — a phone tree's "press 1". Only on a
+   *  connected call; the leader tab holds the session. */
+  sendDtmf = (digits: string): void => {
+    if (!isDtmf(digits)) return;
+    if (!this.isLeader) return this.post({ type: "cmd", cmd: "dtmf", digits });
+    this.doSendDtmf(digits);
+  };
+
   /* ── leadership ───────────────────────────────────────────────────────── */
 
   private elect(): void {
@@ -601,6 +611,8 @@ class Softphone {
         return void this.doHangup();
       case "mute":
         return this.setMuted(c.muted);
+      case "dtmf":
+        return this.doSendDtmf(c.digits);
       case "dial":
         return void this.doDial(c.phone);
       case "dismissError":
@@ -1166,6 +1178,16 @@ class Softphone {
         /* already down */
       }
       if (wp && this.wp === wp) void this.recover();
+    }
+  }
+
+  private doSendDtmf(digits: string): void {
+    const s = this.active?.session;
+    if (!s?.sendDtmf || this.active?.call.status !== "connected" || !isDtmf(digits)) return;
+    try {
+      s.sendDtmf(digits);
+    } catch (e) {
+      console.warn("softphone: keypad tone not sent:", (e as Error)?.message || e);
     }
   }
 

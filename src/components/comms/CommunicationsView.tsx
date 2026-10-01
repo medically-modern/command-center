@@ -27,7 +27,8 @@
  * the same softphone store — it never mounts a second overlay (§5.13b).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Loader2, MessageSquare, Mic, MicOff, Phone, PhoneOff } from "lucide-react";
+import { AlertTriangle, Grid3x3, Loader2, MessageSquare, Mic, MicOff, Phone, PhoneOff } from "lucide-react";
+import CallKeypad from "@/components/inboundCalls/CallKeypad";
 import ItemTimeline from "@/components/commsInbox/ItemTimeline";
 import { StagePill } from "@/components/commsInbox/pills";
 import Composer from "@/components/assignedPatients/Composer";
@@ -245,7 +246,14 @@ export function CommunicationsView({
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {call && <LiveCall call={call} onHangup={phoneCtl.hangup} onToggleMute={phoneCtl.toggleMute} />}
+          {call && (
+            <LiveCall
+              call={call}
+              onHangup={phoneCtl.hangup}
+              onToggleMute={phoneCtl.toggleMute}
+              onSendDtmf={phoneCtl.sendDtmf}
+            />
+          )}
           <button
             type="button"
             onClick={dial}
@@ -327,12 +335,16 @@ function LiveCall({
   call,
   onHangup,
   onToggleMute,
+  onSendDtmf,
 }: {
   call: NonNullable<ReturnType<typeof useWebPhone>["call"]>;
   onHangup: () => void;
   onToggleMute: () => void;
+  /** Keypad tones on the live call (phone trees). */
+  onSendDtmf: (digits: string) => void;
 }) {
   const live = call.status === "connected";
+  const [keypad, setKeypad] = useState(false);
   const label =
     call.status === "connecting"
       ? "Connecting…"
@@ -344,7 +356,7 @@ function LiveCall({
             ? `On the call · ${formatClock(call.seconds)}`
             : "";
   return (
-    <div className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 py-1 pl-3 pr-1 text-sm text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
+    <div className="relative flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 py-1 pl-3 pr-1 text-sm text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
       <span className="mr-1 inline-flex items-center gap-1.5 font-semibold tabular-nums">
         {live ? (
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -363,6 +375,21 @@ function LiveCall({
       >
         {call.muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
       </button>
+      <button
+        type="button"
+        onClick={() => setKeypad((k) => !k)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-500/20"
+        title={keypad ? "Hide keypad" : "Keypad"}
+        aria-label={keypad ? "Hide keypad" : "Show keypad"}
+        aria-pressed={keypad}
+      >
+        <Grid3x3 className="h-4 w-4" />
+      </button>
+      {keypad && (
+        <div className="absolute right-0 top-full z-20 mt-1.5 w-56 rounded-xl border border-border bg-card p-3 shadow-xl">
+          <CallKeypad onDigit={onSendDtmf} disabled={!live} />
+        </div>
+      )}
       <button
         type="button"
         onClick={onHangup}

@@ -6,7 +6,9 @@
  * on a call still needs the conversation behind it to read what the patient
  * texted.
  */
-import { Loader2, Mic, MicOff, Phone, PhoneOff } from "lucide-react";
+import { useState } from "react";
+import { Grid3x3, Loader2, Mic, MicOff, Phone, PhoneOff } from "lucide-react";
+import CallKeypad from "@/components/inboundCalls/CallKeypad";
 import type { WebPhoneCall } from "@/hooks/assignedPatients/useWebPhone";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { cn } from "@/lib/utils";
@@ -30,10 +32,13 @@ interface Props {
   name: string;
   onHangup: () => void;
   onToggleMute: () => void;
+  /** Keypad tones on the live call (phone trees). No keypad button without it. */
+  onSendDtmf?: (digits: string) => void;
 }
 
-export default function CallOverlay({ call, name, onHangup, onToggleMute }: Props) {
+export default function CallOverlay({ call, name, onHangup, onToggleMute, onSendDtmf }: Props) {
   const live = call.status === "connected";
+  const [keypad, setKeypad] = useState(false);
   return (
     <div className="fixed bottom-4 right-4 z-50 w-72 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
       <div className="bg-gradient-navy text-navy-foreground px-4 py-3 flex items-center gap-2.5">
@@ -57,7 +62,25 @@ export default function CallOverlay({ call, name, onHangup, onToggleMute }: Prop
         </div>
       </div>
 
+      {keypad && onSendDtmf && (
+        <CallKeypad onDigit={onSendDtmf} disabled={!live} className="px-3 pt-3" />
+      )}
+
       <div className="flex items-center justify-center gap-3 p-3">
+        {onSendDtmf && (
+          <button
+            onClick={() => setKeypad((k) => !k)}
+            title={keypad ? "Hide keypad" : "Keypad"}
+            aria-label={keypad ? "Hide keypad" : "Show keypad"}
+            aria-pressed={keypad}
+            className={cn(
+              "h-10 w-10 rounded-full flex items-center justify-center border transition-colors",
+              keypad ? "bg-muted border-border" : "border-border hover:bg-muted",
+            )}
+          >
+            <Grid3x3 className="h-4 w-4" />
+          </button>
+        )}
         <button
           onClick={onToggleMute}
           disabled={!live}
