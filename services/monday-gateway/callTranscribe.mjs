@@ -246,6 +246,15 @@ export function registerCallTranscribe({ app, pool, requireCaller }) {
             GROUP BY 1`,
         );
         body.last7Days = Object.fromEntries(q.rows.map((r) => [r.state, r.n]));
+        // Did diarization work? Shape counts only — never text.
+        const d = await pool.query(
+          `SELECT count(*)::int AS done,
+                  count(*) FILTER (WHERE jsonb_array_length(coalesce(transcript_json->'speakers','[]'::jsonb)) >= 2)::int AS two_speakers,
+                  count(*) FILTER (WHERE jsonb_array_length(coalesce(transcript_json->'speakers','[]'::jsonb)) = 0)::int AS no_speakers,
+                  round(avg(jsonb_array_length(coalesce(transcript_json->'turns','[]'::jsonb))))::int AS avg_turns
+             FROM call_archive WHERE transcript_state = 'done' AND started_at >= now() - interval '7 days'`,
+        );
+        body.shape = d.rows[0] || null;
       }
     } catch (e) {
       body.error = errorText(e);
