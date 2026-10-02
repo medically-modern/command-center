@@ -111,3 +111,15 @@ describe("shownRings — a registered browser shows a call once it is rung here 
     expect(shownRings(merged, false, new Set())).toHaveLength(1);
   });
 });
+
+describe("who answered (Josh, 2026-10-02)", () => {
+  it("a call another browser reported answering reads answered, with their name, once no leg rings here", () => {
+    const [u] = mergeRings([sse({ answeredBy: "victor@medicallymodern.com" })], []);
+    expect(u.state).toBe("answered");
+    expect(u.answeredBy).toBe("victor@medicallymodern.com");
+  });
+  it("a leg still ringing here wins, as before", () => {
+    const [u] = mergeRings([sse({ answeredBy: "victor@medicallymodern.com" })], [sip()]);
+    expect(u.state).toBe("ringing");
+  });
+});

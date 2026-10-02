@@ -29,6 +29,8 @@ export interface UnifiedRing {
   patient: PatientRef | null;
   state: "ringing" | "answered" | "missed";
   claimedBy: string | null;
+  /** Who answered it in the browser (email), from the gateway — the card's "Answered by …". */
+  answeredBy: string | null;
   /** The gateway's view, when it has one — what `claim()` needs. */
   sse: RingingCall | null;
   /** This browser's SIP leg, when it has one — what `answer()` needs. */
@@ -68,8 +70,10 @@ export function mergeRings(sse: RingingCall[], sip: SipRing[]): UnifiedRing[] {
       callerName: c.callerName || "",
       startedAt: c.startedAt,
       patient: c.patient,
-      state: c.state,
+      // Somebody's browser answered it: answered, whatever the session's own events say yet.
+      state: c.answeredBy ? "answered" : c.state,
       claimedBy: c.claimedBy,
+      answeredBy: c.answeredBy ?? null,
       sse: c,
       sip: null,
       canAnswer: false,
@@ -101,6 +105,7 @@ export function mergeRings(sse: RingingCall[], sip: SipRing[]): UnifiedRing[] {
       patient: null,
       state: "ringing",
       claimedBy: null,
+      answeredBy: null,
       sse: null,
       sip: r,
       canAnswer: true,

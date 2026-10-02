@@ -33,6 +33,8 @@ export interface InboundCall {
   startedAt: number;
   state: CallState;
   claimedBy: string | null;
+  /** Who answered it in the browser (their email), once that browser reported it — the card's "Answered by …". */
+  answeredBy?: string | null;
   /** RingCentral is receiving a FAX on this call: drop the card at once (§5.13c). */
   fax?: boolean;
   /** This number has sent us a fax before — the card says "Probably a fax". */
@@ -152,6 +154,20 @@ export async function reportPhoneState(report: PhoneStateReport): Promise<void> 
     await call("/calls/phone-state", { method: "POST", body: JSON.stringify(report) });
   } catch {
     /* monitoring is never worth a failed call */
+  }
+}
+
+/**
+ * Tell the gateway THIS person just answered an inbound call (Josh, 2026-10-02:
+ * show who answered on the card). Called once by the leader tab when the SIP
+ * session connects. Fire-and-forget: the call itself never waits on this.
+ */
+export async function reportAnswered(report: { callId: string; from: string }): Promise<void> {
+  if (!GATEWAY) return;
+  try {
+    await call("/calls/answered", { method: "POST", body: JSON.stringify(report) });
+  } catch {
+    /* a missing name on a card is never worth a failed call */
   }
 }
 

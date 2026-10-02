@@ -62,6 +62,7 @@ import {
   lineVerdict,
   lineShape,
   isFaxEvent,
+  findAnsweredCall,
 } from "./callRules.mjs";
 import { buildHistoryQuery } from "./callHistoryQuery.mjs";
 import { RETRY_STEPS_MS, retryAfterMs, retryDelayMs } from "./reconcileBackoff.mjs";
@@ -169,7 +170,7 @@ CREATE TABLE IF NOT EXISTS call_events (
   party_id    TEXT,
   phone_hmac  TEXT,
   last4       TEXT,
-  -- ring | end | end_unseen | self | ignored | unparsed
+  -- ring | end | end_unseen | self | ignored | unparsed | fax | other_line | pickup (a browser answered; claimed_by = who)
   kind        TEXT NOT NULL,
   -- for kind=end: answered | missed (see the claimed-call caveat in handleEvent)
   state       TEXT,
@@ -295,7 +296,7 @@ let subscriberSeq = 0;
 function sweepStaleRings() {
   const now = Date.now();
   for (const call of staleRings(calls.values(), now)) {
-    call.state = call.claimedBy ? "answered" : "missed";
+    call.state = call.claimedBy || call.answeredBy ? "answered" : "missed";
     call.endedAt = now;
     broadcastUpdate(call);
     void recordEvent({
@@ -347,6 +348,8 @@ function publicCall(c) {
     startedAt: c.startedAt,
     state: c.state,
     claimedBy: c.claimedBy || null,
+    // Who picked it up in the browser (POST /calls/answered) — the card's "Answered by …".
+    answeredBy: c.answeredBy || null,
     // RingCentral is receiving a fax on it: the browser drops the card at once.
     fax: !!c.fax,
     // The number has faxed us before (call_archive): the card says so.
@@ -517,7 +520,8 @@ async function handleEvent(payload) {
       // went: forwarding tears down the inbound leg and rings the claimer on a
       // new one. Reading that literally would flash "Missed" at the very person
       // who just took the call, one second after they took it.
-      existing.state = outcome === "answered" || existing.claimedBy ? "answered" : "missed";
+      // Same for a call a browser reported answering (POST /calls/answered): it was taken.
+      existing.state = outcome === "answered" || existing.claimedBy || existing.answeredBy ? "answered" : "missed";
       existing.endedAt = Date.now();
       broadcastUpdate(existing);
       // The row that answers "how long was it actually takeable?". A short gap
@@ -586,6 +590,7 @@ async function handleEvent(payload) {
     state: "ringing",
     claimedBy: null,
     claiming: false,
+    answeredBy: null,
     audience: [],
   };
   calls.set(sessionId, call);
@@ -956,6 +961,39 @@ export function registerInboundCalls({ app }) {
    * rings. Works only while the party is in Setup/Proceeding, which is exactly
    * the window the card is on screen.
    */
+  /**
+   * A browser answered a call (Josh, 2026-10-02: show WHO answered on the card).
+   * Posted once by the answering browser's leader tab when RingCentral says the
+   * call connected (softphone.ts doAnswer), so a failed answer names nobody.
+   * The caller is the verified sign-in, never a field in the body. Staff email
+   * only; nothing about the patient is written.
+   *
+   * ⚠️ It does NOT end a ringing call. The session's own end event still does,
+   * and now writes its `call_events` `end` row as answered (handleEvent reads
+   * `answeredBy`); Communications' pickup and missed-call logic read those
+   * `end` rows only (commsInbox.mjs), so ending the call here would drop that
+   * row. A call the end event already called "missed" is corrected in memory
+   * (the card); its `end` row stays as written, beside this `pickup` row.
+   */
+  app.post("/calls/answered", async (req, res) => {
+    const who = await requireCaller(req, res);
+    if (who === null) return;
+    const call = findAnsweredCall(calls.values(), {
+      callId: String(req.body?.callId || ""),
+      from: String(req.body?.from || ""),
+    });
+    if (!call) return res.status(404).json({ error: "No recent call to mark." });
+    // First answer wins: a second report (another tab, a retry) never renames it.
+    if (!call.answeredBy) {
+      call.answeredBy = who;
+      if (call.state === "missed") call.state = "answered";
+      broadcastUpdate(call);
+      void recordEvent({ kind: "pickup", sessionId: call.id, partyId: call.partyId, hmac: call.hmac, from: call.from,
+        state: "answered", audience: call.audience.length, claimedBy: who, detail: "answered in the browser" });
+    }
+    res.json({ ok: true, answeredBy: call.answeredBy });
+  });
+
   app.post("/calls/claim", async (req, res) => {
     const who = await requireCaller(req, res);
     if (who === null) return;

@@ -327,3 +327,39 @@ export function claimRefusal(rcStatus, rcMessage) {
     detail: raw || null,
   };
 }
+
+/* ── who answered ─────────────────────────────────────────────────────────── */
+
+/**
+ * The call a browser says it just answered (POST /calls/answered), or null.
+ *
+ * Josh, 2026-10-02 (Care Coordinator): *"when it says answered can we show who
+ * answered? Like victor or janelle"*. RingCentral's live events don't say it in
+ * a form measured yet (the fan-out legs to people's own extensions; §5.47d
+ * reads them from the call LOG, minutes later), but everyone answers in the
+ * browser (§5.13b), and that browser knows who it is. So the answering
+ * browser reports it, signed in, the moment RingCentral says the call
+ * connected, and every other card reads "Answered by <name>".
+ *
+ * By the gateway's own id (the telephony session the INVITE carried) first;
+ * else the most recent call from the same number that started within
+ * `windowMs` — a SIP leg whose INVITE lacked the session id is still the same
+ * caller (ringMerge's fallback). A call that ended long ago is never matched:
+ * a late report must not name somebody on an old call.
+ */
+export function findAnsweredCall(calls, { callId = "", from = "" } = {}, now = Date.now(), windowMs = 120_000) {
+  const list = [...(calls ?? [])].filter(Boolean);
+  const recent = (c) => c.startedAt > 0 && now - c.startedAt <= windowMs;
+  if (callId) {
+    const hit = list.find((c) => c.id === callId);
+    if (hit) return recent(hit) ? hit : null;
+  }
+  const d = digitsOf(from);
+  if (!d) return null;
+  let best = null;
+  for (const c of list) {
+    if (digitsOf(c.from) !== d || !recent(c)) continue;
+    if (!best || c.startedAt > best.startedAt) best = c;
+  }
+  return best;
+}

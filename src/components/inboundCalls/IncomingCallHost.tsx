@@ -146,6 +146,8 @@ function CallCard({
     // "Janelle took this call" on your own screen reads as losing the race.
     if (ring.claimedBy && mine(ring.claimedBy)) return "Ringing your phone…";
     if (ring.claimedBy) return `${senderName(ring.claimedBy)} took this call`;
+    // Who picked it up in the browser (Josh, 2026-10-02), when that browser reported it.
+    if (ring.answeredBy) return mine(ring.answeredBy) ? "You answered" : `Answered by ${senderName(ring.answeredBy)}`;
     if (ring.state === "answered") return "Answered";
     if (ring.state === "missed") return "Missed";
     if (patient) return `${patient.boardName} · ${fmtPhone(ring.from)}`;

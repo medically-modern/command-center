@@ -73,6 +73,7 @@ import { CHANNEL_NAME, LOCK_NAME, followerView, isDtmf, isTabMessage, type TabCo
 import { audibleRings, nextExpiryMs, sameRings, type RingLike } from "./ringRules";
 import { Ringtone } from "./ringtone";
 import { refreshRcLine } from "./rcLine";
+import { reportAnswered } from "@/lib/inboundCalls/callsApi";
 import type { ActiveCall, PhoneSnapshot, RegistrationStatus, SipRing } from "./types";
 
 const GATEWAY =
@@ -1011,7 +1012,12 @@ class Softphone {
     // that just ended. The id is the telephony session, the gateway's own key.
     if (ring.sessionId) this.ignored.add(ring.sessionId);
     this.publish();
-    session.once("answered", () => this.patchCall({ status: "connected", connectedAt: Date.now() }));
+    session.once("answered", () => {
+      this.patchCall({ status: "connected", connectedAt: Date.now() });
+      // Every other card says who took it ("Answered by Victor"). Only once it
+      // really connected, so an answer that failed names nobody.
+      void reportAnswered({ callId: ring.sessionId, from: ring.from });
+    });
     try {
       if (!session.answer) throw new Error("This call can't be answered here.");
       // See the header: resolved by an RC message that may never arrive, so it

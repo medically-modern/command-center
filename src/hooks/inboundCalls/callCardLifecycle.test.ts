@@ -34,7 +34,8 @@ describe("the gateway ends rings no terminal event arrived for", () => {
 
   it("⚠️ a CLAIMED call is swept as answered, never missed", () => {
     // Or the rep who took the call watches their own card flip to Missed.
-    expect(gateway).toMatch(/call\.state = call\.claimedBy \? "answered" : "missed"/);
+    // A call a browser reported answering (answeredBy, 2026-10-02) is swept as answered too.
+    expect(gateway).toMatch(/call\.state = call\.claimedBy( \|\| call\.answeredBy)? \? "answered" : "missed"/);
   });
 
   it("records why, so a run of them is findable later", () => {
@@ -67,6 +68,7 @@ describe("the browser ends a card whose update it missed", () => {
   });
 
   it("still clears on a real terminal update, which stays the normal path", () => {
-    expect(hook).toMatch(/if \(call\.state !== "ringing"\) scheduleClear\(call\.id\)/);
+    // …or once a browser reported answering it (answeredBy, 2026-10-02).
+    expect(hook).toMatch(/if \(call\.state !== "ringing"( \|\| call\.answeredBy)?\) scheduleClear\(call\.id\)/);
   });
 });

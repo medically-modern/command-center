@@ -180,7 +180,8 @@ export function useInboundCalls(enabled = true) {
           return;
         }
         setCalls((cur) => cur.map((c) => (c.id === call.id ? { ...c, ...call } : c)));
-        if (call.state !== "ringing") scheduleClear(call.id);
+        // A browser answered it (answeredBy): the card is done even while the session still says ringing.
+        if (call.state !== "ringing" || call.answeredBy) scheduleClear(call.id);
       });
 
       es.addEventListener("error", () => {
