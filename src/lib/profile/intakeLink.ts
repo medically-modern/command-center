@@ -26,7 +26,9 @@
  * Referral Intake sidebar all had him in Referral Intake. The routes are
  * Search's `groupRoutes` for the same groups (`systemMgmt/mondayApi.ts`), so
  * the two doors agree. A group with no queue (Stuck, Patient Intake, Tests)
- * keeps the default.
+ * keeps the default here; the patient screen and the Communications panel
+ * use `intakeQueueHref` instead and fall back to the record's own route, so a
+ * Stuck patient opens on Referral Intake there, the page Search opens.
  */
 import { GROUPS } from "./mondayApi";
 
@@ -39,14 +41,34 @@ const QUEUE_ROUTE: ReadonlyMap<string, string> = new Map([
   [GROUPS.profileCleanUp, "/profile-cleanup"],
 ]);
 
+/**
+ * The link for an item in a group that HAS a queue, or null for any other
+ * group (Stuck, Patient Intake, Tests, Completed, unknown). Callers that have
+ * their own answer for a parked record (the record's `route`, as every other
+ * board uses) fall back to it on null — see `patientScreen.itemOpenHref` and
+ * `commsHub/dossier.liveRecordHref`.
+ */
+export function intakeQueueHref(
+  itemId: string,
+  groupId?: string | null,
+  extraQuery = "",
+): string | null {
+  const route = groupId ? QUEUE_ROUTE.get(groupId) : undefined;
+  if (!route) return null;
+  const id = encodeURIComponent(itemId);
+  const tail = extraQuery ? `&${extraQuery}` : "";
+  if (groupId === GROUPS.newFormPartial) return `${route}?source=partial&patientId=${id}${tail}`;
+  return `${route}?patientId=${id}${tail}`;
+}
+
 export function intakeProfileHref(
   itemId: string,
   groupId?: string | null,
   extraQuery = "",
 ): string {
-  const id = encodeURIComponent(itemId);
   const tail = extraQuery ? `&${extraQuery}` : "";
-  if (groupId === GROUPS.newFormPartial) return `/unverified-referrals?source=partial&patientId=${id}${tail}`;
-  const route = (groupId && QUEUE_ROUTE.get(groupId)) || "/unverified-referrals";
-  return `${route}?patientId=${id}${tail}`;
+  return (
+    intakeQueueHref(itemId, groupId, extraQuery) ??
+    `/unverified-referrals?patientId=${encodeURIComponent(itemId)}${tail}`
+  );
 }

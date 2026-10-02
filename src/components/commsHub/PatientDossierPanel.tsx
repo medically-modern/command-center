@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { DossierItem, PathStep, PatientDossier, StageNotes, StepState } from "@/lib/commsHub/dossier";
-import { stageNoteTrail, stagesCompleted, stepOpenHref } from "@/lib/commsHub/dossier";
+import { liveRecordHref, stageNoteTrail, stagesCompleted, stepOpenHref } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail, type RenderedField } from "@/lib/commsHub/stageDetail";
 import { SUBSCRIPTION_BOARD } from "@/lib/patient/patientScreen";
 import { appendNoteToRecord, type DossierPick } from "@/lib/commsHub/dossierApi";
@@ -504,6 +504,7 @@ export function PatientDossierPanel({
   if (fallback || !dossier || !phone) return fallback;
 
   const { active, path } = dossier;
+  const activeHref = active ? liveRecordHref(active) : null;
   const done = stagesCompleted(path);
   const detail = active ? buildStageDetail(active.boardId, active.cols) : [];
 
@@ -548,9 +549,11 @@ export function PatientDossierPanel({
       {/* ── 3. Open in the stage, or on the patient screen ──── */}
       {active && (
         <div className="space-y-2 border-b border-border px-4 py-3">
-          {active.route && (
+          {/* `liveRecordHref`, the same builder as the step chips: a Partial
+              Leads patient must open under "Partial forms" (2026-10-02). */}
+          {activeHref && (
             <Link
-              to={`${active.route}?patientId=${encodeURIComponent(active.itemId)}&from=system-mgmt`}
+              to={activeHref}
               className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
             >
               Open on {active.boardName} <ArrowUpRight className="h-3.5 w-3.5" />

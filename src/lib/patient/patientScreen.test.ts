@@ -195,6 +195,14 @@ describe("itemOpenHref", () => {
       expect(intake("group_mm64b83h")!.startsWith("/in-system-referrals?")).toBe(true);
     });
 
+    it("⚠️ a STUCK patient opens on its own route — Referral Intake, where Search opens it (2026-10-02)", () => {
+      // Stuck has no queue. Through intakeProfileHref it fell to the Info
+      // Collection default; it now falls through to the record's route like
+      // every other board. `routeFor` gives a Stuck Profile Send Off item /profile.
+      const stuck = item({ boardId: PROFILE, groupId: "group_mm1xyczx", route: "/profile", boardName: "Profile Send Off" });
+      expect(itemOpenHref(stuck)).toBe("/profile?patientId=1&from=patient");
+    });
+
     it("every other board is untouched by the intake routing", () => {
       expect(itemOpenHref(item({ groupId: "group_mm5z87zt" }))).toBe("/evaluate?patientId=1&from=patient");
     });

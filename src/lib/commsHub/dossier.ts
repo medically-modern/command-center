@@ -12,6 +12,8 @@
  */
 import { NON_PIPELINE_BOARDS, PIPELINE_ORDER, pipelineIndex, type PipelineBoard } from "./pipelineOrder";
 import type { EscalationLevel } from "../systemMgmt/escalationDetail";
+import { BOARD_ID as PROFILE_SEND_OFF_BOARD } from "../profile/mondayApi";
+import { intakeQueueHref } from "../profile/intakeLink";
 
 /** One board's record of this patient. */
 export interface DossierItem {
@@ -297,14 +299,37 @@ export function buildDossier(items: DossierItem[]): PatientDossier {
 export function stepOpenHref(step: PathStep): string | null {
   const { item, board, state } = step;
   if (!item) return null;
-  const params = new URLSearchParams({ patientId: item.itemId, from: "system-mgmt" });
   if (state === "completed") {
     if (!board.route) return null;
+    const params = new URLSearchParams({ patientId: item.itemId, from: "system-mgmt" });
     params.set("completedStage", String(board.boardId));
     return `${board.route}?${params.toString()}`;
   }
-  const route = item.route || board.route;
-  return route ? `${route}?${params.toString()}` : null;
+  return liveRecordHref(item, board.route);
+}
+
+/**
+ * Where a record that is not finished opens — the step chips above AND the
+ * pane's "Open on <board>" button, so the two doors in one pane cannot
+ * disagree.
+ *
+ * ⚠️ A Profile Send Off record in a group WITH a queue goes through
+ * `intakeLink.intakeQueueHref` (2026-10-02): `item.route` names the right page
+ * but cannot carry `?source=partial`, and the intake page defaults to
+ * Completed — so a Partial Leads patient opened under "Completed forms", the
+ * bug `intakeLink.ts` was written for (§5.10). Every other record, and a
+ * Profile Send Off record parked in Stuck, uses its own route as before.
+ * `fallbackRoute` is the board's page, for the chips; the button passes none.
+ */
+export function liveRecordHref(item: DossierItem, fallbackRoute = ""): string | null {
+  if (item.boardId === PROFILE_SEND_OFF_BOARD) {
+    const queued = intakeQueueHref(item.itemId, item.groupId, "from=system-mgmt");
+    if (queued) return queued;
+  }
+  const route = item.route || fallbackRoute;
+  if (!route) return null;
+  const params = new URLSearchParams({ patientId: item.itemId, from: "system-mgmt" });
+  return `${route}?${params.toString()}`;
 }
 
 /** One stage's running notes, for the hub's "notes from every stage" list. */

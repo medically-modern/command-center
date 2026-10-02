@@ -9,7 +9,7 @@ import { MANAGER_ORIGIN_PARAM, PIN_DEEP_LINK_PARAM } from "@/lib/shared/managerO
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { PIPELINE_ORDER } from "@/lib/commsHub/pipelineOrder";
 import { COMPLETED_STAGE_ROUTES } from "@/lib/systemMgmt/stageCompletion";
-import { intakeProfileHref } from "@/lib/profile/intakeLink";
+import { intakeQueueHref } from "@/lib/profile/intakeLink";
 import { BOARD_ID as PROFILE_SEND_OFF_BOARD } from "@/lib/profile/mondayApi";
 
 /** Query keys the page reads. */
@@ -353,8 +353,14 @@ export function itemOpenHref(item: DossierItem | null): string | null {
        that (Jason Ortiz-Troxell, 2026-09-25); this call site was missed, and
        Mary Terrell (12895923748, Partial Leads) hit it again on 2026-09-30.
        Every other board has one route per item, so they are unchanged. */
+    /* ⚠️ Only a group WITH a queue is routed here (2026-10-02). Stuck, Patient
+       Intake and Tests have none; they fall through to the record's own
+       route like every other board — Referral Intake, the page Search opens a
+       Stuck Profile Send Off patient on. Through `intakeProfileHref` they fell
+       to its Info Collection default instead. */
     if (item.boardId === PROFILE_SEND_OFF_BOARD) {
-      return intakeProfileHref(item.itemId, item.groupId, `from=patient${managerModeParams(item)}`);
+      const queued = intakeQueueHref(item.itemId, item.groupId, `from=patient${managerModeParams(item)}`);
+      if (queued) return queued;
     }
     return item.route ? `${item.route}?patientId=${item.itemId}&from=patient${managerModeParams(item)}` : null;
   }

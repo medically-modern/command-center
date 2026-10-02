@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   buildDossier,
   dobKey,
+  liveRecordHref,
   nameMatchAccepted,
   personKey,
   pickActive,
@@ -148,23 +150,44 @@ describe("stepOpenHref — a chip opens the page for the record's GROUP (MM-1094
     // The incident: Profile Send Off is four roles on three pages, and the chip
     // took the board's route for all of them — so a New Form — Partial Leads
     // patient landed on /profile as an out-of-queue deep link.
+    // ⚠️ And under the PARTIAL selector (2026-10-02): the intake page defaults
+    // to Completed, so without `source=partial` she opened under "Completed
+    // forms" — the bug intakeLink.ts exists for (§5.10).
     const d = buildDossier([
       item(PROFILE, { itemId: "900001", groupId: PARTIAL_LEADS, route: "/unverified-referrals" }),
     ]);
     const step = stepOf(d, PROFILE);
     expect(step.state).toBe("active");
     expect(stepOpenHref(step)).toBe(
-      "/unverified-referrals?patientId=900001&from=system-mgmt",
+      "/unverified-referrals?source=partial&patientId=900001&from=system-mgmt",
     );
   });
 
   it("agrees with the pane's own 'Open on <board>' button for the live record", () => {
-    // That button builds `${active.route}?patientId=…&from=system-mgmt`. Two
-    // doors to one patient in one pane must not go to two pages.
-    const d = buildDossier([item(PROFILE, { itemId: "7", route: "/profile-cleanup" })]);
-    expect(stepOpenHref(stepOf(d, PROFILE))).toBe(
-      `${d.active!.route}?patientId=${encodeURIComponent(d.active!.itemId)}&from=system-mgmt`,
-    );
+    // Both doors build through `liveRecordHref`. Two doors to one patient in
+    // one pane must not go to two pages, nor to two selectors on one page.
+    for (const groupId of [PARTIAL_LEADS, "group_mm6c3rhb", "group_mm1xf2jb", "g"]) {
+      const d = buildDossier([item(PROFILE, { itemId: "7", groupId, route: "/profile-cleanup" })]);
+      expect(stepOpenHref(stepOf(d, PROFILE))).toBe(liveRecordHref(d.active!));
+    }
+    const src = readFileSync(resolve(process.cwd(), "src/components/commsHub/PatientDossierPanel.tsx"), "utf8");
+    expect(src).toMatch(/liveRecordHref\(active\)/);
+    expect(src).not.toMatch(/\$\{active\.route\}\?patientId=/);
+  });
+
+  it("a Profile Send Off patient parked in Stuck opens on its own route (Referral Intake)", () => {
+    // Stuck has no queue, so the intake routing steps aside and the record's
+    // route decides, as on every other board.
+    const d = buildDossier([
+      item(PROFILE, { itemId: "11", groupId: "group_mm1xyczx", isStuck: true, groupTitle: "Stuck", route: "/profile" }),
+    ]);
+    expect(stepOpenHref(stepOf(d, PROFILE))).toBe("/profile?patientId=11&from=system-mgmt");
+  });
+
+  it("another board's group with the same id as 1. Intake is not routed as Profile Send Off", () => {
+    // `group_mm1xf2jb` is ALSO Medical Evaluation's Medical Necessity group.
+    const d = buildDossier([item(ME, { itemId: "12", groupId: "group_mm1xf2jb", route: "/evaluate" })]);
+    expect(stepOpenHref(stepOf(d, ME))).toBe("/evaluate?patientId=12&from=system-mgmt");
   });
 
   it("opens a COMPLETED record in review mode on the board's page, whatever its group route says", () => {

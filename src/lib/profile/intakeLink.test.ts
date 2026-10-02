@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { intakeProfileHref } from "./intakeLink";
+import { intakeProfileHref, intakeQueueHref } from "./intakeLink";
 import { BOARDS } from "@/lib/systemMgmt/mondayApi";
 import { BOARD_ID, GROUPS } from "./mondayApi";
 
@@ -50,5 +50,15 @@ describe("intakeProfileHref — the deep link says which queue the patient is re
     expect(intakeProfileHref("a b", GROUPS.newFormPartial, "from=care-coordinator")).toBe(
       "/unverified-referrals?source=partial&patientId=a%20b&from=care-coordinator",
     );
+  });
+
+  it("intakeQueueHref answers only for a group that has a queue", () => {
+    expect(intakeQueueHref("1", GROUPS.intake)).toBe("/profile?patientId=1");
+    expect(intakeQueueHref("1", GROUPS.newFormPartial, "from=x")).toBe(
+      "/unverified-referrals?source=partial&patientId=1&from=x",
+    );
+    for (const g of [GROUPS.stuck, GROUPS.patientIntake, GROUPS.tests, GROUPS.completed, "group_other", undefined, null]) {
+      expect(intakeQueueHref("1", g)).toBeNull();
+    }
   });
 });
