@@ -308,3 +308,16 @@ describe("v2 model, escalations worked only by Janelle or Katie; work credited t
   });
 });
 
+
+describe("v2 model: system changes are not staff work (Josh, 2026-10-02)", () => {
+  // A patient escalated Sep 22; the only later change is the intake form / a backend on the shared token.
+  const it2 = item("MN", "9000008001", "2026-09-20T10:00:00-04:00", { values: { [MN]: 9, [ESC]: 0 } });
+  const base = [enter("9000008001", 9, "2026-09-21T10:00:00-04:00"), ev("MN", "9000008001", ESC, null, 0, "2026-09-22T10:00:00-04:00", { user: P })];
+  const later = ev("MN", "9000008001", EVID, null, null, "2026-09-26T10:00:00-04:00", { user: 100161122 });
+  it("a system change does not make the patient look worked, or count as anyone's last action", () => {
+    const m = model([it2], [...base, { ...later, system: true }]);
+    const r = m.rows[0];
+    expect(r.reason).toBe("escUntouched");
+    expect(r.last?.atMs).not.toBe(Date.parse("2026-09-26T10:00:00-04:00"));
+  });
+});

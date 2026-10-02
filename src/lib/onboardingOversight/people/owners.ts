@@ -34,8 +34,9 @@ export const hasProcessor = (keys: string[] | undefined, cfg: Cfg = OO_CONFIG) =
 
 /** §3.10.1 attribution: direct monday edit by a real person (rule 1), else the Command Center person matched from the
  *  gateway's write log (rule 2, `actorKey` — model/appAttribution.ts), else automation / unattributed (rule 3). */
-export function attribute(userId: number | null, cfg: Cfg = OO_CONFIG, actorKey?: string): { kind: "person" | "automation" | "unattributed"; key?: string } {
+export function attribute(userId: number | null, cfg: Cfg = OO_CONFIG, actorKey?: string, system?: boolean): { kind: "person" | "automation" | "unattributed"; key?: string } {
   if (actorKey && personByKey(actorKey, cfg)) return { kind: "person", key: actorKey };
+  if (system) return { kind: "automation" }; // a system on the shared token (form, Stedi, DVS): see RawEvent.system
   if (userId == null) return { kind: "unattributed" };
   if (userId === cfg.automationUserId) return { kind: "automation" };
   const p = cfg.people.find((x) => (x.mondayUserIds as readonly number[]).includes(userId));

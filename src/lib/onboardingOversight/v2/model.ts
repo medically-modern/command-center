@@ -50,7 +50,7 @@ export const NOT_NAMED = "Not named";
 export const sameName = (owner: string, person: string): boolean => { const o = owner.trim().toLowerCase(), p = person.trim().toLowerCase(); return !!o && (o === p || p.startsWith(o)); };
 /** Owner names in a step-table owner cell ("Janelle / Katie" → both). */
 const ownerParts = (owner: string): string[] => owner.split("/").map((x) => x.trim()).filter(Boolean);
-const human = (e: RawEvent) => !e.bulk && e.userId !== AUTO && e.userId != null && !SCHEDULED_COLUMNS.has(e.columnId);
+const human = (e: RawEvent) => !e.bulk && !e.system && e.userId !== AUTO && e.userId != null && !SCHEDULED_COLUMNS.has(e.columnId);
 /** An exit from an escalation value that is set back to the same value within the hour: not a return and not a new escalation (the §0.2 clock rule; red-team r17 N3). */
 const isBlipOut = (evs: RawEvent[], col: string, e: RawEvent) => evs.some((x) => x.columnId === col && x.atMs > e.atMs && x.atMs - e.atMs <= 36e5 && x.toIndex === e.fromIndex);
 const isBlipBack = (evs: RawEvent[], col: string, e: RawEvent) => evs.some((x) => x.columnId === col && x.atMs < e.atMs && e.atMs - x.atMs <= 36e5 && x.fromIndex === e.toIndex);

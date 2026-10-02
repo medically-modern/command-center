@@ -52,28 +52,39 @@ export function parseAppActorsQuery(q = {}, now = Date.now()) {
  */
 export function buildAppActorsSql({ sinceMs, boards }) {
   return {
-    sql: `SELECT item_id, board_id, actor, (extract(epoch from created_at) * 1000)::bigint AS ms,
-                 COALESCE((SELECT array_agg(k) FROM jsonb_object_keys(columns) AS k), '{}') AS cols
-            FROM gql_log
-           WHERE operation = 'mutation' AND ok = true
-             AND item_id IS NOT NULL AND actor IS NOT NULL AND actor <> ''
-             AND columns IS NOT NULL AND jsonb_typeof(columns) = 'object'
-             AND board_id = ANY($1::text[])
-             AND created_at > to_timestamp($2::double precision / 1000)
-           ORDER BY created_at ASC
+    // ⚠️ start_ms: a durable /send job logs its row when it FINISHES (send.mjs logSendToAudit). An attempt
+    // whose read-back timed out has already changed monday; the job is re-queued and the row lands minutes
+    // later (measured: 2-60 min after the monday change on Profile Send Off). So a send row reports when its
+    // job was QUEUED — the latest send_jobs row for the same item and actor at or before it — and the
+    // dashboard matches anywhere from then to the row. Direct /gql writes log at once: start = the row.
+    sql: `SELECT g.item_id, g.board_id, g.actor, (extract(epoch from g.created_at) * 1000)::bigint AS ms,
+                 COALESCE((SELECT array_agg(k) FROM jsonb_object_keys(g.columns) AS k), '{}') AS cols,
+                 CASE WHEN g.operation_name = 'send' THEN (
+                   SELECT (extract(epoch from j.created_at) * 1000)::bigint FROM send_jobs j
+                    WHERE j.item_id = g.item_id AND j.actor = g.actor AND j.created_at <= g.created_at
+                    ORDER BY j.created_at DESC LIMIT 1) END AS start_ms
+            FROM gql_log g
+           WHERE g.operation = 'mutation' AND g.ok = true
+             AND g.item_id IS NOT NULL AND g.actor IS NOT NULL AND g.actor <> ''
+             AND g.columns IS NOT NULL AND jsonb_typeof(g.columns) = 'object'
+             AND g.board_id = ANY($1::text[])
+             AND g.created_at > to_timestamp($2::double precision / 1000)
+           ORDER BY g.created_at ASC
            LIMIT $3`,
     args: [boards, sinceMs, MAX_ROWS + 1],
   };
 }
 
-/** Postgres rows → the compact wire shape [itemId, boardId, actor, ms, cols]. */
+/** Postgres rows → the compact wire shape [itemId, boardId, actor, ms, cols, startMs?] (startMs: send jobs only). */
 export function shapeAppActorRows(rows) {
   const truncated = rows.length > MAX_ROWS;
   const out = [];
   for (const r of truncated ? rows.slice(0, MAX_ROWS) : rows) {
     const cols = Array.isArray(r.cols) ? r.cols.map(String) : [];
     if (!cols.length) continue;
-    out.push([String(r.item_id), String(r.board_id), String(r.actor).toLowerCase(), Number(r.ms), cols]);
+    const row = [String(r.item_id), String(r.board_id), String(r.actor).toLowerCase(), Number(r.ms), cols];
+    if (r.start_ms != null && Number(r.start_ms) < Number(r.ms)) row.push(Number(r.start_ms));
+    out.push(row);
   }
   return { rows: out, truncated };
 }

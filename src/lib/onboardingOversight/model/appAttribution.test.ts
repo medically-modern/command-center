@@ -59,9 +59,46 @@ describe("attachAppActors", () => {
     expect(attachAppActors(events, null)).toBe(events);
   });
 
-  it("reports coverage over shared-token events only", () => {
+  it("counts shared-token events by outcome: named staff, system, neither", () => {
     const rows: AppActorRow[] = [["111", INS, "katie@medicallymodern.com", T, ["color_mm2vsh2f"]]];
     const out = attachAppActors([ev({}), ev({ eventId: "e2", itemId: "222" }), ev({ eventId: "e3", userId: 102869398 })], rows);
-    expect(appAttributionCoverage(out)).toEqual({ shared: 2, matched: 1 });
+    expect(appAttributionCoverage(out)).toEqual({ shared: 2, matched: 1, system: 1 });
+  });
+});
+
+describe("system writes on the shared token (Josh, 2026-10-02)", () => {
+  const rows: AppActorRow[] = [["111", INS, "katie@medicallymodern.com", T, ["color_mm2vsh2f"]]];
+  it("a shared-token change with no Command Center write behind it is a system change, treated as automation", () => {
+    const [e] = attachAppActors([ev({ itemId: "333", columnId: "text_form", atMs: T + 3_600_000 })], rows);
+    expect(e.system).toBe(true);
+    expect(attribute(e.userId, OO_CONFIG, e.actorKey, e.system)).toEqual({ kind: "automation" });
+  });
+  it("older than the log's first row: left as it was (we cannot tell)", () => {
+    const [e] = attachAppActors([ev({ itemId: "333", atMs: T - 86_400_000 })], rows);
+    expect(e.system).toBeUndefined();
+  });
+  it("a truncated log marks nothing as system", () => {
+    const [e] = attachAppActors([ev({ itemId: "333", atMs: T + 3_600_000 })], rows, OO_CONFIG, { truncated: true });
+    expect(e.system).toBeUndefined();
+  });
+  it("a Command Center write by someone config does not know is unnamed, not system", () => {
+    const r2: AppActorRow[] = [...rows, ["444", INS, "newhire@medicallymodern.com", T + 60_000, ["color_mm2vsh2f"]]];
+    const [e] = attachAppActors([ev({ itemId: "444", atMs: T + 60_000 })], r2);
+    expect(e.system).toBeUndefined();
+    expect(e.actorKey).toBeUndefined();
+  });
+  it("a send whose first attempt changed monday minutes before its log row still matches (queue time to log time)", () => {
+    const r2: AppActorRow[] = [["555", INS, "katie@medicallymodern.com", T + 600_000, ["color_mm2vsh2f"], T - 30_000]];
+    const [e] = attachAppActors([ev({ itemId: "555", atMs: T + 200_000 })], r2);
+    expect(e.actorKey).toBe("katie");
+    expect(e.system).toBeUndefined();
+  });
+  it("a file upload is never system (staff uploads go through the worker, not the gateway)", () => {
+    const [e] = attachAppActors([ev({ itemId: "333", columnId: "file_mm1w5vwp", atMs: T + 3_600_000 })], rows);
+    expect(e.system).toBeUndefined();
+  });
+  it("a direct monday edit by a person is never system", () => {
+    const [e] = attachAppActors([ev({ itemId: "333", userId: 102869398, atMs: T + 3_600_000 })], rows);
+    expect(e.system).toBeUndefined();
   });
 });

@@ -31,6 +31,10 @@ export interface RawEvent {
   /** §3.10.1 rule 2: the person behind a shared-token (Command Center) write, matched from the gateway's
    *  /oversight/app-actors in memory after load (model/appAttribution.ts). Never cached; absent = not matched. */
   actorKey?: string;
+  /** A shared-account write with NO matching Command Center write in the gateway's log, inside the period that log
+   *  covers: another system using the same monday token (the intake web form, Stedi, DVS services), not a person.
+   *  Treated like automation (Josh, 2026-10-02). Set in memory with actorKey; never cached. */
+  system?: boolean;
 }
 
 /** Current state of one monday item. Text of count-only columns is never stored. */

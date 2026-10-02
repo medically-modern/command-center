@@ -32,7 +32,7 @@ describe("parseAppActorsQuery", () => {
 describe("buildAppActorsSql", () => {
   it("⚠️ selects column KEYS only — a written value never leaves Postgres", () => {
     const { sql, args } = buildAppActorsSql({ sinceMs: 1, boards: ["x"] });
-    expect(sql).toContain("jsonb_object_keys(columns)");
+    expect(sql).toContain("jsonb_object_keys(g.columns)");
     // The value-bearing column is never selected as such.
     expect(sql).not.toMatch(/SELECT[^]*\bcolumns\s*(,|AS|FROM)/i);
     expect(sql).not.toMatch(/variables|query_text/);
@@ -45,6 +45,8 @@ describe("buildAppActorsSql", () => {
     expect(sql).toContain("ok = true");
     expect(sql).toContain("item_id IS NOT NULL");
     expect(sql).toContain("actor IS NOT NULL");
+    // send rows look up their job's queue time
+    expect(sql).toContain("FROM send_jobs j");
   });
 });
 
@@ -56,6 +58,15 @@ describe("shapeAppActorRows", () => {
     ]);
     expect(rows).toEqual([["1", "2", "katie@medicallymodern.com", 1700000000000, ["color_a", "text_b"]]]);
     expect(truncated).toBe(false);
+  });
+
+  it("a send row carries when its job was queued (it logs when it finishes)", () => {
+    const { rows } = shapeAppActorRows([
+      { item_id: 1, board_id: 2, actor: "k", ms: 2000, cols: ["c"], start_ms: 500 },
+      { item_id: 1, board_id: 2, actor: "k", ms: 2000, cols: ["c"], start_ms: null },
+    ]);
+    expect(rows[0][5]).toBe(500);
+    expect(rows[1]).toHaveLength(5);
   });
 
   it("reports truncation instead of silently cutting history short", () => {

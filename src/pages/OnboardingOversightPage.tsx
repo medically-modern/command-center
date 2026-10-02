@@ -14,7 +14,7 @@ import { OO_FLAGS } from "@/lib/onboardingOversight/flags";
 import { OO_CONFIG } from "@/lib/onboardingOversight/config";
 import { buildV2 } from "@/lib/onboardingOversight/v2/model";
 import { fetchAppActors, type AppActors } from "@/lib/onboardingOversight/data/fetchAppActors";
-import { attachAppActors, appAttributionCoverage } from "@/lib/onboardingOversight/model/appAttribution";
+import { attachAppActors } from "@/lib/onboardingOversight/model/appAttribution";
 import { listFor } from "@/lib/onboardingOversight/v2/lists";
 import { DEFAULT_STEPS, loadSteps, saveSteps, loadDueSoon, saveDueSoon, loadHealth, saveHealth, type HealthCfg, type DueSoonCfg, type StepDef } from "@/lib/onboardingOversight/v2/steps";
 import WorkingList from "@/components/onboardingOversight/v2/WorkingList";
@@ -52,14 +52,14 @@ export default function OnboardingOversightPage() {
   // v2 needs the history (lateness, reasons, bars), so it waits for the full snapshot rather than showing items-only numbers (spec §0.8).
   // §3.10.1 rule 2: name the person behind each Command Center (shared-token) write, from the gateway's write log.
   // Read once per snapshot; on any failure the events stay as they were ("Shared Command Center account").
-  const [appActors, setAppActors] = useState<AppActors | null>(null);
+  /** undefined = not read yet; null = could not be read (gateway down, not signed in). */
+  const [appActors, setAppActors] = useState<AppActors | null | undefined>(undefined);
   const historyFrom = snapshot ? snapshot.events.reduce((lo, e) => (e.atMs < lo ? e.atMs : lo), snapshot.snapshotAt) : null; // reduce, not Math.min(...): tens of thousands of events overflow a spread
   useEffect(() => {
     if (!live || historyFrom == null) return;
     let on = true; void fetchAppActors(historyFrom).then((a) => { if (on) setAppActors(a); }); return () => { on = false; };
   }, [live, historyFrom, snapshot?.snapshotAt]);
-  const attributed = useMemo(() => (snapshot && appActors ? { ...snapshot, events: attachAppActors(snapshot.events, appActors.rows) } : snapshot), [snapshot, appActors]);
-  const coverage = useMemo(() => (attributed && appActors ? appAttributionCoverage(attributed.events) : null), [attributed, appActors]);
+  const attributed = useMemo(() => (snapshot && appActors ? { ...snapshot, events: attachAppActors(snapshot.events, appActors.rows, undefined, { truncated: appActors.truncated }) } : snapshot), [snapshot, appActors]);
   const m = useMemo(() => (attributed && !itemsOnly ? buildV2(attributed, steps, { names: live ? "live" : "fake", dueSoon }) : null), [attributed, itemsOnly, steps, live, dueSoon]);
   const [calls, setCalls] = useState<StaffCalls | null>(null);
   useEffect(() => {
@@ -83,7 +83,9 @@ export default function OnboardingOversightPage() {
           {when ? `As of ${when.toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : status === "error" ? `Problem: ${error}` : progress || "Loading…"}
           {ageH > OO_CONFIG.patientFlags.snapshotStaleHours && <span className="v2-old"> · old data</span>}
           {m && m.notOnStep.length > 0 && <span className="v2-old" title="Open patients whose current status matches no step in Normal times. They are in no count."> · {m.notOnStep.length} not on a step</span>}
-          {coverage && coverage.shared > 0 && <span title="Command Center writes reach monday under one shared account. This share of them is matched to the signed-in person from the gateway's write log; the rest show no name."> · {Math.round((coverage.matched / coverage.shared) * 100)}% of Command Center actions named</span>}
+          {/* Only a failure is shown (Josh, 2026-10-02: a coverage % read as missing work). Without the gateway's write
+              log, staff work done in Command Center has no names and form/system changes count as staff work. */}
+          {live && snapshot && !itemsOnly && appActors === null && <span className="v2-old" title="The gateway's write log could not be read, so Command Center work shows no names and changes by the intake form and other systems count as staff work."> · staff names unavailable</span>}
         </span>
         <span className="v2-spacer" />
         <button type="button" className="v2-btn" onClick={() => void refresh()}>{error ? "Retry" : "Refresh"}</button>

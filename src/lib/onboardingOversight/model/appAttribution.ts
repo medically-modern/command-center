@@ -10,13 +10,26 @@
  *
  * Pure. Applied in memory after load, never written into the history cache, so a gateway that is
  * down or unconfigured leaves everything exactly as it was (rule 3: "unattributed").
+ *
+ * ⚠️ SYSTEM WRITES (Josh, 2026-10-02). The shared token is not the Command Center's alone: the intake
+ * web form (Last Form Activity, Drop-off Step, the doctor and insurance fields — around the clock),
+ * Stedi and the DVS services write to monday with it directly, never through the gateway. Measured on
+ * Profile Send Off, Sep 14 – Oct 2: 6,057 shared-token changes, 56% of them Command Center writes.
+ * Counted as "human", the rest made a patient filling in the form look worked by staff. So a
+ * shared-token event with NO matching gateway write, inside the period the log covers, is marked
+ * `system` and treated like automation. Only when the log is complete for that period: a truncated
+ * answer marks nothing, and events older than its first row are left as they were.
  */
 import type { RawEvent } from "../types";
 import { OO_CONFIG } from "../config";
 
 type Cfg = typeof OO_CONFIG;
-/** [itemId, boardId, actor email, ms, column ids] — the gateway's wire shape. */
-export type AppActorRow = [string, string, string, number, string[]];
+/** [itemId, boardId, actor email, ms, column ids, startMs?] — the gateway's wire shape. `ms` is when the gateway
+ *  logged the write; `startMs` (durable /send jobs only) when the job was queued. A send logs when it FINISHES, and
+ *  an attempt whose read-back timed out has already changed monday, so the change can sit minutes before `ms`. */
+export type AppActorRow = [string, string, string, number, string[], number?];
+/** Distance from an event to a write's span [start, ms]: 0 inside it. */
+const spanDist = (atMs: number, ms: number, startMs?: number) => { const s = startMs ?? ms; return atMs < s ? s - atMs : atMs > ms ? atMs - ms : 0; };
 
 /** "katie@medicallymodern.com" → "katie", when that is a person in config; else null. */
 export function personKeyForEmail(email: string, cfg: Cfg = OO_CONFIG): string | null {
@@ -32,36 +45,49 @@ const sharedIds = (cfg: Cfg) => new Set(cfg.people.filter((p) => (p as { sharedT
  * Events with `actorKey` set where a gateway row matches. Only shared-token events are touched: a
  * direct monday edit already names its person (rule 1), and automation stays automation.
  */
-export function attachAppActors(events: RawEvent[], rows: AppActorRow[] | null | undefined, cfg: Cfg = OO_CONFIG): RawEvent[] {
+export function attachAppActors(
+  events: RawEvent[], rows: AppActorRow[] | null | undefined, cfg: Cfg = OO_CONFIG,
+  coverage: { truncated?: boolean } = {},
+): RawEvent[] {
   if (!rows?.length) return events;
+  // The log covers from its first row (the gateway's window, or when it began recording columns, whichever is later).
+  const fromMs = coverage.truncated ? Infinity : rows.reduce((lo, r) => (r[3] < lo ? r[3] : lo), Infinity) - cfg.attributionMatchSeconds * 1000;
   const shared = sharedIds(cfg);
   const boardKeyById = new Map(Object.entries(cfg.boards as Record<string, string>).map(([k, id]) => [String(id), k]));
-  const byItem = new Map<string, { ms: number; cols: Set<string>; person: string }[]>();
-  for (const [itemId, boardId, actor, ms, cols] of rows) {
+  const byItem = new Map<string, { ms: number; startMs?: number; cols: Set<string>; person: string }[]>();
+  for (const [itemId, boardId, actor, ms, cols, startMs] of rows) {
     const board = boardKeyById.get(String(boardId)); const person = personKeyForEmail(actor, cfg);
     if (!board || !person) continue;
     const k = `${board}:${itemId}`;
-    (byItem.get(k) ?? byItem.set(k, []).get(k)!).push({ ms, cols: new Set(cols), person });
+    (byItem.get(k) ?? byItem.set(k, []).get(k)!).push({ ms, startMs, cols: new Set(cols), person });
   }
   const lag = cfg.attributionMatchSeconds * 1000;
+  // A gateway write by someone config does not know (a script's actor, a new hire) still means the Command
+  // Center wrote it — not a system — so it is left unnamed rather than marked system.
+  const anyRow = new Map<string, [number, number | undefined][]>();
+  for (const [itemId, boardId, , ms, cols, startMs] of rows) { const board = boardKeyById.get(String(boardId)); if (!board) continue; for (const c of cols) { const k = `${board}:${itemId}:${c}`; (anyRow.get(k) ?? anyRow.set(k, []).get(k)!).push([ms, startMs]); } }
+  const anyActor = (e: RawEvent) => (anyRow.get(`${e.boardKey}:${e.itemId}:${e.columnId}`) ?? []).some(([ms, st]) => spanDist(e.atMs, ms, st) <= lag);
   return events.map((e) => {
     if (!shared.has(e.userId) || e.columnId === "__group__") return e;
-    const cands = byItem.get(`${e.boardKey}:${e.itemId}`);
-    if (!cands) return e;
     let best: { d: number; person: string } | null = null;
-    for (const r of cands) {
+    for (const r of byItem.get(`${e.boardKey}:${e.itemId}`) ?? []) {
       if (!r.cols.has(e.columnId)) continue;
-      const d = Math.abs(r.ms - e.atMs);
+      const d = spanDist(e.atMs, r.ms, r.startMs);
       if (d <= lag && (!best || d < best.d)) best = { d, person: r.person };
     }
-    return best ? { ...e, actorKey: best.person } : e;
+    if (best) return { ...e, actorKey: best.person };
+    // No Command Center write behind it, in a period the log fully covers: another system on the same token.
+    // ⚠️ File columns never: staff uploads (clinicals, insurance cards) go to monday through the Cloudflare
+    // worker's /v2/file proxy, not the gateway, so they have no gateway row — they stay staff work, unnamed.
+    if (e.columnId.startsWith("file_")) return e;
+    return !e.bulk && e.atMs >= fromMs && !anyActor(e) ? { ...e, system: true } : e;
   });
 }
 
-/** Share of shared-token events this matched — the coverage line under the dashboard (DH-10). */
-export function appAttributionCoverage(events: RawEvent[], cfg: Cfg = OO_CONFIG): { shared: number; matched: number } {
+/** Shared-token events by outcome: named staff, system (form/Stedi/DVS), and neither (older than the log, or an unknown actor). */
+export function appAttributionCoverage(events: RawEvent[], cfg: Cfg = OO_CONFIG): { shared: number; matched: number; system: number } {
   const shared = sharedIds(cfg);
-  let n = 0, m = 0;
-  for (const e of events) if (shared.has(e.userId) && e.columnId !== "__group__" && !e.bulk) { n++; if (e.actorKey) m++; }
-  return { shared: n, matched: m };
+  let n = 0, m = 0, s = 0;
+  for (const e of events) if (shared.has(e.userId) && e.columnId !== "__group__" && !e.bulk) { n++; if (e.actorKey) m++; else if (e.system) s++; }
+  return { shared: n, matched: m, system: s };
 }
