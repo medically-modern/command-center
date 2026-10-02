@@ -267,6 +267,18 @@ describe("CareCoordinatorPage", () => {
     expect(within(intakeCol).queryByText("Eleanor Boyd")).toBeNull();
   });
 
+  it("Review Profile sits between Scheduled and Unscheduled (Brandon, 2026-10-02)", async () => {
+    scenario.extraLeads = [intake({ id: "rev", name: "Rhea Vance", intakeCallComplete: "Yes" })];
+    mount();
+    const intakeCol = await screen.findByRole("region", { name: "Patient Intake" });
+    await within(intakeCol).findByText("Rhea Vance");
+    const bars = within(intakeCol)
+      .getAllByRole("button", { expanded: true })
+      .map((b) => b.textContent?.replace(/\d+$/, "").trim())
+      .filter((t) => t === "Scheduled" || t === "Review Profile" || t === "Unscheduled");
+    expect(bars).toEqual(["Scheduled", "Review Profile", "Unscheduled"]);
+  });
+
   it("filters Patient Intake on five facets, multi-select, intake only", async () => {
     // Brandon, 2026-09-17, replacing the Partial / Complete / All toggle. The
     // rules are in lib/careCoordinator/intakeFilter.test.ts; this is the wiring.

@@ -21,7 +21,7 @@
  * `fetch()`ed — a browser following a cross-origin redirect with fetch needs
  * CORS on the bucket, which Railway cannot set.
  */
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { AlertTriangle, ArrowRight, Loader2, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Play, Voicemail } from "lucide-react";
 import MessageBubble from "@/components/assignedPatients/MessageBubble";
 import Composer from "@/components/assignedPatients/Composer";
@@ -94,6 +94,9 @@ type Props = {
   /** Told with the BODY once a text went out — Patient Intake stamps its
    *  Call Log from it. Absent, nothing is told. */
   onTextSent?: (body: string) => void;
+  /** Drawn right under the text box — the suggested-text buttons
+   *  (`comms/QuickTextBar`), on the boards that ask for them. Absent, nothing. */
+  composerFooter?: ReactNode;
 };
 type StickyHandler = Parameters<typeof ResolveBar>[0]["onResolved"];
 
@@ -146,6 +149,7 @@ function TimelineShell({
   draft,
   onDraftChange,
   onTextSent,
+  composerFooter,
   entries,
   live,
 }: Props & { entries: TimelineEntry[]; live: ReturnType<typeof useConversation> | null }) {
@@ -236,10 +240,13 @@ function TimelineShell({
       <div className="shrink-0 border-t border-border bg-card">
         <div className={cn(view && "mx-auto w-full max-w-4xl")}>
         {live ? (
-          <Composer conversation={live} canText={canText} onSent={(body) => {
-            onChanged();
-            onTextSent?.(body);
-          }} draft={draft} onDraftChange={onDraftChange} grow={view} />
+          <>
+            <Composer conversation={live} canText={canText} onSent={(body) => {
+              onChanged();
+              onTextSent?.(body);
+            }} draft={draft} onDraftChange={onDraftChange} grow={view} />
+            {composerFooter}
+          </>
         ) : (
           <p className="border-b border-border px-4 py-3 text-xs text-muted-foreground">
             The full number for this item couldn&apos;t be read yet, so texting and calling are off here. It

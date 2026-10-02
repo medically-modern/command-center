@@ -62,6 +62,7 @@ import { fmtPhone, senderName } from "@/lib/assignedPatients/format";
 import { authRequired, getUser } from "@/lib/shared/auth";
 import { clearRcLineNotice, phoneLine, useRcLine } from "@/lib/softphone/rcLine";
 import { cn } from "@/lib/utils";
+import ReminderCards from "@/components/scheduledCalls/ReminderCards";
 
 /** Is this claim the signed-in user's own? Claims can only come from another
  *  browser still on a build with Take it (the gateway keeps the route), and
@@ -431,6 +432,10 @@ export default function IncomingCallHost() {
             }}
           />
         ))}
+        {/* The ten-minute heads-up before a booked call (ScheduledCallHost,
+            Care Coordinator holders only). In THIS stack, under any ringing
+            call, so the two kinds of card never land on top of each other. */}
+        <ReminderCards />
       </div>
       {phone.call && (
         <CallOverlay

@@ -699,9 +699,6 @@ function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled, re
       <Section title="Scheduled" count={scheduled.length} tone="scheduled">
         {scheduled}
       </Section>
-      <Section title="Unscheduled" count={unscheduled.length} tone="unscheduled">
-        {unscheduled}
-      </Section>
       {/* ⚠️ Rendered under TODAY only, and that is the rule rather than a
           layout choice: nothing dates a Review Profile patient — no follow-up
           date, no booking — so they belong to neither horizon, and "Future"
@@ -709,12 +706,18 @@ function ColumnLists({ horizon, scheduledToday, scheduledFuture, unscheduled, re
           coordinator looks for work with no clock on it (§5.30's blank-date
           rule for Unscheduled, one bucket over). A logged attempt gives them a
           date and moves them to Unscheduled → Future, which is the whole
-          transition Brandon described. */}
+          transition Brandon described.
+          It sits BETWEEN Scheduled and Unscheduled (Brandon, 2026-10-02:
+          "move review profile to top, below scheduled but above
+          unscheduled") — pinned in CareCoordinatorPage.test.tsx. */}
       {review && horizon === "today" && (
         <Section title="Review Profile" count={review.length} tone="review">
           {review}
         </Section>
       )}
+      <Section title="Unscheduled" count={unscheduled.length} tone="unscheduled">
+        {unscheduled}
+      </Section>
     </>
   );
 }

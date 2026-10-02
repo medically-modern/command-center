@@ -356,7 +356,7 @@ function NetworkPill({ pill }: { pill: NetworkPillFacts }) {
 
 export function PatientCard({
   name, attempted, nextUp = false, state, doctor, clinic, networkPill, when, pills, pillActions, variant, contact,
-  phone, notes, notesLabel, openHref, openLabel, onBookingLink, onCall, onLogAttempt, reached, blocker,
+  phone, email, notes, notesLabel, openHref, openLabel, onBookingLink, onCall, onLogAttempt, reached, blocker,
   inSystem = false, inSystemVerdict = "", warnings,
 }: {
   name: string;
@@ -410,6 +410,9 @@ export function PatientCard({
     textsSince?: string | null;
   };
   phone: string;
+  /** The row's email — rides on the Copy booking link button's prefill, the
+   *  same as the Booking link dialog's (§5.15). */
+  email?: string;
   /** This patient's running history, already fetched in the column's batch.
    *  `undefined` while the batch is still out. */
   notes: string | undefined;
@@ -639,6 +642,10 @@ export function PatientCard({
                Welcome Call card docks it left over Patient Intake, an intake
                card right over Welcome Call. */
             commsPanelSide={variant === "welcome" ? "left" : "right"}
+            /* Suggested texts under the text box (Brandon, 2026-10-02) —
+               this card and nowhere else: `lib/comms/quickTexts`. The booking
+               link is the column's call, as on the card's own button. */
+            commsQuickTexts={{ board: "careCoordinator", patient: { name, phone, email }, bookingKind: variant }}
           />
           {onLogAttempt && (
             <button

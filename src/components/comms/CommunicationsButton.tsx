@@ -64,6 +64,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { MessagesSquare, X } from "lucide-react";
 import { draftAfterClose, draftOnOpen } from "@/lib/shared/textDraft";
 import { numberKey } from "@/lib/comms/commsPopup";
+import type { QuickTextsContext } from "@/lib/comms/quickTexts";
 import { toE164 } from "@/lib/fax/ringcentralApi";
 import { CommunicationsView } from "./CommunicationsView";
 import { cn } from "@/lib/utils";
@@ -129,6 +130,9 @@ export interface CommunicationsButtonProps {
    * the panel covered the very column the rep was working in.
    */
   panelSide?: "left" | "right";
+  /** Suggested-text buttons under the text box — the Care Coordinator card
+   *  only (`lib/comms/quickTexts`, `quickTextsScope.test.ts`). */
+  quickTexts?: QuickTextsContext;
   label?: string;
   className?: string;
 }
@@ -146,6 +150,7 @@ export function CommunicationsButton({
   tone,
   presentation = "popup",
   panelSide = "right",
+  quickTexts,
   label = "Communications",
   className,
 }: CommunicationsButtonProps) {
@@ -272,6 +277,7 @@ export function CommunicationsButton({
             setDraftFor={setDraftFor}
             onTextSent={onTextSent}
             narrow={panel}
+            quickTexts={quickTexts}
           />
           <DialogPrimitive.Close
             className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"

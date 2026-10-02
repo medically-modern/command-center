@@ -254,6 +254,7 @@ export function IntakeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       inSystemVerdict={lead.dupCheckResult}
       contact={extras.contact}
       phone={lead.phone}
+      email={lead.email}
       notes={extras.notes}
       notesLabel="Profile Send Off notes"
       reached={extras.reached}
@@ -287,6 +288,7 @@ export function IntakeUnscheduledCard({ entry, today, onBookingLink, extras }: {
       inSystemVerdict={lead.dupCheckResult}
       contact={extras.contact}
       phone={lead.phone}
+      email={lead.email}
       notes={extras.notes}
       notesLabel="Profile Send Off notes"
       reached={extras.reached}
@@ -392,6 +394,7 @@ export function IntakeReviewCard({ entry, today, onBookingLink, extras }: {
       blocker={entry.blocker}
       contact={extras.contact}
       phone={lead.phone}
+      email={lead.email}
       notes={extras.notes}
       notesLabel="Profile Send Off notes"
       reached={extras.reached}
@@ -454,6 +457,7 @@ export function WelcomeScheduledCard({ entry, nextUp, onBookingLink, extras }: {
       pills={welcomePills(item)}
       contact={extras.contact}
       phone={item.phone}
+      email={item.email}
       notes={extras.notes}
       notesLabel="Welcome Call notes"
       reached={extras.reached}
@@ -482,6 +486,7 @@ export function WelcomeUnscheduledCard({ entry, today, onBookingLink, extras }: 
       pills={welcomePills(item)}
       contact={extras.contact}
       phone={item.phone}
+      email={item.email}
       notes={extras.notes}
       notesLabel="Welcome Call notes"
       reached={extras.reached}

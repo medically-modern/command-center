@@ -26,12 +26,14 @@
  * presses Call in here needs Hang up and Mute in here too. It is a view over
  * the same softphone store — it never mounts a second overlay (§5.13b).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Grid3x3, Loader2, MessageSquare, Mic, MicOff, Phone, PhoneOff } from "lucide-react";
 import CallKeypad from "@/components/inboundCalls/CallKeypad";
 import ItemTimeline from "@/components/commsInbox/ItemTimeline";
 import { StagePill } from "@/components/commsInbox/pills";
 import Composer from "@/components/assignedPatients/Composer";
+import QuickTextBar from "@/components/comms/QuickTextBar";
+import type { QuickTextsContext } from "@/lib/comms/quickTexts";
 import MessageBubble from "@/components/assignedPatients/MessageBubble";
 import { CallHistoryList } from "@/components/shared/CallHistoryList";
 import { useConversation } from "@/hooks/assignedPatients/useConversation";
@@ -66,6 +68,12 @@ export interface CommunicationsViewProps {
    * the panel, so there it stacks them.
    */
   narrow?: boolean;
+  /**
+   * The suggested-text buttons under the text box, for the board that opened
+   * this (`lib/comms/quickTexts`). Absent — every screen but the Care
+   * Coordinator card — there is no bar.
+   */
+  quickTexts?: QuickTextsContext;
 }
 
 /** Which number the popup is on, keyed by its last ten digits. */
@@ -121,6 +129,7 @@ export function CommunicationsView({
   setDraftFor,
   onTextSent,
   narrow = false,
+  quickTexts,
 }: CommunicationsViewProps) {
   const config = useCommsConfig();
   const headerNumbers = useMemo(() => popupNumbers(phone, altPhone), [phone, altPhone]);
@@ -191,6 +200,11 @@ export function CommunicationsView({
   // a caregiver's number, so it applies only while the primary is the one
   // being texted.
   const canTextHere = activeKey && activeKey === primaryKey ? canText : undefined;
+  /** Under the text box, on the boards that ask (`lib/comms/quickTexts`). A
+   *  fill button writes into THIS number's draft — the one the box shows. */
+  const quickBar = quickTexts ? (
+    <QuickTextBar context={quickTexts} draft={draftFor(activeKey)} onDraftChange={(t) => setDraftFor(activeKey, t)} />
+  ) : null;
 
   const who = name?.trim() || (item?.name ?? "");
   const outboundRecord =
@@ -301,6 +315,7 @@ export function CommunicationsView({
           draft={draftFor(activeKey)}
           onDraftChange={(t) => setDraftFor(activeKey, t)}
           onTextSent={onTextSent}
+          composerFooter={quickBar}
         />
       )}
 
@@ -313,6 +328,7 @@ export function CommunicationsView({
           draft={draftFor(activeKey)}
           onDraftChange={(t) => setDraftFor(activeKey, t)}
           onTextSent={onTextSent}
+          composerFooter={quickBar}
           reason={
             !config.enabled
               ? "The Communications inbox is switched off, so this shows the text thread and the call history straight from RingCentral."
@@ -417,6 +433,7 @@ function FallbackView({
   reason,
   onRetry,
   narrow = false,
+  composerFooter,
 }: {
   phone: string;
   display: string;
@@ -429,6 +446,7 @@ function FallbackView({
   onRetry?: () => void;
   /** Stack texts over calls — see `CommunicationsViewProps.narrow`. */
   narrow?: boolean;
+  composerFooter?: ReactNode;
 }) {
   if (!phone) {
     return (
@@ -464,6 +482,7 @@ function FallbackView({
           draft={draft}
           onDraftChange={onDraftChange}
           onTextSent={onTextSent}
+          composerFooter={composerFooter}
         />
         <section className={narrow ? "flex min-h-0 flex-col border-t border-border" : "flex min-h-0 flex-col border-t border-border lg:border-l lg:border-t-0"}>
           <h3 className="shrink-0 border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -483,6 +502,7 @@ function FallbackTexts({
   draft,
   onDraftChange,
   onTextSent,
+  composerFooter,
 }: {
   phone: string;
   mondayItemId: string | null;
@@ -490,6 +510,7 @@ function FallbackTexts({
   draft: string;
   onDraftChange: (text: string) => void;
   onTextSent?: (body: string) => void;
+  composerFooter?: ReactNode;
 }) {
   const conversation = useConversation(phone, mondayItemId);
   const { messages, loading, error } = conversation;
@@ -524,6 +545,7 @@ function FallbackTexts({
         onSent={(body) => onTextSent?.(body)}
         grow
       />
+      {composerFooter}
     </section>
   );
 }

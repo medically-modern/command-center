@@ -25,18 +25,12 @@ import { sendViaWorker, SendValidationError } from "@/lib/shared/sendViaWorker";
 import {
   bookingLinkFor, bookingMessage, BOOKING_KIND_LABEL, BOOKING_URLS, type BookingKind,
 } from "@/lib/scheduledCalls/bookingLink";
+// Where the booking link comes from: read live from the form's backend so there
+// is ONE source — the same endpoint the patient form asks — with the constant
+// as the fallback. Shared with the Care Coordinator's Copy booking link button.
+import { fetchSchedulingConfig } from "@/lib/scheduledCalls/schedulingConfig";
 import { phoneDigits } from "@/lib/shared/phoneCell";
 import { cn } from "@/lib/utils";
-
-/**
- * Where the booking link comes from.
- *
- * Read live from the form's backend so there is ONE source — the same endpoint
- * the patient form asks. The constant is a fallback for when that service is
- * unreachable: a stale link still books a real call, whereas no link at all
- * means the rep cannot do the thing they opened this dialog to do.
- */
-const SCHEDULING_ENDPOINT = "https://dtc-mm-form-api-production.up.railway.app/api/intake/scheduling";
 
 type Mode = "text" | "email";
 
@@ -101,16 +95,10 @@ export default function BookingLinkDialog({
 
   useEffect(() => {
     if (!open) return;
-    fetch(SCHEDULING_ENDPOINT)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.enabled && d.url) setIntakeUrl(d.url);
-        setPhoneParam({
-          intake: typeof d?.phone_prefill === "string" ? d.phone_prefill : "",
-          welcome: typeof d?.welcome?.phone_prefill === "string" ? d.welcome.phone_prefill : "",
-        });
-      })
-      .catch(() => { /* fallback already in state */ });
+    void fetchSchedulingConfig().then((cfg) => {
+      setIntakeUrl(cfg.intakeUrl);
+      setPhoneParam(cfg.phoneParam);
+    });
   }, [open]);
 
   /**

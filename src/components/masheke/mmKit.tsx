@@ -23,6 +23,7 @@ import {
 import type { MondayFileEntry } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { CommunicationsButton } from "@/components/comms/CommunicationsButton";
+import type { QuickTextsContext } from "@/lib/comms/quickTexts";
 import { DialPatientDialog } from "@/components/shared/DialPatientDialog";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { cn } from "@/lib/utils";
@@ -652,7 +653,7 @@ export function DaysInStagePill({ value }: { value?: string }) {
 export function PatientContact({
   phone, altPhone, patientName, mondayItemId, canText,
   textPrefill, textOpen, onTextOpenChange, onTextSent,
-  commsTone, commsPresentation, commsPanelSide, showCopy, onCall, callLabel,
+  commsTone, commsPresentation, commsPanelSide, commsQuickTexts, showCopy, onCall, callLabel,
 }: {
   phone?: string;
   /**
@@ -670,6 +671,10 @@ export function PatientContact({
    *  Coordinator's Welcome Call cards dock it LEFT, over Patient Intake, so
    *  it never covers the column the rep is working in. */
   commsPanelSide?: "left" | "right";
+  /** Suggested-text buttons under the Communications text box. ⚠️ The Care
+   *  Coordinator card passes this and nothing else does (Josh, 2026-10-02:
+   *  "ONLY exist on the care coordinator board") — `quickTextsScope.test.ts`. */
+  commsQuickTexts?: QuickTextsContext;
   /**
    * The Call button's text when the number is ALREADY on screen beside it —
    * the Insurance header shows it in its DOB line, with the edit pencil — so
@@ -754,6 +759,7 @@ export function PatientContact({
         tone={commsTone}
         presentation={commsPresentation}
         panelSide={commsPanelSide}
+        quickTexts={commsQuickTexts}
       />
       {showCopy && <CopyPhoneButton display={display} />}
       {/* Mounted only while open: it subscribes to the softphone, and a page of
