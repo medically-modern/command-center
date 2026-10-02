@@ -16,6 +16,7 @@ import { buildV2 } from "@/lib/onboardingOversight/v2/model";
 import { fetchAppActors, type AppActors } from "@/lib/onboardingOversight/data/fetchAppActors";
 import { attachAppActors } from "@/lib/onboardingOversight/model/appAttribution";
 import { listFor } from "@/lib/onboardingOversight/v2/lists";
+import { fetchEscReasons } from "@/lib/onboardingOversight/v2/escReason";
 import { DEFAULT_STEPS, loadSteps, saveSteps, loadDueSoon, saveDueSoon, loadHealth, saveHealth, type HealthCfg, type DueSoonCfg, type StepDef } from "@/lib/onboardingOversight/v2/steps";
 import WorkingList from "@/components/onboardingOversight/v2/WorkingList";
 import Breakdown, { type BreakdownKind } from "@/components/onboardingOversight/v2/Breakdown";
@@ -93,11 +94,11 @@ export default function OnboardingOversightPage() {
       </div></header>
       <main className="v2-main oo-wrap">
         {!m ? <p className="v2-muted">{status === "error" ? `Problem: ${error}` : progress || "Loading…"}</p>
-          : list ? <OOPage back={{ label: "Back", onClick: () => navigate(-1) }}><PatientTable key={listId!} title={list.title} rows={list.rows} hideUntouched={list.hideUntouched} escOwners={{ mgr: m.escOwners[0]?.name ?? "Janelle", final: m.escOwners[1]?.name ?? "Katie" }} /></OOPage>
+          : list ? <OOPage back={{ label: "Back", onClick: () => navigate(-1) }}><PatientTable key={listId!} title={list.title} rows={list.rows} hideUntouched={list.hideUntouched} escOwners={{ mgr: m.escOwners[0]?.name ?? "Janelle", final: m.escOwners[1]?.name ?? "Katie" }} loadReasons={live ? fetchEscReasons : undefined} /></OOPage>
           : stuckView ? <OOPage back={{ label: "Overview", onClick: () => set({ stuck: null }) }}><StuckBreakdown m={m} w={fw} open={(id) => set({ list: id })} /></OOPage>
           : brkId ? <OOPage back={{ label: "Overview", onClick: () => set({ brk: null }) }}><Breakdown key={brkId} m={m} kind={brkId} hc={hc} open={(id) => set({ list: id })} /></OOPage>
           : workId ? <OOPage back={{ label: "Overview", onClick: () => set({ work: null, grp: null }) }}>
-              <WorkingList key={workId} m={m} name={workId} calls={calls} grouped={sp.get("grp") === "1"} onByStep={m.people.some((p) => p.name === workId && p.hasSteps) ? () => set({ work: null, person: workId }) : undefined} /></OOPage>
+              <WorkingList key={workId} m={m} name={workId} calls={calls} grouped={sp.get("grp") === "1"} loadReasons={live ? fetchEscReasons : undefined} onByStep={m.people.some((p) => p.name === workId && p.hasSteps) ? () => set({ work: null, person: workId }) : undefined} /></OOPage>
           : personId ? <OOPage back={{ label: "Overview", onClick: () => set({ person: null }) }}><ByEmployee m={m} hc={hc} open={(id) => set({ list: id })} calls={calls} person={personId} /></OOPage>
           : <OOPage>
             {showSettings && <Settings steps={steps} onChange={changeSteps} dueSoon={dueSoon} onDueSoon={(c) => { setDueSoon(c); saveDueSoon(c); }} health={hc} onHealth={(c) => { setHc(c); saveHealth(c); }} />}

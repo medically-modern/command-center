@@ -13,6 +13,7 @@ import { STAGES, pipelineOrder, stageName } from "@/lib/onboardingOversight/v2/s
 import { patientUrl } from "@/lib/onboardingOversight/v2/open";
 import type { StaffCalls } from "@/lib/onboardingOversight/v2/calls";
 import { callsPerDay } from "./Overview";
+import { useEscReasons, WhyCell, type LoadReasons } from "./EscReason";
 
 const fmt = (ms: number) => new Date(ms).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
 const dayWord = (n: number) => (n === 0 ? "Today" : n === 1 ? "1 day" : `${n} days`);
@@ -34,11 +35,12 @@ const PROC_LABEL: Record<ProcState, string> = { past: "Past Due", dueSoon: "Due 
 const procState = (r: V2Row): ProcState => (r.late ? "past" : r.dueSoon ? "dueSoon" : r.actionableMs == null ? "notDue" : !r.touchedInStep || r.returned ? "notGotten" : "workable");
 type Narrow = { g: "state" | "stage" | "sub"; v: string } | null;
 
-export default function WorkingList({ m, name, onByStep, calls = null, grouped = false }: { m: V2Model; name: string; onByStep?: () => void; calls?: StaffCalls | null; grouped?: boolean }) {
+export default function WorkingList({ m, name, onByStep, calls = null, grouped = false, loadReasons }: { m: V2Model; name: string; onByStep?: () => void; calls?: StaffCalls | null; grouped?: boolean; loadReasons?: LoadReasons }) {
   const navigate = useNavigate();
   const esc = m.escOwners.some((e) => e.name === name);
   const owners = { mgr: m.escOwners[0]?.name ?? "Janelle", final: m.escOwners[1]?.name ?? "Katie" };
   const all = useMemo(() => m.rows.filter((r) => (esc ? r.with === name : r.with === "Processor" && r.owner === name)), [m, name, esc]);
+  const why = useEscReasons(esc ? all : [], loadReasons); // the reason each escalation was raised with (EscReason.tsx)
   const [q, setQ] = useState(""); const [narrow, setNarrow] = useState<Narrow>(null); const [bySub, setBySub] = useState(grouped);
   const state = (r: V2Row): string => (esc ? escState(r) : procState(r));
   const order: string[] = esc ? ESC_ORDER : PROC_ORDER;
@@ -50,9 +52,9 @@ export default function WorkingList({ m, name, onByStep, calls = null, grouped =
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return all.filter((r) => (!narrow || (narrow.g === "state" ? inState(r, narrow.v) : narrow.g === "stage" ? r.stage === narrow.v : r.stepId === narrow.v))
-      && (!needle || r.name.toLowerCase().includes(needle) || r.itemId.includes(needle))).sort(cmp);
+      && (!needle || r.name.toLowerCase().includes(needle) || r.itemId.includes(needle) || (why.whyOf(r)?.text.toLowerCase().includes(needle) ?? false))).sort(cmp);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, q, narrow, bySub]);
+  }, [all, q, narrow, bySub, why.reasons]);
   const past = all.filter((r) => r.late).length;
   const perDay = Math.ceil(past / 10); const cleared = (m.sets[`cleared:${name}`] ?? []).length;
   const count = (f: (r: V2Row) => string) => { const c = new Map<string, number>(); for (const r of all) c.set(f(r), (c.get(f(r)) ?? 0) + 1); return c; };
@@ -97,13 +99,13 @@ export default function WorkingList({ m, name, onByStep, calls = null, grouped =
       <div className="tt-card"><table className="tt-table">
           <thead><tr>
             <th className="tt-th">Patient</th>{showStage && <th className="tt-th">Stage</th>}<th className="tt-th">Sub-stage</th>
-            {esc ? <><th className="tt-th tt-th-n">Days</th><th className="tt-th">Before escalation</th><th className="tt-th">Decision</th></>
+            {esc ? <><th className="tt-th tt-th-n">Days</th><th className="tt-th tt-th-why">Why escalated</th><th className="tt-th">Before escalation</th><th className="tt-th">Decision</th></>
               : <><th className="tt-th">Workable since</th><th className="tt-th">Last action</th></>}
             <th className="tt-th">Attempts</th>
           </tr></thead>
           <tbody>{list.flatMap((r) => {
             const out: React.ReactNode[] = [];
-            if (bySub && r.stepId !== lastGroup) { lastGroup = r.stepId; out.push(<tr key={`g:${r.stepId}`} className="wl-group"><td colSpan={7}>{r.step} {list.filter((x) => x.stepId === r.stepId).length}</td></tr>); }
+            if (bySub && r.stepId !== lastGroup) { lastGroup = r.stepId; out.push(<tr key={`g:${r.stepId}`} className="wl-group"><td colSpan={8}>{r.step} {list.filter((x) => x.stepId === r.stepId).length}</td></tr>); }
             const url = patientUrl(r, owners);
             out.push(<tr key={r.key} className="tt-row" tabIndex={0} onClick={() => navigate(url)} onKeyDown={(e) => { if (e.key === "Enter") navigate(url); }}>
               <td className="tt-c-name"><span className="tt-name" title={`monday item ${r.itemId}`}>{r.name}</span></td>
@@ -111,6 +113,7 @@ export default function WorkingList({ m, name, onByStep, calls = null, grouped =
               <td className="tt-c-sub"><span className="tt-subtext">{r.step}</span></td>
               {esc ? <>
                 <td className="tt-c-time tt-n"><span className="tt-plain">{r.escDays ?? 0}</span></td>
+                <td className="tt-c-why"><WhyCell row={r} state={why} /></td>
                 <td className="tt-c-last"><span className="tt-last">{r.beforeEsc ?? <span className="tt-muted-inline">No action yet</span>}</span></td>
                 <td className="tt-c-with"><span className="tt-plain">{DECISION[r.stepId] ?? "Return or Stuck"}</span></td>
               </> : <>

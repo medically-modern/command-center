@@ -112,7 +112,7 @@ describe("Onboarding Oversight page (v2)", () => {
     expect(document.querySelector(".wl .tt-title")?.textContent).toBe("Janelle");
     expect(document.querySelector(".wl-big")?.textContent).toMatch(/In escalation.*Past Due.*Untouched/);
     expect(document.querySelector(".wl-burn")?.textContent).toMatch(/^\d+\/day to clear in 2 weeks · cleared today (\d+|–)$/);
-    expect([...document.querySelectorAll(".wl .tt-th")].map((x) => x.textContent).filter((h) => h !== "Stage")).toEqual(["Patient", "Sub-stage", "Days", "Before escalation", "Decision", "Attempts"]);
+    expect([...document.querySelectorAll(".wl .tt-th")].map((x) => x.textContent).filter((h) => h !== "Stage")).toEqual(["Patient", "Sub-stage", "Days", "Why escalated", "Before escalation", "Decision", "Attempts"]);
     const days = [...document.querySelectorAll(".wl .tt-row .tt-c-time")].map((x) => parseInt(x.textContent ?? "") || 0);
     if (days.length > 1 && days[0] > 2 && days[1] > 2) expect(days[0]).toBeGreaterThanOrEqual(days[1]); // past due untouched first, oldest first
     expect(document.querySelector(".wl .tt-tag")).toBeNull();
