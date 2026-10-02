@@ -60,6 +60,8 @@ function baseline(): Bag {
 
 const keysOf = (b: Bag, ids: string[]) => ids.map((i) => `${b.items.find((x) => x.itemId === i)!.boardKey}:${i}`);
 
+const SAM = 101662208; // Samantha's monday user (config.people)
+
 function plants(): { bag: Bag; p1: string[]; p2: string[]; p3: string[]; p4: string[] } {
   const bag: Bag = { items: [], events: [] }; const p1: string[] = [], p2: string[] = [], p3: string[] = [], p4: string[] = [];
   // P1: Chase Clinicals pile-up: 8 entered 12-18 business days ago (past due, normal 10), 6 more arrived in the last 6 days; nobody left, nothing logged
@@ -68,7 +70,9 @@ function plants(): { bag: Bag; p1: string[]; p2: string[]; p3: string[]; p4: str
   // P2: Sam went quiet: 2 patients a day sent to Auth Outstanding Sep 2..Sep 23, nothing the last 5 business days; 30 still held (Next Action Date in the future)
   DAYS.filter((d) => d <= "2026-09-23").forEach((d) => { for (let k = 0; k < 2; k++) { const id = nid(); p2.push(id);
     bag.items.push(item("INS", id, t(d, 8), { values: { [INS]: 6, [NAD]: "2026-10-08" } }));
-    bag.events.push(ev("INS", id, INS, null, 4, t(d, 9), { user: P }), ev("INS", id, INS, 4, 6, t(d, 14), { user: P })); } });
+    // Samantha's own monday user: since 2026-10-02 work is credited to the person who did it (Josh), so Sam's
+    // planted work must be hers (in production a shared-account write is named by the gateway's rule 2).
+    bag.events.push(ev("INS", id, INS, null, 4, t(d, 9), { user: SAM }), ev("INS", id, INS, 4, 6, t(d, 14), { user: SAM })); } });
   // P3: Janelle's Welcome Call bucket: 10 escalated Sep 22-25 (4-7 business days), nobody touched them
   ["2026-09-22", "2026-09-22", "2026-09-22", "2026-09-23", "2026-09-23", "2026-09-23", "2026-09-24", "2026-09-24", "2026-09-25", "2026-09-25"].forEach((d) => {
     const id = nid(); p3.push(id); bag.items.push(item("WC", id, t("2026-09-16", 8), { values: { [WCS]: 7, [ESC_WC]: 0 } }));

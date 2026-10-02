@@ -102,7 +102,8 @@ export function ByEmployee({ m, open, person, openPerson, back, hc = DEFAULT_HEA
       <div className="v2-card mt-card oo-block"><Tree first="Step" cols={["Patients", "Not Started", "Attempted", "Returned", "Past Due", "Worked/day", "New/day"]} rows={rows} expandable={false} /></div>
     </>;
   }
-  const people: TreeRow[] = m.people.filter((p) => p.hasSteps && p.inSteps > 0).map((p) => {
+  // Anyone holding patients, plus anyone who worked steps they do not own (Josh, 2026-10-02: credit by person), incl. "Not named".
+  const people: TreeRow[] = m.people.filter((p) => p.hasSteps && (p.inSteps > 0 || (p.workedPerDay ?? 0) > 0)).map((p) => {
     const cell = (col: string) => () => open(`person:${p.name}:${col}`);
     return { id: p.name, name: p.name, health: healthOf(p.pastDue, p.inSteps, hc), onName: openPerson ? () => openPerson(p.name) : undefined, cells: [
       { v: p.inSteps, open: cell("inSteps") }, { v: p.notGottenTo, open: cell("notGottenTo") }, { v: p.pastDue, open: cell("pastDue") },

@@ -32,7 +32,7 @@
 - **KL-R8-1** Evidence of our actions is monday only until Command Center call/text/fax logs are joined (Phase 7, T7.3): a chase done only in CC reads as "no chase", so "on us" can be overstated.
 - **KL-R8-2** Days in step reset when a patient moves to another queue step; repeats show on the patient page (⟲, collapsed loops) and escalation trips in the decider table.
 - **KL-R8-3** The 6-week trend uses today's norms; bulk closes or moves to Stuck lower the share late. Ball in court is not rebuilt for past weeks.
-- **KL-R8-4** Shared queues are split evenly between role holders until gql_log attribution (T7.4).
+- **KL-R8-4** ~~Shared queues are split evenly between role holders~~ Since 2026-10-02 "Worked" is credited to the named person (rules 1-2); unnamed work shows as "Not named". "New/day" is still credited to the step's owner.
 - **KL-R8-5** Normal times come from finished visits (survivorship); open medians are listed beside them in the spec's AS-15.
 - **KL-R8-6** Clean-up patients (open on an earlier board after moving on, released, or duplicated) are never late; a wrong duplicate can hide a late patient. They are listed under the header ⚠.
 - **KL-R8-7** Command Center's global header is not phone-width; on this route only its search box is hidden under 600 px.

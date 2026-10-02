@@ -177,7 +177,8 @@ describe("v2 model, round 16 (escalation clock, disjoint lateness, NAD, step reg
     expect(row("9000004003").escDays).toBe(2); expect(row("9000004003").late).toBe(false);
     const f = row("9000004004"); expect(f.with).toBe("Katie"); expect(f.escDays).toBe(2); // Katie since Sep 30 10:00, rounded up
   });
-  it("V2-M4d 'being worked' = any logged action since escalated (the actor is not known): a processor's attempt counts", () => { expect(row("9000004002").reason).toBe("escWorking"); });
+  // Josh, 2026-10-02: "being worked" needs an escalation owner (Janelle or Katie) — a processor's action no longer counts.
+  it("V2-M4d a processor's action after the escalation is NOT the escalation being worked", () => { expect(row("9000004002").reason).toBe("escUntouched"); });
   it("V2-M1b a pushed Next Action Date keeps the patient not actionable: not late, not due soon, real time in stage", () => {
     const x = row("9000004005"); expect(x.actionableMs).toBeNull(); expect(x.late).toBe(false); expect(x.dueSoon).toBe(false); expect(x.inStageDays).toBeGreaterThan(20);
   });
@@ -270,3 +271,40 @@ describe("v2 model, one rounding rule (Brandon, 2026-10-02)", () => {
     expect(r.late).toBe((r.escDays ?? 0) > (r.normal ?? 0));
   });
 });
+
+describe("v2 model, escalations worked only by Janelle or Katie; work credited to the person (Josh, 2026-10-02)", () => {
+  const JANELLE = 102869398, KATIE_U = 109186258, SAM_U = 101662208;
+  const evProcessor = ev("MN", "9000007001", EVID, null, null, "2026-09-25T10:00:00-04:00", { user: P }); // processor first
+  const items: ItemRow[] = [
+    item("MN", "9000007001", "2026-09-20T10:00:00-04:00", { values: { [MN]: 9, [ESC]: 0 } }),
+    item("MN", "9000007002", "2026-09-20T10:00:00-04:00", { values: { [MN]: 9, [ESC]: 2 } }),
+    item("MN", "9000007003", "2026-09-20T10:00:00-04:00", { values: { [MN]: 9, [ESC]: 0 } }),
+  ];
+  const events = [
+    enter("9000007001", 9, "2026-09-21T10:00:00-04:00"), ev("MN", "9000007001", ESC, null, 0, "2026-09-22T10:00:00-04:00", { user: P }), evProcessor,
+    ev("MN", "9000007001", EVID, null, null, "2026-09-26T10:00:00-04:00", { user: JANELLE }),
+    enter("9000007002", 9, "2026-09-21T10:00:00-04:00"), ev("MN", "9000007002", ESC, null, 2, "2026-09-22T10:00:00-04:00", { user: P }),
+    ev("MN", "9000007002", EVID, null, null, "2026-09-26T10:00:00-04:00", { user: KATIE_U }),
+    // a shared-account write the gateway log matched to Janelle (rule 2) counts like her own edit
+    enter("9000007003", 9, "2026-09-21T10:00:00-04:00"), ev("MN", "9000007003", ESC, null, 0, "2026-09-22T10:00:00-04:00", { user: P }),
+    { ...ev("MN", "9000007003", EVID, null, null, "2026-09-26T10:00:00-04:00", { user: 100161122 }), actorKey: "janelle" },
+  ];
+  const m = model(items, events);
+  const r = (id: string) => m.rows.find((x) => x.itemId === id)!;
+  it("Janelle acting on a manager escalation = being worked", () => { expect(r("9000007001").reason).toBe("escWorking"); });
+  it("Katie acting on a final escalation = being worked", () => { expect(r("9000007002").reason).toBe("escWorking"); });
+  it("a named Command Center write by Janelle counts", () => { expect(r("9000007003").reason).toBe("escWorking"); });
+  it("a shared-account write nobody could name does not count", () => {
+    const m2 = model([items[2]], [events[6], events[7], { ...events[8], actorKey: undefined }]);
+    expect(m2.rows[0].reason).toBe("escUntouched");
+  });
+  it("work is credited to whoever did it, under the step table's name for them", () => {
+    const w = model([item("INS", "9000007010", "2026-09-28T09:00:00-04:00", { values: { [INS]: 4 } })], [
+      ev("INS", "9000007010", INS, null, 3, "2026-09-28T09:30:00-04:00", { user: SAM_U }),
+      ev("INS", "9000007010", INS, 3, 4, "2026-09-29T10:00:00-04:00", { user: SAM_U }),
+    ]);
+    expect(w.people.some((p) => p.name === "Sam")).toBe(true);
+    expect(w.people.some((p) => p.name === "Samantha")).toBe(false);
+  });
+});
+

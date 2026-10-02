@@ -44,6 +44,12 @@ const SCHEDULED_COLUMNS = new Set(["numeric_mm5f5ars"]);
 /** The person who made an event (§3.10.1: a direct monday edit, else the Command Center person matched from the
  *  gateway's write log), or null when it can only be called the shared account. */
 const whoName = (e: RawEvent): string | null => { const a = attribute(e.userId, OO_CONFIG, e.actorKey); return a.kind === "person" ? personByKey(a.key!, OO_CONFIG)?.name ?? null : null; };
+/** Work no one can be named for (a shared-account write the gateway log does not match, or an unknown monday user). */
+export const NOT_NAMED = "Not named";
+/** A step-table owner name and a person name are the same person: equal, or the owner is the short form ("Sam" → Samantha). */
+export const sameName = (owner: string, person: string): boolean => { const o = owner.trim().toLowerCase(), p = person.trim().toLowerCase(); return !!o && (o === p || p.startsWith(o)); };
+/** Owner names in a step-table owner cell ("Janelle / Katie" → both). */
+const ownerParts = (owner: string): string[] => owner.split("/").map((x) => x.trim()).filter(Boolean);
 const human = (e: RawEvent) => !e.bulk && e.userId !== AUTO && e.userId != null && !SCHEDULED_COLUMNS.has(e.columnId);
 /** An exit from an escalation value that is set back to the same value within the hour: not a return and not a new escalation (the §0.2 clock rule; red-team r17 N3). */
 const isBlipOut = (evs: RawEvent[], col: string, e: RawEvent) => evs.some((x) => x.columnId === col && x.atMs > e.atMs && x.atMs - e.atMs <= 36e5 && x.toIndex === e.fromIndex);
@@ -156,6 +162,15 @@ export function buildV2(snap: FullSnapshot, steps: StepDef[], opts: { names?: "l
   const stepOf = (it: ItemRow, evs: RawEvent[], t: number) => { const b = it.boardKey; return stepIdAt(b, { stage: at(evs, STAGE_COL[b], t, it.values[STAGE_COL[b]]?.index ?? null, idx), intSub: b === "INT" ? at(evs, INT_SUB, t, it.values[INT_SUB]?.index ?? null, idx) : null, intAttempts: b === "INT" ? at(evs, INT_ATT, t, it.values[INT_ATT]?.num ?? 0, num) : null }); };
   /** actionable since = max(step start, Next Action Date, last return from escalation): a manager's days are never charged to the processor (architect #6) */
   const actionableAt = (st: { stepSinceMs: number; nadMs: number | null; lastReturnMs: number | null }, t: number): number | null => st.nadMs != null && st.nadMs > t ? null : Math.max(st.stepSinceMs, st.nadMs ?? 0, st.lastReturnMs ?? 0);
+  // Josh, 2026-10-02: an escalation is "being worked" only when an escalation owner (the step table's Manager
+  // Intervention / Final Decisions / Proposed Stuck / Edge Case owners: Janelle, Katie) took a named action on it —
+  // a processor's edit or an unnamed write no longer counts. Needs attribution (rule 1 or the gateway's rule 2).
+  const deciders = [...new Set(steps.filter((x) => x.stage === "ESC").flatMap((x) => ownerParts(x.owner)))];
+  const byDecider = (e: RawEvent) => { const n = whoName(e); return !!n && deciders.some((o) => sameName(o, n)); };
+  // Josh, 2026-10-02: "Worked" is credited to the person who made the change, under the step table's own name for them
+  // ("Sam"), else their name; unnamed work goes to NOT_NAMED rather than to the step's owner.
+  const ownerNames = [...new Set(steps.flatMap((x) => ownerParts(x.owner)))];
+  const creditName = (e: RawEvent): string => { const n = whoName(e); return n ? ownerNames.find((o) => sameName(o, n)) ?? n : NOT_NAMED; };
   const escOwnerOf = (k: "MGR" | "FINAL") => stepById.get(k === "MGR" ? "esc.mgr" : "esc.final")?.owner || (k === "MGR" ? "Janelle" : "Katie");
   /** state of an item at time t: step, escalation, step start, actionable time */
   const stateAt = (it: ItemRow, evs: RawEvent[], t: number) => {
@@ -193,8 +208,8 @@ export function buildV2(snap: FullSnapshot, steps: StepDef[], opts: { names?: "l
     const actionableDays = actionableMs == null ? null : days(actionableMs, now);
     const escDays = s.escSinceMs != null ? days(s.escSinceMs, now) : null;
     const after = (t: number) => evs.some((e) => e.atMs > t + 6e4 && human(e) && e.columnId !== STAGE_COL[b] && e.columnId !== ESC_COL[b]);
-    /** a manager acting on an escalated item: any logged action after it was escalated, including a stage change (not the escalation flip itself) */
-    const managerActed = (t: number) => evs.some((e) => e.atMs > t + 6e4 && human(e) && e.columnId !== ESC_COL[b]);
+    /** an escalation owner acting on an escalated item: a logged action NAMED to Janelle or Katie (the ESC step owners) after it was escalated, including a stage change (not the escalation flip itself) */
+    const managerActed = (t: number) => evs.some((e) => e.atMs > t + 6e4 && human(e) && e.columnId !== ESC_COL[b] && byDecider(e));
     const touchedInStep = after(s.stepSinceMs);
     const returnedUntouched = s.lastReturnMs != null && !after(s.lastReturnMs);
     let late = false, dueSoon = false, reason: Reason | null = null, untouched = false;
@@ -297,6 +312,8 @@ export function buildV2(snap: FullSnapshot, steps: StepDef[], opts: { names?: "l
   const dk: string[] = []; for (let t = now - DAY; dk.length < 20 && t > now - 60 * DAY; t -= DAY) { const d = dayKey(t); const s0 = dateMs(d); if (c.bh(s0, s0 + DAY) > 0 && !dk.includes(d)) dk.push(d); }
   const dkSet = new Set(dk);
   const worked = new Map<string, Map<string, Set<string>>>(), became = new Map<string, Map<string, Set<string>>>(), workedStep = new Map<string, Map<string, Set<string>>>(), becameStep = new Map<string, Map<string, Set<string>>>();
+  /** worked per person per step, keyed `${person}|${stepId}` */
+  const workedPS = new Map<string, Map<string, Set<string>>>();
   const add = (m: Map<string, Map<string, Set<string>>>, owner: string, day: string, k: string) => { const a = m.get(owner) ?? m.set(owner, new Map()).get(owner)!; (a.get(day) ?? a.set(day, new Set()).get(day)!).add(k); };
   const credit = (m: Map<string, Map<string, Set<string>>>, mStep: Map<string, Map<string, Set<string>>>, def: StepDef, day: string, k: string) => { add(m, def.owner, day, k); add(mStep, def.id, day, k); };
   for (const it of c.snap.items) {
@@ -307,7 +324,10 @@ export function buildV2(snap: FullSnapshot, steps: StepDef[], opts: { names?: "l
       const d = dayKey(e.atMs); if (!dkSet.has(d)) continue;
       const before = stateAt(it, evs, e.atMs - 1);
       // Worked (architect #3): any logged action, including advancing the patient out of the step (credited to the step it leaves); never the escalation flip.
-      if (human(e) && e.columnId !== ESC_COL[b] && before.stepId && !before.esc) credit(worked, workedStep, stepById.get(before.stepId)!, d, k);
+      if (human(e) && e.columnId !== ESC_COL[b] && before.stepId && !before.esc) {
+        // Credited to who did it (Josh, 2026-10-02), not to the step's owner; the step total counts everyone.
+        const who = creditName(e); add(worked, who, d, k); add(workedStep, before.stepId, d, k); add(workedPS, `${who}|${before.stepId}`, d, k);
+      }
       // Became actionable (architect #1): the STEP changed (stage column, or Intake sub-stage / first attempt), or the escalation came back.
       const stepChanged = isStepCol(b, e.columnId) && stepOf(it, evs, e.atMs) !== before.stepId;
       // A decision that closes the patient within the hour (e.g. Katie's "Done" then exit) or a same-owner blip is not a return (same rule as the returned set; CR-16 bench check).
@@ -336,7 +356,9 @@ export function buildV2(snap: FullSnapshot, steps: StepDef[], opts: { names?: "l
       }
     } }
   const avg = (m: Map<string, Set<string>> | undefined, ds: string[]) => (m ? ds.reduce((n, d) => n + (m.get(d)?.size ?? 0), 0) : 0) / ds.length;
-  const owners = [...new Set(steps.filter((s) => s.stage !== "ESC" && s.owner).map((s) => s.owner)), "Victor"]; // incl. Automated (DVS) and Unassigned, so By Employee adds up to By Stage
+  const stepOwners = [...new Set(steps.filter((s) => s.stage !== "ESC" && s.owner).map((s) => s.owner)), "Victor"]; // incl. Automated (DVS) and Unassigned, so By Employee adds up to By Stage
+  // Plus anyone who worked processor steps they do not own (e.g. a manager clearing Benefits), and the unnamed share.
+  const owners = [...stepOwners, ...[...worked.keys()].filter((n) => !stepOwners.includes(n)).sort((a, b) => (a === NOT_NAMED ? 1 : b === NOT_NAMED ? -1 : a.localeCompare(b)))];
   const w5 = dk.slice(0, 5); // the last 5 completed business days
   const personRow = (name: string, rs: V2Row[], wk: Map<string, Set<string>> | undefined, bc: Map<string, Set<string>> | undefined, hasSteps: boolean, stepId?: string): PersonSummary => {
     const act = rs.filter((r) => r.actionableMs != null);
@@ -356,10 +378,11 @@ export function buildV2(snap: FullSnapshot, steps: StepDef[], opts: { names?: "l
     const wk = worked.get(name), bc = became.get(name);
     sets[`worked:${name}`] = [...new Set(w5.flatMap((d) => [...(wk?.get(d) ?? [])]))];
     sets[`became:${name}`] = [...new Set(w5.flatMap((d) => [...(bc?.get(d) ?? [])]))];
-    const own = steps.filter((st) => st.owner === name && st.stage !== "ESC");
+    // Their own steps, plus any step they worked in (so their worked/day adds up across the drill-in).
+    const own = steps.filter((st) => st.stage !== "ESC" && (st.owner === name || workedPS.has(`${name}|${st.id}`)));
     // Click a processor: the same columns by step (product-owner v2 pass 1, H3: the gap per step).
     const bySteps = own.map((st) => {
-      const wkS = workedStep.get(st.id), bcS = becameStep.get(st.id);
+      const wkS = workedPS.get(`${name}|${st.id}`), bcS = st.owner === name ? becameStep.get(st.id) : undefined;
       sets[`worked:${name}:${st.id}`] = [...new Set(w5.flatMap((d) => [...(wkS?.get(d) ?? [])]))];
       sets[`became:${name}:${st.id}`] = [...new Set(w5.flatMap((d) => [...(bcS?.get(d) ?? [])]))];
       return personRow(st.step, rs.filter((r) => r.stepId === st.id), wkS, bcS, st.normal != null, st.id);
