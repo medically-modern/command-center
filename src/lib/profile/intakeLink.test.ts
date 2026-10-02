@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { intakeProfileHref } from "./intakeLink";
-import { GROUPS } from "./mondayApi";
+import { BOARDS } from "@/lib/systemMgmt/mondayApi";
+import { BOARD_ID, GROUPS } from "./mondayApi";
 
 describe("intakeProfileHref — the deep link says which queue the patient is really in", () => {
   it("⚠️ a Partial Leads item carries source=partial (Jason Ortiz-Troxell, 2026-09-25)", () => {
@@ -18,6 +19,30 @@ describe("intakeProfileHref — the deep link says which queue the patient is re
   it("a Completed item, an unknown group and no group all keep today's default", () => {
     for (const g of [GROUPS.newFormCompleted, "group_other", undefined, null]) {
       expect(intakeProfileHref("1", g)).toBe("/unverified-referrals?patientId=1");
+    }
+  });
+
+  it("⚠️ a 1. Intake item opens on Referral Intake, not Info Collection (reported 2026-10-02)", () => {
+    // The patient screen's "Open Profile Send Off" button builds its link here.
+    // 1. Intake fell to the Info Collection default, so a doctor referral opened
+    // on the wrong page, with the wrong page's exits.
+    expect(intakeProfileHref("1", GROUPS.intake, "from=patient")).toBe(
+      "/profile?patientId=1&from=patient",
+    );
+  });
+
+  it("an Already In System item opens on its own page", () => {
+    expect(intakeProfileHref("1", GROUPS.alreadyInSystem)).toBe("/in-system-referrals?patientId=1");
+  });
+
+  it("⚠️ agrees with Search on every Profile Send Off group that has a page", () => {
+    // Search routes a row by `groupRoutes`. The two doors to the same patient
+    // must open the same page, so a group added to one and not the other fails here.
+    const board = BOARDS.find((b) => b.boardId === BOARD_ID)!;
+    const routed = board.groupRoutes.filter((g) => g.roleRoute && !g.isCompleted);
+    expect(routed.length).toBeGreaterThan(0);
+    for (const g of routed) {
+      expect(intakeProfileHref("1", g.id).startsWith(`${g.roleRoute}?`), g.title).toBe(true);
     }
   });
 

@@ -13,8 +13,31 @@
  * under Info Collection. Every link built from a place that KNOWS the group
  * goes through here; a caller that genuinely does not know passes nothing and
  * gets today's behaviour (the completed default), never a guess.
+ *
+ * ⚠️ **Every group that HAS a queue is listed — not just the form groups**
+ * (Josh, 2026-10-02: *"it should always open them in the place they actually
+ * are"*). The map used to know Partial Leads and Clean-Up only, so everything
+ * else fell to the Info Collection default — including **1. Intake** and
+ * **Already In System**. The patient screen's "Open Profile Send Off" button
+ * builds its link here for every live Profile Send Off record
+ * (`patientScreen.itemOpenHref`), so a doctor referral sitting in 1. Intake
+ * (reported 2026-10-02) opened on Info Collection — injected there
+ * as a deep link, offering that page's exits — while Monday, Search and the
+ * Referral Intake sidebar all had him in Referral Intake. The routes are
+ * Search's `groupRoutes` for the same groups (`systemMgmt/mondayApi.ts`), so
+ * the two doors agree. A group with no queue (Stuck, Patient Intake, Tests)
+ * keeps the default.
  */
 import { GROUPS } from "./mondayApi";
+
+/** The page each Profile Send Off group with a queue is worked on. */
+const QUEUE_ROUTE: ReadonlyMap<string, string> = new Map([
+  [GROUPS.intake, "/profile"],
+  [GROUPS.alreadyInSystem, "/in-system-referrals"],
+  [GROUPS.newFormPartial, "/unverified-referrals"],
+  [GROUPS.newFormCompleted, "/unverified-referrals"],
+  [GROUPS.profileCleanUp, "/profile-cleanup"],
+]);
 
 export function intakeProfileHref(
   itemId: string,
@@ -23,7 +46,7 @@ export function intakeProfileHref(
 ): string {
   const id = encodeURIComponent(itemId);
   const tail = extraQuery ? `&${extraQuery}` : "";
-  if (groupId === GROUPS.profileCleanUp) return `/profile-cleanup?patientId=${id}${tail}`;
   if (groupId === GROUPS.newFormPartial) return `/unverified-referrals?source=partial&patientId=${id}${tail}`;
-  return `/unverified-referrals?patientId=${id}${tail}`;
+  const route = (groupId && QUEUE_ROUTE.get(groupId)) || "/unverified-referrals";
+  return `${route}?patientId=${id}${tail}`;
 }

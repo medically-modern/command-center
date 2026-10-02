@@ -185,6 +185,16 @@ describe("itemOpenHref", () => {
       expect(intake("group_mm6c3rhb")!.startsWith("/profile-cleanup?")).toBe(true);
     });
 
+    it("⚠️ a 1. INTAKE patient opens on Referral Intake, not Info Collection (2026-10-02)", () => {
+      // A doctor referral in 1. Intake: "Open Profile Send Off" sent it to
+      // /unverified-referrals, where it was injected as a deep link.
+      expect(intake("group_mm1xf2jb")).toBe("/profile?patientId=1&from=patient");
+    });
+
+    it("an ALREADY IN SYSTEM patient opens on its own page", () => {
+      expect(intake("group_mm64b83h")!.startsWith("/in-system-referrals?")).toBe(true);
+    });
+
     it("every other board is untouched by the intake routing", () => {
       expect(itemOpenHref(item({ groupId: "group_mm5z87zt" }))).toBe("/evaluate?patientId=1&from=patient");
     });
