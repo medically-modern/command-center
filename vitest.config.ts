@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
@@ -11,6 +11,8 @@ export default defineConfig({
     // services/ holds the Railway-side Node services (monday-gateway et al).
     // They ship separately from the SPA but are tested in the same run.
     include: ["src/**/*.{test,spec}.{ts,tsx}", "services/**/*.{test,spec}.mjs"],
+    // Onboarding Oversight real-data probes (*.local.test.ts) are git-excluded and read a local export; they run only on request.
+    exclude: [...configDefaults.exclude, ...(process.env.OO_LOCAL_PROBES ? [] : ["**/*.local.test.ts"])],
   },
   resolve: {
     alias: {

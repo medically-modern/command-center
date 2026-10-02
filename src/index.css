@@ -65,6 +65,14 @@ h3 { font-size: 1.125rem; font-weight: 600; }
     --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 100%;
 
+    /* Onboarding Oversight status tokens (BUILD-SPEC §6.0): text/icon colours tested >= 4.5:1 on --card (T-CONTRAST). */
+    --oo-healthy: 152 70% 26%;
+    --oo-risk: 32 95% 30%;
+    --oo-breaking: 0 72% 42%;
+    --oo-nodata: 215 10% 40%;
+    --oo-finding: 262 45% 38%;
+    --oo-stale-text: 215 15% 32%;
+
     --escalate: 280 70% 55%;
     --escalate-foreground: 0 0% 100%;
 
@@ -116,6 +124,13 @@ h3 { font-size: 1.125rem; font-weight: 600; }
      surfaces, the theme owns the hue, and the two compose with no interaction. */
   .dark {
     --background: 215 50% 8%;
+
+    --oo-healthy: 152 55% 62%;
+    --oo-risk: 38 92% 62%;
+    --oo-breaking: 0 80% 70%;
+    --oo-nodata: 215 10% 70%;
+    --oo-finding: 262 60% 75%;
+    --oo-stale-text: 215 15% 78%;
     --foreground: 210 33% 96%;
     --card: 215 50% 11%;
     --card-foreground: 210 33% 96%;

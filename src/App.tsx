@@ -54,6 +54,7 @@ const AccessAdminPage = lazyWithReload(() => import("./pages/AccessAdminPage"));
 
 // Oversight (full-screen managers grid)
 const OversightPage = lazyWithReload(() => import("./pages/OversightPage"));
+const OnboardingOversightPage = lazyWithReload(() => import("./pages/OnboardingOversightPage"));
 const OperationsPage = lazyWithReload(() => import("./pages/OperationsPage"));
 const StageManagerPage = lazyWithReload(() => import("./pages/StageManagerPage"));
 
@@ -182,6 +183,8 @@ const App = () => (
           <Route path="/system-mgmt" element={<SystemMgmtPage />} />
           <Route path="/access" element={<AccessAdminPage />} />
           <Route path="/oversight" element={<OversightPage />} />
+          {/* Onboarding Oversight prototype (BUILD-SPEC v0.4 DRAFT). Managers only; hidden from nav until Brandon signs off. */}
+          <Route path="/onboarding-oversight" element={<OnboardingOversightPage />} />
           {/* Reports & Metrics and Stage Manager as their own pages (§5.41) —
               Josh, 2026-09-21. Both were tabs of /system-mgmt, so a header tab
               landed on a screen wearing a second tab bar; /system-mgmt keeps

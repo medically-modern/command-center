@@ -5,6 +5,7 @@
  * Everything here reads the dossier the Comms Hub already builds (§5.28). No
  * board read, no write, no second opinion about who a patient is.
  */
+import { MANAGER_ORIGIN_PARAM, PIN_DEEP_LINK_PARAM } from "@/lib/shared/managerOrigin";
 import type { DossierItem, PatientDossier } from "@/lib/commsHub/dossier";
 import { PIPELINE_ORDER } from "@/lib/commsHub/pipelineOrder";
 import { COMPLETED_STAGE_ROUTES } from "@/lib/systemMgmt/stageCompletion";
@@ -326,6 +327,20 @@ export function stageSubline(
  * Returns null when the board has no page — an honest dead end, rendered as
  * plain text rather than a link that goes nowhere (§7's `UnworkableRow` rule).
  */
+/**
+ * ⚠️ An ESCALATED record opens its tool in MANAGER mode (Brandon, 2026-10-02, via Onboarding Oversight: a manager
+ * clicking a patient in their escalation list reached the plain queue page and got "This patient isn't in this
+ * list"). Same params Pipeline Oversight and System Management search already send (`searchOpenUrl`), so all three
+ * doors open the same screen: Manager Intervention for the manager rung, Final Decisions for the final rung.
+ */
+export function managerModeParams(item: DossierItem | null): string {
+  if (!item || item.isCompleted || !item.escalationLevel) return "";
+  const p = new URLSearchParams();
+  p.set(MANAGER_ORIGIN_PARAM, item.escalationLevel === "final" ? "final-decisions" : "manager-intervention");
+  p.set("manager", "1"); p.set("escalated", "1"); p.set(PIN_DEEP_LINK_PARAM, "1");
+  return `&${p.toString()}`;
+}
+
 export function itemOpenHref(item: DossierItem | null): string | null {
   if (!item) return null;
   if (!item.isCompleted) {
@@ -339,9 +354,9 @@ export function itemOpenHref(item: DossierItem | null): string | null {
        Mary Terrell (12895923748, Partial Leads) hit it again on 2026-09-30.
        Every other board has one route per item, so they are unchanged. */
     if (item.boardId === PROFILE_SEND_OFF_BOARD) {
-      return intakeProfileHref(item.itemId, item.groupId, "from=patient");
+      return intakeProfileHref(item.itemId, item.groupId, `from=patient${managerModeParams(item)}`);
     }
-    return item.route ? `${item.route}?patientId=${item.itemId}&from=patient` : null;
+    return item.route ? `${item.route}?patientId=${item.itemId}&from=patient${managerModeParams(item)}` : null;
   }
   const route = COMPLETED_STAGE_ROUTES[item.boardId];
   if (!route) return null;
@@ -364,7 +379,7 @@ export function itemOpenHref(item: DossierItem | null): string | null {
 export function subStageOpenHref(item: DossierItem | null, route: string): string | null {
   if (!item || !route) return null;
   const tail = item.isCompleted ? `&completedStage=${item.boardId}` : "";
-  return `${route}?patientId=${item.itemId}${tail}&from=patient`;
+  return `${route}?patientId=${item.itemId}${tail}&from=patient${managerModeParams(item)}`;
 }
 
 export interface InfoFact {

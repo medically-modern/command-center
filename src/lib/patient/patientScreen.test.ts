@@ -18,6 +18,7 @@ import {
   buildStages,
   defaultStepIndex,
   itemOpenHref,
+  managerModeParams,
   onboardingCaption,
   parseSide,
   parseView,
@@ -138,6 +139,16 @@ describe("the four-stage stepper", () => {
     const steps = buildStages(null);
     expect(steps).toHaveLength(4);
     expect(steps.every((s) => s.state === "todo")).toBe(true);
+  });
+});
+
+describe("managerModeParams (escalated records open in manager mode)", () => {
+  it("adds Manager Intervention / Final Decisions params only for an escalated, unfinished record", () => {
+    expect(managerModeParams(item({ escalationLevel: "manager" } as never))).toBe("&mv=manager-intervention&manager=1&escalated=1&pin=1");
+    expect(managerModeParams(item({ escalationLevel: "final" } as never))).toBe("&mv=final-decisions&manager=1&escalated=1&pin=1");
+    expect(managerModeParams(item({ escalationLevel: null } as never))).toBe("");
+    expect(managerModeParams(item({ escalationLevel: "final", isCompleted: true } as never))).toBe("");
+    expect(itemOpenHref(item({ escalationLevel: "final" } as never))).toBe("/evaluate?patientId=1&from=patient&mv=final-decisions&manager=1&escalated=1&pin=1");
   });
 });
 
