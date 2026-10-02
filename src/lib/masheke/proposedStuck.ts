@@ -97,3 +97,69 @@ export function extractProposedStuckReason(notes: string | undefined): string {
   }
   return "";
 }
+
+/** Leading tag on the Insurance Benefits auto-escalation line
+ *  (`samantha/benefitsDerive.composeEscalationReason`): the rule's own reason,
+ *  e.g. "In-Network = Out-of-Network; DME Benefits = Not Covered". */
+export const AUTO_ESCALATED_TAG = "[Auto-escalated";
+
+/** A `noteStamp` head, `[Aug 27, 2026, 11:45 AM] `. The year is required so a
+ *  decision tag such as `[Proposed Stuck · …]` is never mistaken for one —
+ *  those are matched by tag before this is tried. */
+const NOTE_STAMP_HEAD = /^\[[^\]]*\d{4}[^\]]*\]\s*/;
+/** The two intake decision bodies, after an optional `<Stage>: ` label. The
+ *  rung label on a manager's proposal (" — Manager Escalation") is skipped. */
+const INTAKE_DECISION = /^(?:[^:]*?:\s*)?(Proposed stuck(?:\s+—\s+[^:]*)?|Escalated):\s*(.*)$/i;
+/** `noteStamp`'s signature, ` —MT`. Only stripped from a stamped line. */
+const NOTE_SIGNATURE = /\s+—[A-Za-z]{1,4}$/;
+
+/**
+ * One line of the Profile Send Off Call Log read as an intake escalation.
+ *
+ * ⚠️ Intake does NOT use the `[Proposed Stuck · …]` tag. `profile/unverifiedWrite`
+ * writes "Proposed stuck: <reason>" (`proposeStuckNoteLine`) and "Escalated:
+ * <reason>" (`escalateIntake`) through `appendIntakeNote`, which stamps them, so
+ * the board holds
+ *   `[Aug 27, 2026, 11:45 AM] Patient Intake: Proposed stuck: <reason> —MT`.
+ * A reader that only knew the tag showed every intake escalation reason blank
+ * on Pipeline Oversight (found 2026-10-02: 200 of 200 escalated intake patients
+ * sampled carried a reason; the drill-down showed none). Accepts the bare
+ * unstamped body as well.
+ */
+export function intakeDecisionLine(
+  line: string,
+): { kind: "propose" | "escalate"; reason: string } | null {
+  const t = line.trim();
+  const head = t.match(NOTE_STAMP_HEAD);
+  const body = head ? t.slice(head[0].length) : t;
+  const m = body.match(INTAKE_DECISION);
+  if (!m) return null;
+  let reason = m[2].trim();
+  if (head) reason = reason.replace(NOTE_SIGNATURE, "").trim();
+  return { kind: /^Escalated$/i.test(m[1]) ? "escalate" : "propose", reason };
+}
+
+/**
+ * Why this patient is escalated, for the Oversight drill-down's Escalation /
+ * Proposed Reason column — the LAST reason line in the notes, in whichever
+ * format its board writes:
+ *   - `[Proposed Stuck · …] <reason>` — Medical Evaluation, Insurance, Welcome Call;
+ *   - `[Auto-escalated · …] <reason>` — the Insurance Benefits auto rule;
+ *   - `…: Proposed stuck: <reason>` / `…: Escalated: <reason>` — intake's Call Log.
+ * "" when no reason was ever written (an SOP auto-escalation writes only the
+ * status column).
+ */
+export function extractEscalationReason(notes: string | undefined): string {
+  if (!notes) return "";
+  const lines = notes.split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (t.startsWith(PROPOSED_STUCK_TAG) || t.startsWith(AUTO_ESCALATED_TAG)) {
+      const close = t.indexOf("]");
+      return close >= 0 ? t.slice(close + 1).trim() : t;
+    }
+    const intake = intakeDecisionLine(t);
+    if (intake) return intake.reason;
+  }
+  return "";
+}

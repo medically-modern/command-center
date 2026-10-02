@@ -147,7 +147,18 @@
   `initials` arg — pass `userInitials()`. **Every** line that lands in a notes column is now
   attributed; the auto-escalation line is credited to the rep whose send raised it. Bracketed
   stamps keep the initials INSIDE the bracket so
-  `extractProposedStuckReason` (Oversight's "Proposed Reason" column) still slices at the first `]`.
+  `extractEscalationReason` (Oversight's "Proposed Reason" column) still slices at the first `]`.
+  ⚠️ **A reader of these lines is tested against the WRITER's output, never a hand-typed line**
+  (2026-10-02). Intake's decisions go through this stamp, `[<time>] Patient Intake: Proposed stuck:
+  <reason> —MT`, while every other board's Propose Stuck writes the bare `[Proposed Stuck · …]` tag.
+  The Oversight reader knew only the tag, and every intake escalation reason read blank. Each side
+  had passing tests built from its own hand-typed line (§7). `lib/oversight/escalationReason.test.ts`
+  builds its inputs by calling each writer.
+- **Debug checks: a field that is blank on EVERY row is a critical bug until the live board proves
+  otherwise.** Nothing errors and nothing pages when a reader stops matching its writer; the
+  column just goes empty, and a manager can't see why a patient is stuck. Sample the board
+  (`items_page` with `contains_text` on the source column, then read two items) before concluding
+  the data isn't there (2026-10-02, §7).
 - **ISO text doesn't survive Monday's create-item automations.** The workflow engine type-sniffs
   TEXT tokens: `2022-01-01` is parsed as a date and re-rendered `01 January 2022` in the created
   item (confirmed 2026-07; `07/25/2016` passes verbatim). That's why "Stedi Plan Begin Date" text

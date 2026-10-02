@@ -65,7 +65,7 @@ import {
   type DecisionAction,
   type PipelinePerson,
 } from "@/lib/oversight/oversightFocus";
-import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
+import { extractEscalationReason } from "@/lib/masheke/proposedStuck";
 import { returnAttemptReset } from "@/lib/masheke/attemptRollup";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM, MANAGER_BUCKET_PARAM, PIN_DEEP_LINK_PARAM } from "@/lib/shared/managerOrigin";
@@ -2389,13 +2389,16 @@ export default function OversightTab() {
     let list = data.get(expandedChart) ?? [];
     // Final Decisions: the reason has no Monday column of its own — pull the
     // stamped line back out of the chart's reason source (MN notes for Medical
-    // Evaluation, Reference Notes for Insurance) into a synthetic
-    // __proposedReason__ column so the drill-down can show it at a glance.
+    // Evaluation, Reference Notes for Insurance, the Call Log for intake) into
+    // a synthetic __proposedReason__ column so the drill-down can show it at a
+    // glance. ⚠️ Intake writes its own line shape, not the [Proposed Stuck …]
+    // tag — extractEscalationReason reads both (blank for every intake patient
+    // until 2026-10-02).
     if (def?.decision && def.reasonColId) {
       const reasonColId = def.reasonColId;
       list = list.map((p) => ({
         ...p,
-        cols: { ...p.cols, __proposedReason__: extractProposedStuckReason(p.cols[reasonColId]) },
+        cols: { ...p.cols, __proposedReason__: extractEscalationReason(p.cols[reasonColId]) },
       }));
     }
     // Reason-bucketed charts: the matched bar labels become the synthetic

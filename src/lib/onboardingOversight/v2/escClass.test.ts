@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 import { classifyEscalation, isEscalated, ESC_SIGNALS } from "./escClass";
 import { stampProposedStuck, stampReturnedToQueue } from "@/lib/masheke/proposedStuck";
 import { proposeStuckNoteLine } from "@/lib/profile/unverifiedWrite";
+import { appendStampedNote } from "@/lib/shared/noteStamp";
 import type { ItemRow } from "../types";
 
 const it0 = (boardKey: ItemRow["boardKey"], values: ItemRow["values"] = {}, groupId = "g"): Pick<ItemRow, "boardKey" | "groupId" | "values"> => ({ boardKey, groupId, values });
@@ -17,6 +18,11 @@ describe("live escalation classifier (V2-E)", () => {
   it("V2-E2 Intake: the latest call-log line 'Proposed stuck…' is Proposed Stuck; 'Escalated:' is not", () => {
     expect(classifyEscalation(it0("INT"), `call 1\n${proposeStuckNoteLine("no answer", "processor")}`)).toBe("proposedStuck");
     expect(classifyEscalation(it0("INT"), `${proposeStuckNoteLine("x", "processor")}\nEscalated: needs help`)).toBe("unclassified");
+  });
+  it("V2-E2b Intake, as the board holds it: appendIntakeNote stamps the line, so it starts '[<time>] Patient Intake: '", () => {
+    const log = (prior: string, line: string) => appendStampedNote(prior, line, "Patient Intake", { initials: "MT", now: new Date("2026-08-27T15:45:00Z") });
+    expect(classifyEscalation(it0("INT"), log("call 1 —MT", proposeStuckNoteLine("no answer", "processor")))).toBe("proposedStuck");
+    expect(classifyEscalation(it0("INT"), log(log("", proposeStuckNoteLine("x", "processor")), "Escalated: needs help"))).toBe("unclassified");
   });
   it("V2-E3 Medical Necessity attempts exhausted (Escalate) or Evaluation Count >= 3 at Evaluate is an Edge Case, even with a stale stamp", () => {
     expect(classifyEscalation(it0("MN", { [ESC_SIGNALS.mnAttempts.col]: { index: 0, nonEmpty: true } }), stampProposedStuck("r", "2026-09-01"))).toBe("edgeCase");

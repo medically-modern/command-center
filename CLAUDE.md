@@ -227,6 +227,8 @@ Full text, with the incidents behind each rule: `docs/claude/9-conventions-and-g
 
 **Tests and CI**
 - **The typecheck gate is `npx tsc -b --force`. Never use `tsc --noEmit`,** which checks zero files with this repo's solution-style tsconfig. Some safety rules are enforced only by the type system through required props and arguments (§10).
+- **Test a parser against what its writer actually writes.** Build the input by calling the writer (note stamp included), never by typing the line by hand. Pipeline Oversight showed every intake escalation reason blank because the reader expected `[Proposed Stuck …]` and intake writes `[<time>] Patient Intake: Proposed stuck: …`; each side passed its own tests (§7).
+- **Debug checks: a field that is blank on every row is a critical bug until the live board proves otherwise.** Sample the board before concluding the data isn't there. When it is there, the reader is broken, and nothing errors or pages for it.
 - **Code that nothing calls doesn't fail; its passing tests just make it look finished.** When a rule has to be wired in, add a test that scans for the call site (the `listColumns.test.ts` / `*Wiring.test.ts` convention) (§5.31b).
 - Many of the rules in these docs are pinned by named tests. If one fails after your change, read the section it points to before you "fix" the test.
 
@@ -253,6 +255,7 @@ Full list, with what was measured: `docs/claude/10-known-risks.md`.
 | A write "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
 | "What was the gateway doing at …?" | `GET /audit/requests.json?key=…` (Postgres `request_log`), not Railway's logs |
 | A rep saw stale or blank data | `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`; gateway `/audit/errors.json` |
+| A column is blank on every row | Check the live board first; if the data is there, the reader no longer matches its writer (§7, §9) |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |
 | Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` |

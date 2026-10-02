@@ -3,13 +3,16 @@
  * escalated patients only, reduced to one word, and never stored or cached as text. Signals are the ones Command
  * Center itself writes (verified in its code), parsed with CC's own stamp parser:
  * - Proposed Stuck: the latest stamped decision line is "[Proposed Stuck" (MN/INS/WC notes) or, on Intake, the latest
- *   call-log line starts "Proposed stuck" (lib/profile/unverifiedWrite.ts proposeStuckNoteLine); an "[Auto-escalated"
+ *   call-log decision is "Proposed stuck" (lib/profile/unverifiedWrite.ts proposeStuckNoteLine, read through
+ *   `intakeDecisionLine` because the board line carries a note stamp in front: "[<time>] Patient Intake: Proposed
+ *   stuck: …" — a bare `^Proposed stuck` test matched none of them until 2026-10-02); an "[Auto-escalated"
  *   stamp (Insurance Benefits) is Proposed Stuck too (Brandon A3).
  * - Edge Case: Medical Necessity attempts exhausted (Attempts = "Escalate") or Evaluation Count >= 3 at Evaluate;
  *   Insurance patients in the Auth Denied group (Brandon A3, 30-day normal applied in the model).
  * - Anything else: Unclassified, never guessed.
  */
 import { escalationTimeline } from "@/lib/systemMgmt/escalationDetail";
+import { intakeDecisionLine } from "@/lib/masheke/proposedStuck";
 import type { BoardKey, ItemRow } from "../types";
 import { gql } from "../data/gql";
 
@@ -22,8 +25,6 @@ export const ESC_SIGNALS = {
   mnStageColumn: "color_mm1wyr92",
   insAuthDeniedGroup: "group_mm316hg2",
   autoEscalatedTag: "[Auto-escalated",
-  intakeProposedLine: /^\s*Proposed stuck\b/i,
-  intakeEscalatedLine: /^\s*Escalated:/i,
 };
 
 /** Classify one escalated item from its column values and (transient) notes text. Pure; tested. */
@@ -36,8 +37,8 @@ export function classifyEscalation(it: Pick<ItemRow, "boardKey" | "groupId" | "v
   if (b === "INS" && it.groupId === ESC_SIGNALS.insAuthDeniedGroup) return "edgeCase";
   if (!notes) return "unclassified";
   if (b === "INT") {
-    const lines = notes.split(/\r?\n/).filter((l) => ESC_SIGNALS.intakeProposedLine.test(l) || ESC_SIGNALS.intakeEscalatedLine.test(l));
-    const last = lines.at(-1); return last && ESC_SIGNALS.intakeProposedLine.test(last) ? "proposedStuck" : "unclassified";
+    const last = notes.split(/\r?\n/).map(intakeDecisionLine).filter(Boolean).at(-1);
+    return last?.kind === "propose" ? "proposedStuck" : "unclassified";
   }
   const latest = escalationTimeline(notes)[0]; // newest first
   const lastAuto = notes.lastIndexOf(ESC_SIGNALS.autoEscalatedTag), lastProp = notes.lastIndexOf("[Proposed Stuck");

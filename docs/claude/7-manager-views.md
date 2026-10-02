@@ -489,6 +489,29 @@
   columns** (§7). ⚠️ `?tab=escalations` deliberately falls through to **Search**
   — a stale bookmark or a Back into that URL would otherwise select a tab with
   no button and no body, i.e. a blank screen with no way out.
+- ⚠️⚠️ **The Escalation / Proposed Reason column read BLANK for every intake patient** (found
+  2026-10-02, fixed the same day). Info Collection and Profile Clean-Up's Escalated and Proposed
+  Stuck drill-downs slice the reason out of the Call Log `text_mm389fs`, and the reader
+  (`extractProposedStuckReason`) only knew the `[Proposed Stuck · <date> · <initials>] <reason>` tag.
+  Intake never writes that tag: `profile/unverifiedWrite` writes `Proposed stuck: <reason>` and
+  `Escalated: <reason>` through `appendIntakeNote`, which stamps them, so the board holds
+  `[Aug 27, 2026, 11:45 AM] Patient Intake: Proposed stuck: <reason> —MT`. Read live that day:
+  200 of 200 escalated Profile Send Off patients sampled carried a reason, and Oversight showed
+  none. Medical Evaluation (8 of 8 Final Decisions stamped) and Welcome Call were unaffected. Both
+  sides had passing tests, each against its own hand-typed line. Onboarding Oversight's
+  classifier (`onboardingOversight/v2/escClass.ts`) had the same gap: it tested `^Proposed stuck`
+  on the raw line, so it classified every intake escalation as Unclassified.
+  The drill-down now calls **`extractEscalationReason`** (`lib/masheke/proposedStuck.ts`), which reads
+  the LAST reason line in any of the three shapes: the `[Proposed Stuck …]` tag, the Insurance
+  Benefits `[Auto-escalated · …]` rule line (`samantha/benefitsDerive.composeEscalationReason`), and
+  intake's stamped `Proposed stuck…:` / `Escalated:` lines (`intakeDecisionLine`, which escClass
+  uses too). `lib/oversight/escalationReason.test.ts` builds every input by calling the real
+  writer, fails when a board shows a reason column with no writer case, and scans `OversightTab`
+  for the call. Still blank, and correctly so: an SOP auto-escalation (Evaluate's third round, MN
+  Attempts = Escalate, the DVS automations) writes only the status column, and at least one older
+  Auth Outstanding escalation holds a bare `Proposed Stuck` line with no reason on it.
+  The System Management Escalations modal (`escalationDetail.proposedStuckReason`) still uses the
+  tag-only reader. The tab is commented out, and the modal lists an intake line under recent notes.
 - **Patient Questions** (`/patient-questions`) is an inbox merging "patient message" columns from
   the Subscription + Secondary Claims boards. **Mark completed** stamps a "Question Handled At"
   date column (Subscription `date_mm57yzmb`, Claims `date_mm57skrd`); an item shows only while
