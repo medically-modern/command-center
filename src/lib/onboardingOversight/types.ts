@@ -28,6 +28,9 @@ export interface RawEvent {
   userId: number;
   /** Marked by §3.1 bulk rules (signature, is_batch_action, or operator window). */
   bulk: boolean;
+  /** §3.10.1 rule 2: the person behind a shared-token (Command Center) write, matched from the gateway's
+   *  /oversight/app-actors in memory after load (model/appAttribution.ts). Never cached; absent = not matched. */
+  actorKey?: string;
 }
 
 /** Current state of one monday item. Text of count-only columns is never stored. */

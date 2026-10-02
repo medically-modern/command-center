@@ -50,6 +50,7 @@ import { registerRcUserAuth } from "./rcUserAuth.mjs";
 import { registerInboundCalls } from "./inboundCalls.mjs";
 import { logRcSetup, registerRcSetup } from "./rcSetup.mjs";
 import { registerCalendlyDay } from "./calendlyDay.mjs";
+import { registerAppActors } from "./appActors.mjs";
 import { registerCalendlyPatient } from "./calendlyPatient.mjs";
 import { registerStageActor } from "./stageActor.mjs";
 import {
@@ -809,6 +810,12 @@ logRcSetup();
 // behind a verified employee identity. See calendlyDay.mjs.
 registerCalendlyDay({ app });
 registerCalendlyPatient({ app });
+
+// Who made each Command Center write, for the Onboarding Oversight dashboard
+// (/onboarding-oversight): monday logs every app write under one shared token,
+// so the person comes from gql_log. Ids and column ids only — never a value.
+// See appActors.mjs.
+registerAppActors({ app, pool });
 
 ensureSchema().finally(() => {
   // Retention. Once at boot, then daily — the table is the one durable log here

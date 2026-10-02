@@ -194,7 +194,7 @@ Until G1 ships, S-01 for most patients measures **MN entry → release**. The ti
 2. Otherwise (Phase 7) the gql_log row matched per §5.5.
 3. Otherwise "automation" (userId -4) or "unattributed".
 
-In the prototype, only rule 1 is active. Tiles say "partial attribution: direct monday edits only (N% of transitions)".
+Rules 1 and 2 are both active (rule 2 since 2026-10-02). Rule 2 is the gateway's `GET /oversight/app-actors` (signed-in only; returns item id, board id, actor email, time and the column IDS written — never a value), matched in memory by `model/appAttribution.ts`: same item and board, the event's column among those written, within `attributionMatchSeconds`, nearest first. Patient lists show the person after the last action's date; the header shows "N% of Command Center actions named". What still uses rule 1 only: `escWorking` ("being worked") counts any human action, and By Employee splits shared queues evenly (KL-R8-4) — both are product decisions for a follow-up.
 
 | ID | Ph | Name | Meaning | Formula | Source | Edge cases | Threshold | Matters to |
 |---|---|---|---|---|---|---|---|---|

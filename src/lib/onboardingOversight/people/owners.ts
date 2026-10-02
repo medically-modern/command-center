@@ -32,8 +32,10 @@ export function liveOwners(access: AccessView | null, cfg: Cfg = OO_CONFIG): Rec
 export const tierOf = (key: string, cfg: Cfg = OO_CONFIG): Tier => (personByKey(key, cfg)?.tier as Tier) ?? "processor";
 export const hasProcessor = (keys: string[] | undefined, cfg: Cfg = OO_CONFIG) => (keys ?? []).some((k) => tierOf(k, cfg) === "processor");
 
-/** §3.10.1 attribution: direct monday edit by a real person, else automation / unattributed (Phase 7 adds gql_log). */
-export function attribute(userId: number | null, cfg: Cfg = OO_CONFIG): { kind: "person" | "automation" | "unattributed"; key?: string } {
+/** §3.10.1 attribution: direct monday edit by a real person (rule 1), else the Command Center person matched from the
+ *  gateway's write log (rule 2, `actorKey` — model/appAttribution.ts), else automation / unattributed (rule 3). */
+export function attribute(userId: number | null, cfg: Cfg = OO_CONFIG, actorKey?: string): { kind: "person" | "automation" | "unattributed"; key?: string } {
+  if (actorKey && personByKey(actorKey, cfg)) return { kind: "person", key: actorKey };
   if (userId == null) return { kind: "unattributed" };
   if (userId === cfg.automationUserId) return { kind: "automation" };
   const p = cfg.people.find((x) => (x.mondayUserIds as readonly number[]).includes(userId));

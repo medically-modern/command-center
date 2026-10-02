@@ -2,7 +2,7 @@
 
 ### 10.4 Known limitations (KNOWN-LIMITATIONS.md)
 - KL-01: End-to-end time starts at MN entry until G1 (§3.3).
-- KL-02: Per-person attribution is partial (direct monday edits only) until Phase 7. Loops are between workflow states, not people.
+- KL-02: Per-person attribution: rule 1 (direct monday edits) and, since 2026-10-02, rule 2 (Command Center writes named from the gateway's write log via `GET /oversight/app-actors`, `model/appAttribution.ts`). The header shows the share of Command Center actions named. Group moves made by the app carry no column and stay unattributed. Loops are still between workflow states, not people.
 - KL-03: Chase channel uses the Clinicals Method value at span start, from events or `fromIndex`, else the current value.
 - KL-04: Current-value metrics (I-06, M-06, snoozes) do not reflect history.
 - KL-05: INT Intake Sub-Stage history starts 2026-08-19 and Escalation 2026-08-06; earlier INT time is "1.1.1 unsplit"; earlier flags are synthetic.

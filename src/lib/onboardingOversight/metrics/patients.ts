@@ -41,8 +41,8 @@ export function eventsByItem(c: Ctx): Map<string, RawEvent[]> {
   for (const l of m.values()) l.sort((a, b) => a.atMs - b.atMs);
   (c as unknown as { _ev?: Map<string, RawEvent[]> })._ev = m; return m;
 }
-export function whoDid(c: Ctx, userId: number | null): string {
-  const a = attribute(userId, c.cfg);
+export function whoDid(c: Ctx, userId: number | null, actorKey?: string): string {
+  const a = attribute(userId, c.cfg, actorKey);
   return a.kind === "person" ? personByKey(a.key!, c.cfg)?.name ?? WHO.unknown : a.kind === "automation" ? WHO.automation : WHO.unattributed;
 }
 const MN_ATTEMPT_MAP = (c: Ctx) => (c.cfg.metricLabels.MN.attempts.map as Record<string, number | string>);
@@ -128,7 +128,7 @@ export function patientRows(c: Ctx): PatientRow[] {
     if (s.kind !== "QUEUE") { const h = continuousHold(c, spans); if (h) { hereStart = h.startMs; synthetic = h.synthetic; } }
     const hereBd = c.bh(hereStart, c.now) / 24;
     const lastEv = [...evs].reverse().find((e) => !e.bulk) ?? evs[evs.length - 1];
-    const last: LastAction | null = lastEv ? { phrase: actionPhrase(it.boardKey, lastEv.columnId, lastEv.toIndex, lastEv.toText, lastEv.toNum), atMs: lastEv.atMs, who: whoDid(c, lastEv.userId) } : null;
+    const last: LastAction | null = lastEv ? { phrase: actionPhrase(it.boardKey, lastEv.columnId, lastEv.toIndex, lastEv.toText, lastEv.toNum), atMs: lastEv.atMs, who: whoDid(c, lastEv.userId, lastEv.actorKey) } : null;
     const touchedBd = c.bh(lastEv?.atMs ?? it.createdAtMs, c.now) / 24;
     const procs = s.kind === "QUEUE" ? (live[s.code ?? ""] ?? []).filter((x) => tierOf(x, c.cfg) === "processor") : [];
     const ownerKeys = s.kind === "MGR" ? ["janelle"] : s.kind === "FINAL" ? ["katie"] : procs;
@@ -216,7 +216,7 @@ export function patientHistory(c: Ctx, k: string): HistoryBlock[] {
     const inside = evs.filter((e) => e.atMs >= from && e.atMs < to);
     let prev = s.startMs; let quiet = 0;
     const events: HistoryEvent[] = inside.map((e) => { const g = c.bh(prev, e.atMs) / 24; quiet = Math.max(quiet, g); prev = e.atMs;
-      return { phrase: actionPhrase(e.boardKey, e.columnId, e.toIndex, e.toText, e.toNum), atMs: e.atMs, who: whoDid(c, e.userId), bulk: e.bulk, gapBeforeBd: g }; });
+      return { phrase: actionPhrase(e.boardKey, e.columnId, e.toIndex, e.toText, e.toNum), atMs: e.atMs, who: whoDid(c, e.userId, e.actorKey), bulk: e.bulk, gapBeforeBd: g }; });
     quiet = Math.max(quiet, c.bh(prev, end) / 24);
     const procs = s.kind === "QUEUE" ? (live[s.code ?? ""] ?? []).filter((x) => tierOf(x, c.cfg) === "processor").map((x) => personByKey(x, c.cfg)?.name ?? x) : [];
     const notes: string[] = [];

@@ -64,7 +64,7 @@ export default function PatientTable({ title, rows, hideUntouched = false, escOw
               <td className="tt-c-time"><span className="tt-strong">{dayWord(r.inStageDays)}</span><span className="tt-muted">since {fmt(r.stepSinceMs)}</span></td>
               {showWith && <td className="tt-c-with">{r.with === "Processor" ? <><span className="tt-strong tt-plain">Processor</span>{r.returnedDays != null && <span className="tt-muted">returned {r.returnedDays === 0 ? "today" : `${dayWord(r.returnedDays)} ago`}</span>}</>
                 : <><span className="tt-strong tt-plain">Escalation · {r.with}</span><span className="tt-muted">{dayWord(r.escDays ?? 0)} in escalation</span></>}</td>}
-              <td className="tt-c-last"><span className="tt-last">{r.last ? lastWords(r.last.label) : <span className="tt-muted-inline">No action yet</span>}</span>{r.last && <span className="tt-muted">{fmt(r.last.atMs)}</span>}</td>
+              <td className="tt-c-last"><span className="tt-last">{r.last ? lastWords(r.last.label) : <span className="tt-muted-inline">No action yet</span>}</span>{r.last && <span className="tt-muted">{fmt(r.last.atMs)}{r.last.by ? ` · ${r.last.by}` : ""}</span>}</td>
               <td className="tt-c-att"><span className="tt-plain">{r.attempts}</span></td>
             </tr>);
         })}</tbody></table>

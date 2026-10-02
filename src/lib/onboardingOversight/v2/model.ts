@@ -10,6 +10,7 @@ import { ctxFor, key as keyOf, speedEligible } from "../metrics/context";
 import { patientRows } from "../metrics/patients";
 import { actionPhrase, actionShort } from "../labels";
 import { OO_CONFIG } from "../config";
+import { attribute, personByKey } from "../people/owners";
 import { detect, type Breaking } from "./detect";
 import { type StageId, type StepDef, type DueSoonCfg, DEFAULT_DUE_SOON, dueSoonWindow, STAGES, stepIdAt } from "./steps";
 
@@ -32,13 +33,17 @@ export interface V2Row {
   late: boolean; dueSoon: boolean; reason: Reason | null; untouched: boolean; touchedInStep: boolean;
   /** returned from escalation during this step and untouched since (late or not) */ returned: boolean;
   /** last return from escalation during this step (the list shows "returned N days ago"), null if none */ returnedMs: number | null; returnedDays: number | null;
-  last: { label: string; atMs: number } | null; attempts: string;
+  /** `by`: who did it (§3.10.1 rules 1-2), or null when unattributed. */
+  last: { label: string; atMs: number; by?: string | null } | null; attempts: string;
   /** escalated rows: the last real action before the escalation (what had been tried), null if none */ beforeEsc?: string | null;
 }
 
 const DAY = 864e5, AUTO = -4;
 /** Columns a scheduled job updates every business day (found in the activity log: same minute, many items, daily). Never a person's action. INS "Days Auth Outstanding". */
 const SCHEDULED_COLUMNS = new Set(["numeric_mm5f5ars"]);
+/** The person who made an event (§3.10.1: a direct monday edit, else the Command Center person matched from the
+ *  gateway's write log), or null when it can only be called the shared account. */
+const whoName = (e: RawEvent): string | null => { const a = attribute(e.userId, OO_CONFIG, e.actorKey); return a.kind === "person" ? personByKey(a.key!, OO_CONFIG)?.name ?? null : null; };
 const human = (e: RawEvent) => !e.bulk && e.userId !== AUTO && e.userId != null && !SCHEDULED_COLUMNS.has(e.columnId);
 /** An exit from an escalation value that is set back to the same value within the hour: not a return and not a new escalation (the §0.2 clock rule; red-team r17 N3). */
 const isBlipOut = (evs: RawEvent[], col: string, e: RawEvent) => evs.some((x) => x.columnId === col && x.atMs > e.atMs && x.atMs - e.atMs <= 36e5 && x.toIndex === e.fromIndex);
@@ -218,7 +223,7 @@ export function buildV2(snap: FullSnapshot, steps: StepDef[], opts: { names?: "l
       with: s.esc ? escOwnerOf(s.esc) : "Processor", escSinceMs: s.escSinceMs, escDays,
       stepSinceMs: s.stepSinceMs, inStageDays: days(s.stepSinceMs, now), normal: s.esc ? escLimit(k, s.esc, s.stepId) : def.normal, escType: s.esc ? escTypeOf(k) : null,
       actionableMs, actionableDays, late, dueSoon, reason, untouched, touchedInStep, returned: returnedUntouched, returnedMs: s.lastReturnMs, returnedDays: s.lastReturnMs != null ? days(s.lastReturnMs, now) : null,
-      last: lastAct ? { label: phraseOf(lastAct)!, atMs: lastAct.atMs } : null, attempts,
+      last: lastAct ? { label: phraseOf(lastAct)!, atMs: lastAct.atMs, by: whoName(lastAct) } : null, attempts,
       beforeEsc: s.esc ? (() => { const e = [...evs].reverse().find((x) => x.atMs < (s.escSinceMs ?? 0) && human(x) && x.event === "update_column_value" && x.columnId !== ESC_COL[b] && phraseOf(x) != null); return e ? phraseOf(e) : null; })() : null, // the last real human action; none -> "No action yet" (CR-16)
     });
   }
